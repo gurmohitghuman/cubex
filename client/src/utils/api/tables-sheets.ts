@@ -13,11 +13,15 @@ import { SAMPLE_CREATE_TIMEOUT_MS, SHEET_COPY_TIMEOUT_MS } from '@/lib/constants
 // Where a delete went: its trash item and how many days it is kept (moving: a column's cells are still
 // going there).
 export interface TrashRef { id: number; days: number; moving?: boolean }
+export interface TableRowCount { id: string; row_count: number; row_count_updating: boolean }
 
 const noServerToast = { skipServerErrorToast: true } as const
 
 export const tablesAPI = {
   getAll: (): Promise<Table[]> => api.get('/tables', noServerToast).then(res => res.data),
+  // Every table's rows once the counts being made are made (the server holds it up to 20 s).
+  rowCounts: (signal: AbortSignal): Promise<TableRowCount[]> =>
+    api.get('/tables/row-counts', { ...noServerToast, signal }).then(res => res.data.tables),
   getById: (id: string): Promise<Table> => api.get(`/tables/${id}`, noServerToast).then(res => res.data),
   create: (name: string): Promise<Table> => api.post('/tables', { name }, noServerToast).then(res => res.data),
   // A table of made-up leads with columns that show what Cubex does (server services/sample-table.ts).

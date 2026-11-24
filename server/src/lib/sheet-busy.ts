@@ -28,6 +28,22 @@ export function busyEpoch(sheetId: string): number {
   return epochs.get(sheetId) ?? 0;
 }
 
+// Called once when the sheet's heavy operation ends, or on the next turn if none runs: a background reader that
+// found one overlapping its pages reads again then (lib/row-counts.ts).
+const freeWaiters = new Map<string, Array<() => void>>();
+export function onSheetFree(sheetId: string, then: () => void): void {
+  if (!busy.has(sheetId)) { setImmediate(then); return; }
+  freeWaiters.set(sheetId, [...(freeWaiters.get(sheetId) ?? []), then]);
+}
+
+function release(sheetId: string, entry: BusyEntry): void {
+  if (busy.get(sheetId) !== entry) return;
+  busy.delete(sheetId);
+  const waiting = freeWaiters.get(sheetId) ?? [];
+  freeWaiters.delete(sheetId);
+  for (const then of waiting) setImmediate(then);
+}
+
 // What the sheet is busy doing ("sorting", "importing"…), or null.
 export function sheetBusyWith(sheetId: string): string | null {
   return busy.get(sheetId)?.what ?? null;
@@ -91,7 +107,7 @@ async function settle(sheetId: string, entry: BusyEntry): Promise<void> {
     catch (err) { console.error(`Sheet ${sheetId}: ${entry.what} failed:`, err); }
   }
   if (entry.finish) await keepFinishing(sheetId, entry, entry.finish);
-  else if (busy.get(sheetId) === entry) busy.delete(sheetId);
+  else release(sheetId, entry);
 }
 
 // For a long operation that answers its caller early (a run start returns as
@@ -122,7 +138,7 @@ async function keepFinishing(sheetId: string, entry: BusyEntry, finish: () => Pr
     try { await finish(); break; }
     catch (err) { console.error(`Sheet ${sheetId}: ${entry.what} failed again, retrying:`, err); }
   }
-  if (busy.get(sheetId) === entry) busy.delete(sheetId);
+  release(sheetId, entry);
 }
 
 // At boot: run `work` as the sheet's heavy operation as soon as it is free (a

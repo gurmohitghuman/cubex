@@ -14,6 +14,7 @@ import { settleEdits, settleRows, type AutoDedupeOutcome } from './auto-dedupe-s
 import { autoDedupeAnswer, type AutoDedupeAnswer } from './auto-dedupe-answer';
 import type { Surface } from './trash-answer';
 import { orderedUuid } from '../lib/ordered-id';
+import { rowsChanged } from '../lib/rows-changed';
 
 // rows: every row the call made, in the order given; notKept: those
 // auto-dedupe didn't keep (another row had their key), kept: how many stayed.
@@ -67,6 +68,7 @@ export function appendRows(
       created.push({ id, index: next });
       next++;
     }
+    rowsChanged(sheetId);
     deduped = settleRows(sheetId, userId, rids, 'arrived');
     bumpDataVersion(sheetId, userId);
   }).immediate();

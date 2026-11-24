@@ -25,6 +25,7 @@ import { destRunBlocker, olderWaitsForRun, type DestRun } from './enrich-list-de
 import { orderedUuid } from '../lib/ordered-id';
 import { trashReplacedRows } from './trash-replaced';
 import { noteSeen, seenCheck } from './enrich-list-seen';
+import { rowsChanged } from '../lib/rows-changed';
 
 interface Journal {
   id: string; user_id: string; run_id: string; source_sheet_id: string; source_row_id: string;
@@ -200,6 +201,7 @@ export function addListItemsIn(journalId: string, count: DestCount): { out: AddO
       ids.add(id);
       from.run(id, j.user_id, j.dest_sheet_id, j.source_sheet_id, j.source_row_id, column ?? '', j.run_id, r.key);
     }
+    rowsChanged(j.dest_sheet_id);
     if (list.keep) {
       noteSeen(j.dest_sheet_id, j.user_id, j.run_id, [...rows.flatMap(r => r.keys), ...again]);
     }
