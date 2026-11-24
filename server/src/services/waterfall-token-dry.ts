@@ -4,6 +4,7 @@
 // WATERFALL_DRY_WAIT_SECONDS for it to end, and answers with each row's trace
 // (or, still running, how to read it).
 import { WATERFALL_DRY_WAIT_SECONDS } from '../lib/constants';
+import { snakeProviderField } from '../lib/enrich-provider-names';
 import { parseBooleanOption } from '../lib/web-search-options';
 import type { WaterfallRunInput } from '../lib/waterfall/input';
 import { bad, startWindow, type TokenCaller, type TokenRunResult } from './run-start-token';
@@ -38,6 +39,7 @@ export function dryRunJson(v: DryRunView) {
       ? 'It paused (see message): control_run resume or cancel it (run_type "waterfall"). Nothing was written.'
       : ended ? 'Nothing was written to the sheet. For 7 days a real run replays these answers at no cost.'
         : 'Still running: read it with get_run_results (run_type "waterfall", status_filter "all").',
+    ...(v.run.notes?.length ? { notes: v.run.notes.map(snakeProviderField) } : {}),
   };
 }
 
@@ -66,7 +68,9 @@ export async function tokenDryRun(c: TokenCaller, sheetId: string, input: Waterf
   const limited = startWindow(c);
   if (limited) return limited;
   const out = await startWaterfallDryRun(c.userId, sheetId, input, { hasSecretsScope: c.scopes.has('secrets') });
-  if ('fail' in out) return out;
+  if ('fail' in out) {
+    return out.fail === 'bad_request' ? { ...out, message: snakeProviderField(out.message) } : out;
+  }
   if (key) writeRunLedger(c.userId, key, hash, 'waterfall_dry', { run_id: out.ok.runId });
   return answerDryRun(c, out.ok.runId, false);
 }

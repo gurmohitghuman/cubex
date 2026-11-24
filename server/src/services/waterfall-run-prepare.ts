@@ -141,7 +141,7 @@ export async function prepareWaterfallStart(
   }
   const upperBound = Math.min(input.rows.test ?? inScope, inScope);
   const built = await buildWaterfall(input, {
-    userId, sheetId, columns, sample: sampleRows(sheetId, userId), rowsUpperBound: upperBound,
+    userId, sheetId, columns, sample: sampleRows(sheetId, userId), rowsUpperBound: upperBound, prior,
   });
   if ('fail' in built) return built;
   const { mapping, stepNames } = namesFor(input, built.ok, prior);

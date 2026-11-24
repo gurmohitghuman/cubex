@@ -85,7 +85,9 @@ export interface WaterfallSetup {
   sheetNames?: Record<string, string | null>   // a lookup step's sheet as it's named now (null: deleted)
 }
 
-export interface WaterfallStarted { runId: string; resultColumn: string; outputColumns: string[]; rowsInScope: number }
+export interface WaterfallStarted {
+  runId: string; resultColumn: string; outputColumns: string[]; rowsInScope: number; notes?: string[]
+}
 
 export interface WaterfallStepStatus {
   id: string; label: string; kind: StepKind; on: boolean
@@ -100,6 +102,7 @@ export interface WaterfallRunStatus {
   spent: { treg_usd: number; ai_usd: number; total_usd: number }; run_limit_usd: number | null
   max_per_row_usd: number
   steps: WaterfallStepStatus[]
+  notes?: string[]
 }
 
 export type StepOutcome = 'answered' | 'rejected' | 'not_found' | 'no_inputs' | 'error' | 'budget'

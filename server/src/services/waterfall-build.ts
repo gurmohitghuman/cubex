@@ -1,3 +1,4 @@
+// Over 200 lines: builds every step kind of a waterfall into one frozen block in one pass.
 // A waterfall start request turned into the run's stored config, checked
 // against the sheet (input columns), treg's catalog (enrichment steps), the
 // AI defaults and prices (AI steps) and the request rules (HTTP steps), and
@@ -12,7 +13,7 @@ import { WATERFALL_LABEL_MAX_CHARS } from '../lib/constants';
 import type { ProviderPick } from '../lib/enrich-estimate';
 import type { EnrichTool } from '../lib/enrich-tool';
 import {
-  newStepId, stepRequestConfig, type WaterfallBlock, type WaterfallStep,
+  newStepId, stepRequestConfig, type WaterfallBlock, type WaterfallRunConfig, type WaterfallStep,
 } from '../lib/waterfall/config';
 import { rowCaps } from '../lib/waterfall/caps';
 import { DEFAULT_PHONE } from '../lib/waterfall/result-type';
@@ -35,15 +36,17 @@ export interface BuildContext {
   columns: string[];                          // the sheet's column registry
   sample: Array<Record<string, string>>;      // a few rows' cells, by column (AI pricing reads their inputs)
   rowsUpperBound: number;                     // the most rows the run can take (the default run limit)
+  prior?: WaterfallRunConfig | null;          // saved waterfall config: its old provider names are ignored, not refused
 }
 
 // What the estimate needs beside the config: each enrichment step's tool and
-// provider pick, each AI step's price notes.
+// provider pick, each AI step's price notes, and any old saved provider names ignored.
 export interface BuiltWaterfall {
   block: WaterfallBlock;
   inputMap: Record<string, string>;
   tools: Map<string, { tool: EnrichTool; pick: ProviderPick }>;
   ai: Map<string, AiStepPrice>;
+  ignoredProviders: string[];
 }
 
 // What "answered by" shows by default: short, since it fills a column.
@@ -100,11 +103,13 @@ export async function buildWaterfall(
   const usedLabels = new Set<string>();
   const tools = new Map<string, { tool: EnrichTool; pick: ProviderPick }>();
   const ai = new Map<string, AiStepPrice>();
+  const ignoredProviders: string[] = [];
   const steps: WaterfallStep[] = [];
   for (const [n, s] of input.steps.entries()) {
     const where = `Step ${n + 1}${s.label ? ` (${s.label})` : ''}`;
     const id = s.id ?? newStepId(taken);
     taken.add(id);
+    const priorStep = ctx.prior?.waterfall.steps.find(p => p.id === id);
     for (const alt of s.requires ?? []) {
       const unknown = alt.find(k => !keySet.has(k));
       if (unknown) return bad(`${where}: "${unknown}" in requires isn't one of the waterfall's inputs.`);
@@ -112,8 +117,11 @@ export async function buildWaterfall(
     const c = s.choices;
     let step: WaterfallStep;
     if (c.kind === 'enrichment') {
-      const b = await buildEnrichmentStep(where, c, input.resultType, inputKeys, mappedKeys);
+      const saved = priorStep?.choices.kind === 'enrichment' && priorStep.choices.toolId === c.toolId
+        ? { order: priorStep.choices.providerOrder, skip: priorStep.choices.skipProviders } : undefined;
+      const b = await buildEnrichmentStep(where, c, input.resultType, inputKeys, mappedKeys, saved);
       if ('fail' in b) return b;
+      ignoredProviders.push(...b.ok.ignored);
       tools.set(id, { tool: b.ok.tool, pick: b.ok.pick });
       step = {
         id, label: '', on: s.on, requires: s.requires ?? [], choices: b.ok.choices, built: b.ok.built,
@@ -164,8 +172,11 @@ export async function buildWaterfall(
         built: { kind: 'lookup' },
       };
     }
-    const check = await buildCheck(where, s.check, input.resultType, inputKeys);
+    const savedCheck = priorStep?.check?.choices.kind === 'verify'
+      ? { order: priorStep.check.choices.providerOrder, skip: priorStep.check.choices.skipProviders } : undefined;
+    const check = await buildCheck(where, s.check, input.resultType, inputKeys, savedCheck);
     if ('fail' in check) return check;
+    ignoredProviders.push(...check.ignored);
     if (check.ok) step.check = check.ok;
     // AI and HTTP steps need every input they read, unless the step lists its
     // own alternatives. An enrichment step follows its tool's rule (treg's
@@ -199,6 +210,7 @@ export async function buildWaterfall(
     rows: { mode: input.rows.mode, status: input.rows.status, test: input.rows.test },
     fresh: input.fresh, ...(input.noReuse ? { noReuse: true } : {}),
     ...(typeof input.rateLimitRetries === 'number' ? { rateLimitRetries: input.rateLimitRetries } : {}),
+    ...(ignoredProviders.length ? { ignoredProviders } : {}),
   };
-  return { ok: { block, inputMap: mapped.map, tools, ai } };
+  return { ok: { block, inputMap: mapped.map, tools, ai, ignoredProviders } };
 }

@@ -15,6 +15,7 @@ import { parseBooleanOption } from '../lib/web-search-options';
 import { parseWaterfallInput } from '../lib/waterfall/input';
 import { agentWaterfallBody } from '../lib/waterfall/agent-args';
 import { flagOf } from '../lib/enrich-agent-input';
+import { snakeProviderField } from '../lib/enrich-provider-names';
 import { estimateWaterfall } from './waterfall-estimate';
 import { replayKeysRefusal, startWaterfallRun } from './waterfall-run-start';
 import { newestWaterfallRun, recallInput, waterfallSetup } from './waterfall-column';
@@ -104,7 +105,8 @@ export async function tokenWaterfall(
   if ('error' in body) return bad(body.error);
   const parsed = parseWaterfallInput(body.ok);
   if ('error' in parsed) {
-    return bad(parsed.error.replace(/^runIf/, 'run_if').replace(/^rateLimitRetries/, 'rate_limit_retries'));
+    const error = parsed.error.replace(/^runIf/, 'run_if').replace(/^rateLimitRetries/, 'rate_limit_retries');
+    return bad(snakeProviderField(error));
   }
   const autoRun = autoRunOf(a.auto_run);
   if (typeof autoRun === 'string') return bad(autoRun);
@@ -113,9 +115,14 @@ export async function tokenWaterfall(
   if (hookProblem) return bad(hookProblem);
   if (estimateOnly) {
     const est = await estimateWaterfall(c.userId, sheetId, parsed.ok);
-    if ('fail' in est) return est;
+    if ('fail' in est) {
+      return est.fail === 'bad_request' ? { ...est, message: snakeProviderField(est.message) } : est;
+    }
     return {
-      ok: { estimate_only: true, ...est.ok, note: 'Nothing was started. Run it with estimate_only: false.' },
+      ok: {
+        estimate_only: true, ...est.ok, notes: est.ok.notes.map(snakeProviderField),
+        note: 'Nothing was started. Run it with estimate_only: false.',
+      },
       started: false,
     };
   }
@@ -138,7 +145,9 @@ export async function tokenWaterfall(
   const limited = startWindow(c);
   if (limited) return limited;
   const out = await startWaterfallRun(c.userId, sheetId, parsed.ok, { hasSecretsScope: c.scopes.has('secrets') });
-  if ('fail' in out) return out;
+  if ('fail' in out) {
+    return out.fail === 'bad_request' ? { ...out, message: snakeProviderField(out.message) } : out;
+  }
   const hook = typeof a.webhook_id === 'string' ? a.webhook_id : null;
   if (hook) attachRunWebhook('http_runs', out.ok.runId, c.userId, hook);
   const stored = JSON.parse(db.prepare('SELECT config FROM http_runs WHERE id = ? AND user_id = ?').pluck()
@@ -158,6 +167,7 @@ export async function tokenWaterfall(
   const runRows = parsed.ok.rows.test ? Math.min(parsed.ok.rows.test, out.ok.rowsInScope) : out.ok.rowsInScope;
   const chain = await appendAutorunNotice(c.userId, sheetId, runRows, [out.ok.resultColumn, ...out.ok.outputColumns]);
   const w = stored.waterfall;
+  const notes = out.ok.notes?.map(snakeProviderField) ?? [];
   const payload = {
     run_id: out.ok.runId, run_type: 'waterfall', result_column: out.ok.resultColumn,
     output_columns: out.ok.outputColumns, rows_in_scope: out.ok.rowsInScope, test_rows: parsed.ok.rows.test,
@@ -165,6 +175,7 @@ export async function tokenWaterfall(
     max_cost_per_row_usd: w.maxCostPerRowUsd, spend_limit_usd: w.spendLimitUsd, daily_limit: dailyLimitOf(c.userId),
     ...(stored.runIf ? runIfReply(stored.runIf) : {}), ...autoRunPart,
     ...(chain.auto_run ? { chained_auto_run: chain.auto_run } : {}), ...(hook ? { webhook_id: hook } : {}),
+    ...(notes.length ? { notes } : {}),
   };
   const changed = runChanged(c.userId, sheetId, [out.ok.resultColumn, ...out.ok.outputColumns], out.ok.rowsInScope);
   if (typeof a.idempotency_key === 'string') {

@@ -92,5 +92,25 @@ await test('a release without lines needs no record', () => {
   assert.equal(r.status, 0, r.stderr)
 })
 
+await test('notes Docker update line fetches moved tags with --force', () => {
+  const bare = fs.mkdtempSync(path.join(os.tmpdir(), 'release-bare-'))
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'release-notes-'))
+  try {
+    const init = spawnSync('git', ['init', '--bare', '-q', bare], { encoding: 'utf8' })
+    assert.equal(init.status, 0, init.stderr)
+    git('remote', 'add', 'public', bare)
+    git('tag', 'v0.8.39', before)
+    git('push', '-q', 'public', `${recorded}:refs/heads/main`, 'refs/tags/v0.8.39')
+    const r = spawnSync('bash', ['-c', 'source scripts/release.sh && cmd_notes patch'],
+      { cwd: repo, encoding: 'utf8', env: { ...process.env, REMOTE: 'public', TMPDIR: outDir } })
+    assert.equal(r.status, 0, r.stderr)
+    const notes = fs.readFileSync(path.join(outDir, 'cubex-release-v0.8.40.md'), 'utf8')
+    assert.ok(notes.includes('`git fetch --tags --force && git checkout v0.8.40`'), notes)
+  } finally {
+    fs.rmSync(bare, { recursive: true, force: true })
+    fs.rmSync(outDir, { recursive: true, force: true })
+  }
+})
+
 fs.rmSync(repo, { recursive: true, force: true })
 console.log('release-tool-list-check: all passed')

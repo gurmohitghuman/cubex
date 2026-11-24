@@ -126,6 +126,8 @@ export interface WaterfallBlock {
   // Retries per row on provider 429s (0..ENRICH_PROVIDER_RATE_RETRIES_MAX); absent: ENRICH_PROVIDER_RATE_RETRIES.
   rateLimitRetries?: number;
   dry?: WaterfallDry;              // a dry run: writes nothing to the sheet
+  // Old saved provider names no longer in treg's catalog that this run ignored.
+  ignoredProviders?: string[];
 }
 
 export type WaterfallRunConfig = HTTPAPIConfig & { waterfall: WaterfallBlock };

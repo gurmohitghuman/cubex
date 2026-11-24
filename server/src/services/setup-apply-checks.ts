@@ -2,13 +2,16 @@
 // to the sheet (setup-apply.ts): the AI models, the saved keys its requests
 // read, and other setups still working on the sheet.
 import { db } from '../lib/db';
+import { ENRICH_VERIFY_TOOL_ID } from '../lib/constants';
 import { resolveAiModel } from '../lib/ai-model-resolve';
 import { fetchModels } from '../lib/openrouter';
 import { batchOnlyRefusal, modelListed } from '../lib/ai-model-check';
+import { checkStepProviders } from '../lib/enrich-provider-names';
 import { savedKeyRefsInConfig } from '../lib/http-secrets-scan';
 import { templateTokenIs } from '../lib/template-token-match';
 import type { SheetColumnStep, StepMode } from '../lib/setups/again';
 import { mainColumn, stepColumns, type SetupSpec } from '../lib/setups/spec';
+import { getTool } from './enrich-catalog';
 import { savedKeyNames } from './saved-keys';
 import { planOf, type SetupRunRow } from './setup-run-store';
 import type { RunFail } from './run-shared';
@@ -58,6 +61,25 @@ export async function withModels(
     steps.push(step);
   }
   return { ...fitted, steps };
+}
+
+// Enrichment steps starting new columns must name providers treg's catalog knows
+// (steps carrying an existing column on keep its own saved setup).
+export async function enrichmentProvidersProblem(spec: SetupSpec, modes: StepMode[]): Promise<ApplyFail | null> {
+  for (const [i, s] of spec.steps.entries()) {
+    if (s.kind !== 'enrichment' || modes[i] === 'again') continue;
+    if (s.providerOrder.length === 0 && s.skipProviders.length === 0) continue;
+    const found = await getTool(s.toolId);
+    if (!('ok' in found)) continue;
+    const verify = s.preset === 'verified_email' ? await getTool(ENRICH_VERIFY_TOOL_ID) : null;
+    if (verify && !('ok' in verify)) continue;
+    const checked = checkStepProviders({
+      where: `"${mainColumn(s)}"`, order: s.providerOrder, skip: s.skipProviders,
+      orderTools: [found.ok], skipTools: verify && 'ok' in verify ? [found.ok, verify.ok] : [found.ok],
+    });
+    if (checked.error) return bad(checked.error);
+  }
+  return null;
 }
 
 // Saved keys the setup's requests read: they must exist, no column may stand

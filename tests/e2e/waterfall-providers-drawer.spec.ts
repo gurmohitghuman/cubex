@@ -1,5 +1,6 @@
 import { test, expect, APIRequestContext, Page } from '@playwright/test'
-import { authedApi, BASE } from './helpers'
+import Database from 'better-sqlite3'
+import { assertTestDb, authedApi, BASE } from './helpers'
 import { mockTreg } from './helpers-treg'
 import { callEveryRow, freshTreg, rowsOf, seedCsv } from './helpers-enrich'
 import { choose } from './helpers-ui'
@@ -24,7 +25,10 @@ const asked = async (toolId: string) =>
 callEveryRow()
 
 // A waterfall of one step, run on the first row only so the drawer has rows left to run; then its sheet open.
-async function seed(page: Page, api: APIRequestContext, step: Record<string, unknown>) {
+// Saved names no longer in treg's catalog are written onto the stored run (as an older waterfall would hold them).
+async function seed(
+  page: Page, api: APIRequestContext, step: Record<string, unknown>, savedPatch?: Record<string, unknown>,
+) {
   const { tableId, sheetId } = await seedCsv(api,
     'Name,Website\nMaya Chen,stripe.com\nLeo Martins,notion.so\nAva Patel,figma.com')
   const inputs = [
@@ -39,6 +43,16 @@ async function seed(page: Page, api: APIRequestContext, step: Record<string, unk
   expect(res.ok(), JSON.stringify(run)).toBeTruthy()
   await expect.poll(async () => (await (await api.get(`/api/waterfall/runs/${run.runId}`)).json()).status,
     { timeout: 30_000 }).toBe('completed')
+  if (savedPatch) {
+    const db = new Database(assertTestDb(process.env.DB_PATH))
+    try {
+      const raw = db.prepare('SELECT config FROM http_runs WHERE id = ?').pluck().get(run.runId) as string
+      const cfg = JSON.parse(raw)
+      if (savedPatch.choices) cfg.waterfall.steps[0].choices = savedPatch.choices
+      if (savedPatch.check) cfg.waterfall.steps[0].check.choices = savedPatch.check
+      db.prepare('UPDATE http_runs SET config = ? WHERE id = ?').run(JSON.stringify(cfg), run.runId)
+    } finally { db.close() }
+  }
   await page.context().addCookies((await api.storageState()).cookies)
   await page.goto(`${BASE}/table/${tableId}`)
   await expect(page.locator('.ag-row[row-index="0"]').first()).toBeVisible({ timeout: 15_000 })
@@ -83,12 +97,15 @@ test('an email check\'s providers in the drawer: kept when untouched, one switch
     const verify = 'treg.people.email.verify'
     const api = await authedApi()
     await freshTreg(api)
-    const { sheetId, stepOf } = await seed(page, api, { choices: { kind: 'formula', formula: GUESS }, check: CHECK })
+    const { sheetId, stepOf } = await seed(page, api, { choices: { kind: 'formula', formula: GUESS },
+      check: { kind: 'verify', accept: 'safest', providerOrder: ['trykitt'] } }, { check: CHECK })
     expect(await asked(verify)).toEqual(['trykitt'])           // the check's order: Kitt AI first, and it answers
 
-    // Untouched: the run sends the check as it was, a name the list doesn't show included.
+    // Untouched: the run sends the check as it was, a name the list doesn't show included, and the estimate notes it.
     const kitt = await openProviders(page, /^Verify providers/, 'Kitt AI')
     await expect(kitt).toHaveAttribute('aria-checked', 'true')
+    await expect(drawer(page).getByTestId('waterfall-estimate')).toContainText('nosuchverifier', { timeout: 15_000 })
+    await expect(drawer(page).getByTestId('waterfall-estimate')).toContainText('oldverifier')
     await shot(page, 'waterfall-verify-providers')
     expect((await runAll(page, sheetId)).check).toEqual(CHECK)
     expect((await stepOf()).check).toEqual(CHECK)
@@ -116,12 +133,16 @@ test('a treg step\'s providers in the drawer: kept when untouched, one switched 
   const find = FIND.toolId
   const api = await authedApi()
   await freshTreg(api)
-  const { sheetId, stepOf } = await seed(page, api, { choices: FIND })
+  const { sheetId, stepOf } = await seed(page, api,
+    { choices: { ...FIND, providerOrder: ['hunter'], skipProviders: [] } },
+    { choices: FIND })
   expect(await asked(find)).toEqual(['hunter'])
 
   const hunter = await openProviders(page, /^Providers/, 'Hunter')
   await expect(hunter).toHaveAttribute('aria-checked', 'true')
   await expect(drawer(page).getByText('Stop after the first provider')).toBeVisible()
+  await expect(drawer(page).getByTestId('waterfall-estimate')).toContainText('nosuchfinder', { timeout: 15_000 })
+  await expect(drawer(page).getByTestId('waterfall-estimate')).toContainText('oldfinder')
   const sent = await runAll(page, sheetId)
   expect(sent.choices).toMatchObject({ providerOrder: FIND.providerOrder, skipProviders: FIND.skipProviders })
   expect((await stepOf()).choices).toMatchObject({ providerOrder: FIND.providerOrder, skipProviders: ['oldfinder'] })

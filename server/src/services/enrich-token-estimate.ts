@@ -4,6 +4,7 @@
 // out of the price. A pure read: nothing is created, no treg tool is called
 // (the catalog and the balance are reads).
 import type { EnrichRunInput } from '../lib/enrich-run-input';
+import { snakeProviderField } from '../lib/enrich-provider-names';
 import { prepareEnrichmentStart } from './enrich-run-prepare';
 import { estimateEnrichment, readEnrichBalance } from './enrich-setup';
 import { getTregToken } from './treg-key';
@@ -50,6 +51,7 @@ export async function agentEnrichEstimate(userId: string, sheetId: string, input
     notes.push(`${reuse.complete ? '' : 'At least '}${reuse.rows} of these rows reuse a found answer from the last `
       + `${reuse.days} days at $0 (no call); the cost covers the other rows. fresh: true calls every row again.`);
   }
+  notes.push(...prepared.ok.ignoredProviders.map(snakeProviderField));
   return {
     ok: {
       estimate_only: true,
