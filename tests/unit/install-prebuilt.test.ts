@@ -153,7 +153,7 @@ if (!WIN) {
     '$Repo = "gurmohitghuman/cubex"',
     '$env:CUBEX_DIST_URL = $args[1]',
     'try {',
-    '  $res = Get-Prebuilt $args[2] $args[3]',
+    '  $res = Get-Prebuilt $(if ($args[2] -eq "-") { "" } else { $args[2] }) $args[3]',
     '  Write-Output ("PREBUILT=" + ($(if ($res) { "1" } else { "0" })))',
     '} catch {',
     '  [Console]::Error.WriteLine($_.Exception.Message)',
@@ -166,7 +166,8 @@ if (!WIN) {
   const psFlags = ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File']
   invokeRunner = (baseUrl, ref, nextDir) => {
     const tmpDir = fs.mkdtempSync(path.join(root, 'tmp-'))
-    return runAsync('powershell.exe', [...psFlags, runnerPath, tmpDir, baseUrl, ref, nextDir])
+    // No tag goes as "-": an empty argument may not reach a script run with -File.
+    return runAsync('powershell.exe', [...psFlags, runnerPath, tmpDir, baseUrl, ref || '-', nextDir])
   }
 }
 
@@ -268,13 +269,83 @@ const run = async () => {
     }
   })
 
+  // An install from --source with CUBEX_DIST_URL (the Release workflow's install from the archive it attaches) has
+  // no tag: it takes the archive there.
+  const serve = (archive: Buffer) => {
+    const digest = shaHex(archive)
+    handler = (u, res) => {
+      if (u === '/cubex-dist.tar.gz.sha256') { res.end(`${digest}  cubex-dist.tar.gz\n`); return }
+      if (u === '/cubex-dist.tar.gz') { res.end(archive); return }
+      res.statusCode = 404; res.end()
+    }
+  }
+  await ok('with no tag (--source), takes the archive at CUBEX_DIST_URL', async () => {
+    serve(validTar)
+    requests = []
+    const next = makeNext('no-tag')
+    const r = await invokeRunner(baseUrl, '', next)
+    assert.equal(r.status, 0, r.stderr)
+    assert.match(r.stdout, /PREBUILT=1/)
+    assert.match(r.stdout, new RegExp(`Downloaded pre-built Cubex \\(${baseUrl}\\)`))
+    assert.deepEqual(requests, ['/cubex-dist.tar.gz.sha256', '/cubex-dist.tar.gz'])
+    assert.ok(fs.existsSync(path.join(next, 'server', 'dist', 'index.js')))
+  })
+
+  // tar run as root keeps an archive's owners: the release packs every entry as root's (scripts/pack-dist.sh), and
+  // install.sh unpacks as the installing user whatever the archive says. Linux only: GNU tar packs the release, and
+  // fakeroot plays root without being it.
+  const gnuTar = !WIN && /GNU tar/.test(spawnSync('tar', ['--version'], { encoding: 'utf8' }).stdout ?? '')
+  const fakeroot = !WIN && spawnSync('fakeroot', ['true']).status === 0
+  await ok('the release packs every entry as root\'s', () => {
+    if (!gnuTar) { console.log('     (skipped: no GNU tar here)'); return }
+    const stage = path.join(root, 'pack')
+    for (const [rel, text] of [['server/dist/index.js', 'x\n'], ['server/dist/package.json', '{}\n'],
+      ['server/dist/db/migrations/001_schema.sql', '\n'], ['client/dist/index.html', '<!doctype html>\n']]) {
+      fs.mkdirSync(path.dirname(path.join(stage, rel)), { recursive: true })
+      fs.writeFileSync(path.join(stage, rel), text)
+    }
+    const r = spawnSync('bash', [path.join(repo, 'scripts', 'pack-dist.sh'), 'out'], { cwd: stage, encoding: 'utf8' })
+    assert.equal(r.status, 0, r.stderr + r.stdout)
+    const list = spawnSync('tar', ['--numeric-owner', '-tvzf', path.join(stage, 'out', 'cubex-dist.tar.gz')],
+      { encoding: 'utf8' }).stdout.trim().split('\n')
+    assert.ok(list.length >= 8, list.join('\n'))
+    assert.deepEqual([...new Set(list.map(l => l.split(/\s+/)[1]))], ['0/0'], list.join('\n'))
+    const sum = fs.readFileSync(path.join(stage, 'out', 'cubex-dist.tar.gz.sha256'), 'utf8')
+    assert.equal(sum, `${shaHex(fs.readFileSync(path.join(stage, 'out', 'cubex-dist.tar.gz')))}  cubex-dist.tar.gz\n`)
+  })
+  await ok('installed as root, the files are root\'s, not the archive\'s owner', async () => {
+    if (!gnuTar || !fakeroot) { console.log('     (skipped: needs GNU tar and fakeroot)'); return }
+    const stage = path.join(root, 'stage-owned')
+    for (const [rel, text] of [['server/dist/index.js', 'x\n'], ['server/dist/package.json', '{}\n'],
+      ['client/dist/index.html', '<!doctype html>\n']]) {
+      fs.mkdirSync(path.dirname(path.join(stage, rel)), { recursive: true })
+      fs.writeFileSync(path.join(stage, rel), text)
+    }
+    const owned = path.join(root, 'owned.tar.gz')
+    const packed = spawnSync('tar', ['--owner=1001', '--group=1001', '--numeric-owner', '-czf', owned, '-C', stage,
+      'server/dist', 'client/dist'], { encoding: 'utf8' })
+    assert.equal(packed.status, 0, packed.stderr)
+    serve(fs.readFileSync(owned))
+    const next = makeNext('as-root')
+    const tmpDir = fs.mkdtempSync(path.join(root, 'tmp-'))
+    const r = await runAsync('fakeroot', ['--', 'bash', '-c',
+      'bash "$1" "$2" "$3" "$4" "" "$5" && find "$5/server" "$5/client" -printf "%U:%G\\n" | sort -u',
+      '_', path.join(root, 'run-prebuilt.sh'), path.join(root, 'install-lib.sh'), tmpDir, baseUrl, next])
+    assert.equal(r.status, 0, r.stderr)
+    assert.match(r.stdout, /PREBUILT=1/)
+    assert.deepEqual(r.stdout.split('\n').filter(l => /^\d+:\d+$/.test(l)), ['0:0'], r.stdout)
+  })
+
   await ok('installer and release workflow source-build and prebuilt contracts hold', () => {
     assert.match(shSrc, /PREBUILT=0[\s\S]*npm ci --omit=dev --no-audit --no-fund/)
     assert.match(shSrc, /npm ci --include=dev --no-audit --no-fund && npm run build && npm prune --omit=dev/)
     assert.match(psSrc, /\$S\.Prebuilt[\s\S]*npm ci --omit=dev --no-audit --no-fund/)
     assert.match(psSrc, /npm ci --include=dev --no-audit --no-fund && npm run build && npm prune --omit=dev/)
     assert.match(relSrc, /build-dist:[\s\S]*npm run build[\s\S]*cubex-dist\.tar\.gz\.sha256/)
-    assert.match(relSrc, /needs:\s*\[resolve,\s*ci,\s*build-dist,\s*install,\s*install-windows,\s*install-unix\]/)
+    assert.match(relSrc,
+      /needs:\s*\[resolve,\s*ci,\s*build-dist,\s*install-dist,\s*install,\s*install-windows,\s*install-unix\]/)
+    assert.match(relSrc, /install-dist:[\s\S]*uses: \.\/\.github\/workflows\/install-dist\.yml[\s\S]*artifact: true/)
+    assert.match(relSrc, /build-dist:[\s\S]*bash scripts\/pack-dist\.sh release-assets/)
     assert.match(relSrc, /sha256sum -c cubex-dist\.tar\.gz\.sha256[\s\S]*gh release upload[\s\S]*--draft=false/)
   })
 }

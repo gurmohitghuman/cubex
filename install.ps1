@@ -416,14 +416,15 @@ function Get-Source([string]$Source) {
     Stop-Unsupported ('Cubex doesn''t run on Windows on ARM yet: one of its parts (argon2) has no ready-made ARM64 ' +
       'build for Windows, and installing must never need a compiler. Until a release adds it, use install.sh in WSL2.')
   }
-  if (-not $Source) { $S.Prebuilt = Get-Prebuilt $srcRef $next }
+  if (-not $Source -or $env:CUBEX_DIST_URL) { $S.Prebuilt = Get-Prebuilt $srcRef $next }
   $true
 }
 
 # Downloads pre-built server\dist and client\dist for a release tag when available.
 # Older tags without the archive, branches and commit SHAs fall back to building from source.
+# No tag ('', from --source): the archive at $env:CUBEX_DIST_URL (where a release's pre-built app is).
 function Get-Prebuilt([string]$RefTag, [string]$Next) {
-  if ($RefTag -cnotmatch '^v[0-9]+\.[0-9]+\.[0-9]+\z') { return $false }
+  if ($RefTag -and $RefTag -cnotmatch '^v[0-9]+\.[0-9]+\.[0-9]+\z') { return $false }
   $base = if ($env:CUBEX_DIST_URL) {
     $env:CUBEX_DIST_URL.TrimEnd('/')
   } else {
@@ -469,7 +470,7 @@ function Get-Prebuilt([string]$RefTag, [string]$Next) {
   Move-Folder "$stage\server\dist" "$Next\server\dist"
   Move-Folder "$stage\client\dist" "$Next\client\dist"
   Remove-Tree $stage
-  Ok "Downloaded pre-built Cubex ($RefTag)"
+  Ok "Downloaded pre-built Cubex ($(if ($RefTag) { $RefTag } else { $base }))"
   $true
 }
 
@@ -487,7 +488,7 @@ function Build-App {
   $log = "$CubexHome\logs\install.log"
   $steps = 'npm ci --include=dev --no-audit --no-fund && npm run build && npm prune --omit=dev --no-audit --no-fund'
   if ($S.Prebuilt) {
-    Say '  Installing Cubex dependencies...'
+    Say '  Setting up Cubex; this takes a few seconds...'
     $steps = 'npm ci --omit=dev --no-audit --no-fund'
   } else {
     Say '  Building Cubex; this takes a few minutes...'
@@ -502,7 +503,7 @@ function Build-App {
   if (-not $built) {
     Remove-Tree "$CubexHome\node.next"
     Get-Content -LiteralPath $log -Tail 25 -Encoding UTF8 | Out-Host
-    $verb = if ($S.Prebuilt) { 'Installing Cubex dependencies' } else { 'Building Cubex' }
+    $verb = if ($S.Prebuilt) { 'Setting up Cubex' } else { 'Building Cubex' }
     Die ("$verb failed (full log: $log). If the log mentions node-gyp, a part of Cubex has no ready-made " +
       "build for this PC: please report it at https://github.com/$Repo/issues.")
   }

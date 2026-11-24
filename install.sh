@@ -16,6 +16,8 @@ CUBEX_REPO="${CUBEX_REPO:-gurmohitghuman/cubex}" # the public GitHub repository
 CUBEX_REF="${CUBEX_REF:-stable}" # stable = the latest release
 CUBEX_HOME="${CUBEX_HOME:-$HOME/.cubex}"
 CUBEX_BIN_DIR="${CUBEX_BIN_DIR:-$HOME/.local/bin}"
+# Where a release's pre-built app is (default: its GitHub downloads). Set, --source takes the one there too.
+CUBEX_DIST_URL="${CUBEX_DIST_URL:-}"
 NODE_MAJOR=24
 MARKER=.cubex-home # marks a folder as a Cubex install; uninstall only ever deletes inside those
 
@@ -256,6 +258,7 @@ fetch_source() {
       done \
       | tar -cf - --null -T -) | tar -xf - -C "$next" || die "Copying $SOURCE failed (it must be a git checkout of Cubex)."
     SRC_ID="local $(git -C "$SOURCE" rev-parse --short HEAD) $(date '+%Y-%m-%d %H:%M')"
+    if [ -n "$CUBEX_DIST_URL" ]; then fetch_prebuilt '' "$next"; fi
     return 0
   fi
   if [ "$ref" = stable ]; then ref="$(latest_release)"; fi
@@ -273,22 +276,10 @@ fetch_source() {
 
 # Downloads pre-built server/dist and client/dist for a release tag when available.
 # Older tags without the archive, branches and commit SHAs fall back to building from source (PREBUILT=0).
+# No tag ('', from --source): the archive at CUBEX_DIST_URL.
 fetch_prebuilt() {
   local ref="$1" next="$2"
-  case "$ref" in
-    v[0-9]*) ;;
-    *) return 0 ;;
-  esac
-  local rest major after_major minor patch
-  rest="${ref#v}"
-  major="${rest%%.*}"
-  after_major="${rest#*.}"
-  case "$after_major" in *.*) ;; *) return 0 ;; esac
-  minor="${after_major%%.*}"
-  patch="${after_major#*.}"
-  case "$major:$minor:$patch" in
-    :*|*:*:|*::*|*[![:digit:]:]*) return 0 ;;
-  esac
+  if [ -n "$ref" ] && ! [[ "$ref" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then return 0; fi
   local base="${CUBEX_DIST_URL:-https://github.com/$CUBEX_REPO/releases/download/$ref}"
   while [ "${base%/}" != "$base" ]; do base="${base%/}"; done
   local sumfile="$TMP/cubex-dist.tar.gz.sha256" code=''
@@ -332,7 +323,9 @@ fetch_prebuilt() {
   done <<< "$entries"
   stage="$next/.dist-stage"
   rm -rf "$stage" && mkdir -p "$stage"
-  tar -xzf "$archive" -C "$stage" || die "Unpacking the Cubex build archive failed."
+  # As root, tar would keep the archive's owners and modes: the files are the installing user's instead.
+  tar -xzf "$archive" --no-same-owner --no-same-permissions -C "$stage" \
+    || die "Unpacking the Cubex build archive failed."
   rm -f "$archive"
   if [ ! -f "$stage/server/dist/index.js" ] || [ ! -f "$stage/server/dist/package.json" ] \
     || [ ! -f "$stage/client/dist/index.html" ]; then
@@ -345,19 +338,19 @@ fetch_prebuilt() {
   mv "$stage/client/dist" "$next/client/dist"
   rm -rf "$stage"
   PREBUILT=1
-  ok "Downloaded pre-built Cubex ($ref)"
+  ok "Downloaded pre-built Cubex (${ref:-$base})"
 }
 
 build_app() {
   local next="$CUBEX_HOME/app.next" log="$CUBEX_HOME/logs/install.log" node=node
   if [ "$NODE_NEXT" = 1 ]; then node=node.next; fi # the Node it will run on
   if [ "$PREBUILT" = 1 ]; then
-    say "  Installing Cubex dependencies..."
+    say "  Setting up Cubex; this takes a few seconds..."
     # shellcheck disable=SC2030 # PATH changes only for the install subshell
     if ! (cd "$next" && export PATH="$CUBEX_HOME/$node/bin:$PATH" npm_config_update_notifier=false &&
       npm ci --omit=dev --no-audit --no-fund) > "$log" 2>&1; then
       tail -n 25 "$log" >&2
-      die "Installing Cubex dependencies failed (full log: $log). If the log mentions node-gyp or a compiler,
+      die "Setting up Cubex failed (full log: $log). If the log mentions node-gyp or a compiler,
 install build tools and run this again: macOS: xcode-select --install;
 Debian/Ubuntu: sudo apt install build-essential python3."
     fi

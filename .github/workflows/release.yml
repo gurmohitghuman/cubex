@@ -2,8 +2,9 @@ name: Release
 
 # Publishes a draft release made by scripts/release.sh (see docs/releasing.md).
 # It tests the exact commit the draft points at (CI, plus a real install with
-# the one-line installers on Linux and Windows, and an update from the latest
-# release on both), and only then publishes the draft. Publishing is
+# the one-line installers on Linux and Windows, one from the built app archive
+# it attaches, as `cubex update` installs a release, and an update from the
+# latest release on both), and only then publishes the draft. Publishing is
 # what creates the vX.Y.Z tag, so a failed run leaves no tag behind, and
 # `cubex update` only ever sees versions that passed.
 
@@ -85,34 +86,8 @@ jobs:
           npm ci --include=dev --no-audit --no-fund
           npm run build
 
-      - name: Verify and package built app
-        run: |
-          set -euo pipefail
-          test -f server/dist/index.js
-          test -f server/dist/package.json
-          test -f server/dist/db/migrations/001_schema.sql
-          test -f client/dist/index.html
-          mkdir -p release-assets
-          tar --format=posix -czf release-assets/cubex-dist.tar.gz server/dist client/dist
-          (cd release-assets && sha256sum cubex-dist.tar.gz > cubex-dist.tar.gz.sha256)
-          entries="$(tar -tzf release-assets/cubex-dist.tar.gz)"
-          test -n "$entries"
-          while IFS= read -r entry; do
-            case "$entry" in
-              server/dist|server/dist/*|client/dist|client/dist/*) ;;
-              *) echo "::error::Unexpected entry in archive: $entry"; exit 1 ;;
-            esac
-            case "/$entry/" in
-              */../*|*\\*) echo "::error::Unsafe path in archive: $entry"; exit 1 ;;
-            esac
-          done <<< "$entries"
-          stage="$(mktemp -d)"
-          tar -xzf release-assets/cubex-dist.tar.gz -C "$stage"
-          test -f "$stage/server/dist/index.js"
-          test -f "$stage/server/dist/package.json"
-          test -f "$stage/server/dist/db/migrations/001_schema.sql"
-          test -f "$stage/client/dist/index.html"
-          rm -rf "$stage"
+      - name: Package the built app
+        run: bash scripts/pack-dist.sh release-assets
 
       - name: Upload built archive artifact
         uses: actions/upload-artifact@v4
@@ -122,6 +97,14 @@ jobs:
             release-assets/cubex-dist.tar.gz
             release-assets/cubex-dist.tar.gz.sha256
           retention-days: 1
+
+  install-dist:
+    name: Install from the built archive
+    needs: [resolve, build-dist]
+    uses: ./.github/workflows/install-dist.yml
+    with:
+      ref: ${{ needs.resolve.outputs.sha }}
+      artifact: true
 
   install:
     name: One-line install
@@ -162,7 +145,7 @@ jobs:
 
   publish:
     name: Publish
-    needs: [resolve, ci, build-dist, install, install-windows, install-unix]
+    needs: [resolve, ci, build-dist, install-dist, install, install-windows, install-unix]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
