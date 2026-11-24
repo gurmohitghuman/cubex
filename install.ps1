@@ -32,7 +32,8 @@ $Cmd = Join-Path $env:SystemRoot 'System32\cmd.exe'
 $Tar = Join-Path $env:SystemRoot 'System32\tar.exe'
 $PowerShellExe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
 # What the steps find out along the way (a hashtable, so functions can change it).
-$S = @{ Built = $false; NodeNext = $false; Force = $false; ConfigChanged = $false; Password = ''; PathNote = '' }
+$S = @{ Built = $false; Prebuilt = $false; NodeNext = $false; Force = $false; ConfigChanged = $false; Password = ''
+  PathNote = '' }
 
 function Say([string]$Text) { Write-Host $Text }
 function Ok([string]$Text) {
@@ -363,6 +364,8 @@ function Get-LatestRelease {
 # Puts the source in app.next and sets SrcId. Returns $false when the installed app is already this exact version.
 function Get-Source([string]$Source) {
   $next = "$CubexHome\app.next"
+  $S.Prebuilt = $false
+  $ref = ''
   Remove-Tree $next
   New-Item -ItemType Directory -Path $next | Out-Null
   if ($Source) {
@@ -404,6 +407,60 @@ function Get-Source([string]$Source) {
     Stop-Unsupported ('Cubex doesn''t run on Windows on ARM yet: one of its parts (argon2) has no ready-made ARM64 ' +
       'build for Windows, and installing must never need a compiler. Until a release adds it, use install.sh in WSL2.')
   }
+  if (-not $Source) { $S.Prebuilt = Get-Prebuilt $ref $next }
+  $true
+}
+
+# Downloads pre-built server\dist and client\dist for a release tag when available.
+# Older tags without the archive, branches and commit SHAs fall back to building from source.
+function Get-Prebuilt([string]$RefTag, [string]$Next) {
+  if ($RefTag -cnotmatch '^v[0-9]+\.[0-9]+\.[0-9]+\z') { return $false }
+  $base = if ($env:CUBEX_DIST_URL) {
+    $env:CUBEX_DIST_URL.TrimEnd('/')
+  } else {
+    "https://github.com/$Repo/releases/download/$RefTag"
+  }
+  $sumText = ''
+  try { $sumText = (New-WebClient).DownloadString("$base/cubex-dist.tar.gz.sha256") } catch { return $false }
+  if ($sumText.Length -gt 0 -and $sumText[0] -eq [char]0xFEFF) { $sumText = $sumText.Substring(1) }
+  $line = $sumText -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ } | Select-Object -First 1
+  if (-not $line -or $line -notmatch '^([0-9a-fA-F]{64})\s+\*?cubex-dist\.tar\.gz$') {
+    Die 'The Cubex build checksum file was invalid.'
+  }
+  $want = $Matches[1].ToLowerInvariant()
+  $archive = Join-Path $Tmp 'cubex-dist.tar.gz'
+  try { (New-WebClient).DownloadFile("$base/cubex-dist.tar.gz", $archive) }
+  catch { Die 'Downloading the Cubex build archive failed.' }
+  $got = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+  if ($got -ne $want) { Die 'The Cubex build archive failed its checksum.' }
+  $entries = @(& $Tar -tzf $archive 2>$null)
+  if ($LASTEXITCODE -or -not $entries) { Die 'Reading the Cubex build archive failed.' }
+  foreach ($entry in $entries) {
+    $item = "$entry".Trim()
+    if (-not $item) { continue }
+    if ($item -notmatch '^(server|client)/dist(/|$)' -or $item -match '(^|/)\.\.(/|$)' -or $item.Contains('\')) {
+      Die "The Cubex build archive contains an unexpected file: $item"
+    }
+  }
+  $stage = Join-Path $Next '.dist-stage'
+  Remove-Tree $stage
+  New-Item -ItemType Directory -Path $stage | Out-Null
+  & $Tar -xzf $archive -C $stage
+  if ($LASTEXITCODE) { Remove-Tree $stage; Die 'Unpacking the Cubex build archive failed.' }
+  Remove-Item -LiteralPath $archive -Force -ErrorAction Ignore
+  if (-not (Test-Path -LiteralPath "$stage\server\dist\index.js") -or
+    -not (Test-Path -LiteralPath "$stage\server\dist\package.json") -or
+    -not (Test-Path -LiteralPath "$stage\client\dist\index.html")) {
+    Remove-Tree $stage
+    Die 'The Cubex build archive is incomplete.'
+  }
+  New-Item -ItemType Directory -Force -Path "$Next\server", "$Next\client" | Out-Null
+  Remove-Tree "$Next\server\dist"
+  Remove-Tree "$Next\client\dist"
+  Move-Folder "$stage\server\dist" "$Next\server\dist"
+  Move-Folder "$stage\client\dist" "$Next\client\dist"
+  Remove-Tree $stage
+  Ok "Downloaded pre-built Cubex ($RefTag)"
   $true
 }
 
@@ -419,24 +476,30 @@ function Stop-Unsupported([string]$Why) {
 function Build-App {
   $next = "$CubexHome\app.next"
   $log = "$CubexHome\logs\install.log"
-  Say '  Building Cubex; this takes a few minutes...'
+  $steps = 'npm ci --include=dev --no-audit --no-fund && npm run build && npm prune --omit=dev --no-audit --no-fund'
+  if ($S.Prebuilt) {
+    Say '  Installing Cubex dependencies...'
+    $steps = 'npm ci --omit=dev --no-audit --no-fund'
+  } else {
+    Say '  Building Cubex; this takes a few minutes...'
+  }
   $nodeDir = if ($S.NodeNext) { "$CubexHome\node.next" } else { "$CubexHome\node" }
   $savedPath = $env:Path; $savedNotifier = $env:npm_config_update_notifier
   try {
     $env:Path = "$nodeDir;$env:Path"
     $env:npm_config_update_notifier = 'false'
-    $steps = 'npm ci --include=dev --no-audit --no-fund && npm run build && npm prune --omit=dev --no-audit --no-fund'
     $built = Invoke-Cmd $steps $next $log
   } finally { $env:Path = $savedPath; $env:npm_config_update_notifier = $savedNotifier }
   if (-not $built) {
     Remove-Tree "$CubexHome\node.next"
     Get-Content -LiteralPath $log -Tail 25 -Encoding UTF8 | Out-Host
-    Die ("Building Cubex failed (full log: $log). If the log mentions node-gyp, a part of Cubex has no ready-made " +
+    $verb = if ($S.Prebuilt) { 'Installing Cubex dependencies' } else { 'Building Cubex' }
+    Die ("$verb failed (full log: $log). If the log mentions node-gyp, a part of Cubex has no ready-made " +
       "build for this PC: please report it at https://github.com/$Repo/issues.")
   }
   [IO.File]::WriteAllText("$next\.cubex-version", "$($S.SrcId)`r`n")
   [IO.File]::WriteAllText("$next\.cubex-node", "$NodeMajor`r`n") # its native modules' Node (cubex rollback checks it)
-  Ok 'Built Cubex'
+  if ($S.Prebuilt) { Ok 'Installed Cubex' } else { Ok 'Built Cubex' }
 }
 
 # The `cubex` command, run by Windows PowerShell whatever runs this script. -Output returns what it prints;

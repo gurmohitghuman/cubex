@@ -30,9 +30,10 @@ From a checkout with a remote pointing at `github.com/gurmohitghuman/cubex` and 
    [changes for agents](#changes-for-agents), and merge it before the cut.
 4. **Cut it.** `scripts/release.sh cut vX.Y.Z <notes file>`. It creates a **draft** release on
    the current `main` commit and starts the **Release** workflow.
-5. **Watch it.** The workflow runs CI (typecheck, unit tests, build) and installs Cubex with the
-   one-line installer on that exact commit. When both pass it publishes the draft, which
-   creates the tag and marks it the latest release. `cubex update` picks it up at once.
+5. **Watch it.** The workflow runs CI (typecheck, unit tests, build), packages `server/dist` and
+   `client/dist` (`cubex-dist.tar.gz` and `cubex-dist.tar.gz.sha256`), and installs Cubex with the
+   one-line installer on that exact commit. When both pass it attaches the built archive and publishes
+   the draft, which creates the tag and marks it the latest release. `cubex update` picks it up at once.
 
 If the workflow fails, nothing was tagged. Fix `main`, then `scripts/release.sh abandon vX.Y.Z`
 and cut the same version again. Only one draft can be open at a time.
@@ -97,8 +98,9 @@ call to a removed or renamed tool is told what replaced it ([MCP](mcp.md#after-a
   points at it, so a release can't land on another remote.
 - `.github/workflows/release.yml` runs by hand (`workflow_dispatch`) with the version. It
   refuses a release that's already published or a commit that isn't on `main`, calls `ci.yml`
-  on that commit, runs the installer, then publishes the draft and checks the tag landed on
-  the tested commit.
+  on that commit, builds and checksums `cubex-dist.tar.gz`, runs the installer, then attaches
+  `cubex-dist.tar.gz` and `cubex-dist.tar.gz.sha256`, publishes the draft, and checks the tag
+  landed on the tested commit.
 - `install.sh` installs `stable` by default: it follows `github.com/<repo>/releases/latest` to
   the newest tag (or `main` while there is no release yet). `--ref main` or `--ref vX.Y.Z` pins
   an install to a branch or tag, and `cubex update` keeps that choice. Installs made before
