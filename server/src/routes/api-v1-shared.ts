@@ -30,7 +30,8 @@ export const rawIdempotencyKey = (req: express.Request): unknown =>
 
 // The changes to /api/v1/sheets/:id that go through while the sheet is busy
 // (lib/sheet-busy.ts). Appending rows lands above the reserved range; a query
-// or a check only reads; stopping every run is allowed (a run still writing its
+// or a check only reads (a setup's apply and a column run price first, and
+// refuse a start on a busy sheet themselves); stopping every run is allowed (a run still writing its
 // placeholders holds the sheet); a dry restore only reads, and a restore checks
 // the sheet itself (services/setup-version-restore.ts). A many-row update with
 // an idempotency key reads the ledger first: a replay writes nothing, and one
@@ -41,7 +42,7 @@ export const rawIdempotencyKey = (req: express.Request): unknown =>
 const KEYED_RUN_STARTS = new Set(['/ai-runs', '/http-runs', '/enrichment-runs', '/waterfall-columns']);
 export const V1_SHEET_BUSY_ALLOWED: BusyAllowed[] = [
   '/rows', '/rows/query', '/run-conditions/check', '/run-conditions/generate', '/formula-columns/write',
-  '/setups', '/setups/plan', /^\/setups\/[^/]+\/apply$/, '/runs/stop',
+  '/setups', '/setups/plan', /^\/setups\/[^/]+\/apply$/, '/column-runs', '/runs/stop',
   /^\/setup-versions\/[^/]+\/restore$/,
   req => req.path === '/rows/update' && rawIdempotencyKey(req) !== undefined,
   req => KEYED_RUN_STARTS.has(req.path) && rawIdempotencyKey(req) !== undefined,

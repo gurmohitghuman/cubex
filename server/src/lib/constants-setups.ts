@@ -12,6 +12,10 @@ export const MAX_SETUP_SPEC_BYTES = 512 * 1024;
 export const SETUP_SWEEP_MS = envInt('SETUP_SWEEP_MS', 3000);
 // A test of a setup on the first rows of a sheet takes at most this many.
 export const MAX_SETUP_TEST_ROWS = 1000;
+// Column runs (services/column-run*.ts): chosen run columns on chosen rows, kept as a setup run.
+// row_ids are kept in its record; more rows are chosen with a where.
+export const MAX_COLUMN_RUN_COLUMNS = 20;
+export const MAX_COLUMN_RUN_ROW_IDS = 10_000;
 // An exported file's format, checked on import.
 export const SETUP_FILE_FORMAT = 'cubex-setup';
 export const SETUP_FILE_VERSION = 1;

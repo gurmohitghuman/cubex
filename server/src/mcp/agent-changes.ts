@@ -39,6 +39,25 @@ export const CHANGES_RECORDED_AFTER = 'v0.8.12';
 // Newest first.
 export const AGENT_CHANGES: ReleaseChanges[] = [
   {
+    version: 'v0.8.45',
+    changes: [
+      {
+        change: 'added',
+        tools: ['run_columns'],
+        summary: 'run_columns runs several of a sheet\'s run columns again in one call, on the rows a mode picks '
+          + '(among row_ids or a where), with an estimate first and an optional max_cost_usd.',
+        details: 'A column reading another chosen column waits for that one\'s whole run. It answers a setup_run: '
+          + 'follow it with get_setup_run, and pause, resume or stop it with control_setup_run.',
+      },
+      {
+        change: 'changed',
+        tools: ['get_setup_run', 'control_setup_run'],
+        summary: 'A column run (run_columns) shows as a setup run with no setup: setup_id null, column_run with its '
+          + 'mode and rows, and a step for each column (kind can be waterfall).',
+      },
+    ],
+  },
+  {
     version: 'v0.8.44',
     changes: [
       {
