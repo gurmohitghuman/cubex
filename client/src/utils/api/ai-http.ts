@@ -115,8 +115,16 @@ export const httpAPI = {
   preview: (sheetId: string, config: any): Promise<{ previewResults: HTTPPreview[]; totalRows: number }> =>
     api.post('/http/preview', { sheetId, config }, { timeout: 120000, ...noServerToast }).then(res => res.data),
 
-  startRun: (sheetId: string, config: any, masterColumnName?: string): Promise<{ runId: string; message: string }> =>
-    api.post('/http/run', { sheetId, config, masterColumnName }, noServerToast).then(res => res.data),
+  // saveOnly: the setup becomes the column's (an existing HTTP API column takes one only so) and nothing runs.
+  startRun: (
+    sheetId: string, config: any, masterColumnName?: string, saveOnly?: boolean,
+  ): Promise<{ runId: string; message: string }> =>
+    api.post('/http/run', { sheetId, config, masterColumnName, ...(saveOnly ? { saveOnly: true } : {}) },
+      noServerToast).then(res => res.data),
+
+  // A plain HTTP API column's newest setup, as stored (the edit dialog's read).
+  columnSetup: (sheetId: string, column: string): Promise<{ column: string; config: any }> =>
+    api.get(`/http/sheets/${sheetId}/column-setup`, { params: { column }, ...noServerToast }).then(res => res.data),
 
   // Re-run an existing HTTP column (master column already created). mode='missing'
   // targets empty/❌/⏳ rows; rowIndices targets a selection; neither → all rows.

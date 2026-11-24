@@ -1,4 +1,5 @@
 import { HTTPAPIConfig } from './types'
+import { HTTP_RETRY_DEFAULT } from '@/lib/constants'
 
 // Convert the modal's flat config shape into the {requestConfig, responseMapping} shape
 // the server expects. The two diverged historically — the client uses endpointUrl /
@@ -41,6 +42,7 @@ export function toServerConfig(c: HTTPAPIConfig) {
       headers: arrayToRecord(c.headers ?? []),
       body: c.body && c.body.trim() ? c.body : undefined,
       ...(c.skipEmpty ? { skipEmpty: true } : {}),
+      ...(c.timeoutMs ? { timeout: c.timeoutMs } : {}),
     },
     responseMapping: c.responseMapping ?? [],
     previewSize: c.previewSize,
@@ -49,5 +51,24 @@ export function toServerConfig(c: HTTPAPIConfig) {
     retries: c.retries,
     ...(c.retryPost ? { retryPost: true } : {}),
     ...(c.runIf?.trim() ? { runIf: c.runIf } : {}),
+  }
+}
+
+// Back the other way: a column's stored setup into the dialog (its Edit). The query string stays in the URL,
+// headers become rows, and what the dialog has no field for (the timeout) is kept.
+export function fromServerConfig(s: any): HTTPAPIConfig {
+  const rc = s?.requestConfig ?? {}
+  const headers = Object.entries((rc.headers ?? {}) as Record<string, string>).map(([key, value]) => ({ key, value }))
+  const mapping = Array.isArray(s?.responseMapping) ? s.responseMapping as HTTPAPIConfig['responseMapping'] : []
+  const batch = typeof s?.batchSize === 'number' ? s.batchSize : typeof s?.concurrency === 'number' ? s.concurrency : 5
+  return {
+    method: rc.method ?? 'GET', endpointUrl: rc.url ?? '', queryParams: [{ key: '', value: '' }],
+    headers: headers.length ? headers : [{ key: '', value: '' }], body: rc.body ?? '',
+    responseMapping: mapping.length ? mapping.map(m => ({ jsonPath: m.jsonPath, columnName: m.columnName }))
+      : [{ jsonPath: '$', columnName: '' }],
+    previewSize: typeof s?.previewSize === 'number' ? s.previewSize : 5, concurrency: batch,
+    retries: typeof s?.retries === 'number' ? s.retries : HTTP_RETRY_DEFAULT, retryPost: s?.retryPost === true,
+    skipEmpty: rc.skipEmpty === true, ...(s?.runIf ? { runIf: s.runIf } : {}),
+    ...(typeof rc.timeout === 'number' ? { timeoutMs: rc.timeout } : {}),
   }
 }

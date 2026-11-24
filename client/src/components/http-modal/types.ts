@@ -15,6 +15,8 @@ export interface HTTPAPIConfig {
   skipEmpty: boolean
   // "Only run if" rule ('' or absent: every row).
   runIf?: string
+  // The request's timeout in ms, set over the API: kept when the dialog edits a column (it has no field).
+  timeoutMs?: number
 }
 
 export interface HTTPPreview {
