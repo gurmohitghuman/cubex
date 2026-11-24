@@ -37,6 +37,7 @@ import { registerDedupeTool } from './tools-dedupe';
 import { registerSetupTools } from './tools-setups';
 import { registerSetupRunTools } from './tools-setup-runs';
 import { registerSetupCallTools } from './tools-setup-calls';
+import { registerEnrichCallTools } from './tools-enrich-calls';
 import { registerSetupVersionTools } from './tools-setup-versions';
 import { registerRunWebhookTools } from './tools-run-webhooks';
 import { registerSavedKeyTools } from './tools-saved-keys';
@@ -117,6 +118,7 @@ export function registerAllTools(server: McpServer, ctx: McpAuthCtx) {
   registerSetupTools(server, ctx);
   registerSetupRunTools(server, ctx);
   registerSetupCallTools(server, ctx);
+  registerEnrichCallTools(server, ctx);
   registerSetupVersionTools(server, ctx);
   registerRunWebhookTools(server, ctx);
   registerSavedKeyTools(server, ctx);

@@ -38,7 +38,7 @@ test('MCP: discover tools, read and write a sheet end-to-end', async () => {
   // Keep this list sorted — it's compared with toEqual.
   expect(tools).toEqual([
     'add_column', 'add_enrichment_field', 'add_list_rows', 'ai_visibility', 'append_rows', 'apply_setup',
-    'call_setup', 'check_run_condition',
+    'call_enrichment', 'call_setup', 'check_run_condition',
     'clean_column', 'control_run', 'control_setup_run',
     'create_download_link', 'create_upload_link', 'delete_column', 'delete_rows', 'delete_setup', 'export_csv',
     'formula_column',

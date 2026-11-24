@@ -51,6 +51,14 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
           + 'are kept 24 hours.',
       },
       {
+        change: 'added',
+        tools: ['call_enrichment'],
+        summary: 'call_enrichment runs one enrichment tool on 1-1,000 items without a sheet, refused up front instead '
+          + 'of pausing halfway when it could pass max_cost_usd, the daily limit, the treg balance or the token cap.',
+        details: 'It answers a run_id: get_run_status and get_run_results answer for it, with row_index as the '
+          + 'item. estimate_only defaults to true.',
+      },
+      {
         change: 'changed',
         tools: ['create_upload_link', 'create_download_link'],
         summary: 'create_upload_link takes setup_id (with max_cost_usd) instead of sheet_id: the file\'s rows become a '

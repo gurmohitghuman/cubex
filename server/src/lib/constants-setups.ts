@@ -33,3 +33,5 @@ export const SETUP_VERSION_DIFF_CHARS_APP = 20_000;
 export const SETUP_CALL_MAX_ITEMS = 100;
 export const SETUP_CALL_KEEP_HOURS = envInt('SETUP_CALL_KEEP_HOURS', 24);
 export const SETUP_CALL_ORPHAN_HOURS = 1;
+// One enrichment tool called on items without a sheet (services/enrich-call.ts): at most this many items.
+export const ENRICH_CALL_MAX_ITEMS = 1000;

@@ -36,11 +36,12 @@ export type CallOutcome =
 
 const bad = (message: string): ApplyFail => ({ fail: 'bad_request', message });
 
-// The items, checked: an array of 1 to SETUP_CALL_MAX_ITEMS objects keyed by the setup's input names, each value a
-// string, number, boolean or null (a cell). An item may leave inputs out (they read as empty).
-function itemsOf(raw: unknown, inputs: string[]): Array<Record<string, string>> | string {
-  if (!Array.isArray(raw) || raw.length === 0 || raw.length > SETUP_CALL_MAX_ITEMS) {
-    return `items must be an array of 1 to ${SETUP_CALL_MAX_ITEMS} objects, each keyed by the setup's inputs`
+// The items, checked: an array of 1 to `max` objects keyed by the inputs of `what` (the setup, or the tool for an
+// enrichment call), each value a string, number, boolean or null (a cell). An item may leave inputs out (empty).
+export function itemsOf(raw: unknown, inputs: string[], max = SETUP_CALL_MAX_ITEMS, what = 'setup'):
+  Array<Record<string, string>> | string {
+  if (!Array.isArray(raw) || raw.length === 0 || raw.length > max) {
+    return `items must be an array of 1 to ${max} objects, each keyed by the ${what}'s inputs`
       + (inputs.length ? ` (${inputs.map(n => `"${n}"`).join(', ')})` : '') + '.';
   }
   const known = new Set(inputs);
@@ -54,7 +55,7 @@ function itemsOf(raw: unknown, inputs: string[]): Array<Record<string, string>> 
     if ('error' in parsed) return `Item ${i}: ${parsed.error}.`;
     const unknown = Object.keys(parsed.cells).find(k => !known.has(k));
     if (unknown !== undefined) {
-      return `Item ${i} has "${unknown.slice(0, 50)}", which isn't an input of this setup`
+      return `Item ${i} has "${unknown.slice(0, 50)}", which isn't an input of this ${what}`
         + (inputs.length ? ` (its inputs: ${inputs.map(n => `"${n}"`).join(', ')}).` : ' (it has none).');
     }
     out.push(parsed.cells);
@@ -127,16 +128,20 @@ export async function callSetup(
   return startCall(userId, setupId, work, input, caller);
 }
 
-// The sweep: the working tables of calls finished SETUP_CALL_KEEP_HOURS ago, and of calls that never started (a
-// restart between the table and the run, or an upload link never used) SETUP_CALL_ORPHAN_HOURS after they were
-// made.
+// The sweep: the working tables of calls (setup and enrichment calls) finished SETUP_CALL_KEEP_HOURS ago, and of
+// calls that never started (a restart between the table and the run, or an upload link never used)
+// SETUP_CALL_ORPHAN_HOURS after they were made.
 export function sweepSetupCalls(): number {
   const due = db.prepare(`SELECT c.user_id, c.table_id FROM setup_calls c JOIN setup_runs r ON r.id = c.id
       WHERE r.status IN ('done', 'failed', 'cancelled') AND r.updated_at <= datetime('now', ?)
     UNION ALL
+    SELECT c.user_id, c.table_id FROM enrichment_item_calls c JOIN http_runs r ON r.id = c.id
+      WHERE r.status IN ('completed', 'failed', 'cancelled') AND r.updated_at <= datetime('now', ?)
+    UNION ALL
     SELECT t.user_id, t.id FROM tables t WHERE t.hidden = 1 AND t.trash_id IS NULL
-      AND t.created_at <= datetime('now', ?) AND NOT EXISTS (SELECT 1 FROM setup_calls c WHERE c.table_id = t.id)`)
-    .all(`-${SETUP_CALL_KEEP_HOURS} hours`, `-${SETUP_CALL_ORPHAN_HOURS} hours`) as
+      AND t.created_at <= datetime('now', ?) AND NOT EXISTS (SELECT 1 FROM setup_calls c WHERE c.table_id = t.id)
+      AND NOT EXISTS (SELECT 1 FROM enrichment_item_calls c WHERE c.table_id = t.id)`)
+    .all(`-${SETUP_CALL_KEEP_HOURS} hours`, `-${SETUP_CALL_KEEP_HOURS} hours`, `-${SETUP_CALL_ORPHAN_HOURS} hours`) as
     Array<{ user_id: string; table_id: string }>;
   const sheetOf = db.prepare('SELECT id FROM sheets WHERE table_id = ?').pluck();
   for (const d of due) {

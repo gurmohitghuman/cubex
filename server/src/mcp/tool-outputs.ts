@@ -36,7 +36,7 @@ export const TOOL_OUTPUTS = {
   get_usage: enrich.getUsage,
   list_setups: setups.listSetups, save_setup: setups.saveSetup, delete_setup: setups.deleteSetup,
   apply_setup: setups.applySetup, get_setup_run: setups.getSetupRun, control_setup_run: setups.controlSetupRun,
-  call_setup: setups.callSetup, get_setup_call: setups.getSetupCall,
+  call_setup: setups.callSetup, get_setup_call: setups.getSetupCall, call_enrichment: setups.callEnrichment,
   list_setup_versions: setups.listSetupVersions, manage_setup_version: setups.manageSetupVersion,
   restore_setup_version: setups.restoreSetupVersion,
   list_models: account.listModels, set_default_model: account.setDefaultModel, get_version: account.getVersion,
