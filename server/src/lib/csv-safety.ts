@@ -23,17 +23,23 @@
 // see "=A1+B1" back). The injection threat lives at the spreadsheet-app
 // boundary, so the defense lives there too.
 
-const FORMULA_TRIGGERS = new Set(['=', '+', '-', '@', '\t', '\r']);
+// A formula's first character, and its full-width form (an app may read "＝" as "=").
+const FORMULA_TRIGGERS = new Set(['=', '+', '-', '@', '\t', '\r', '\uFF1D', '\uFF0B', '\uFF0D', '\uFF20']);
 const PLAIN_NUMBER = /^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$/;
 
 const isC1 = (code: number): boolean => code >= 0x80 && code <= 0x9F;
 
-// Where a value's formula check starts: past any leading C1 characters. An app
-// that drops them as it opens the file would otherwise read U+0085 +
-// "=HYPERLINK(...)" as a formula, so the guard looks where such an app will.
+// What a cell may start with that a spreadsheet app can drop or not show before reading a formula: C1
+// characters, a byte order mark, a no-break space, a zero-width space or joiner, a word joiner, and a space.
+const INVISIBLE_LEAD = new Set([0xFEFF, 0x00A0, 0x200B, 0x200C, 0x200D, 0x2060, 0x0020]);
+const leadsUnseen = (code: number): boolean => isC1(code) || INVISIBLE_LEAD.has(code);
+
+// Where a value's formula check starts: past what it may start with unseen. An app that drops those as it opens
+// the file would otherwise read U+0085 (or U+FEFF, a no-break space...) + "=HYPERLINK(...)" as a formula, so the
+// guard looks where such an app will: at the first visible character.
 function afterLeadingC1(value: string, from = 0): number {
   let i = from;
-  while (i < value.length && isC1(value.charCodeAt(i))) i++;
+  while (i < value.length && leadsUnseen(value.charCodeAt(i))) i++;
   return i;
 }
 
