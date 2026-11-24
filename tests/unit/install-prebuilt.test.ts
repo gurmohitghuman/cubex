@@ -153,7 +153,7 @@ if (!WIN) {
     '$Repo = "gurmohitghuman/cubex"',
     '$env:CUBEX_DIST_URL = $args[1]',
     'try {',
-    '  $res = Get-Prebuilt $(if ($args[2] -eq "-") { "" } else { $args[2] }) $args[3]',
+    '  $res = Get-Prebuilt $(if ($args[2] -eq "no-tag") { "" } else { $args[2] }) $args[3]',
     '  Write-Output ("PREBUILT=" + ($(if ($res) { "1" } else { "0" })))',
     '} catch {',
     '  [Console]::Error.WriteLine($_.Exception.Message)',
@@ -166,8 +166,9 @@ if (!WIN) {
   const psFlags = ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File']
   invokeRunner = (baseUrl, ref, nextDir) => {
     const tmpDir = fs.mkdtempSync(path.join(root, 'tmp-'))
-    // No tag goes as "-": an empty argument may not reach a script run with -File.
-    return runAsync('powershell.exe', [...psFlags, runnerPath, tmpDir, baseUrl, ref || '-', nextDir])
+    // No tag goes as "no-tag": an empty argument may not reach a script run with -File, and "-" is read as a
+    // parameter's name.
+    return runAsync('powershell.exe', [...psFlags, runnerPath, tmpDir, baseUrl, ref || 'no-tag', nextDir])
   }
 }
 
