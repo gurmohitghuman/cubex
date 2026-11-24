@@ -25,6 +25,23 @@ export function holdsRunMarker(value: string): boolean {
   return [RUNNING_MARK, FAILED_MARK, SKIPPED_MARK, LIST_MARK].some(m => t.startsWith(m));
 }
 
+// The blank characters around a cell, as SQLite's ltrim takes them.
+const BLANK_SQL = `char(${[...BLANK_CHARS].map(c => c.codePointAt(0)).join(', ')})`;
+
+// SQL over a `rows` row (one `?` parameter: the column's jsonPath): true when the cell does not read as empty to
+// clean, formula or lookup columns (same rule as holdsRunMarker + empty/null: services/derived-write.ts inputText).
+export const CELL_HAS_VALUE_SQL = `EXISTS (
+  WITH cell(v) AS (SELECT json_extract(data, ?))
+  SELECT 1 FROM cell
+  WHERE v IS NOT NULL AND v <> ''
+    AND (typeof(v) <> 'text' OR (
+      instr(ltrim(v, ${BLANK_SQL}), '${RUNNING_MARK}') <> 1
+      AND instr(ltrim(v, ${BLANK_SQL}), '${FAILED_MARK}') <> 1
+      AND instr(ltrim(v, ${BLANK_SQL}), '${SKIPPED_MARK}') <> 1
+      AND instr(ltrim(v, ${BLANK_SQL}), '${LIST_MARK}') <> 1
+    ))
+)`;
+
 // A cell an "Only run if" rule left: the row hasn't been run.
 export const isConditionNotMet = (value: string | undefined): boolean => trimBlank(value ?? '') === CONDITION_NOT_MET;
 

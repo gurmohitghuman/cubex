@@ -2,7 +2,7 @@ import { db } from './db';
 import { oneTransaction } from './slices';
 import { jsonPath } from './sql-rows';
 import { eachRowIdSlice, sheetRowIds } from './row-order';
-import { PLACEHOLDER } from './run-markers';
+import { CELL_HAS_VALUE_SQL, PLACEHOLDER } from './run-markers';
 import { journalSeed, type RunRef } from './run-undo/journal';
 import { clearBackFor, KEPT_EMPTY_SQL, KEPT_VALUE_SQL } from './run-undo/clear-back';
 import { derivedReaderCount, derivedReaderIds } from './autorun-mark';
@@ -124,7 +124,10 @@ export async function clearProcessingPlaceholders(
 // its write: once it returns false (the run was cancelled while starting)
 // nothing more is written, so the cancel's clear, which starts after that,
 // sees every placeholder. Returns false when it stopped early. What the cells
-// held is kept in the run's undo journal first (lib/run-undo/journal.ts).
+// held is kept in the run's undo journal first (lib/run-undo/journal.ts), and
+// rows where any seeded cell held a non-empty value are told to clean, formula
+// and lookup readers by span (lib/derived-spans.ts, quiet; kicked once seeding
+// finishes).
 export async function seedProcessingPlaceholders(args: {
   run: RunRef; sheetId: string; userId: string; columns: string[];
   targets: number[] | null; lastRow: number; skip?: Set<number>; live: () => boolean;
@@ -132,12 +135,15 @@ export async function seedProcessingPlaceholders(args: {
   const { run, sheetId, userId, columns, targets, lastRow, live } = args;
   if (columns.length === 0) return true;
   const paths = columns.map(jsonPath);
+  const where = ' WHERE rowid IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ?' +
+    ' AND row_index NOT IN (SELECT value FROM json_each(?))';
   const set = db.prepare(
     'UPDATE rows SET data = json_set(data' + paths.map(() => `, ?, '${PLACEHOLDER}'`).join('') + ')' +
-    ", updated_at = datetime('now')" +
-    ' WHERE rowid IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ?' +
-    ' AND row_index NOT IN (SELECT value FROM json_each(?))',
+    ", updated_at = datetime('now')" + where,
   );
+  const tell = db.prepare(
+    'SELECT rowid FROM rows' + where + ' AND (' + paths.map(() => CELL_HAS_VALUE_SQL).join(' OR ') + ') ORDER BY rowid',
+  ).pluck();
   const skip = JSON.stringify([...(args.skip ?? [])]);
   const rowIds = await sheetRowIds(sheetId, userId, targets ? { targets } : { upTo: lastRow });
   let stopped = false;
@@ -147,8 +153,11 @@ export async function seedProcessingPlaceholders(args: {
     // The write lock first: a read before a write in a deferred transaction
     // fails at once (SQLITE_BUSY) when a run worker committed in between.
     oneTransaction(() => {
+      const readers = derivedReaderIds(sheetId, userId, columns);
+      const heard = readers.length > 0 ? tell.all(ids, sheetId, userId, skip, ...paths) as number[] : [];
       journalSeed(run, sheetId, userId, { rowids: ids }, cells, skip);
       set.run(...paths, ids, sheetId, userId, skip);
+      tellDerivedSpan(sheetId, userId, readers, heard, run);
     });
   });
   return !stopped;
