@@ -28,6 +28,7 @@ import { countOf, logSheetChange } from '../lib/change-log';
 import { orderedUuid } from '../lib/ordered-id';
 import { forgetUnlistedTransformPasses } from './column-transform-pass-moves';
 import { arrivedTouch, changedOf, type Changed } from '../mcp/changed';
+import { rowsChanged } from '../lib/rows-changed';
 
 export type { TransferRequest } from './transfer-ledger';
 
@@ -145,15 +146,18 @@ function executeTransfer(
       rids.push(Number(insert.run(id, request.destinationSheetId, userId, nextIndex++, JSON.stringify(data))
         .lastInsertRowid));
     }
+    rowsChanged(request.destinationSheetId);
     if (request.operation === 'move') {
       const moved = deleteRowsToTrash(request.sourceSheetId, userId, 'transfer', { ids: rows.map(r => r.id) },
         trashId ?? undefined);
       trashId = moved.trashId ?? trashId;
     }
   });
-  if (pristine) db.prepare(
-    'DELETE FROM rows WHERE sheet_id = ? AND user_id = ? AND row_index >= 0 AND row_index < ?',
-  ).run(request.destinationSheetId, userId, SEED_ROW_COUNT);
+  if (pristine) {
+    db.prepare('DELETE FROM rows WHERE sheet_id = ? AND user_id = ? AND row_index >= 0 AND row_index < ?')
+      .run(request.destinationSheetId, userId, SEED_ROW_COUNT);
+    rowsChanged(request.destinationSheetId);
+  }
   applyTransferColumnOrder(request.destinationSheetId, userId, plan.finalOrder);
   // Into a sheet still as created, the new list leaves out its starter "Column 1": gone for good, with its pass.
   forgetUnlistedTransformPasses(request.destinationSheetId, userId);

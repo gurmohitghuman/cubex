@@ -9,11 +9,15 @@ import {
   createTable, renameTable, deleteTable, type TableCrudFail,
 } from '../services/table-crud';
 import { createSampleTable } from '../services/sample-table';
+import { homeCounts, homeCountsWhenMade, liveSheets } from '../services/table-row-counts';
+import { acquireCountWait } from '../lib/long-poll-holds';
 
 const router = express.Router();
 router.use(authenticateToken);
 
-// GET / — list user's tables with sheet ids and total row counts.
+// GET / — the user's tables with their sheet ids and rows, counted nothing on the request (lib/row-counts.ts): a
+// table whose rows changed since they were last counted answers that count with row_count_updating, and the home
+// then waits for the new one (GET /row-counts).
 router.get('/', (req: AuthRequest, res) => {
   try {
     // Explicit client columns (no user_id) — this row is spread into the response
@@ -22,40 +26,36 @@ router.get('/', (req: AuthRequest, res) => {
       `SELECT id, name, created_at, updated_at FROM tables WHERE user_id = ? AND trash_id IS NULL
        ORDER BY created_at DESC`,
     ).all(req.userId!) as Array<{ id: string; name: string; created_at: string; updated_at: string }>;
-
-    const allSheets = db.prepare(
-      'SELECT id, table_id FROM sheets WHERE user_id = ? AND trash_id IS NULL',
-    ).all(req.userId!) as Array<{ id: string; table_id: string }>;
-
-    // Row counts: one query per user, grouped by sheet_id. With row-oriented storage this
-    // is a trivial COUNT(*) per sheet — no DISTINCT scan over millions of cell rows.
-    const rowCountsBySheetId = new Map<string, number>();
-    if (allSheets.length > 0) {
-      const placeholders = allSheets.map(() => '?').join(',');
-      const counts = db.prepare(`
-        SELECT sheet_id, COUNT(*) AS c
-        FROM rows
-        WHERE user_id = ? AND sheet_id IN (${placeholders})
-        GROUP BY sheet_id
-      `).all(req.userId!, ...allSheets.map(s => s.id)) as Array<{ sheet_id: string; c: number }>;
-      for (const row of counts) rowCountsBySheetId.set(row.sheet_id, row.c);
-    }
-
+    const sheets = liveSheets(req.userId!);
+    const counts = homeCounts(req.userId!, sheets);
     const sheetsByTable = new Map<string, Array<{ id: string }>>();
-    for (const s of allSheets) {
+    for (const s of sheets) {
       if (!sheetsByTable.has(s.table_id)) sheetsByTable.set(s.table_id, []);
       sheetsByTable.get(s.table_id)!.push({ id: s.id });
     }
-
-    res.json(tables.map(t => {
-      const sheets = sheetsByTable.get(t.id) || [];
-      let totalRowCount = 0;
-      for (const s of sheets) totalRowCount += rowCountsBySheetId.get(s.id) || 0;
-      return { ...t, sheets, row_count: totalRowCount };
-    }));
+    res.json(tables.map(t => ({
+      ...t, sheets: sheetsByTable.get(t.id) || [],
+      row_count: counts.get(t.id)?.row_count ?? 0, row_count_updating: counts.get(t.id)?.row_count_updating ?? false,
+    })));
   } catch (error) {
     console.error('Get tables error:', error);
     res.status(500).json({ error: 'Failed to fetch tables' });
+  }
+});
+
+// GET /row-counts — every table's rows once the counts the home showed as updating are made (held up to
+// ROW_COUNT_HOLD_MS; one still being counted then answers row_count_updating and the home asks again). 429 when the
+// account already holds MAX_COUNT_WAITS_PER_USER of these: the home keeps the counts it shows.
+router.get('/row-counts', async (req: AuthRequest, res) => {
+  const release = acquireCountWait(req.userId!);
+  if (!release) return res.status(429).json({ error: 'Too many waits for row counts' });
+  try {
+    res.json({ tables: await homeCountsWhenMade(req.userId!) });
+  } catch (error) {
+    console.error('Get row counts error:', error);
+    res.status(500).json({ error: 'Failed to fetch row counts' });
+  } finally {
+    release();
   }
 });
 

@@ -35,8 +35,9 @@ const NO_AUTO: Entry[] = [
   { file: 'server/src/lib/bulk-slices.ts', count: 2, why: 'the bulk writers\' slices, on either thread' },
   { file: 'server/src/services/column-transform-pages.ts', count: 1, why: 'transform_column\'s pages (walRoom)' },
   { file: 'server/src/services/lookup-maintain.ts', count: 1, why: 'on the lookup worker\'s thread' },
-  { file: 'server/src/lib/token-last-used.ts', count: 1,
-    why: 'an access token\'s last-use write, one small commit on the server\'s thread' },
+  { file: 'server/src/lib/write-when-free.ts', count: 1,
+    why: 'a small write made after the fact (a token\'s last use, a sheet\'s row count), one commit on the server\'s '
+      + 'thread' },
 ]
 const READS = 'reads only'
 const YIELDS: Entry[] = [
@@ -54,6 +55,8 @@ const YIELDS: Entry[] = [
   { file: 'server/src/services/trash-restore-sheet.ts', count: 1, why: 'once, after the request: fills' },
   { file: 'server/src/lib/column-repair.ts', count: 2, why: READS },
   { file: 'server/src/lib/csv-write.ts', count: 1, why: READS },
+  { file: 'server/src/lib/row-counts.ts', count: 2,
+    why: `${READS} (a count's slices, and its start after the request)` },
   { file: 'server/src/lib/run-rows.ts', count: 1, why: READS },
   { file: 'server/src/lib/run-undo/unused.ts', count: 1, why: READS },
   { file: 'server/src/lib/sheet-slices.ts', count: 1, why: `${READS} (every caller of walkSlices reads)` },
