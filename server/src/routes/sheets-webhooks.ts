@@ -2,8 +2,9 @@ import express from 'express';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { serializeSource, listMappings, type WebhookSourceFull } from '../lib/webhook-service';
 import {
-  addSheetWebhookField, createSheetWebhook, deleteSheetWebhook, getSheetWebhook, removeSheetWebhookField,
-  rotateSheetWebhook, setSheetWebhookEnabled, type SheetWebhookFail,
+  addSheetWebhookField, createSheetWebhook, deleteSheetWebhook, getSheetWebhook, newSheetWebhookToken,
+  removeSheetWebhookField, removeSheetWebhookToken, rotateSheetWebhook, setSheetWebhookEnabled,
+  type SheetWebhookFail,
 } from '../services/sheet-webhook';
 
 // The app's webhook management for a sheet (the Webhook drawer). Mounted under /api/sheets via the sheets
@@ -42,6 +43,20 @@ router.post('/:id/webhook/rotate', (req: AuthRequest, res) => {
 // PATCH /:id/webhook: turn it on or off.
 router.patch('/:id/webhook', (req: AuthRequest, res) => {
   const out = setSheetWebhookEnabled(req.userId!, req.params.id, req.body?.enabled);
+  if ('fail' in out) return refuse(res, out);
+  res.json({ source: source(out.ok) });
+});
+
+// POST /:id/webhook/token: a new token senders must send, shown once in the answer; any old one stops.
+router.post('/:id/webhook/token', (req: AuthRequest, res) => {
+  const out = newSheetWebhookToken(req.userId!, req.params.id);
+  if ('fail' in out) return refuse(res, out);
+  res.json({ source: source(out.ok.source), token: out.ok.token });
+});
+
+// DELETE /:id/webhook/token: senders no longer need a token.
+router.delete('/:id/webhook/token', (req: AuthRequest, res) => {
+  const out = removeSheetWebhookToken(req.userId!, req.params.id);
   if ('fail' in out) return refuse(res, out);
   res.json({ source: source(out.ok) });
 });

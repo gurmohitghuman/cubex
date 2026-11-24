@@ -176,3 +176,37 @@ test('MCP manage_table and manage_sheet create with webhook true', async () => {
   expect(plain.webhook).toBeUndefined()
   await call(writeMcp, 'manage_table', { action: 'delete', table_id: table.id })
 })
+
+test('REST and MCP: a token senders must send, shown once; a new one stops the old; remove it', async () => {
+  const { sheetId } = await seedSheet(api, 1)
+  const at = `/api/v1/sheets/${sheetId}/webhook`
+  const hook = (await (await writer.post(at)).json()).webhook
+  const sendWith = (token?: string) => sender.post(hook.url, {
+    data: { a: 1 }, headers: token ? { Authorization: `Bearer ${token}` } : {} })
+
+  expect((await reader.post(`${at}/token`)).status()).toBe(403)
+  const made = await (await writer.post(`${at}/token`)).json()
+  expect(made.token).toMatch(/^[\w-]{43}$/)
+  expect(made.webhook).toMatchObject({ token_required: true, token_set_at: expect.any(String) })
+  const read = JSON.stringify(await (await reader.get(at)).json())
+  expect(read).toContain('"token_required":true')
+  expect(read).not.toContain(made.token)
+  expect((await sendWith()).status()).toBe(404)
+  expect((await sendWith(made.token)).status()).toBe(202)
+
+  const mcp = (args: Record<string, unknown>) => call(writeMcp, 'manage_sheet_webhook', { sheet_id: sheetId, ...args })
+  expect(await callError(readMcp, 'manage_sheet_webhook', { sheet_id: sheetId, action: 'new_token' }))
+    .toMatch(/'write' scope/)
+  const next = await mcp({ action: 'new_token' })
+  expect(next.token).not.toBe(made.token)
+  expect(next.webhook.token_required).toBe(true)
+  expect(JSON.stringify(await mcp({ action: 'get' }))).not.toContain(next.token)
+  expect((await sendWith(made.token)).status()).toBe(404)
+  expect((await sendWith(next.token)).status()).toBe(202)
+
+  expect((await mcp({ action: 'remove_token' })).webhook).toMatchObject({ token_required: false, token_set_at: null })
+  expect((await sendWith()).status()).toBe(202)
+  expect((await reader.delete(`${at}/token`)).status()).toBe(403)
+  expect((await (await writer.post(`${at}/token`)).json()).webhook.token_required).toBe(true)
+  expect((await (await writer.delete(`${at}/token`)).json()).webhook.token_required).toBe(false)
+})

@@ -224,7 +224,7 @@ A client keeps `tools/list` for up to 5 minutes, and Cubex sends nothing when it
 | `waterfall_column` | One value per row (a work email, a phone, a domain, any text) from steps tried in turn until one answers: treg tools, AI prompts, your own APIs, free formulas and lookups in your other sheets, with the step that answered in its own column. An estimate unless `estimate_only: false`. See [Waterfalls](#waterfalls). |
 | `set_auto_run` | Turn auto-run on or off for an enrichment, HTTP API, clean, formula or lookup column, or pause and resume it. |
 | `list_saved_keys` | The saved API keys by name, never their values: when each was saved and last changed, and where it's used, each HTTP API, enrichment or waterfall column whose request names it (with its sheet, and whether auto-run is on) and each saved setup that names it. Up to 20 keys a call with 10 places and 10 setups each, and whole counts (`keys_count`, `used_in_count`, `setups_count`). When more keys are left, the answer has `next_after`: pass it as `after` for the next ones. `name` gives one key (any case) with up to 50 places and 50 setups. Sheets in the trash and setup versions are left out. Needs only the `read` scope. |
-| `manage_sheet_webhook` | A sheet's incoming webhook: a secret URL where each JSON event POSTed becomes a row. `get` (with `read`), `create`, `turn_on`, `turn_off`, `rotate`, `add_field`, `remove_field` and `delete` (with `write`). The URL is shown only to a key with `write`, and only until the first event arrives; `rotate` makes a new one. `manage_table` and `manage_sheet` create take `webhook: true` to make a sheet with one. See [Webhooks](webhooks.md). |
+| `manage_sheet_webhook` | A sheet's incoming webhook: a secret URL where each JSON event POSTed becomes a row. `get` (with `read`), `create`, `turn_on`, `turn_off`, `rotate`, `add_field`, `remove_field`, `new_token`, `remove_token` and `delete` (with `write`). `new_token` answers a token, shown once, that every event must then send as `Authorization: Bearer <token>`. The URL is shown only to a key with `write`, and only until the first event arrives; `rotate` makes a new one. `manage_table` and `manage_sheet` create take `webhook: true` to make a sheet with one. See [Webhooks](webhooks.md). |
 | `list_run_webhooks`, `manage_run_webhook` | The account's run webhooks (URLs told when a run finishes), and one webhook's last 50 deliveries. Pass a webhook's id as `webhook_id` when you start a run to hear when it ends. See [Run webhooks](run-webhooks.md). `manage_run_webhook` adds, changes and deletes them, makes a new signing secret or sends a test notice (`run` scope). |
 | `list_trash`, `restore_from_trash` | What was deleted and can still come back: batches of rows, columns, sheets and tables. Look inside a batch or a column and search it, then restore whole items or rows you pick. See [The trash](#the-trash). |
 | `get_sheet_history` | A sheet's change log: columns added, renamed, deleted and restored, runs, auto-run, views, its webhook, rows deleted (auto-dedupe's included), restored and imported, with when and who (the app or an access token by name). See [The trash](#the-trash). |
@@ -1078,12 +1078,14 @@ A sheet's incoming webhook: a secret URL where each JSON event POSTed becomes a 
 
 | Endpoint | Body or query |
 |---|---|
-| `GET /sheets/:id/webhook` | `{"webhook": ...}`, or `{"webhook": null}` when the sheet has none: `enabled`, `url`, `url_hidden`, `column` (marks the rows it added), `events_received`, `last_event_at`, `last_error`, `fields`. |
+| `GET /sheets/:id/webhook` | `{"webhook": ...}`, or `{"webhook": null}` when the sheet has none: `enabled`, `url`, `url_hidden`, `column` (marks the rows it added), `events_received`, `last_event_at`, `last_error`, `token_required` and `token_set_at`, `fields`. |
 | `POST /sheets/:id/webhook` | No body. Gives the sheet its webhook (one per sheet; `409` if it has one). Answers `201` with its `url`. |
 | `PATCH /sheets/:id/webhook` | `{"enabled": false}` to turn it off (events get `404` and add nothing), `true` to turn it on. |
 | `POST /sheets/:id/webhook/rotate` | A new `url`; the old one stops at once. |
 | `POST /sheets/:id/webhook/fields` | `{"json_path": "$.email", "column": "Email", "as": "text"}`: each event's value at `json_path` fills a new column, as `text` (default) or `json`. |
 | `DELETE /sheets/:id/webhook/fields/:fieldId` | Stops filling that field. Its column and values stay. |
+| `POST /sheets/:id/webhook/token` | No body. Answers `webhook` and `token`, the only time it is shown: every event must then send `Authorization: Bearer <token>`, or it gets `404`. Any old token stops at once. |
+| `DELETE /sheets/:id/webhook/token` | Events no longer need a token. |
 | `DELETE /sheets/:id/webhook` | Deletes the webhook and its kept events. Its columns and rows stay. |
 
 ### Run webhooks

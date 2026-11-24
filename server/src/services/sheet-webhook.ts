@@ -13,7 +13,7 @@ import { getSheetColumns, verifySheetOwnership } from '../lib/sql-helpers';
 import { logSheetChange } from '../lib/change-log';
 import { busyMessage, sheetBusyWith } from '../lib/sheet-busy';
 import { dropWebhookBucket } from '../lib/webhook-bucket';
-import { revealWebhookSecret } from '../lib/webhook-token';
+import { generateWebhookAuthToken, revealWebhookSecret } from '../lib/webhook-token';
 import {
   createSourceWithColumn, getSourceForSheet, listMappings, rotateSource, webhookUrlForSecret,
   type WebhookSourceFull,
@@ -39,6 +39,10 @@ export interface SheetWebhookView {
   url: string | null;
   // true once an event has arrived: the URL is never shown again, and rotate makes a new one.
   url_hidden: boolean;
+  // Senders must send its token as Authorization: Bearer <token>; without it an event gets 404. The token
+  // itself is shown once, when it is made (new_token).
+  token_required: boolean;
+  token_set_at: string | null;
   // The column that marks the rows the webhook added (open a cell for its raw event).
   column: string;
   events_received: number;
@@ -60,6 +64,8 @@ export function sheetWebhookView(src: WebhookSourceFull, base: string | null): S
     enabled: src.enabled === 1,
     url: secret ? webhookUrlForSecret(secret, base!) : null,
     url_hidden: !src.token_ciphertext,
+    token_required: !!src.auth_token_hash,
+    token_set_at: src.auth_token_set_at,
     column: src.raw_column_name,
     events_received: src.total_received,
     last_event_at: src.last_received_at,
@@ -128,6 +134,33 @@ export function rotateSheetWebhook(userId: string, sheetId: string): SheetWebhoo
   if ('fail' in found) return found;
   rotateSource(found.ok);
   logSheetChange(sheetId, userId, 'webhook', 'Made a new webhook URL (the old one stopped working)');
+  return { ok: reread(found.ok) };
+}
+
+// A new token senders must send (Authorization: Bearer <token>), replacing any it had: an event without it, or
+// with the old one, gets the generic 404 from now on. The token is in the answer, the only time it is shown;
+// only its hash is kept.
+export function newSheetWebhookToken(
+  userId: string, sheetId: string,
+): SheetWebhookOutcome<{ source: WebhookSourceFull; token: string }> {
+  const found = sourceOf(userId, sheetId);
+  if ('fail' in found) return found;
+  const { token, tokenHash } = generateWebhookAuthToken();
+  db.prepare(`UPDATE webhook_sources SET auth_token_hash = ?, auth_token_set_at = datetime('now'),
+    updated_at = datetime('now') WHERE id = ?`).run(tokenHash, found.ok.id);
+  logSheetChange(sheetId, userId, 'webhook', found.ok.auth_token_hash
+    ? 'Made a new webhook token (the old one stopped working)' : 'Made the webhook need a token');
+  return { ok: { source: reread(found.ok), token } };
+}
+
+// Senders no longer need a token: anyone with the URL can add rows again. Nothing to do when it has none.
+export function removeSheetWebhookToken(userId: string, sheetId: string): SheetWebhookOutcome<WebhookSourceFull> {
+  const found = sourceOf(userId, sheetId);
+  if ('fail' in found) return found;
+  if (!found.ok.auth_token_hash) return { ok: found.ok };
+  db.prepare(`UPDATE webhook_sources SET auth_token_hash = NULL, auth_token_set_at = NULL,
+    updated_at = datetime('now') WHERE id = ?`).run(found.ok.id);
+  logSheetChange(sheetId, userId, 'webhook', 'Removed the webhook token (anyone with the URL can add rows)');
   return { ok: reread(found.ok) };
 }
 

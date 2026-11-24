@@ -25,6 +25,8 @@ export interface WebhookSourceRow {
   raw_column_name: string;
   store_raw_mode: string;
   total_received: number;
+  // The hash of its token, when senders must send one (routes/webhooks-public.ts).
+  auth_token_hash?: string | null;
 }
 
 export interface WebhookMappingRow {
@@ -51,6 +53,8 @@ export interface IngestOptions {
   // the webhook still has it. An arrival without it is refused, so no caller
   // can skip the check.
   tokenHash?: string;
+  // The token hash the route checked (null: none was needed); the append lands only while it is the same.
+  authHash?: string | null;
 }
 
 // Turn an extracted JSONPath value into the string that lands in a cell.
@@ -163,7 +167,7 @@ export function appendWebhookDelivery(
     }
     // An arrival lands only while its URL still works: a request can still be
     // sending its body when the owner rotates, turns off or deletes the webhook.
-    if (!opts.replayOf && !urlStillWorks(source.id, opts.tokenHash)) {
+    if (!opts.replayOf && !urlStillWorks(source.id, opts.tokenHash, opts.authHash ?? null)) {
       result = { ok: false, code: 404, reason: 'Not found' };
       return;
     }
@@ -248,12 +252,13 @@ export function appendWebhookDelivery(
   return result;
 }
 
-// The webhook is still there and on, and still has the token the route checked.
-function urlStillWorks(sourceId: string, tokenHash: string | undefined): boolean {
+// The webhook is still there and on, and still has the URL and the token the route checked: a token made,
+// changed or removed while the body was coming in sends it the same 404 as a rotate.
+function urlStillWorks(sourceId: string, tokenHash: string | undefined, authHash: string | null): boolean {
   if (!tokenHash) return false;
-  const now = db.prepare('SELECT enabled, token_hash FROM webhook_sources WHERE id = ?').get(sourceId) as
-    { enabled: number; token_hash: string } | undefined;
-  return !!now && now.enabled === 1 && now.token_hash === tokenHash;
+  const now = db.prepare('SELECT enabled, token_hash, auth_token_hash FROM webhook_sources WHERE id = ?')
+    .get(sourceId) as { enabled: number; token_hash: string; auth_token_hash: string | null } | undefined;
+  return !!now && now.enabled === 1 && now.token_hash === tokenHash && now.auth_token_hash === authHash;
 }
 
 function countRows(sheetId: string, userId: string): { rows: number } {
