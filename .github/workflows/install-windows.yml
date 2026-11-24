@@ -78,6 +78,7 @@ jobs:
       # The commit under test, from the repository it lives in (a fork's, for a fork's pull request).
       CUBEX_REPO: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
       CUBEX_REF: ${{ inputs.ref || github.event.pull_request.head.sha || github.sha }}
+      npm_config_cache: ${{ runner.temp }}\npm-cache
     steps:
       - name: Note the user PATH, the folder, the service mode to expect, and whether this commit runs here
         id: before
@@ -89,8 +90,11 @@ jobs:
           # While the lockfile has argon2 (no ARM64 build for Windows), the installer refuses Windows on ARM rather
           # than reach for a compiler: then this job checks that refusal, and nothing more.
           $raw = "https://raw.githubusercontent.com/$env:CUBEX_REPO/$env:CUBEX_REF"
-          $lock = Invoke-WebRequest -UseBasicParsing "$raw/package-lock.json"
-          $refused = $env:ARCH -eq 'arm64' -and $lock.Content.Contains('"node_modules/argon2"')
+          $lockFile = "$env:RUNNER_TEMP\package-lock.json"
+          Invoke-WebRequest -UseBasicParsing "$raw/package-lock.json" -OutFile $lockFile
+          $lockText = [IO.File]::ReadAllText($lockFile)
+          $lockHash = (Get-FileHash -LiteralPath $lockFile -Algorithm SHA256).Hash.ToLowerInvariant()
+          $refused = $env:ARCH -eq 'arm64' -and $lockText.Contains('"node_modules/argon2"')
           # The odd folder already exists (empty), so the installer must adopt it and make it private. Its accented
           # letters are in the runner's ANSI code page (Windows' tar.exe reads its arguments in that code page).
           $home_ = "$env:LOCALAPPDATA\cubex"
@@ -115,7 +119,16 @@ jobs:
           # A background process from an elevated window is refused; here, where every window is, that's allowed.
           if ($split -and $mode -eq 'none') { [IO.File]::AppendAllText($env:GITHUB_ENV, "CUBEX_ALLOW_ELEVATED=1`n") }
           [IO.File]::AppendAllText($env:GITHUB_OUTPUT,
-            "refused=$("$refused".ToLower())`nmode=$mode`nsplit=$("$split".ToLower())`n")
+            "refused=$("$refused".ToLower())`nmode=$mode`nsplit=$("$split".ToLower())`nlock-hash=$lockHash`n")
+
+      - name: Cache npm download cache
+        if: steps.before.outputs.refused != 'true'
+        uses: actions/cache@v5
+        with:
+          path: ${{ runner.temp }}\npm-cache
+          key: install-npm-${{ runner.os }}-${{ runner.arch }}-${{ steps.before.outputs.lock-hash }}
+          restore-keys: |
+            install-npm-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Refusals (& in the path; an elevated window for a background process)
         if: matrix.mode == 'no-service'
@@ -249,6 +262,7 @@ jobs:
       # Where Cubex runs as a plain background process, the installer refuses an elevated window unless this is set
       # (the install job checks that refusal); a runner's window may be elevated.
       CUBEX_ALLOW_ELEVATED: '1'
+      npm_config_cache: ${{ runner.temp }}\npm-cache
       # What the steps that call Cubex's API share. Each step is a new PowerShell, so each loads it first:
       # . ([scriptblock]::Create($env:TEST_API))
       TEST_API: |
@@ -295,6 +309,7 @@ jobs:
         }
     steps:
       - name: Find the latest release
+        id: find
         run: |
           "PowerShell $($PSVersionTable.PSVersion) ($($PSVersionTable.PSEdition))"
           "Commit under test: $env:TEST_REPO $env:TEST_REF"
@@ -316,8 +331,21 @@ jobs:
           if ($text -match '(?m)^\$NodeMajor = ([0-9]+)\s*$') { $major = $Matches[1] }
           else { throw "No `$NodeMajor = <number> line in $installer." }
           "This commit's install.ps1 installs Node $major."
+          $lockFile = "$env:RUNNER_TEMP\package-lock.json"
+          $client.DownloadFile("https://raw.githubusercontent.com/$env:TEST_REPO/$env:TEST_REF/package-lock.json",
+            $lockFile)
+          $lockHash = (Get-FileHash -LiteralPath $lockFile -Algorithm SHA256).Hash.ToLowerInvariant()
+          [IO.File]::AppendAllText($env:GITHUB_OUTPUT, "lock-hash=$lockHash`n")
           [IO.File]::AppendAllText($env:GITHUB_ENV,
             "RELEASE_TAG=$tag`nTEST_HOME=$env:LOCALAPPDATA\cubex`nNODE_MAJOR=$major`n")
+
+      - name: Cache npm download cache
+        uses: actions/cache@v5
+        with:
+          path: ${{ runner.temp }}\npm-cache
+          key: install-npm-${{ runner.os }}-${{ runner.arch }}-${{ steps.find.outputs.lock-hash }}
+          restore-keys: |
+            install-npm-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Install the latest release with its own installer
         run: |

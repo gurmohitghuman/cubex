@@ -64,6 +64,7 @@ jobs:
       RELEASE_REPO: gurmohitghuman/cubex
       TEST_PORT: '3002'
       TEST_PASSWORD: update-check-password
+      npm_config_cache: ${{ runner.temp }}/npm-cache
       # What the steps that call Cubex's API share. Each step is a new bash, so each loads it first: eval "$TEST_API"
       TEST_API: |
         shopt -s inherit_errexit
@@ -128,6 +129,7 @@ jobs:
         }
     steps:
       - name: Find the latest release, and this commit's installer and Node major
+        id: find
         run: |
           echo "Commit under test: $TEST_REPO $TEST_REF"
           # As install.sh's latest_release: github.com/<repo>/releases/latest redirects to the newest tag.
@@ -144,8 +146,19 @@ jobs:
           major="$(sed -n 's/^NODE_MAJOR=\([0-9][0-9]*\)$/\1/p' "$RUNNER_TEMP/install-this.sh")"
           if [ -z "$major" ]; then echo "::error::No NODE_MAJOR=<number> line in this commit's install.sh."; exit 1; fi
           echo "This commit's install.sh installs Node $major."
+          lock_hash="$(curl -fsSL "https://raw.githubusercontent.com/$TEST_REPO/$TEST_REF/package-lock.json" \
+            | sha256sum | cut -d' ' -f1)"
+          echo "lock-hash=$lock_hash" >> "$GITHUB_OUTPUT"
           printf '%s\n' "RELEASE_TAG=$tag" "NODE_MAJOR=$major" "CUBEX_HOME=$RUNNER_TEMP/cubex/home" \
             "CUBEX_BIN_DIR=$RUNNER_TEMP/cubex/bin" >> "$GITHUB_ENV"
+
+      - name: Cache npm download cache
+        uses: actions/cache@v5
+        with:
+          path: ${{ runner.temp }}/npm-cache
+          key: install-npm-${{ runner.os }}-${{ runner.arch }}-${{ steps.find.outputs.lock-hash }}
+          restore-keys: |
+            install-npm-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Install the latest release with its own installer
         run: |
