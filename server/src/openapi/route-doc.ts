@@ -52,7 +52,7 @@ export interface RouteDoc {
   // by document.ts. Default: 200 'Success.'
   responses?: Record<number, string>;
   // What a success holds: JSON unless the route streams CSV.
-  produces?: Array<'json' | 'csv'>;
+  produces?: Array<'json' | 'csv' | 'jsonl'>;
   // 404 is listed when the path has a parameter, 409 for every method but GET:
   // notFound adds 404; conflict true adds 409 to a GET, false drops it.
   notFound?: boolean;

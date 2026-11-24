@@ -12,7 +12,7 @@ import { copySheetValues, copyFailStatus, sheetCopyWindow } from '../services/sh
 import { setRateLimitedHeaders, tooManyMessage } from '../lib/rate-window';
 import { agentRemoveDuplicates, dedupeDryRun } from '../services/dedupe-agent';
 import { runFailHttpStatus } from '../services/run-shared';
-import { streamSheetCsv } from '../lib/csv-export';
+import { streamSheetCsv, EXPORT_FORMATS, exportContentType, type ExportFormat } from '../lib/csv-export';
 import { stopSheetRuns } from '../services/sheet-runs-stop';
 import { setAutoDedupe, turnOffAutoDedupe } from '../services/auto-dedupe-setting';
 
@@ -150,17 +150,22 @@ router.post('/sheets/:id/runs/stop', requireScope('run'), async (req: TokenAuthR
   }
 });
 
-// GET /v1/sheets/:id/export — text/csv download (formula-injection-escaped).
+// GET /v1/sheets/:id/export — text/csv download (formula-injection-escaped), or with ?format=jsonl the same
+// rows as JSON lines ({ id, data } a line, lib/csv-write.ts jsonLine).
 // An empty sheet exports as an empty 200 body rather than the UI's 400 — an
 // agent script treats "nothing there yet" as data, not an error. ?view=<name or
 // id> exports that saved view: its rows and its visible columns.
 router.get('/sheets/:id/export', requireScope('read'), async (req: TokenAuthRequest, res) => {
   try {
     const view = typeof req.query.view === 'string' && req.query.view.trim() ? req.query.view : undefined;
-    const result = await streamSheetCsv(req.params.id, req.userId!, res, { view });
+    const format = req.query.format ?? 'csv';
+    if (!EXPORT_FORMATS.includes(format as ExportFormat)) {
+      return res.status(400).json({ error: 'format is csv or jsonl.' });
+    }
+    const result = await streamSheetCsv(req.params.id, req.userId!, res, { view }, format as ExportFormat);
     if (result === 'not_found') return res.status(404).json({ error: 'Sheet not found' });
     if (result === 'empty') {
-      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Type', exportContentType(format as ExportFormat));
       return res.send('');
     }
     if (typeof result === 'object' && 'invalid' in result) return res.status(400).json({ error: result.invalid });

@@ -39,6 +39,19 @@ export const CHANGES_RECORDED_AFTER = 'v0.8.12';
 // Newest first.
 export const AGENT_CHANGES: ReleaseChanges[] = [
   {
+    version: 'v0.8.45',
+    changes: [
+      {
+        change: 'changed',
+        tools: ['create_download_link'],
+        summary: 'create_download_link takes format: csv (default) or jsonl, one {"id", "data"} object a line as '
+          + 'read_rows answers a row, values keeping their type.',
+        details: 'Use jsonl to feed a script or another tool; CSV stays the one to open in a spreadsheet. REST: GET '
+          + '/sheets/:id/export?format=jsonl.',
+      },
+    ],
+  },
+  {
     version: 'v0.8.44',
     changes: [
       {

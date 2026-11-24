@@ -835,7 +835,7 @@ The Searches column is an ordinary enrichment column. A restart in the middle of
 Everything an assistant sends or receives passes through its context, so a CSV pasted into chat is expensive: a 4 MB lead list is about a million tokens, and a file of a few hundred MB can't go through chat at all. For files, the assistant asks Cubex for a one-time link and moves the file with `curl`. Only a short summary goes through the chat.
 
 - **Import.** Ask "Import ~/Downloads/leads.csv into a new table called Leads." The assistant calls `create_upload_link`, then runs `curl -sS -T leads.csv '<link>'`, which prints the result: rows imported and new columns (and cells that look garbled, see [Garbled text](#garbled-text)). Files up to `MAX_CSV_UPLOAD_MB` (500 MB by default) work, the same as an upload in the app. The upload has to come from a file, not a pipe: Cubex uses the file's size to tell a finished upload from one that was cut off.
-- **Export.** Ask "Save the Qualified rows of Leads to qualified.csv." The assistant calls `create_download_link`, then runs `curl -sS -f -o qualified.csv '<link>'`. It can also give you the link to open in your browser.
+- **Export.** Ask "Save the Qualified rows of Leads to qualified.csv." The assistant calls `create_download_link`, then runs `curl -sS -f -o qualified.csv '<link>'`. It can also give you the link to open in your browser. For a script or another tool, ask for JSON lines (`format: "jsonl"`, a `.jsonl` file): one row a line as `{"id", "data"}`, with numbers and true/false as they are.
 
 This works from any computer that can reach Cubex, as long as the assistant can run commands (Claude Code, Codex). With other assistants, such as claude.ai or Claude Desktop, ask for a download link and open it yourself; to import, open the sheet in Cubex and choose **Data**, then **Import CSV**.
 
@@ -955,7 +955,7 @@ Rows are addressed by their stable `id`, which survives sorts and imports.
 | `POST /sheets/:id/rows/update` | `{"updates": [{"row_id": "...", "data": {"Status": "Done"}}]}`, up to 1,000. |
 | `POST /sheets/:id/rows/delete` | `{"row_ids": ["..."]}`, up to 1,000. They go to the trash: the answer's `trash` gives the `trash_id`. |
 | `POST /sheets/:id/import` | Multipart form: the CSV in a field named `file`, plus `replace=true` to replace the rows instead of appending (the replaced rows go to the trash). Answers `rows_imported`, `starting_row`, `new_columns`, `truncated_cells` (cells cut to fit), `replaced` and `dropped_blank_starter_rows`, plus `auto_dedupe`, `trash` and `auto_run` when they apply; when cells look garbled, also `garbled_cells`, `garbled_samples` and a `note` ([Garbled text](#garbled-text)). |
-| `GET /sheets/:id/export` | The whole sheet as CSV, streamed (any size). `?view=<name or id>` exports a saved view: its rows and visible columns. |
+| `GET /sheets/:id/export` | The whole sheet as CSV, streamed (any size). `?view=<name or id>` exports a saved view: its rows and visible columns. `?format=jsonl` gives JSON lines instead: one `{"id": "<row id>", "data": {"<column>": value}}` a line, as `read_rows` answers a row, values keeping their type and no formula quote. |
 | `POST /sheets/:sourceId/rows/transfer` | Copy or move rows to another sheet. |
 
 **Retrying safely:** the three writes above (append, `PATCH /rows/:rowId`, `rows/update`) take an `Idempotency-Key` header or `idempotency_key` in the body, as `append_rows` and `update_cells` do: see [Retrying row writes](#retrying-row-writes).
