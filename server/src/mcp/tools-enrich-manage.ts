@@ -6,7 +6,9 @@ import { McpServer } from '@modelcontextprotocol/server';
 import { agentAddField, agentAddListRows, agentListFields } from '../services/enrich-agent-fields';
 import { agentSetAutorun } from '../services/enrich-agent-autorun';
 import { DAILY_LIMIT_NOTE } from '../services/enrich-agent-shared';
-import { AUTORUN_DEFAULT_DAILY_CAP_USD, AUTORUN_HTTP_DEFAULT_DAILY_ROWS } from '../lib/constants';
+import {
+  AUTORUN_DEFAULT_DAILY_CAP_USD, AUTORUN_HTTP_DEFAULT_DAILY_ROWS, AUTORUN_MAX_START_DELAY_S,
+} from '../lib/constants';
 import { RULE_POINTER } from './run-if-schema';
 import { MAX_RULE_CHARS } from '../lib/run-condition';
 import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean, SHEET_ID } from './tool-helpers';
@@ -125,6 +127,9 @@ export function registerEnrichManageTools(server: McpServer, ctx: McpAuthCtx) {
         .describe(`An enrichment's dollars a day (default ${AUTORUN_DEFAULT_DAILY_CAP_USD})`),
       daily_row_cap: z.number().int().min(1).optional()
         .describe(`An HTTP API column's rows a day (default ${AUTORUN_HTTP_DEFAULT_DAILY_ROWS})`),
+      start_delay_s: z.number().int().min(0).max(AUTORUN_MAX_START_DELAY_S).nullable().optional()
+        .describe('Seconds a row waits after its last change before it runs, so one still being filled in runs once '
+          + 'done (default 0; kept when omitted)'),
     }).strict(),
   }, async ({ sheet_id, ...a }) => {
     const denied = missingScope(ctx, 'run');

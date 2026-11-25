@@ -105,6 +105,14 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
         summary: 'manage_table and manage_sheet create take webhook: true to give the new sheet an incoming webhook '
           + 'in the same call. The answer\'s webhook has its url.',
       },
+      {
+        change: 'changed',
+        tools: ['set_auto_run'],
+        summary: 'set_auto_run takes start_delay_s (0-600, default 0): a row waits that many seconds after its last '
+          + 'change before auto-run runs it. Its answer lists each column\'s start_delay_s.',
+        details: 'For rows filled in over a while (by hand, a webhook in parts, another column): each new write starts '
+          + 'the wait again. Omitted keeps it; null sets 0. PUT /api/v1/sheets/{id}/enrichment-auto-run takes it too.',
+      },
     ],
   },
   {
