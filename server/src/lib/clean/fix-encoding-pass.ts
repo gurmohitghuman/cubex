@@ -1,3 +1,4 @@
+// Over 200 lines: the rules for which sequences one pass decodes refer to each other, so they stay together.
 // One pass of the fix_encoding cleaner (fix-encoding.ts), pure: the bytes the
 // characters were read from (fix-encoding-bytes.ts), each valid UTF-8 sequence
 // decoded one by one, a damaged spot (a lost byte, a character no byte reads
