@@ -9,7 +9,8 @@ import { getSheetColumns } from '../lib/sql-helpers';
 import { isEnrichmentConfig } from '../lib/enrich-run-config';
 import { entryFor, whereOf } from './autorun-entry';
 
-export interface SkipRule { rule: string; by: 'run' | 'auto_run'; tree: RuleNode }
+// tree: the rule as checked; problem: why it can't be checked now (a column it reads is gone), as a run says it.
+export type SkipRule = { rule: string; by: 'run' | 'auto_run' } & ({ tree: RuleNode } | { problem: string });
 export interface SkipWhy {
   // Each rule the row fails now, with why; empty when it passes every rule now.
   rules: Array<{ rule: string; by: 'run' | 'auto_run'; why: string[] }>;
@@ -33,8 +34,8 @@ function runRule(sheetId: string, userId: string, column: string): string | null
   return isEnrichmentConfig(parsed) ? ruleFromConditions(parsed.enrichment.rows.where) : null;
 }
 
-// The rules a column's rows are kept out by, parsed against the sheet's columns now (a rule naming a column gone
-// since can't be checked, and is left out).
+// The rules a column's rows are kept out by, parsed against the sheet's columns now. A rule that can't be checked
+// (it names a column gone since) is kept with the reason its next run would refuse to start with.
 export function columnSkipRules(sheetId: string, userId: string, column: string): SkipRule[] {
   const columns = getSheetColumns(sheetId, userId, false);
   const entry = entryFor(sheetId, userId, column);
@@ -48,13 +49,18 @@ export function columnSkipRules(sheetId: string, userId: string, column: string)
     try {
       const checked = checkRule(t.text, columns);
       out.push({ rule: checked.rule, by: t.by, tree: checked.tree });
-    } catch { /* a rule that no longer parses: its run reports it */ }
+    } catch (e) {
+      const why = e instanceof Error ? e.message : 'It no longer reads.';
+      out.push({ rule: t.text, by: t.by,
+        problem: `This rule can't be checked: ${why} Edit the rule, or run without it.` });
+    }
   }
   return out;
 }
 
 export function skipWhy(rules: readonly SkipRule[], data: Record<string, string>): SkipWhy {
-  const failing = rules.map(r => ({ rule: r.rule, by: r.by, why: ruleMisses(r.tree, data) }))
+  const failing = rules.map(r => ({ rule: r.rule, by: r.by,
+    why: 'tree' in r ? ruleMisses(r.tree, data) : [r.problem] }))
     .filter(r => r.why.length > 0);
   return { rules: failing, passes_now: failing.length === 0 };
 }

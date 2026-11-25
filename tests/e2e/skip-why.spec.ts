@@ -58,6 +58,12 @@ test('a kept-out row says why: read_rows, check_run_condition and the grid\'s pa
   await expect(page.getByTestId('skip-why-passes')).toBeVisible()
   const again = await call(client, 'read_rows', { sheet_id: sheetId, include_status: true, columns: ['Fit (Output)'] })
   expect(again.rows[1].data['Fit (Output)'].why).toEqual(['It passes "Only run if" now: run it again to fill it.'])
+
+  // The column the rule reads, deleted: the rule can't be checked (a rerun would refuse to start), never "passes".
+  expect((await api.delete(`/api/sheets/${sheetId}/columns/Tier`)).status()).toBe(200)
+  const gone = await call(client, 'read_rows', { sheet_id: sheetId, include_status: true, columns: ['Fit (Output)'] })
+  expect(gone.rows[3].data['Fit (Output)'].why).toEqual([
+    expect.stringContaining('This rule can\'t be checked: There\'s no column named "Tier".')])
 })
 
 // WORKFLOW Tests step 6: the panel is on screen within the side panels' budget (cell-panels-speed.spec.ts: 150 ms
