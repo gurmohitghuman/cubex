@@ -2,8 +2,9 @@
 // each run column written as set up and never run (setup_only 2, as an AI
 // visibility table's engines), so its column menu, Run columns and agents run
 // it with this setup; a Posts sheet's formulas, filled already (it has no rows)
-// and following its columns; and its Top posts view. Each throws on a problem,
-// rolling the whole create back.
+// and following its columns (the creator's usual views among them); and its
+// Top posts and "3x over usual" views. Each throws on a problem, rolling the
+// whole create back.
 import { getSheetColumns } from '../lib/sql-helpers';
 import { withoutChangeLog } from '../lib/change-log';
 import type { EnrichRunConfig } from '../lib/enrich-run-config';
@@ -11,6 +12,7 @@ import type { WhereItem } from '../lib/row-filter/where';
 import { COMMENT_COLUMNS as C, POST_COLUMNS as P, REACTION_PROMPT, BREAKDOWN_PROMPT, STEP_COLUMNS as S }
   from '../lib/social/names';
 import type { PlatformSpec } from '../lib/social/platforms';
+import { STANDS_OUT_VIEW, STANDS_OUT_WHERE, USUAL_FORMULAS } from '../lib/social/usual';
 import { applyListStart, planListStart } from './enrich-list-start';
 import { writeAiSetup, writeFormulaSetup, writeHttpSetup } from './setup-version-write';
 import { startRunRule } from './run-rule';
@@ -66,8 +68,8 @@ export function writeReaction(userId: string, commentsSheetId: string) {
   writeAiSetup(commentsSheetId, userId, REACTION_OUTPUT, aiFill(REACTION_PROMPT, null), 2);
 }
 
-export function writeFormulas(userId: string, sheetId: string, spec: PlatformSpec) {
-  for (const f of spec.formulas) {
+export function writeFormulas(userId: string, sheetId: string, formulas: PlatformSpec['formulas']) {
+  for (const f of formulas) {
     writeFormulaSetup(sheetId, userId, f.column, { kind: 'formula', formula: f.formula, description: null }, true,
       getSheetColumns(sheetId, userId));
   }
@@ -88,12 +90,23 @@ export function topPostsWhere(f: { minViews: number | null; minComments: number 
   return where;
 }
 
+function writeView(userId: string, sheetId: string, name: string, description: string, where: WhereItem[],
+  activate: boolean) {
+  const made = withoutChangeLog(() => createView(sheetId, userId, { name, description, where, activate }));
+  if ('fail' in made) throw new Error(`The ${name} view: ${made.message}`);
+}
+
 // The Top posts view, made the sheet's view, when the table has filters.
 export function writeTopPosts(userId: string, sheetId: string, where: WhereItem[]) {
   if (where.length === 0) return;
-  const made = withoutChangeLog(() => createView(sheetId, userId, {
-    name: TOP_POSTS_VIEW, description: 'The posts that pass the table\'s filters: run the steps on these.', where,
-    activate: true,
-  }));
-  if ('fail' in made) throw new Error(`The ${TOP_POSTS_VIEW} view: ${made.message}`);
+  writeView(userId, sheetId, TOP_POSTS_VIEW, 'The posts that pass the table\'s filters: run the steps on these.',
+    where, true);
+}
+
+// The creator's usual views (Recent posts is its run column): the two formulas following Recent views, and a
+// view of the posts that stand out, kept beside Top posts.
+export function writeUsual(userId: string, sheetId: string) {
+  writeFormulas(userId, sheetId, USUAL_FORMULAS);
+  writeView(userId, sheetId, STANDS_OUT_VIEW, 'Posts that got far more views than their creator usually gets.',
+    STANDS_OUT_WHERE, false);
 }

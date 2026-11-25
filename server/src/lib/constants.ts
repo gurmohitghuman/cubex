@@ -302,3 +302,8 @@ export const SOCIAL_MAX_DAYS = 365;
 // Find posts starts each platform's search on one Searches sheet: each start holds it while it sets up its rows
 // (a few rows: milliseconds), so the next waits for it, at most this long.
 export const SOCIAL_START_WAIT_MS = envInt('SOCIAL_START_WAIT_MS', 15_000);
+// "Creator's usual views" (lib/social/usual.ts): the creator's recent posts asked for (one call's page), the fewest
+// with views it takes to say what their usual is, and how many times their usual makes a post stand out.
+export const SOCIAL_RECENT_POSTS = 30;
+export const SOCIAL_USUAL_MIN_POSTS = 3;
+export const SOCIAL_STANDS_OUT_TIMES = 3;

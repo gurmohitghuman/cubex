@@ -9,7 +9,7 @@ import type { EnrichTool } from '../lib/enrich-tool';
 
 export interface SocialPlatformOption {
   platform: Platform; label: string; searchUsd: number | null;
-  steps: { transcript: number | null; creator: number | null; comments: number | null };
+  steps: { transcript: number | null; creator: number | null; usual: number | null; comments: number | null };
 }
 
 const priceOf = (t: EnrichTool | null): number | null => (t?.price && typeof t.price.usd === 'number' ? t.price.usd
@@ -26,12 +26,14 @@ export async function socialOptions(): Promise<SocialPlatformOption[]> {
     const spec = PLATFORM_SPECS[platform];
     const search = await tool(spec.search.toolId);
     if (!search || !(await addsRows(search))) continue;
-    const [transcript, creator, comments] = await Promise.all([tool(spec.transcript.toolId),
-      spec.creator ? tool(spec.creator.toolId) : Promise.resolve(null), tool(spec.comments.toolId)]);
+    const [transcript, creator, usual, comments] = await Promise.all([tool(spec.transcript.toolId),
+      spec.creator ? tool(spec.creator.toolId) : Promise.resolve(null), tool(spec.usual.toolId),
+      tool(spec.comments.toolId)]);
     out.push({
       platform, label: spec.label, searchUsd: priceOf(search),
       steps: {
-        transcript: priceOf(transcript), creator: spec.creator ? priceOf(creator) : 0, comments: priceOf(comments),
+        transcript: priceOf(transcript), creator: spec.creator ? priceOf(creator) : 0, usual: priceOf(usual),
+        comments: priceOf(comments),
       },
     });
   }

@@ -229,3 +229,5 @@ export const TOAST_TOP_PX = 64;
 // A drawer or dialog closed while it still opens closes once its open transition has ended (200 ms once started,
 // hooks/useCloseAfterOpen.ts). A close never waits longer than this.
 export const CLOSE_AFTER_OPEN_MAX_MS = 1_000;
+// A post that got this many times its creator's usual views stands out (server lib/constants.ts).
+export const SOCIAL_STANDS_OUT_TIMES = 3;

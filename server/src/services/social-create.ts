@@ -4,9 +4,10 @@
 // the posts it finds to that platform's sheet, keeping the ones found before),
 // a "<Platform> posts" sheet per platform (the fields its search gives, its
 // free formulas, and the steps picked, set up and not run: transcript, the AI
-// breakdown, the creator, comments), a Comments sheet when comments are
-// picked (with an AI reaction tag, set up and not run), and a Top posts view
-// on each Posts sheet when the table has filters. Nothing that costs money
+// breakdown, the creator, the creator's usual views, comments), a Comments
+// sheet when comments are picked (with an AI reaction tag, set up and not
+// run), and a Top posts view on each Posts sheet when the table has filters
+// (and a "3x over usual" view with the usual views). Nothing that costs money
 // runs: Find posts takes the person's click or an agent's call
 // (services/social-find.ts). Each run is checked against treg's catalog
 // first, then everything goes in one transaction. It is an ordinary table:
@@ -30,7 +31,7 @@ import { appendRows } from './rows-write';
 import { buildSocialRuns, type PlatformRuns } from './social-steps';
 import {
   BREAKDOWN_OUTPUTS, BREAKDOWN_STATUS, REACTION_OUTPUT, sinceDay, topPostsWhere, writeBreakdown, writeFormulas,
-  writeListColumn, writeReaction, writeStepColumn, writeTopPosts,
+  writeListColumn, writeReaction, writeStepColumn, writeTopPosts, writeUsual,
 } from './social-write';
 import type { RunFail } from './run-shared';
 
@@ -51,6 +52,7 @@ function postsColumnsOf(platform: Platform, input: SocialInput): string[] {
     ...(has('transcript') ? [S.transcript, S.transcriptText] : []),
     ...(has('breakdown') ? [BREAKDOWN_STATUS, ...BREAKDOWN_OUTPUTS] : []),
     ...creator,
+    ...(has('usual') ? [S.recentPosts, S.recentViews, S.usualViews, S.timesUsual] : []),
     ...(has('comments') ? [S.commentsFound] : []),
   ])];
 }
@@ -111,10 +113,14 @@ function makeTable(userId: string, input: SocialInput, runs: PlatformRuns[], col
     for (const r of runs) {
       const spec = PLATFORM_SPECS[r.platform], sheet = postsSheets[r.platform]!;
       writeListColumn(userId, searches, sheet, r.search, `The ${spec.label} search`);
-      writeFormulas(userId, sheet, spec);
+      writeFormulas(userId, sheet, spec.formulas);
       if (r.transcript) writeStepColumn(userId, sheet, r.transcript, `${spec.label} transcripts`);
       if (input.steps.includes('breakdown')) writeBreakdown(userId, sheet, spec);
       if (r.creator) writeStepColumn(userId, sheet, r.creator, `${spec.label} creators`);
+      if (r.usual) {
+        writeStepColumn(userId, sheet, r.usual, `${spec.label} creators' recent posts`);
+        writeUsual(userId, sheet);
+      }
       if (r.comments) writeListColumn(userId, sheet, comments!, r.comments, `${spec.label} comments`);
       writeTopPosts(userId, sheet, topPostsWhere({ minViews: input.minViews, minComments: input.minComments, since },
         cols[r.platform]));
