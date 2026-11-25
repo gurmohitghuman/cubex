@@ -37,6 +37,8 @@ const { listSheets } = await import('../../server/src/lib/sheet-crud-helpers')
 const { liveSheets } = await import('../../server/src/services/table-row-counts')
 const { aiRunStamper } = await import('../../server/src/lib/run-inputs/stampers')
 const { ensureRunInputKey } = await import('../../server/src/lib/run-inputs/keys')
+const { deleteRowsToTrash } = await import('../../server/src/services/trash-rows')
+const { listTrash } = await import('../../server/src/services/trash-read')
 
 const uid = uuid(), tid = uuid(), sid = uuid()
 const COLS = ['Name', 'Domain', 'Fit', 'Short']
@@ -198,6 +200,11 @@ await check('discard: the sheet is as it was and takes changes again; the copy t
   const before = rows(sid).map(r => r.data)
   const out = await startSheetTest(uid, sid, { rows: 3 })
   assert.ok('ok' in out, JSON.stringify(out))
+  // A row deleted in the copy isn't listed in the trash under the sheet's name, only when the copy is asked for.
+  const copyId = out.ok.test_sheet_id
+  db.transaction(() => deleteRowsToTrash(copyId, uid, 'grid', { ids: [rows(copyId)[0].id] }))()
+  assert.equal(listTrash(uid).items.length, 0)
+  assert.equal(listTrash(uid, { sheetId: copyId }).items.length, 1)
   const gone = discardSheetTest(uid, sid)
   assert.ok('ok' in gone)
   assert.equal(busy.sheetBusyWith(sid), null)
@@ -205,6 +212,7 @@ await check('discard: the sheet is as it was and takes changes again; the copy t
   await until(() => !testOfSheet(sid, uid), 'the test record goes')
   assert.equal(busy.sheetBusyWith(out.ok.test_sheet_id), null)
   assert.deepEqual(rows(sid).map(r => r.data), before)
+  assert.equal(listTrash(uid, { sheetId: copyId }).items.length, 0, 'its trash went with the copy')
 })
 
 await check('a restart holds an open test\'s sheet again', async () => {
