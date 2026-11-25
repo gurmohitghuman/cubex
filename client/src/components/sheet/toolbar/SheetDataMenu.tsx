@@ -1,5 +1,5 @@
 import React from 'react'
-import { ChevronDown, CopyMinus, Database, Download, Import, Inbox, Loader2 } from 'lucide-react'
+import { ChevronDown, CopyMinus, Database, Download, Import, Inbox, Loader2, PlayCircle } from 'lucide-react'
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
@@ -20,15 +20,16 @@ interface Props {
   onExport: (scope: ExportScope) => void
   onOpenWebhook: () => void
   onRemoveDuplicates: () => void
+  onRunColumns: () => void
 }
 
 const dot = 'h-2 w-2 rounded-full bg-cube-black'
 
-// The sheet header's Data menu: rows in (a CSV, a webhook), rows out (export)
-// and duplicates. Was four buttons beside the column actions.
+// The sheet header's Data menu: rows in (a CSV, a webhook), rows out (export),
+// duplicates, and running columns again. Was four buttons beside the column actions.
 export const SheetDataMenu: React.FC<Props> = ({
   hasRows, columnCount, isExporting, viewNarrows, viewName, autoDedupeOn,
-  onImport, onExport, onOpenWebhook, onRemoveDuplicates,
+  onImport, onExport, onOpenWebhook, onRemoveDuplicates, onRunColumns,
 }) => {
   const focus = useMenuFocus()
   return (
@@ -37,7 +38,7 @@ export const SheetDataMenu: React.FC<Props> = ({
         <button ref={focus.trigger} data-testid="data-menu"
           className="btn-secondary relative flex h-8 items-center gap-1.5"
           aria-label={autoDedupeOn ? 'Data (auto-dedupe on)' : 'Data'} aria-busy={isExporting || undefined}
-          title="Import, export, webhook and duplicates">
+          title="Import, export, webhook, duplicates and running columns">
           {isExporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
             : <Database className="h-3.5 w-3.5" aria-hidden="true" />}
           <span className="hidden md:inline">Data</span>
@@ -72,6 +73,8 @@ export const SheetDataMenu: React.FC<Props> = ({
             : 'Find repeated rows, or drop them as they arrive'}
           disabled={columnCount === 0} testId="remove-duplicates"
           badge={autoDedupeOn ? <span className={dot} aria-hidden="true" /> : undefined} />
+        <MenuEntry icon={PlayCircle} label="Run columns" hint="Run several columns again, on the rows you pick"
+          onSelect={focus.opening(onRunColumns)} disabled={!hasRows} testId="run-columns" />
       </DropdownMenuContent>
     </DropdownMenu>
   )

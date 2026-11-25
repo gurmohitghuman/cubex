@@ -90,6 +90,11 @@ test('click to visible: the column menu, a toolbar menu and the drawers they ope
         await page.getByTestId('more-menu').click()
         await opened(page.getByTestId('sheet-history'))
       } },
+    { name: 'Scheduled reruns drawer, from the More menu', panel: MODAL, target: p => p.getByTestId('sheet-schedules'),
+      prep: async () => {
+        await page.getByTestId('more-menu').click()
+        await opened(page.getByTestId('sheet-schedules'))
+      } },
   ]
   const medians: Array<[string, number]> = []
   for (const k of kinds) {

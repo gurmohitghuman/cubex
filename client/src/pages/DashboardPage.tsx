@@ -16,6 +16,7 @@ import { GetStartedChecklist } from '@/components/dashboard/GetStartedChecklist'
 import { TrySampleButton } from '@/components/sample/TrySampleButton'
 import { AiVisibilityButton } from '@/components/ai-visibility/AiVisibilityDialog'
 import { HiringButton } from '@/components/hiring/HiringDialog'
+import { SocialButton } from '@/components/social/SocialDialog'
 import { plural } from '@/lib/utils'
 import { SettingsButton } from '@/components/dashboard/SettingsButton'
 import { useTableRowCounts } from '@/hooks/useTableRowCounts'
@@ -161,6 +162,7 @@ export const DashboardPage: React.FC = () => {
                 <TrySampleButton />
                 <AiVisibilityButton />
                 <HiringButton />
+                <SocialButton />
               </div>
             </div>
           </div>

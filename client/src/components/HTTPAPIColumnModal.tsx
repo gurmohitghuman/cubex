@@ -4,7 +4,7 @@ import HTTPTemplateModal from './HTTPTemplateModal'
 import { Drawer, DrawerHeader } from './Drawer'
 import { httpAPI } from '@/utils/api'
 import { HTTPAPIConfig, Step } from './http-modal/types'
-import { ConfigureStep } from './http-modal/ConfigureStep'
+import { ConfigureStep, EditLoading } from './http-modal/ConfigureStep'
 import { ReviewStep } from './http-modal/ReviewStep'
 import { RunStep } from './http-modal/RunStep'
 import { SuggestionsDropdown } from './http-modal/SuggestionsDropdown'
@@ -17,6 +17,7 @@ import { insertReferenceInto } from './http-modal/insertReference'
 import { blankHTTPConfig, templateToConfig, saveAsTemplate } from './http-modal/template-helpers'
 import { CurlPasteBox } from './http-modal/CurlPasteBox'
 import { useCurlImport } from './http-modal/useCurlImport'
+import { useHttpEdit } from './http-modal/useHttpEdit'
 
 interface HTTPAPIColumnModalProps {
   isOpen: boolean
@@ -30,10 +31,12 @@ interface HTTPAPIColumnModalProps {
   // The sheet's saved AI model — the AI-assist "no model" banner stays silent
   // when either this or the account default resolves (same chain as the server).
   defaultAiModel?: string | null
+  // The column its menu's Edit opened the dialog on (null: a new column): its setup, Save, Save and run.
+  editColumn?: string | null
 }
 
 export const HTTPAPIColumnModal: React.FC<HTTPAPIColumnModalProps> = ({
-  isOpen, onClose, sheetId, rowGeneration, onSuccess, onRunStarted, defaultAiModel,
+  isOpen, onClose, sheetId, rowGeneration, onSuccess, onRunStarted, defaultAiModel, editColumn = null,
 }) => {
   const [step, setStep] = useState<Step>('configure')
   const [config, setConfig] = useState<HTTPAPIConfig>(blankHTTPConfig)
@@ -99,10 +102,10 @@ export const HTTPAPIColumnModal: React.FC<HTTPAPIColumnModalProps> = ({
     saveAsTemplate(config, name, description, tags, isDraft)
 
   const handleClose = () => { onClose(); resetState() }
+  const edit = useHttpEdit({ isOpen, sheetId, editColumn, config, setConfig, setMasterColumnName, setErrors,
+    onSuccess, onRunStarted, close: handleClose })
 
-  // AIAssistBar's Auto-fill writes into the same `config` state ConfigureStep
-  // edits below, so the user immediately sees what the AI populated and can
-  // tweak any field before clicking Try on 1 row.
+  // AIAssistBar's Auto-fill writes into the `config` ConfigureStep edits below, to check before Try on 1 row.
   const handleAutoFill = (generated: HTTPAPIConfig, connectionName?: string) => {
     setConfig(generated)
     if (connectionName) setMasterColumnName(connectionName)
@@ -117,7 +120,7 @@ export const HTTPAPIColumnModal: React.FC<HTTPAPIColumnModalProps> = ({
     <Drawer isOpen={isOpen} onClose={handleClose} panelClassName="max-w-lg">
       <DrawerHeader
         icon={<div className="bg-cube-black p-1.5"><Globe className="h-4 w-4 text-white" /></div>}
-        title="HTTP API Column"
+        title={edit.editing ? 'Edit HTTP API column' : 'HTTP API Column'}
         description={subtitleFor(step)}
         headerRight={
           <HTTPHeaderControls step={step} currentRun={h.currentRun}
@@ -128,7 +131,8 @@ export const HTTPAPIColumnModal: React.FC<HTTPAPIColumnModalProps> = ({
       />
 
       <div className="flex-1 overflow-y-auto">
-        {step === 'configure' && (
+        {edit.loading && <EditLoading />}
+        {step === 'configure' && !edit.loading && (
           <div className="p-4 space-y-4">
             <AIAssistBar sheetId={sheetId} sheetDefaultModel={defaultAiModel} onAutoFill={handleAutoFill} />
             <CurlPasteBox c={curl} />
@@ -147,6 +151,7 @@ export const HTTPAPIColumnModal: React.FC<HTTPAPIColumnModalProps> = ({
               onPreview={h.handleGeneratePreview}
               onCancel={handleClose}
               onShowTemplateModal={() => setShowTemplateModal(true)}
+              edit={edit.prop()}
             />
           </div>
         )}
@@ -161,7 +166,7 @@ export const HTTPAPIColumnModal: React.FC<HTTPAPIColumnModalProps> = ({
             isCommittingPreview={h.isCommittingPreview}
             onBack={() => setStep('configure')}
             onCommit={h.handleCommitPreviewToSheet}
-            onStartRun={h.handleStartRun}
+            onStartRun={h.handleStartRun} edit={edit.prop(h.selectedFields)}
             onApplyAIFix={async (next) => {
               setConfig(next)
               // Re-run preview against the AI's proposed fix immediately,

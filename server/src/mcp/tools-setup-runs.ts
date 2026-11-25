@@ -1,11 +1,14 @@
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/server';
-import { MAX_SETUP_TEST_ROWS } from '../lib/constants-setups';
+import { MAX_COLUMN_RUN_COLUMNS, MAX_COLUMN_RUN_ROW_IDS, MAX_SETUP_TEST_ROWS } from '../lib/constants-setups';
 import { RUN_SPEND_LIMIT_MAX_USD } from '../lib/constants';
 import { applySetup } from '../services/setup-apply';
 import { applyInputOf } from '../services/setup-apply-input';
 import { getSetupRun, sheetSetupRuns } from '../services/setup-run-store';
 import { controlSetupRun } from '../services/setup-run-control';
+import { runColumns } from '../services/column-run';
+import { COLUMN_RUN_MODES, columnRunInputOf } from '../services/column-run-input';
+import { whereLike } from './where-schema';
 import { SHEET_ID, McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean } from './tool-helpers';
 import { changedOf, type Changed } from './changed';
 
@@ -17,7 +20,8 @@ import { capToolNote } from '../lib/token-spend';
 const names = z.record(z.string(), z.string());
 
 // Using a saved setup on a sheet (services/setup-apply.ts, setup-runner.ts):
-// apply_setup, get_setup_run, control_setup_run.
+// apply_setup, get_setup_run, control_setup_run; and run_columns, which runs
+// a sheet's own run columns on chosen rows as a setup run (services/column-run.ts).
 export function registerSetupRunTools(server: McpServer, ctx: McpAuthCtx): void {
   registerTool(server, 'apply_setup', {
     description:
@@ -72,11 +76,49 @@ export function registerSetupRunTools(server: McpServer, ctx: McpAuthCtx): void 
     return ok({ ...out.ok, changed: run ? setupChanged(ctx.userId, run) : [] });
   });
 
+  registerTool(server, 'run_columns', {
+    description:
+      'Run several of a sheet\'s run columns (AI, HTTP API, enrichment, waterfall) again in one call, each with '
+      + 'its own settings, on the rows mode picks, among row_ids or the rows a where matches. A column reading '
+      + 'another chosen column (also through formula, clean or lookup columns) waits for that one\'s whole run. '
+      + 'COSTS MONEY as each column\'s rerun does. ESTIMATE_ONLY DEFAULTS TO TRUE: the first call prices each '
+      + 'column and starts nothing; tell the user, then call again with estimate_only:false. max_cost_usd refuses '
+      + 'to start (nothing is created) when the estimate could pass it; once started, each AI, enrichment and '
+      + 'waterfall column gets a spend limit from what is left. To change a column\'s setup use its own tool. '
+      + 'Returns a setup_run: follow it with get_setup_run; control_setup_run pauses, resumes or stops it.'
+      + capToolNote(ctx.spend ?? null, true),
+    inputSchema: z.object({
+      sheet_id: z.string().describe(SHEET_ID),
+      columns: z.array(z.string()).min(1).max(MAX_COLUMN_RUN_COLUMNS)
+        .describe('Run columns by name (any column a run fills names that run)'),
+      mode: z.enum(COLUMN_RUN_MODES).describe('Rows of each column: empty (never run, or left by its rule), errored '
+        + '(❌), out_of_date (made from inputs changed since), empty_or_out_of_date, all (every row again)'),
+      row_ids: z.array(z.string()).min(1).max(MAX_COLUMN_RUN_ROW_IDS).optional()
+        .describe('Only among these rows (read_rows ids)'),
+      where: whereLike('Only among the rows it passes; it may not read a column the run changes.').optional(),
+      estimate_only: lenientBoolean().optional().describe('Default true: price it, start nothing'),
+      webhook_id: z.string().optional().describe('A run webhook (list_run_webhooks) to notify when it finishes'),
+      max_cost_usd: z.number().positive().max(RUN_SPEND_LIMIT_MAX_USD).optional()
+        .describe('Refuse to start when the estimate could cost more than this many dollars in all'),
+      allow_unpriced: lenientBoolean().optional()
+        .describe('With max_cost_usd: start even when a column has no known price (default false)'),
+    }).strict(),
+  }, async ({ sheet_id, ...a }) => {
+    const denied = missingScope(ctx, 'run');
+    if (denied) return denied;
+    const input = columnRunInputOf(a, 'mcp');
+    if ('fail' in input) return err(input.message);
+    const out = await runColumns(ctx.userId, sheet_id, input, { hasSecretsScope: ctx.scopes.has('secrets') });
+    if ('fail' in out) return err(out.message + (out.estimate ? ` Estimate: ${JSON.stringify(out.estimate)}` : ''));
+    const run = 'setup_run' in out.ok ? out.ok.setup_run : undefined;
+    return ok({ ...out.ok, changed: run ? setupChanged(ctx.userId, run) : [] });
+  });
+
   registerTool(server, 'get_setup_run', {
     description:
-      'A setup used on a sheet: its status, layer, each step\'s state, run_id and note, and the choices it was '
-      + 'used with. Pass setup_run_id, or sheet_id for the sheet\'s latest ones (with setup_id, that setup\'s). '
-      + 'Read-only.',
+      'A setup used on a sheet (or a run_columns run): its status, layer, each step\'s state, run_id and note, '
+      + 'and the choices it was used with. Pass setup_run_id, or sheet_id for the sheet\'s latest ones (with '
+      + 'setup_id, that setup\'s). Read-only.',
     inputSchema: z.object({
       setup_run_id: z.string().optional().describe('One setup run (apply_setup returned it)'),
       sheet_id: z.string().optional().describe('Or the sheet: its 5 latest setup runs'),

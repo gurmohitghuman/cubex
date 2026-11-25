@@ -28,6 +28,7 @@ const setupRun = obj({
     column: str, kind: str, layer: num, mode: str, state: str, run_id: nul(str), note: nul(str),
   })),
   max_cost_usd: opt(num),
+  column_run: opt(info('A column run (run_columns): mode, how many row_ids, where')),
 });
 // estimate_only (its default): estimate, inputs, makes and carries_on. Started: setup_run.
 export const applySetup = obj({
@@ -51,6 +52,15 @@ export const callSetup = obj({
   makes: opt(strs).describe('The columns it would make'), items: opt(num),
 });
 export const getSetupCall = setupCall;
+// estimate_only (its default): estimate. Started: setup_run.
+export const runColumns = obj({
+  setup_run: opt(setupRun), estimate: opt(info('What it would cost, by column')), changed,
+});
+// Scheduled reruns (tools-run-schedules.ts): the schedules (list), one schedule, or what was deleted.
+export const manageRunSchedule = obj({
+  schedules: opt(z.array(info('A schedule'))), schedule: opt(info('The schedule: its settings, next_at, last firing')),
+  deleted: opt(str),
+});
 // No setup_run_id: setup_runs. With one: that setup run.
 export const getSetupRun = obj({ setup_runs: opt(z.array(setupRun)), ...setupRun.partial().shape });
 export const controlSetupRun = obj({ ...setupRun.shape, changed });

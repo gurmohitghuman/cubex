@@ -17,7 +17,8 @@ import { rerunEnrichmentColumn } from './enrich-rerun';
 import { rerunWaterfallColumn } from './waterfall-rerun';
 import type { RunFail } from './run-shared';
 import type { RunColumn, RunKind } from './run-controls-column';
-import { enrichRowsOf, modeOf, NOTHING, type RunTarget } from './run-controls-target';
+import { enrichRowsOf, modeOf, NOTHING, scopeOf, type RunTarget } from './run-controls-target';
+import { rowMostOf } from './setup-estimate';
 
 export interface RunControlEstimate {
   kind: RunKind; column: string; rows: number;
@@ -28,6 +29,8 @@ export interface RunControlEstimate {
   // An enrichment's or a waterfall's run limit at these figures (the start keeps it).
   spendLimitUsd: number | null;
   reusedRows: number;        // an enrichment's rows reusing a found answer at $0
+  // An AI run's most for one row, which its hard spend limit keeps room for (a column run's ceiling); else null.
+  rowMostUsd?: number | null;
   note: string | null;
 }
 type Outcome = { ok: RunControlEstimate } | RunFail;
@@ -50,7 +53,8 @@ const latestAi = (sheetId: string, userId: string, main: string) => db.prepare(`
 // The rows an AI or HTTP rerun takes; null: every row (the estimate counts the sheet).
 async function rerunRows(sheetId: string, userId: string, main: string, t: RunTarget): Promise<number[] | null> {
   if ('row' in t) return existingRowIndexes(sheetId, userId, [t.row]);
-  return t.rows === 'all' ? null : resolveRerunTargets(sheetId, userId, main, modeOf(t));
+  if (t.rows === 'all') return t.within ?? null;
+  return resolveRerunTargets(sheetId, userId, main, modeOf(t), scopeOf(t));
 }
 
 async function estimateAi(userId: string, sheetId: string, main: string, t: RunTarget): Promise<Outcome> {
@@ -75,7 +79,7 @@ async function estimateAi(userId: string, sheetId: string, main: string, t: RunT
   return {
     ok: {
       kind: 'ai', column: main, rows: est.ok.rows_to_process, lowUsd: cost?.low ?? null, highUsd: cost?.high ?? null,
-      basis: 'range', spendLimitUsd: null, reusedRows: 0,
+      basis: 'range', spendLimitUsd: null, reusedRows: 0, rowMostUsd: cost ? rowMostOf(est.ok) : null,
       note: [cost ? null : est.ok.model ? `No price is known for ${est.ok.model}.` : 'No AI model is set for it.',
         est.fetchNote].filter(Boolean).join(' ') || null,
     },

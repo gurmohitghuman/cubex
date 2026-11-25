@@ -8,6 +8,7 @@ import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { deviceLoginLimiter, loginLimiter } from '../lib/limits';
 import { sentDeviceCookie, setDeviceCookie, trustedDevice, type DeviceRequest } from '../lib/device-cookie';
 import { MAX_PASSWORD_LENGTH } from '../lib/constants';
+import { CROSS_SITE_REFUSED, crossSiteWrite } from '../lib/cross-site';
 
 // Single-user auth. Cubex has exactly one account: whoever opens a fresh install
 // first chooses the password (POST /setup), unless INITIAL_PASSWORD created the
@@ -28,15 +29,10 @@ router.use((err: any, _req: express.Request, res: express.Response, next: expres
   return res.status(err.type === 'entity.too.large' ? 413 : 400).json({ error: 'Invalid request body' });
 });
 
-// Defense in depth for the same attack: browsers label every request with
-// Sec-Fetch-Site, and Cubex's own pages are always 'same-origin' (in dev Vite
-// proxies /api). Anything else is another site submitting to these routes.
-// Non-browser clients (curl, scripts) don't send the header.
+// Defense in depth for the same attack: another site's request is refused by
+// its Sec-Fetch-Site (lib/cross-site.ts), as every cookie-session write is.
 router.use((req, res, next) => {
-  const site = req.get('sec-fetch-site');
-  if (req.method === 'POST' && site && site !== 'same-origin' && site !== 'none') {
-    return res.status(403).json({ error: 'Cross-site request refused' });
-  }
+  if (crossSiteWrite(req)) return res.status(403).json({ error: CROSS_SITE_REFUSED });
   next();
 });
 

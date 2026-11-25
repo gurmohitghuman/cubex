@@ -11,7 +11,9 @@
 // (auto-run isn't turned on after a test). With a ceiling (maxCostUsd), a start
 // whose estimate could pass it, or that has a step with no price (unless
 // allowUnpriced), is refused ('over_ceiling') and creates nothing; the ceiling
-// is kept in the record's plan for its steps' limits (setup-ceiling.ts).
+// is kept in the record's plan for its steps' limits (setup-ceiling.ts). The
+// check for another live setup making the same columns is made again right
+// before the record is written, so two uses at once start one.
 // fitSetup is the half before the price, shared with a setup call's estimate
 // on its items, which has no sheet (setup-call-estimate.ts).
 import { db } from '../lib/db';
@@ -135,6 +137,10 @@ export async function applySetup(
   if (capped) return { fail: 'forbidden', message: capped };
   const busy = sheetBusyWith(sheetId);
   if (busy) return { fail: 'conflict', message: busyMessage(busy) };
+  // Asked again, with no wait before the record is written: another use of a setup making these columns may have
+  // written its record while this one picked its models or priced it (as column runs do, column-run.ts).
+  const clash = liveSetupClash(userId, sheetId, makes);
+  if (clash) return clash;
   const choices = { inputs: fitted.ok.inputs, names: input.names ?? {}, models: input.models ?? {} };
   const kept = priced && ceiling.maxCostUsd !== null ? { ceiling: setupCeilingOf(priced, ceiling) } : {};
   const id = insertSetupRun({

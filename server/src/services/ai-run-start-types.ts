@@ -35,6 +35,9 @@ export interface AiRunStartParams {
   spendLimitUsd?: number | null;
   // Web fetch limits (lib/web-fetch-options.ts), kept on the run; undefined: none.
   fetchLimits?: FetchLimits;
+  // Save the setup as the column's and run nothing (services/column-setup-save.ts): every check a run makes,
+  // no rows, no cost. Not with outputColumns or targetRowIndexes.
+  saveOnly?: boolean;
 }
 
 export type AiRunStartOutcome =
@@ -48,5 +51,7 @@ export type AiRunStartOutcome =
       webSearch?: SearchPlan | null;
       // The rule as stored (Cubex's spelling), or null.
       runIf?: string | null;
+      // saveOnly: the setup was saved and nothing ran (runId is its record; reusedRows and targetCount 0).
+      saved?: true;
     } }
   | RunFail;

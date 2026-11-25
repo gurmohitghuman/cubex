@@ -1,0 +1,364 @@
+{
+ "endpoint": {
+  "id": "anyapi.x.post.comments",
+  "provider": "anyapi",
+  "provider_display": "AnyAPI",
+  "name": "X / Twitter Post Replies",
+  "summary": "Fetch the replies to any X (Twitter) post URL as structured records: author, text, and engagement. An empty result is valid and does not assert whether the target post exists.",
+  "note": "The replies to one post, keyed by post URL. A user's own replies across their timeline are a different job (`x.user.replies`), which AnyAPI does not serve.",
+  "method": "POST",
+  "path": "/v1/run/twitter.replies",
+  "scope": "any_account",
+  "tier": "core",
+  "kind": "data",
+  "domain": "post",
+  "call_template": "treg call anyapi.x.post.comments",
+  "cost": {
+   "type": "per_call",
+   "value": 0.0005,
+   "currency": "USD",
+   "unit": "call",
+   "reported_charge": {
+    "path": "costUsd",
+    "unit": "usd"
+   },
+   "source": "rate_card_api",
+   "source_url": "https://api.getanyapi.com/v1/apis/twitter.replies",
+   "checked": "2026-09-11",
+   "confidence": "verified",
+   "note": "The listed price is the cheapest source's; a failover to a dearer one costs more. 4 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0138 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A not-found or empty answer is billed too, at its own `costUsd`.",
+   "usd": 0.0005
+  },
+  "async": null,
+  "platform_eligible": true,
+  "platform_blocked": null,
+  "miss": null,
+  "status": null,
+  "status_note": null,
+  "superseded_by": null,
+  "verified": "2026-09-19",
+  "added": "2026-09-19",
+  "docs_url": "https://getanyapi.com/api/twitter/replies",
+  "has_example": true,
+  "input": {
+   "body": {
+    "cursor": {
+     "type": "string",
+     "required": false,
+     "note": "Opaque pagination cursor from a previous response's nextCursor. Omit for the first page; pass it to fetch the next page of replies."
+    },
+    "limit": {
+     "type": "integer",
+     "required": false,
+     "note": "Maximum number of results to return (1-40, default 40). Per-result lanes cost less at lower limits; a backup that bills its native page may cost up to the advertised request price.",
+     "min": 1,
+     "max": 40
+    },
+    "url": {
+     "type": "string",
+     "required": true,
+     "note": "Full URL of the X (Twitter) post to fetch replies for (e.g. https://www.example.com/sample).",
+     "example": "https://www.example.com/sample"
+    }
+   },
+   "bodyType": "json",
+   "queryArrayEncoding": "comma",
+   "queryParams": {
+    "fields": {
+     "type": "string",
+     "required": false,
+     "note": "Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, not the charge."
+    },
+    "max_items": {
+     "type": "integer",
+     "required": false,
+     "min": 0,
+     "note": "Caps the result rows returned; `_truncated` says how many were withheld. Not the charge."
+    },
+    "summary": {
+     "type": "boolean",
+     "required": false,
+     "note": "`true` returns only an outline: keys, item counts, per-field sizes."
+    },
+    "jq": {
+     "type": "string",
+     "required": false,
+     "note": "jq expression over the result envelope; its output replaces `output`. A failed expression returns the full result with `jqError`."
+    }
+   }
+  },
+  "capability": "x.post.comments",
+  "capability_description": "List a post's comments",
+  "platform": "x",
+  "platform_label": "X (Twitter)",
+  "observed": {
+   "samples": 160001,
+   "decided": 159650,
+   "ok_rate": 0.9882,
+   "p50_ms": 1627,
+   "p95_ms": 3480,
+   "last_ok_days": 0,
+   "hit_rate": 0.4792,
+   "hit_samples": 157746
+  },
+  "wallet": {
+   "payable": true,
+   "protocols": [
+    "mpp"
+   ],
+   "minimum_payment_micro": 10000,
+   "fee_bps": 0,
+   "note": "pay per call with a wallet, no account. A payment is at least $0.01; the call is charged only its real price, and the rest stays as this wallet's credit for its next calls (credit is not paid back as money)."
+  },
+  "reviews": {
+   "teams": 10,
+   "samples": [
+    {
+     "usefulness": "useful",
+     "reason": "Completed the reply tree with creator economics and product positioning.",
+     "client": "cli",
+     "month": "2026-11"
+    },
+    {
+     "usefulness": "useful",
+     "reason": "Returned author follow-up blog post link and replies",
+     "client": "cli",
+     "month": "2026-11"
+    },
+    {
+     "usefulness": "useful",
+     "reason": "Returned 36 replies; like counts missing",
+     "client": "claude-code",
+     "month": "2026-11"
+    }
+   ],
+   "share": {
+    "useful": 0.92,
+    "partly": 0.08,
+    "not_useful": 0.0
+   }
+  }
+ },
+ "provider": {
+  "service": "anyapi",
+  "display_name": "AnyAPI",
+  "limits": "no published per-key request-rate limit on /v1/run - AnyAPI does not advertise a quota it does not enforce. Spend is bounded instead by the wallet balance, the key's own spend cap, and the per-request `max_cost_usd` ceiling the caller sets. The unauthenticated /agent/signup trial route is limited to 3 per IP per hour.",
+  "pricing_url": "https://getanyapi.com/catalog",
+  "docs": "https://getanyapi.com/docs"
+ },
+ "siblings": [
+  {
+   "id": "crawl4ai.x.post.comments",
+   "provider": "crawl4ai",
+   "provider_display": "Crawl4AI",
+   "name": "Replies to an X (Twitter) post",
+   "scope": "any_account",
+   "kind": "data",
+   "cost": {
+    "type": "per_success",
+    "value": 0.45,
+    "currency": "credit",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.00045
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": null,
+   "params": [
+    "limit",
+    "tweet"
+   ],
+   "observed": null
+  },
+  {
+   "id": "justoneapi.x.twitter-get-post-comments-v1",
+   "provider": "justoneapi",
+   "provider_display": "Just One API",
+   "name": "X (Twitter) post comments by tweet id",
+   "scope": "",
+   "kind": "data",
+   "cost": {
+    "type": "per_success",
+    "value": 0.1,
+    "currency": "CNY",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.01476
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "tweetId",
+    "cursor"
+   ],
+   "observed": {
+    "samples": 2009,
+    "decided": 1655,
+    "ok_rate": 1.0,
+    "p50_ms": 3111,
+    "p95_ms": 4937,
+    "last_ok_days": 0,
+    "hit_rate": 0.0678,
+    "hit_samples": 1652
+   },
+   "reviews": {
+    "teams": 0
+   }
+  },
+  {
+   "id": "tikhub.x.twitter-web-fetch-latest-post-comments",
+   "provider": "tikhub",
+   "provider_display": "TikHub",
+   "name": "X (Twitter) newest post comments by tweet id",
+   "scope": "",
+   "kind": "data",
+   "cost": {
+    "type": "per_call",
+    "value": 0.001,
+    "currency": "USD",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.001
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "tweet_id",
+    "cursor"
+   ],
+   "observed": {
+    "samples": 113090,
+    "decided": 109021,
+    "ok_rate": 0.9941,
+    "p50_ms": 2170,
+    "p95_ms": 4068,
+    "last_ok_days": 0,
+    "hit_rate": 0.9096,
+    "hit_samples": 108378
+   },
+   "reviews": {
+    "teams": 0
+   }
+  },
+  {
+   "id": "tikhub.x.twitter-web-fetch-post-comments",
+   "provider": "tikhub",
+   "provider_display": "TikHub",
+   "name": "X (Twitter) post comments by tweet id",
+   "scope": "",
+   "kind": "data",
+   "cost": {
+    "type": "per_call",
+    "value": 0.001,
+    "currency": "USD",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.001
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "tweet_id",
+    "cursor"
+   ],
+   "observed": null,
+   "reviews": {
+    "teams": 5,
+    "share": {
+     "useful": 1.0,
+     "partly": 0.0,
+     "not_useful": 0.0
+    }
+   }
+  },
+  {
+   "id": "treg.x.post.comments",
+   "provider": "treg",
+   "provider_display": "treg",
+   "name": "x.post.comments \u2014 routed: best of 3 providers, own keys first",
+   "scope": "",
+   "kind": "routed",
+   "cost": {
+    "type": "per_success",
+    "value": 0.0005,
+    "currency": "USD",
+    "per": 1,
+    "unit": "call",
+    "varies": true,
+    "usd": 0.0005
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": null,
+   "params": [
+    "tweet_id"
+   ],
+   "observed": null
+  }
+ ],
+ "observed_pending": true,
+ "related_capabilities": [
+  {
+   "endpoint_id": "treg.x.search.posts",
+   "capability": "x.search.posts",
+   "does": "Search posts by keyword"
+  },
+  {
+   "endpoint_id": "treg.x.user.posts",
+   "capability": "x.user.posts",
+   "does": "List a user's recent posts"
+  },
+  {
+   "endpoint_id": "treg.x.user.profile",
+   "capability": "x.user.profile",
+   "does": "Get a user's public profile"
+  }
+ ],
+ "call_template": "treg call anyapi.x.post.comments",
+ "example_response": {
+  "output": {
+   "found": true,
+   "data": {
+    "items": [
+     {
+      "id": "1900099",
+      "url": "https://x.com/early_ellie/status/1900099",
+      "authorHandle": "early_ellie",
+      "authorName": "Early Ellie",
+      "text": "Trying this tomorrow!",
+      "likeCount": 12,
+      "replyCount": 1,
+      "createdUtc": 1795000500
+     }
+    ],
+    "nextCursor": ""
+   }
+  },
+  "provider": "anyapi",
+  "costUsd": 0.001,
+  "items": 1,
+  "replayed": false,
+  "source": {
+   "id": "sample",
+   "name": "Sample",
+   "kind": "api",
+   "artworkKey": "sample"
+  },
+  "resultId": "sample-result"
+ },
+ "hints": []
+}

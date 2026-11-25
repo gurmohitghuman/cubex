@@ -15,6 +15,8 @@ export type EnrichRowsScope = 'all' | 'filter' | 'selected'
 export type EnrichRowsStatus = 'any' | 'not_enriched' | 'no_result' | 'failed' | 'out_of_date' | 'empty_or_out_of_date'
 
 export interface EnrichRunRequest {
+  // Save: the setup becomes the column's and nothing runs (the answer says saved).
+  saveOnly?: boolean
   toolId: string
   preset: 'verified_email' | null
   columnName: string
@@ -44,6 +46,7 @@ export interface EnrichRunRequest {
 
 // destSheetId: where a list job's rows go (a new sheet the start made).
 export interface EnrichRunStarted {
+  saved?: boolean
   runId: string; statusColumn: string; outputColumns: string[]; destSheetId?: string | null
 }
 
