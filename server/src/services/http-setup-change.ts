@@ -3,7 +3,7 @@
 // next rerun, run or auto-run uses it. A new column is made empty, set up. A start that runs never takes an
 // existing column's name: one mistyped name would replace a column's setup and run every row again.
 import { db } from '../lib/db';
-import { getSheetColumns, sanitizeColumnName } from '../lib/sql-helpers';
+import { getSheetColumns, sanitizeColumnName, verifySheetOwnership } from '../lib/sql-helpers';
 import { sheetColumnKinds } from '../lib/column-types';
 import { type HTTPAPIConfig } from '../lib/http-request';
 import { saveHttpSetup } from './column-setup-save';
@@ -42,4 +42,19 @@ export function saveHttpColumnSetup(
   if ('fail' in saved) return saved;
   return { ok: { runId: saved.ok.setupId, saved: true, masterColumn: master, mappedColumns: mapped, targetCount: 0,
     runIf } };
+}
+
+// The edit dialog's read (GET /api/http/sheets/:id/column-setup): a plain HTTP API column's newest setup, as
+// stored, or why it can't be edited here (an enrichment or waterfall has its own drawer).
+export function httpColumnSetup(
+  sheetId: string, userId: string, name: string,
+): { ok: { column: string; config: HTTPAPIConfig } } | { fail: 'not_found' | 'bad_request'; message: string } {
+  if (!verifySheetOwnership(sheetId, userId)) return { fail: 'not_found', message: 'Sheet not found' };
+  const col = plainHttpColumn(sheetId, userId, name);
+  if (!col) return { fail: 'bad_request', message: `"${name}" isn't an HTTP API column.` };
+  const config = db.prepare(`SELECT config FROM http_runs WHERE rowid = (SELECT MAX(rowid) FROM http_runs
+    WHERE sheet_id = ? AND user_id = ? AND master_column_name = ?)`).pluck()
+    .get(sheetId, userId, col.master) as string | null | undefined;
+  if (!config) return { fail: 'not_found', message: 'No setup found for this column.' };
+  return { ok: { column: col.master, config: JSON.parse(config) as HTTPAPIConfig } };
 }
