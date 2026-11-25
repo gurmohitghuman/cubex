@@ -64,7 +64,8 @@ function responses(route: RouteDoc): Json {
   if (!Object.keys(own).some(status => Number(status) < 300)) own[200] = 'Success.';
   const out: Record<number, Json> = {};
   for (const [status, description] of Object.entries(own)) {
-    const media = (route.produces ?? ['json']).map(p => (p === 'csv' ? 'text/csv' : 'application/json'));
+    const media = (route.produces ?? ['json'])
+      .map(p => (p === 'csv' ? 'text/csv' : p === 'jsonl' ? 'application/x-ndjson' : 'application/json'));
     out[Number(status)] = Number(status) < 300
       ? { description, content: Object.fromEntries(media.map(m => [m, {}])) }
       : { description, content: ERROR_BODY };

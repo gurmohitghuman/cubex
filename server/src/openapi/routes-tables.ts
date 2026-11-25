@@ -4,6 +4,7 @@
 import { z } from 'zod';
 import { COLUMN_DELETE_WAIT_MS, MAX_SHEET_NAME_LENGTH, MAX_TABLE_NAME_LENGTH } from '../lib/constants';
 import { MAX_COLUMN_DESCRIPTION_CHARS, MAX_SHEET_DESCRIPTION_CHARS } from '../lib/constants-columns';
+import { ROW_COUNT_API_WAIT_MS } from '../lib/constants-row-counts';
 import { op, type RouteDoc } from './route-doc';
 import { toolBody } from './tool-schemas';
 
@@ -37,6 +38,9 @@ export const tableRoutes = (): RouteDoc[] => [
   op({
     method: 'get', path: '/tables', operationId: 'listTables', tag: 'tables', scope: 'read',
     summary: 'List the tables with their sheets, ids and row counts.',
+    description: `A sheet whose rows changed is counted again first, waiting up to ${ROW_COUNT_API_WAIT_MS / 1000} `
+      + 'seconds. One still being counted then answers its last count with row_count_updating: true: it may be out '
+      + 'of date.',
   }),
   op({
     method: 'post', path: '/tables', operationId: 'createTable', tag: 'tables', scope: 'write',
@@ -114,12 +118,14 @@ export const tableRoutes = (): RouteDoc[] => [
   }),
   op({
     method: 'get', path: '/sheets/{id}/export', operationId: 'exportSheetCsv', tag: 'tables', scope: 'read',
-    summary: 'Download a sheet as CSV, streamed, any size.',
+    summary: 'Download a sheet as CSV or JSON lines, streamed, any size.',
     query: z.object({
       view: z.string().optional().describe('A saved view, by name or id: export its rows and visible columns.'),
+      format: z.enum(['csv', 'jsonl']).optional()
+        .describe('csv (default), or jsonl: one {"id", "data"} object a line, as read_rows answers a row.'),
     }),
-    produces: ['csv'], conflict: true,
-    responses: { 200: 'The CSV: the rows up to the last one the sheet had when it began (rows added past that '
+    produces: ['csv', 'jsonl'], conflict: true,
+    responses: { 200: 'The file: the rows up to the last one the sheet had when it began (rows added past that '
       + 'while it downloads are not in it). An empty sheet gives an empty body.' },
   }),
   op({

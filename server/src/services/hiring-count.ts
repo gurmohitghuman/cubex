@@ -8,13 +8,15 @@ import { HIRING_COUNT_MAX_SEARCHES } from '../lib/constants';
 import { buildRequest } from '../lib/enrich-request';
 import { inputTemplates, type EnrichRunConfig } from '../lib/enrich-run-config';
 import { HIRING_DIRECT_TOOL_ID, SEARCH_COLUMNS } from '../lib/hiring/names';
+import { searchesATitle } from '../lib/hiring/title-words';
 import { countDirectJobs, countJobs, type JobCount, type SearchTerms } from './job-count';
 
-// The first searches with a role title (of the first HIRING_COUNT_MAX_SEARCHES rows).
+// The first searches with a role title to search for (of the first HIRING_COUNT_MAX_SEARCHES rows): one of
+// only punctuation isn't searched, so it isn't counted (lib/hiring/title-words.ts).
 function firstSearches(userId: string, sheetId: string): Array<Record<string, string>> {
   const rows = db.prepare('SELECT data FROM rows WHERE sheet_id = ? AND user_id = ? ORDER BY row_index LIMIT ?')
     .all(sheetId, userId, HIRING_COUNT_MAX_SEARCHES) as Array<{ data: string }>;
-  return rows.map(r => parseRowData(r.data)).filter(d => String(d[SEARCH_COLUMNS.role] ?? '').trim());
+  return rows.map(r => parseRowData(r.data)).filter(d => searchesATitle(String(d[SEARCH_COLUMNS.role] ?? ''), false));
 }
 
 function searchTerms(rows: Array<Record<string, string>>): SearchTerms[] {

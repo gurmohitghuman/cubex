@@ -1,7 +1,9 @@
+// Over 200 lines: one fixture (a 1M-row sheet among them) that every case reads, top to bottom.
 // get_workspace (services/workspace-overview.ts) through /mcp in both protocol eras, under the strict output
 // check: the token with its spend, the daily limit and the default model; the 20 tables and 50 sheets changed
 // most recently, never another account's or the trash's, with the totals and a note naming list_tables; rows
-// counted only up to 10,000, so a 1M-row sheet answers faster than list_tables, which counts them all; the runs
+// counted only up to 10,000, so a 1M-row sheet answers faster than list_tables counting them all (as after a
+// restart, its counts not made yet: lib/row-counts.ts); the runs
 // and setup runs going now, oldest first, 20 of each, with their counts; and the plans that keep it small,
 // migration 059's index among them, its WHERE the same as the statuses a run takes before it ends.
 import './strict-output'
@@ -9,11 +11,13 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import dbMod from '../../server/src/lib/db'
 import overviewMod from '../../server/src/services/workspace-overview'
+import rowCountsMod from '../../server/src/lib/row-counts'
 import runListMod from '../../server/src/services/run-list'
 import schemaMod from '../../server/src/mcp/output-schema'
 import { mcpHttpKit } from './mcp-http-kit'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { OVERVIEW_SQL, workspaceOverview } = overviewMod as typeof import('../../server/src/services/workspace-overview')
+const { forgetRowCounts } = rowCountsMod as typeof import('../../server/src/lib/row-counts')
 const { ACTIVE_STATUSES, ACTIVE_STATUS_SQL } = runListMod as typeof import('../../server/src/services/run-list')
 const { STRICT_OUTPUT } = schemaMod as typeof import('../../server/src/mcp/output-schema')
 
@@ -157,10 +161,11 @@ async function main() {
       active_setup_run_count: 0, active_setup_runs: [] })
   })
 
-  await check('a 1M-row sheet answers faster than list_tables, which counts every row', async () => {
+  await check('a 1M-row sheet answers faster than list_tables counting every row (after a restart)', async () => {
     const best = async (name: string) => {
       let least = Infinity
       for (let i = 0; i < 3; i++) {
+        forgetRowCounts()
         const started = performance.now()
         await modern('tools/call', { name, arguments: {} }, name)
         least = Math.min(least, performance.now() - started)

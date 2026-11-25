@@ -20,7 +20,8 @@ export interface SheetChange {
   summary: string;
   detail: Record<string, unknown> | null;
   // A line about something in the trash: whether it is still there (or still moving in, as a big column's
-  // cells do for a while after its delete answers).
+  // cells do for a while after its delete answers). A column's restore that left cells behind keeps its item,
+  // holding them, so its line says true.
   in_trash?: boolean;
 }
 

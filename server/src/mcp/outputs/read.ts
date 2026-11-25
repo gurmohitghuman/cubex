@@ -6,7 +6,11 @@ import {
   autoDedupe, autoRunNotice, bool, cells, changed, info, nul, num, opt, str, strs, trash, versions,
 } from './shared';
 
-const sheetEntry = obj({ id: str, name: str, position: num, row_count: num });
+const sheetEntry = obj({
+  id: str, name: str, position: num, row_count: num,
+  row_count_updating: opt(z.literal(true)).describe('true: still being counted after a change; row_count is its '
+    + 'last count, which may be out of date. Ask again in a moment.'),
+});
 export const listTables = obj({
   tables: z.array(obj({ id: str, name: str, created_at: str, updated_at: str, sheets: z.array(sheetEntry) })),
 });

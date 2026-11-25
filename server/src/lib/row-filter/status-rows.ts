@@ -13,6 +13,8 @@ import { cellOf, hasCell } from '../row-cell';
 export function rowWithStatus(
   data: Record<string, string>, runColumns: ReadonlyMap<string, string>, columns?: readonly string[],
   stale?: ReadonlySet<string>, errors?: ReadonlyMap<string, string>,
+  // A "⏭️ Condition not met" cell's why (services/skip-why.ts), by its run's state column.
+  why?: (state: string, data: Record<string, string>) => string[],
 ): Record<string, unknown> {
   const keys = columns ?? [...new Set([...Object.keys(data), ...runColumns.keys()])];
   const out: Record<string, unknown> = {};
@@ -25,7 +27,8 @@ export function rowWithStatus(
     const view = cellStatusView(cellOf(data, column), state === column ? '' : cellOf(data, state),
       stale?.has(state) ?? false);
     const full = view.status === 'error' ? errors?.get(state) : undefined;
-    out[column] = full ? { ...view, error: full } : view;
+    const reasons = view.status === 'condition_not_met' && why ? why(state, data) : undefined;
+    out[column] = full ? { ...view, error: full } : reasons ? { ...view, why: reasons } : view;
   }
   return out;
 }

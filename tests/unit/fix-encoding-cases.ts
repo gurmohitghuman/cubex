@@ -165,8 +165,6 @@ export const ROWS: Row[] = [
     `10${NB}×²`, `A${NB}×${NB}B`),
   ...repair('review 5, should-fix 1, Hebrew', FOUR, 'נתניהו', 'שלום', 'מחיר: 100₪', 'Nike שלום', 'עברית'),
   ...left('known edge, a Hebrew letter alone', 'ש', [['Windows-1252', 0, false], ['twice Windows-1252', 1, true]]),
-  ...left('known edge, a Hebrew word glued to a Latin word', 'Nikeשלום', [['Latin-1', 0, true],
-    ['Windows-1252', 0, true], ['twice Latin-1', 0, true], ['twice Windows-1252', 0, true]]),
   // Lithuanian Jų and Tų have the footnote shape after a capital, which stays (review 6 took nit 2 back).
   row('known edge, Lithuanian Jų and Tų', 'JÅ³ vaikai ir Å¡uo', 'JÅ³ vaikai ir šuo', true),
   row('known edge, Lithuanian Jų and Tų', 'TÅ³ Å¾moniÅ³', 'TÅ³ žmonių', true),
@@ -183,15 +181,26 @@ export const ROWS: Row[] = [
     ['SÃ£o Paulo AMANHÃ³', 'São Paulo AMANHÃ³'], ['CafÃ© AMANHÃ²', 'Café AMANHÃ²'], ['MÃ¼ller GÅ³', 'Müller GÅ³'],
     ['MÃ¼ller TÈ¹', 'Müller TÈ¹'], ['MÃ¼ller MÄ³', 'Müller MÄ³'], ['MÃ¼ller MÅ³', 'Müller MÅ³']]
     .map(([v, gives]) => row('review 6, should-fix 1, a footnote word beside a garbled word', v, gives, true)),
-  // Nit 2: Hebrew abbreviations of single letters stay garbled (their × sequences touch no other); a value with
-  // a Hebrew run repairs whole.
-  ...left('known edge, a Hebrew abbreviation', '100 ש"ח', [['Latin-1', 0, true], ['Windows-1252', 0, false],
-    ['twice Latin-1', 0, true], ['twice Windows-1252', 1, true]]),
-  ...left('known edge, a Hebrew abbreviation', 'ע"י', [['Windows-1252', 0, false],
-    ['twice Windows-1252', 1, true]]),
-  ...left('known edge, a Hebrew abbreviation', 'ת"א', [['Windows-1252', 0, true], ['twice Windows-1252', 0, true]]),
-  ...['(א)', "א'", 'א, ב, ג'].flatMap(w => left('known edge, a Hebrew abbreviation', w, [['Windows-1252', 0, true]])),
+  // Nit 2: a value with a Hebrew run repairs whole.
   ...repair('review 6, nit 2, Hebrew with a run', FOUR, 'בע"מ', 'צה"ל', 'ד"ר כהן', 'מחיר 100 ש"ח לק"ג'),
+
+  // The edges left after v0.8.6 (fix/garbled-edges). Hebrew abbreviations of single letters: two letters read
+  // from × joined by " or '' (or ״) are one word, so they repair in every form and are counted; so do a letter
+  // in a list of them, and one read from × and a C1 character (a Latin-1 form).
+  ...repair('edges after v0.8.6, a Hebrew abbreviation', FOUR, '100 ש"ח', '5 ק"ג', '30 ס"מ', '12 ק"מ', '80 מ"ר',
+    'ש"ח', 'ע"י', 'ת"א', "ק''כ", 'כ״נ', 'ב"נ', 'א, ב, ג'),
+  ...['(א)', "א'"].flatMap(w => repair('edges after v0.8.6, one Hebrew letter with a C1 character', ['Latin-1',
+    'Windows-1252'], w)),
+  // A Hebrew word glued to a Latin word comes as a run of Hebrew letters, which may sit in a Latin word.
+  ...repair('edges after v0.8.6, a Hebrew word glued to a Latin word', FOUR, 'Nikeשלום', 'iPhoneמגן'),
+  // × with a no-break space reads as נ, which never ends a Hebrew word: refused unless a sequence follows, so a
+  // real × between numbers stays beside a garbled word, and so does the sequence right before it.
+  row('edges after v0.8.6, × beside a garbled word', `CafÃ© 30${NB}×${NB}40 cm`, `Café 30${NB}×${NB}40 cm`, true),
+  row('edges after v0.8.6, × beside a garbled word', `MÃ¼ller 1920${NB}×${NB}1080`, `Müller 1920${NB}×${NB}1080`,
+    true),
+  row('edges after v0.8.6, × beside a garbled word', 'MÃ¼ller 3×£10', 'Müller 3×£10', true),
+  ...stay('edges after v0.8.6, × after a word in capitals', `DANZEATAÑ${NB}×${NB}2`, `ABBÉ${NB}×${NB}2`,
+    `AARÓ${NB}×${NB}2`, `10È${NB}×${NB}2`, '3×£10', `(a+b)${NB}×${NB}(c+d)`),
 ]
 
 // Values with no sequence to decode: fix_encoding can't change them, and the import must not count them (the

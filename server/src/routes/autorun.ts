@@ -8,6 +8,7 @@ import { verifySheetOwnership } from '../lib/sql-helpers';
 import { parseConditions } from '../lib/enrich-run-input';
 import { runFailHttpStatus } from '../services/run-shared';
 import { saveAutorunSettings, setSheetAutorunPaused } from '../services/autorun-settings';
+import { resumeAutorun, waitingRowsOf, WAITING_ROWS_REFUSAL } from '../services/autorun-resume';
 import { autorunTargetView, sheetAutorunView } from '../services/autorun-view';
 import { estimateAutorunRows } from '../services/autorun-estimate';
 import { parseRuleField } from '../lib/run-condition';
@@ -55,8 +56,13 @@ router.put('/sheets/:id/columns', async (req: AuthRequest, res) => {
       return res.status(400).json({ error: 'The daily cap must be a number.' });
     }
     // The account owner (cookie session) may set up auto-run on saved keys.
+    const delay = b.startDelayS === undefined ? undefined : num(b.startDelayS);
+    if (delay === undefined && b.startDelayS !== undefined) {
+      return res.status(400).json({ error: 'The start delay must be a number of seconds.' });
+    }
     const out = await saveAutorunSettings(req.userId!, req.params.id, {
       column: b.column, enabled: b.enabled, where, dailyCapUsd: cap, dailyRowCap: rowCap,
+      ...(b.startDelayS !== undefined ? { startDelayS: delay } : {}),
       ...(runIf ? { runIf: runIf.ok } : {}),
     }, { hasSecretsScope: true });
     if ('fail' in out) return res.status(runFailHttpStatus(out)).json({ error: out.message });
@@ -68,18 +74,24 @@ router.put('/sheets/:id/columns', async (req: AuthRequest, res) => {
 });
 
 // The header chip: pause or resume every auto-run on the sheet (or, with a
-// column, the dialog's Pause for that column).
-router.post('/sheets/:id/pause', (req: AuthRequest, res) => {
+// column, the dialog's Pause for that column). A resume takes waitingRows: run (default), empty_only or skip
+// (services/autorun-resume.ts).
+router.post('/sheets/:id/pause', async (req: AuthRequest, res) => {
   try {
     if (!UUID_PATTERN.test(req.params.id)) return badSheet(res);
-    const b = (req.body ?? {}) as { paused?: unknown; column?: unknown };
+    const b = (req.body ?? {}) as { paused?: unknown; column?: unknown; waitingRows?: unknown };
     if (typeof b.paused !== 'boolean') return res.status(400).json({ error: 'paused must be true or false.' });
     if (b.column !== undefined && (typeof b.column !== 'string' || !b.column.trim() || b.column.length > 200)) {
       return res.status(400).json({ error: 'Pick a column.' });
     }
-    if (!setSheetAutorunPaused(req.userId!, req.params.id, b.paused, b.column as string | undefined)) {
-      return res.status(404).json({ error: 'Sheet not found' });
+    const waiting = waitingRowsOf(b.waitingRows);
+    if (waiting === null || (waiting !== undefined && b.paused)) {
+      return res.status(400).json({ error: `${WAITING_ROWS_REFUSAL('waitingRows')} It goes with a resume.` });
     }
+    const column = b.column as string | undefined;
+    const done = b.paused ? setSheetAutorunPaused(req.userId!, req.params.id, true, column)
+      : await resumeAutorun(req.userId!, req.params.id, waiting, column);
+    if (!done) return res.status(404).json({ error: 'Sheet not found' });
     res.json(sheetAutorunView(req.params.id, req.userId!));
   } catch (error) {
     console.error('Auto-run pause error:', error);

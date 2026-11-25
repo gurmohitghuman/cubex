@@ -40,6 +40,7 @@ import { forgetUnlistedTransformPasses } from './column-transform-pass-moves';
 import { listRunInto } from './enrich-list-guard';
 import { pruneViewsToColumns } from './view-columns';
 import { GarbledTally, type GarbledSamples } from '../lib/garbled-cells';
+import { rowsChanged } from '../lib/rows-changed';
 
 export type CsvImportOutcome =
   | { ok: {
@@ -127,6 +128,7 @@ export async function importCsv(
         // starts at row 0 instead of after them.
         if (isPristineSeedSheet(sheetId, userId)) {
           db.prepare('DELETE FROM rows WHERE sheet_id = ? AND user_id = ?').run(sheetId, userId);
+          rowsChanged(sheetId);
           droppedSeedRows = true;
         }
         startingRow = nextRowIndex(sheetId, userId);
@@ -168,7 +170,8 @@ export async function importCsv(
           if (next >= job.end_row) { added = batch.length; break; }
           if (added > 0 && sliceClock() - began >= BULK_SLICE_MS) break;
           added++;
-          const data: Record<string, string> = {};
+          // Null-prototype: a column named "__proto__" is a key like any other (lib/csv-import-parse.ts).
+          const data: Record<string, string> = Object.create(null);
           const id = orderedUuid();
           for (const [k, v] of Object.entries(row)) {
             const stripped = stripControlChars(String(v));
@@ -179,6 +182,7 @@ export async function importCsv(
           lastRid = Number(insertRow.run(id, sheetId, userId, next++, JSON.stringify(data)).lastInsertRowid);
           firstRid ??= lastRid;
         }
+        if (added > 0) rowsChanged(sheetId);
         batch = batch.slice(added);
       };
       // Each flush one slice of a bulk writer: its WAL copied back on the checkpoint worker's thread
