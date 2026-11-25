@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { authenticateUser } from '../lib/auth';
 import { SESSION_COOKIE_NAME } from '../lib/cookie';
 import { actAs, APP } from '../lib/actor';
+import { CROSS_SITE_REFUSED, crossSiteWrite } from '../lib/cross-site';
 
 export interface AuthRequest extends Request {
   userId?: string;
@@ -20,6 +21,9 @@ function extractToken(req: Request): string | null {
 const appActor = actAs(() => APP);
 
 export const authenticateToken = (req: AuthRequest, res: Response, next: NextFunction) => {
+  // Another site's page on this host (another port) carries the session cookie: its writes are refused, before
+  // the session is read (lib/cross-site.ts).
+  if (crossSiteWrite(req)) return res.status(403).json({ error: CROSS_SITE_REFUSED });
   const token = extractToken(req);
   if (!token) {
     return res.status(401).json({ error: 'Access token required' });
