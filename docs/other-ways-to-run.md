@@ -2,7 +2,7 @@
 
 The [one-line installer](../README.md#install) is the easiest way. Everything in the README also applies to these, apart from where settings and data live and how you reset the password.
 
-These builds record their version when the image is built, as the installer does: a build from a release tag shows that release in **Settings → Account → Version**, which says when a newer one is out and puts a dot on Settings; a build from another commit shows `main` and its commit. It is read from the repository's git history; with none (a downloaded archive), set `CUBEX_VERSION` (for example `CUBEX_VERSION=v0.8.44 docker compose build`), or the version isn't recorded.
+These builds record their version when the image is built, as the installer does: a build from a release tag shows that release in **Settings → Account → Version**, which says when a newer one is out and puts a dot on Settings; a build from another commit shows `main` and its commit. It is read from the repository's git history; with none (a downloaded archive), set `CUBEX_VERSION` (for example `CUBEX_VERSION=v0.8.44 docker compose build`), or the version isn't recorded. On Coolify, if Settings shows no version, set **Source commit availability** to **Available during build** (Advanced → Build) and deploy again: the commit is then recorded.
 
 ## Coolify
 
