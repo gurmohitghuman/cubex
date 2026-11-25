@@ -47,7 +47,7 @@ function fill(sheetId: string, n: number, data: (i: number) => Record<string, st
   const insert = db.prepare('INSERT INTO rows (id, sheet_id, user_id, row_index, data) VALUES (?, ?, ?, ?, ?)')
   db.transaction(() => {
     for (let i = from; i < from + n; i++) insert.run(uuid(), sheetId, uid, i, JSON.stringify(data(i)))
-  })()
+  }).immediate()
 }
 // A webhook sheet with n rows the webhook added (its 📥 mark), after its marker column the given ones.
 function webhookSheet(name: string, columns: string[], n: number, data: (i: number) => Record<string, string>) {
