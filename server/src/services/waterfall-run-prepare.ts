@@ -113,7 +113,9 @@ export async function prepareWaterfallStart(
   if (!verifySheetOwnership(sheetId, userId)) return { fail: 'not_found', message: 'Sheet not found' };
   const columns = getSheetColumns(sheetId, userId, false);
   const span = sheetRowSpan(sheetId, userId);
-  if (span.count === 0) return bad('There are no rows to run on.');
+  // Saving without running: every check of the setup, none of the rows it would take.
+  const save = !!input.saveOnly;
+  if (span.count === 0 && !save) return bad('There are no rows to run on.');
   let prior: WaterfallRunConfig | null = null;
   if (input.continueColumn) {
     const run = newestWaterfallRun(sheetId, userId, input.columnName);
@@ -126,20 +128,21 @@ export async function prepareWaterfallStart(
     }
     prior = run.config;
   }
-  if (input.rows.mode === 'selected' && !input.rows.rowIndexes?.length) return bad('Select some rows first.');
+  if (!save && input.rows.mode === 'selected' && !input.rows.rowIndexes?.length) return bad('Select some rows first.');
   const rule = startRunRule(sheetId, userId, input.runIf);
   if ('fail' in rule) return rule;
   // A dry run picks its few rows itself: counting the whole sheet's would be wasted.
   // Out of date as the column's setup reads it before this run starts: its count, the estimate and seeding agree.
-  const stale = input.continueColumn && !input.dry
+  const stale = input.continueColumn && !input.dry && !save
     ? statusStaleCheck(sheetId, userId, input.columnName, input.rows.status) : null;
-  const inScope = input.dry ? span.count : await rowsInScope(sheetId, userId, input, span.count, rule.ok, stale);
-  if (inScope === 0 && !input.dry) {
+  const inScope = input.dry || save ? span.count
+    : await rowsInScope(sheetId, userId, input, span.count, rule.ok, stale);
+  if (inScope === 0 && !input.dry && !save) {
     const why = rule.ok ? 'No rows here pass "Only run if". Pick other rows to run.'
       : NOTHING_TO_RUN[input.rows.status] ?? 'There are no rows to run on.';
     return { ...bad(why), nothingToRun: true };
   }
-  const upperBound = Math.min(input.rows.test ?? inScope, inScope);
+  const upperBound = save ? inScope : Math.min(input.rows.test ?? inScope, inScope);
   const built = await buildWaterfall(input, {
     userId, sheetId, columns, sample: sampleRows(sheetId, userId), rowsUpperBound: upperBound, prior,
   });
@@ -169,7 +172,7 @@ export async function prepareWaterfallStart(
     waterfall: built.ok.block,
   };
   // An input another run holds would read as empty, and the row be skipped as missing it (lib/http-held-inputs.ts).
-  const held = heldRequestInput(sheetId, userId, config, resultColumn);
+  const held = save ? null : heldRequestInput(sheetId, userId, config, resultColumn);
   if (held) return heldFail(held);
   return {
     ok: {
