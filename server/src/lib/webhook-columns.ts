@@ -17,7 +17,8 @@ export function isWebhookRawColumn(sheetId: string, userId: string, columnName: 
 }
 
 // On column RENAME: keep webhook column references in sync. Updates the mapped
-// column name in webhook_mappings AND the raw marker name in webhook_sources.
+// column name in webhook_mappings, the raw marker name in webhook_sources, and
+// auto-delete's success column (services/webhook-auto-delete.ts).
 // Call INSIDE the rename transaction (like the http_column_associations updates).
 export function renameWebhookColumnRefs(
   sheetId: string, userId: string, oldName: string, newName: string,
@@ -30,6 +31,10 @@ export function renameWebhookColumnRefs(
   db.prepare(
     `UPDATE webhook_sources SET raw_column_name = ?
        WHERE sheet_id = ? AND user_id = ? AND raw_column_name = ?`,
+  ).run(newName, sheetId, userId, oldName);
+  db.prepare(
+    `UPDATE webhook_auto_delete SET success_column = ?, updated_at = datetime('now')
+       WHERE sheet_id = ? AND user_id = ? AND success_column = ?`,
   ).run(newName, sheetId, userId, oldName);
 }
 

@@ -7,8 +7,8 @@ import express from 'express';
 import { requireScope, TokenAuthRequest } from '../middleware/access-token-auth';
 import {
   addSheetWebhookField, createSheetWebhook, deleteSheetWebhook, getSheetWebhook, newSheetWebhookToken,
-  removeSheetWebhookField, removeSheetWebhookToken, rotateSheetWebhook, setSheetWebhookEnabled, sheetWebhookView,
-  type SheetWebhookFail, type SheetWebhookOutcome,
+  removeSheetWebhookAutoDelete, removeSheetWebhookField, removeSheetWebhookToken, rotateSheetWebhook,
+  setSheetWebhookAutoDelete, setSheetWebhookEnabled, sheetWebhookView, type SheetWebhookFail, type SheetWebhookOutcome,
 } from '../services/sheet-webhook';
 import type { WebhookSourceFull } from '../lib/webhook-service';
 import { linkBase } from '../lib/file-links';
@@ -79,6 +79,17 @@ router.delete('/sheets/:id/webhook', requireScope('write'), guarded('DELETE /v1/
   if ('fail' in out) return res.status(STATUS[out.fail]).json({ error: out.message });
   res.json({ deleted: true });
 }));
+
+// PUT auto-delete { keep_rows?, success_column?, copy_to_sheet_id? }: turn it on or change it. What it leaves out
+// stays (on a first PUT: 100 rows kept, no success column, no copy); null clears; any other field is a 400.
+router.put('/sheets/:id/webhook/auto-delete', requireScope('write'),
+  guarded('PUT /v1/sheets/:id/webhook/auto-delete', (req, res) =>
+    reply(req, res, setSheetWebhookAutoDelete(req.userId!, req.params.id, body(req)))));
+
+// DELETE auto-delete: turn it off. Rows already gone stay gone.
+router.delete('/sheets/:id/webhook/auto-delete', requireScope('write'),
+  guarded('DELETE /v1/sheets/:id/webhook/auto-delete', (req, res) =>
+    reply(req, res, removeSheetWebhookAutoDelete(req.userId!, req.params.id))));
 
 // POST fields { json_path, column, as? }: each event's value at json_path fills a new column, as text
 // (default) or as JSON.

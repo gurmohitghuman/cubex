@@ -23,7 +23,7 @@ From then on, each event adds a row below the existing data with the fields you 
 
 ### Over the API or MCP
 
-Scripts and AI agents can do the same with an access key ([MCP and API](mcp.md#sheet-webhooks)): `manage_sheet_webhook` over MCP, or `/api/v1/sheets/:id/webhook` over REST. They can turn the webhook on or off, read how many events came in and the last error, rotate the URL, require a token or remove it, and add or remove fields by path (`$.plan.name`). Making a table or sheet with `webhook: true` gives it a webhook in the same call. Only a key that can change the sheet (`write`) sees the URL, and only until the first event, as in the panel.
+Scripts and AI agents can do the same with an access key ([MCP and API](mcp.md#sheet-webhooks)): `manage_sheet_webhook` over MCP, or `/api/v1/sheets/:id/webhook` over REST. They can turn the webhook on or off, read how many events came in and the last error, rotate the URL, require a token or remove it, add or remove fields by path (`$.plan.name`), and set up [auto-delete](#auto-delete). Making a table or sheet with `webhook: true` gives it a webhook in the same call. Only a key that can change the sheet (`write`) sees the URL, and only until the first event, as in the panel.
 
 ## Making the URL reachable
 
@@ -63,6 +63,26 @@ Senders often send the same event twice. Turn on [auto-dedupe](../README.md#auto
 ### Adding a delivery again
 
 Fixed a mapping after some events came in? Open a row's raw event (its **Webhook** cell) and click **Add again**: the event is read again with the mappings as they are now and added as a new row, like a new event: the old row stays, unless [auto-dedupe](../README.md#auto-dedupe) keeps the newest row with a key, which sends the old one to the trash. The message and History say what happened. This works while the raw event is still kept (the newest 1,000 deliveries).
+
+## Auto-delete
+
+A busy webhook sheet can stay small: with auto-delete on, it keeps its newest rows, and older rows the webhook added are deleted once they're finished. Use it when the sheet is a pass-through: events come in, columns with [auto-run](enrichments.md#auto-run) enrich them or send them on, and the rows aren't needed after that.
+
+1. In the Webhook panel, under **Auto-delete**, click **Set up auto-delete**.
+2. **Rows to keep**: the newest rows that always stay, so you can watch events come in (100 if you leave it; 0 to 100,000).
+3. **Also wait for a result in** (optional): a row leaves only once this column has a result, not empty and not failed. Pick the column that sends the row on, such as an HTTP API column that posts it to your CRM: a row whose send failed stays until it succeeds.
+4. **Copy rows to** (optional): another sheet of the table, which gets each row before it leaves. Its columns are matched by name, and columns it doesn't have are added. The Webhook column stays behind.
+5. Click **Turn on** and confirm.
+
+**Which rows leave.** Only rows the webhook added (their Webhook cell has the 📥 mark), never rows you typed, imported or moved in, and never the newest ones you keep. A row leaves once it's finished: every column with auto-run on in the sheet has run on it, and it's not waiting to run or running. A column whose auto-run is paused, by you or by its daily cap, a missing key or errors, still holds its rows: they leave once it has run them, and the panel says what they wait for. A column with auto-run off holds nothing. A run that failed (❌) counts as run, unless that column is the success column. Rows auto-run left alone (an empty input, an "Only run if" rule that kept them out) count as run too. In a sheet with no auto-run, every webhook row older than the newest ones you keep is finished.
+
+**When.** Cubex checks every few seconds and deletes up to 5,000 rows a check, oldest first. It waits while a run is going in the sheet, or in the sheet it copies to, so it goes in between auto-run's batches. **Deleted rows don't go to the trash and can't be restored.** The panel counts them, and the sheet's History has one line an hour saying how many were deleted (and the destination's, how many were copied in). Rows you put back from the trash are webhook rows like any other: they leave again once they're older than the newest ones you keep.
+
+**The newest rows are the ones at the bottom,** where events land. A sort, an import or removing duplicates moves rows, so auto-delete then pauses until you check the order and save it again.
+
+It also pauses, and the panel says why, when the success column is no longer in the sheet, when the sheet it copies to is in the trash, deleted or full, or when that sheet refuses the copy (out of columns, say). Fix it, or save the settings again, and it goes on. Deleting the webhook turns auto-delete off. With [auto-dedupe](../README.md#auto-dedupe) on, a new row is checked against the rows still in the sheet only: a key whose row was deleted is new again.
+
+Over the API or MCP: `PUT /api/v1/sheets/:id/webhook/auto-delete` with `keep_rows`, `success_column` and `copy_to_sheet_id` (any of your sheets), or `manage_sheet_webhook` with `set_auto_delete`. What you leave out stays as it was; `null` clears the success column or the copy. `DELETE`, or `auto_delete_off`, turns it off. See [MCP and API](mcp.md#sheet-webhooks).
 
 ## Keeping it safe
 
