@@ -186,9 +186,12 @@ async function applyAutorunSettings(
 }
 
 // The sheet header's "Pause all" / "Resume all", or one column's Pause (the
-// dialog). A pause keeps its place: rows added meanwhile run on resume. An
-// access token that resumes it makes its batches its own (its spend cap counts them).
-export function setSheetAutorunPaused(userId: string, sheetId: string, paused: boolean, column?: string): boolean {
+// dialog). A pause keeps its place: rows added meanwhile run on resume, unless the resume dropped them first
+// (autorun-resume.ts; `waiting` says which, for History). An access token that resumes it makes its batches its own
+// (its spend cap counts them).
+export function setSheetAutorunPaused(
+  userId: string, sheetId: string, paused: boolean, column?: string, waiting?: 'run' | 'empty_only' | 'skip',
+): boolean {
   if (!verifySheetOwnership(sheetId, userId)) return false;
   const one = column === undefined ? '' : ' AND status_column = ?';
   const params = column === undefined ? [sheetId, userId] : [sheetId, userId, column];
@@ -201,6 +204,6 @@ export function setSheetAutorunPaused(userId: string, sheetId: string, paused: b
         access_token_id = COALESCE(?, access_token_id), rescan = 1, updated_at = datetime('now')
       WHERE sheet_id = ? AND user_id = ? AND enabled = 1${one}`).run(actorTokenId(), ...params);
   }
-  logAutorunPaused(sheetId, userId, paused, column);
+  logAutorunPaused(sheetId, userId, paused, column, paused ? undefined : waiting);
   return true;
 }

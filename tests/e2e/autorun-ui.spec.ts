@@ -1,13 +1,14 @@
 import { test, expect, Page } from '@playwright/test'
 import { authedApi, BASE } from './helpers'
 import { mockTreg } from './helpers-treg'
-import { freshTreg, startRun, verifiedEmailRun, waitRun } from './helpers-enrich'
+import { freshTreg, rowsOf, startRun, verifiedEmailRun, waitRun } from './helpers-enrich'
 import { autorunOf, seedViaWebhook } from './helpers-autorun'
 import { openDataMenu } from './helpers-ui'
 
 // Auto-run in the grid (plan U6, U10; Verification 33): the column menu turns
 // it on through its dialog (with the webhook warning), the header shows ⚡ and
-// its tooltip, the sheet header's chip pauses every auto-run, the CSV import
+// its tooltip, the sheet header's chip pauses every auto-run ("manual") and resumes it without running a row
+// that came in meanwhile, the CSV import
 // says what new rows set off; and a second tab, which started nothing, sees
 // auto-run cells paint live (it streams runs the change poll names).
 
@@ -28,7 +29,7 @@ test('turn on auto-run from the column menu; ⚡, tooltip, chip and the import n
   await page.setViewportSize({ width: 2200, height: 900 })
   const api = await authedApi()
   await freshTreg(api)
-  const { tableId, sheetId } = await seedViaWebhook(api, [{ Name: 'Maya Chen', Website: 'stripe.com' }])
+  const { tableId, sheetId, deliver } = await seedViaWebhook(api, [{ Name: 'Maya Chen', Website: 'stripe.com' }])
   await waitRun(api, await startRun(api, sheetId, verifiedEmailRun()), ['completed'])
 
   await context.addCookies((await api.storageState()).cookies)
@@ -51,11 +52,19 @@ test('turn on auto-run from the column menu; ⚡, tooltip, chip and the import n
 
   await page.getByTestId('autorun-chip').click()
   await page.getByRole('button', { name: 'Pause all auto-runs' }).click()
-  await expect(page.getByTestId('autorun-chip')).toHaveText('Auto-run paused', { timeout: 15_000 })
+  await expect(page.getByTestId('autorun-chip')).toHaveText('Auto-run: manual', { timeout: 15_000 })
   expect((await autorunOf(api, sheetId, COL)).pausedReason).toBe('user')
+  // A row comes in while paused; the resume goes on without running it.
+  await deliver({ Name: 'Ada Pause', Website: 'figma.com' })
+  await expect.poll(async () => (await rowsOf(api, sheetId)).some(r => r.Name === 'Ada Pause')).toBe(true)
   await page.getByTestId('autorun-chip').click()
   await page.getByRole('button', { name: 'Resume all auto-runs' }).click()
+  await expect(page.getByTestId('autorun-resume-choices')).toContainText('Keep existing results')
+  await page.getByRole('button', { name: /Continue without running them/ }).click()
   await expect(page.getByTestId('autorun-chip')).toHaveText('Auto-run on', { timeout: 15_000 })
+  // Auto-run looks every half second here: a few looks later the row is still not run.
+  await page.waitForTimeout(3_000)
+  expect((await rowsOf(api, sheetId)).find(r => r.Name === 'Ada Pause')?.[COL] ?? '').toBe('')
 
   // The CSV import says what new rows set off, with the pause toggle.
   await openDataMenu(page, 'Import CSV')
