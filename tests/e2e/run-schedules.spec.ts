@@ -6,7 +6,8 @@ import { mcpClient, call, callError, waitMcpRun } from './helpers-mcp'
 // Scheduled reruns over MCP and REST (services/run-schedule*.ts), against the mock treg: an enrichment column on a
 // sheet; a schedule made (fields checked), listed, changed, paused and resumed; fired now, it starts one column run
 // as the token (get_setup_run follows it) and keeps it in last_run_ids, its next time unchanged; a sheet with no run
-// columns says so in last_error; REST lists, makes, pauses and deletes, and a read-only token can only list.
+// columns says so in last_error; REST lists, makes, pauses and deletes, and a read-only token can only list. REST
+// prices a firing now without starting it.
 test('a run schedule: made, changed, paused, fired now as a column run, deleted', async () => {
   test.setTimeout(120_000)
   const api = await authedApi()
@@ -36,6 +37,15 @@ test('a run schedule: made, changed, paused, fired now as a column run, deleted'
   expect((await call(client, 'manage_run_schedule', { action: 'resume', schedule_id: made.id })).schedule.paused)
     .toBe(false)
 
+  // What firing it now would cost (REST): the enrichment column on the one row, and nothing starts.
+  const runsBefore = (await call(client, 'list_runs', { sheet_id: sheetId })).runs.length
+  const priced = await (await api.get(`${BASE}/api/v1/run-schedules/${made.id}/estimate`,
+    { headers: { Authorization: `Bearer ${token}` } })).json()
+  expect(priced.problems).toEqual([])
+  expect(priced.sheets.map((s: any) => [s.sheet_id, s.estimate.columns.map((c: any) => [c.column, c.rows])]))
+    .toEqual([[sheetId, [['Work email', 1]]]])
+  expect((await call(client, 'list_runs', { sheet_id: sheetId })).runs.length).toBe(runsBefore)
+
   const fired = (await call(client, 'manage_run_schedule', { action: 'fire_now', schedule_id: made.id })).schedule
   expect(fired.last_error).toBeNull()
   expect(fired.last_run_ids.length).toBe(1)
@@ -64,6 +74,11 @@ test('a run schedule: made, changed, paused, fired now as a column run, deleted'
   const ro = { Authorization: `Bearer ${readOnly}` }
   expect((await api.get(`${BASE}/api/v1/run-schedules`, { headers: ro })).status()).toBe(200)
   expect((await api.delete(`${BASE}/api/v1/run-schedules/${restId}`, { headers: ro })).status()).toBe(403)
+  // What firing it now would cost (REST): a sheet with no run columns says why it wouldn't start; a read-only token
+  // can't ask.
+  const bareCost = await (await api.get(`${BASE}/api/v1/run-schedules/${none.id}/estimate`, { headers: auth })).json()
+  expect([bareCost.sheets, bareCost.problems]).toEqual([[], ['The sheet has no run columns.']])
+  expect((await api.get(`${BASE}/api/v1/run-schedules/${made.id}/estimate`, { headers: ro })).status()).toBe(403)
   for (const id of [restId, none.id, made.id]) {
     expect((await api.delete(`${BASE}/api/v1/run-schedules/${id}`, { headers: auth })).status()).toBe(200)
   }
