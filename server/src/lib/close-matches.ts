@@ -37,10 +37,10 @@ const keyOf = (s: string) => s.slice(0, 1000).toLowerCase().replace(/[^\p{L}\p{N
 
 // How far a key is from what was given: 0 the same; 1 a key holding what was given (at least 3 characters:
 // "lea" in "Leads", a cut id); 2 plus the edits, when they are few for the length (1 for up to 7 characters,
-// up to 3 for longer); under 5 a key sharing a long start with what was given (SHARED_START: for "Company
-// summary (Data)", "Company summary (Output)"), the longer the start the closer; 6 a key inside what was given,
-// after every typo: for "Emial Address", "Email Address" (a typo of the whole) comes before "Address" (a part
-// of it). Infinity: not close.
+// up to 3 for longer, so 5 at most); just under 6 a key sharing a long start with what was given, after every
+// typo (SHARED_START: for "Company summary (Data)", "Company summary (Output)"), the longer the start the closer;
+// 6 a key inside what was given, after every typo: for "Emial Address", "Email Address" (a typo of the whole)
+// comes before "Address" (a part of it). Infinity: not close.
 const SHARED_START = { least: 8, share: 0.6 };
 const sharedStart = (a: string, b: string): number => {
   let n = 0;
@@ -56,7 +56,8 @@ function farness(given: string, key: string): number {
   const edits = long.length - short.length > allowed ? Infinity : editDistance(given, key, allowed);
   if (edits <= allowed) return 2 + edits;
   const start = sharedStart(given, key);
-  return start >= SHARED_START.least && start >= SHARED_START.share * short.length ? 5 - start / 1000 : Infinity;
+  // keyOf keeps 200 characters at most, so this stays between 5.8 and 6.
+  return start >= SHARED_START.least && start >= SHARED_START.share * short.length ? 6 - start / 1000 : Infinity;
 }
 
 // The items whose keys come closest to given, closest first, at most limit of them. When a key is the same

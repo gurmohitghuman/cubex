@@ -118,6 +118,10 @@ check('a name sharing a long start comes before a short name inside what was ask
   // The longer start ranks first.
   const runs = ['Lead score (Output)', 'Lead source (Output)'].map(name => ({ name }))
   assert.deepEqual(closeMatches('Lead scoring', runs, i => [i.name]).map(i => i.name)[0], 'Lead score (Output)')
+  // Every typo comes first, three edits too: a name sharing only a long start is after it.
+  const typo = ['Customer list', 'Custmer lifetme valu 2024'].map(name => ({ name }))
+  assert.deepEqual(closeMatches('Customer lifetime value 2024', typo, i => [i.name]).map(i => i.name),
+    ['Custmer lifetme valu 2024', 'Customer list'])
 })
 
 check('suggestColumn reads the same edits: a swap now finds its column', () => {
