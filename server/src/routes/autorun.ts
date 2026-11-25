@@ -55,8 +55,13 @@ router.put('/sheets/:id/columns', async (req: AuthRequest, res) => {
       return res.status(400).json({ error: 'The daily cap must be a number.' });
     }
     // The account owner (cookie session) may set up auto-run on saved keys.
+    const delay = b.startDelayS === undefined ? undefined : num(b.startDelayS);
+    if (delay === undefined && b.startDelayS !== undefined) {
+      return res.status(400).json({ error: 'The start delay must be a number of seconds.' });
+    }
     const out = await saveAutorunSettings(req.userId!, req.params.id, {
       column: b.column, enabled: b.enabled, where, dailyCapUsd: cap, dailyRowCap: rowCap,
+      ...(b.startDelayS !== undefined ? { startDelayS: delay } : {}),
       ...(runIf ? { runIf: runIf.ok } : {}),
     }, { hasSecretsScope: true });
     if ('fail' in out) return res.status(runFailHttpStatus(out)).json({ error: out.message });

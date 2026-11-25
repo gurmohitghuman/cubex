@@ -102,6 +102,8 @@ export const ENRICH_DAILY_LIMIT_MAX_USD = 100_000;
 // Background loops in the API process. Auto-run looks for rows to fill every
 // AUTORUN_SWEEP_MS (tests shorten it) and takes at most AUTORUN_MAX_ROWS a run.
 export const AUTORUN_SWEEP_MS = envInt('AUTORUN_SWEEP_MS', 15_000);
+// The longest an auto-run may wait after a row's last change before it runs it (migration 072).
+export const AUTORUN_MAX_START_DELAY_S = 600;
 export const AUTORUN_MAX_ROWS = 500;
 export const AUTORUN_HTTP_DEFAULT_DAILY_ROWS = 500;
 export const AUTORUN_HTTP_MAX_DAILY_ROWS = 1_000_000;

@@ -20,6 +20,7 @@ export interface AutorunColumnView {
   runIf: string | null;           // its "Only run if" rule (lib/run-condition.ts)
   dailyCapUsd: number | null;     // enrichment columns
   dailyRowCap: number | null;     // HTTP API columns
+  startDelayS: number;            // seconds a row waits after its last change (0: at once)
   usedTodayUsd: number;
   rowsToday: number;
 }
@@ -40,6 +41,7 @@ export function sheetAutorunView(sheetId: string, userId: string): SheetAutorunV
       // Older condition lists read as one rule (the dialog saves it back as one).
       runIf: e.run_if ?? ruleFromConditions(whereOf(e)),
       dailyCapUsd: e.daily_cap_micro === null ? null : e.daily_cap_micro / 1e6, dailyRowCap: e.daily_row_cap,
+      startDelayS: e.start_delay_s ?? 0,
       usedTodayUsd: used.spentMicro / 1e6 + used.aiUsd, rowsToday: used.rows,
     };
   }
