@@ -8,7 +8,9 @@ import { db } from './db';
 import { getSheetColumns, parseRowData } from './sql-helpers';
 import { contentDispositionFilename, escapeCsvCell } from './csv-safety';
 import { withSheetRead } from './sheet-busy';
-import { csvLine, eachPage, responseWriter, writeSheetCsv, writeSheetJsonl, type SheetExportPlan } from './csv-write';
+import {
+  csvLine, eachPage, responseTurn, responseWriter, writeSheetCsv, writeSheetJsonl, type SheetExportPlan,
+} from './csv-write';
 // Reuses read_rows' filter (services/row-filter.ts) rather than a second
 // implementation, so `where` means exactly the same thing on both tools.
 // (lib -> services is the unusual direction; row-filter itself only depends on
@@ -145,10 +147,12 @@ export const exportContentType = (format: ExportFormat): string =>
 
 export async function streamSheetCsv(
   sheetId: string, userId: string, res: Response, selection: ExportSelection = {}, format: ExportFormat = 'csv',
-): Promise<'ok' | 'not_found' | 'empty' | { busy: string } | { invalid: string }> {
+): Promise<'ok' | 'gone' | 'not_found' | 'empty' | { busy: string } | { invalid: string }> {
   const plan = planSheetExport(sheetId, userId, selection);
   if ('fail' in plan) return plan.fail === 'not_found' ? 'not_found' : { invalid: plan.error };
   if (!db.prepare('SELECT 1 FROM rows WHERE sheet_id = ? AND user_id = ? LIMIT 1').get(sheetId, userId)) return 'empty';
+  // Its turn on the connection first (responseTurn): the sheet is held only while this export can send.
+  if (!await responseTurn(res)) return 'gone';
   return withSheetRead(sheetId, async () => {
     res.setHeader('Content-Type', exportContentType(format));
     res.setHeader('Content-Disposition', contentDispositionFilename(plan.sheetName, format));
