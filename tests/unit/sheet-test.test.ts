@@ -202,17 +202,20 @@ await check('discard: the sheet is as it was and takes changes again; the copy t
   assert.ok('ok' in out, JSON.stringify(out))
   // A row deleted in the copy isn't listed in the trash under the sheet's name, only when the copy is asked for.
   const copyId = out.ok.test_sheet_id
-  db.transaction(() => deleteRowsToTrash(copyId, uid, 'grid', { ids: [rows(copyId)[0].id] }))()
+  db.transaction(() => deleteRowsToTrash(copyId, uid, 'grid', { ids: [rows(copyId)[0].id] })).immediate()
   assert.equal(listTrash(uid).items.length, 0)
   assert.equal(listTrash(uid, { sheetId: copyId }).items.length, 1)
   const gone = discardSheetTest(uid, sid)
   assert.ok('ok' in gone)
+  const version = () => db.prepare('SELECT data_version FROM sheets WHERE id = ?').pluck().get(sid) as number
+  const closing = version()
   assert.equal(busy.sheetBusyWith(sid), null)
   assert.equal(busy.sheetBusyWith(out.ok.test_sheet_id), hold.CLOSING, 'nothing new starts on the closing copy')
   await until(() => !testOfSheet(sid, uid), 'the test record goes')
   assert.equal(busy.sheetBusyWith(out.ok.test_sheet_id), null)
   assert.deepEqual(rows(sid).map(r => r.data), before)
   assert.equal(listTrash(uid, { sheetId: copyId }).items.length, 0, 'its trash went with the copy')
+  assert.ok(version() > closing, 'open grids hear that the test is gone')
 })
 
 await check('a restart holds an open test\'s sheet again', async () => {
