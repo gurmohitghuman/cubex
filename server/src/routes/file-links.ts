@@ -113,6 +113,9 @@ router.get('/download/:token', async (req, res) => {
   const { token } = req.params;
   if (!FILE_LINK_TOKEN_PATTERN.test(token)) return notFound(res);
   try {
+    // Its turn on the connection first (lib/csv-write.ts responseTurn): a client gone meanwhile leaves the link
+    // unused, and the link and its sheet are read as they are then (not expired, the columns as they are now).
+    if (!await responseTurn(res)) return;
     const link = findFileLink(token, 'download');
     if (!link) return notFound(res);
     // format: 'jsonl' for JSON lines (create_download_link format); a link from before has none: CSV.
@@ -125,9 +128,7 @@ router.get('/download/:token', async (req, res) => {
           error: `${plan.error} The sheet changed since this link was made; ask for a new one.`,
         });
     }
-    // Its turn on the connection first (lib/csv-write.ts responseTurn): a client gone meanwhile leaves the link
-    // unused. The link is used inside the read hold, so a busy sheet leaves it unused too.
-    if (!await responseTurn(res)) return;
+    // The link is used inside the read hold, so a busy sheet leaves it unused.
     const outcome = await withSheetRead(link.sheet_id, async () => {
       if (!useFileLink(link)) return 'used' as const;
       res.setHeader('Content-Type', exportContentType(jsonl ? 'jsonl' : 'csv'));
