@@ -150,7 +150,7 @@ router.post('/sheets/:id/runs/stop', requireScope('run'), async (req: TokenAuthR
   }
 });
 
-// GET /v1/sheets/:id/export — text/csv download (formula-injection-escaped), or with ?format=jsonl the same
+// GET /v1/sheets/:id/export: text/csv download (formula-injection-escaped), or with ?format=jsonl the same
 // rows as JSON lines ({ id, data } a line, lib/csv-write.ts jsonLine).
 // An empty sheet exports as an empty 200 body rather than the UI's 400 — an
 // agent script treats "nothing there yet" as data, not an error. ?view=<name or

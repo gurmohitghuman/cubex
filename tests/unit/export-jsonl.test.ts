@@ -19,7 +19,9 @@ runMigrations()
 
 let failures = 0
 async function check(label: string, fn: () => void | Promise<void>) {
-  try { await fn(); console.log('ok  ', label) } catch (e) { failures++; console.log('FAIL', label, '\n ', (e as Error).message) }
+  try { await fn(); console.log('ok  ', label) } catch (e) {
+    failures++; console.log('FAIL', label, '\n ', (e as Error).message)
+  }
 }
 
 const uid = uuid(), tid = uuid(), tokenId = uuid()
@@ -57,7 +59,10 @@ const get = (path: string) => fetch(`${base}${path}`, { headers: { authorization
 const lines = (text: string) => text.split('\n').filter(Boolean).map(l => JSON.parse(l))
 
 const expected = [
-  { id: leads.ids[0], data: { Name: 'Ada', id: 'lead-1', Score: 92, Won: true, Notes: 'two\nlines', constructor: 'c' } },
+  {
+    id: leads.ids[0],
+    data: { Name: 'Ada', id: 'lead-1', Score: 92, Won: true, Notes: 'two\nlines', constructor: 'c' },
+  },
   { id: leads.ids[1], data: { Name: '=HYPERLINK("x")', id: '', Score: 0, Won: false, Notes: '', constructor: '' } },
   { id: leads.ids[2], data: { Name: 'Zoë 🚀', id: '', Score: '', Won: '', Notes: '', constructor: '' } },
 ]
