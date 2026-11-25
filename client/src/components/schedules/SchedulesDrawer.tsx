@@ -6,6 +6,7 @@ import { Drawer, DrawerBody, DrawerHeader } from '@/components/Drawer'
 import {
   runSchedulesAPI, type NewRunSchedule, type RunSchedule, type ScheduleCadence, type ScheduleRows,
 } from '@/utils/api'
+import { ScheduleCostLine, ScheduleItemCost, useFormCost } from './ScheduleCost'
 
 interface Props { isOpen: boolean; onClose: () => void; sheetId: string }
 
@@ -60,6 +61,7 @@ export const SchedulesDrawer: React.FC<Props> = ({ isOpen, onClose, sheetId }) =
   }, [sheetId])
   useEffect(() => { if (isOpen) void load() }, [isOpen, load])
   useEffect(() => { setForm(f => ({ ...f, sheet_id: sheetId })) }, [sheetId])
+  const formCost = useFormCost(sheetId, isOpen, form, runColumns)
 
   const act = async (id: string, fn: () => Promise<unknown>, done?: string) => {
     setBusy(id)
@@ -125,6 +127,7 @@ export const SchedulesDrawer: React.FC<Props> = ({ isOpen, onClose, sheetId }) =
                 Next: {s.paused ? 'paused' : when(s.next_at)} · Last: {when(s.last_fired_at)}
               </p>
               {s.last_error && <p className="text-xs text-red-600" data-testid="schedule-error">{s.last_error}</p>}
+              <ScheduleItemCost sheetId={sheetId} schedule={s} />
               <div className="mt-2 flex gap-3 text-xs">
                 <button type="button" className="flex items-center gap-1 underline text-gray-700"
                   disabled={busy !== null} data-testid="schedule-pause"
@@ -215,6 +218,7 @@ export const SchedulesDrawer: React.FC<Props> = ({ isOpen, onClose, sheetId }) =
                 onChange={e => set('max_cost_usd', e.target.value === '' ? null : Number(e.target.value))} />
             </label>
           </div>
+          <ScheduleCostLine state={formCost} testId="schedule-form-cost" />
           <button type="submit" className="btn-primary" disabled={busy !== null || runColumns.length === 0}
             data-testid="schedule-add">
             {busy === 'new' ? 'Adding…' : 'Add schedule'}

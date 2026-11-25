@@ -9,6 +9,7 @@ import {
   changeSchedule, createSchedule, deleteSchedule, listSchedules, loadSchedule, pauseSchedule, scheduleView,
 } from '../services/run-schedule-store';
 import { fireScheduleNow, sheetRunColumns } from '../services/run-schedule-fire';
+import { estimateScheduleFiring } from '../services/run-schedule-estimate';
 import { verifySheetOwnership } from '../lib/sql-helpers';
 
 type Scope = 'read' | 'run';
@@ -66,6 +67,10 @@ export function runScheduleRoutes(base: string, allow: (scope: Scope) => express
 
   router.delete(`${base}/:id`, allow('run'), guarded(`DELETE ${base}/:id`, (req, res) =>
     reply(res, deleteSchedule(req.userId!, req.params.id))));
+
+  // What firing it now would cost, as the caller (fire now runs as them): nothing starts.
+  router.get(`${base}/:id/estimate`, allow('run'), guarded(`GET ${base}/:id/estimate`, async (req, res) =>
+    reply(res, await estimateScheduleFiring(req.userId!, req.params.id, { hasSecretsScope: secrets(req) }))));
 
   // Fire it once now; its next time stays as it was.
   router.post(`${base}/:id/fire`, allow('run'), guarded(`POST ${base}/:id/fire`,

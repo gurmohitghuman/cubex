@@ -5,7 +5,9 @@ import { mcpClient, call, waitMcpRun } from './helpers-mcp'
 
 // The sheet's Scheduled reruns drawer (the ⋯ menu): it lists the sheet's run columns to pick from, adds a weekly
 // schedule (it shows when it fires next), pauses and resumes it, runs it now (the last firing shows, no error),
-// and deletes it. A run now that can't start (its column renamed since) says why instead of "Started".
+// and deletes it. A run now that can't start (its column renamed since) says why instead of "Started". What a run
+// now would cost shows before Add schedule (the form's rows: none to run, then the one row) and on the schedule
+// before Run now, and the schedule whose column is gone says it wouldn't start before Run now is clicked.
 test('scheduled reruns from the sheet menu: add, pause, run now, delete', async ({ page, context }) => {
   test.setTimeout(120_000)
   const api = await authedApi()
@@ -23,15 +25,20 @@ test('scheduled reruns from the sheet menu: add, pause, run now, delete', async 
   await page.getByTestId('sheet-schedules').click()
   await expect(page.getByTestId('schedules-empty')).toBeVisible({ timeout: 10_000 })
   await expect(page.getByTestId('schedule-form')).toContainText('Work email')
+  const formCost = page.getByTestId('schedule-form-cost')
+  await expect(formCost).toHaveText('A run now would find no rows to run.')
 
   await page.getByTestId('schedule-cadence').selectOption('weekly')
   await page.getByTestId('schedule-rows').selectOption('all')
+  const oneRow = /^A run now would cost (nothing|about .+) for 1 row\.$/
+  await expect(formCost).toHaveText(oneRow)
   await page.getByTestId('schedule-add').click()
   const item = page.getByTestId('schedule-item')
   await expect(item).toHaveCount(1)
   await expect(item).toContainText('Every Monday at 09:00')
   await expect(item).toContainText('Every run column')
   await expect(item).toContainText('Last: never')
+  await expect(item.getByTestId('schedule-cost')).toHaveText(oneRow)
 
   await page.getByTestId('schedule-pause').click()
   await expect(item).toContainText('paused')
@@ -53,6 +60,7 @@ test('scheduled reruns from the sheet menu: add, pause, run now, delete', async 
   await page.getByTestId('more-menu').click()
   await page.getByTestId('sheet-schedules').click()
   await expect(item).toHaveCount(1)
+  await expect(item.getByTestId('schedule-cost')).toContainText(/^A run now wouldn't start: .*Work email/)
   await page.getByTestId('schedule-fire').click()
   await expect(page.getByText(/^It didn't start: /)).toBeVisible({ timeout: 10_000 })
   await expect(page.getByTestId('schedule-error')).toBeVisible()

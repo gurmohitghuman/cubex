@@ -997,6 +997,7 @@ Import the file into Postman, Insomnia or Swagger UI, or generate a client from 
 | `GET /run-schedules` · `GET /run-schedules/:id` | Scheduled reruns, soonest first (`?sheet_id=` or `?table_id=` for those), or one. `read` scope. |
 | `POST /run-schedules` | The fields of `manage_run_schedule` create: `{"sheet_id": "…", "rows": "empty", "cadence": "daily", "at_time": "09:00", "time_zone": "UTC"}`. `201` with the schedule. `run` scope. |
 | `PATCH /run-schedules/:id` · `DELETE /run-schedules/:id` · `POST /run-schedules/:id/fire` | Change it (`paused: true` or `false` pauses or resumes it), delete it, or fire it once now. `run` scope. |
+| `GET /run-schedules/:id/estimate` | What firing it now would cost, as you (nothing starts): `sheets` (each sheet a firing would start a column run on, with that run's estimate, as `run_columns` with `estimate_only`), `low_usd` and `high_usd` over them, and `problems` (what wouldn't start, and why, as `last_error` would say it). `run` scope. |
 
 ### Setup versions
 
