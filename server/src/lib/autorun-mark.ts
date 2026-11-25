@@ -79,9 +79,11 @@ function queue(w: Watcher, sheetId: string, userId: string, rows: RowRef, quiet 
     followQueued(w.id);
     return;
   }
+  // Queued again, a row's wait starts over: a start delay (migration 072) counts from its last write.
   const path = jsonPath(w.status_column);
-  db.prepare(`INSERT OR IGNORE INTO autorun_pending (autorun_id, user_id, row_id)
-    SELECT ?, user_id, id FROM rows WHERE ${sel.where} AND ${NOT_RUN}`)
+  db.prepare(`INSERT INTO autorun_pending (autorun_id, user_id, row_id)
+    SELECT ?, user_id, id FROM rows WHERE ${sel.where} AND ${NOT_RUN}
+    ON CONFLICT (autorun_id, row_id) DO UPDATE SET created_at = excluded.created_at`)
     .run(w.id, ...sel.params(sheetId, userId), ...notRunParams(path));
 }
 
