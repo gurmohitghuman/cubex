@@ -18,6 +18,7 @@ import { busyMessage, sheetBusyWith } from '../lib/sheet-busy';
 import type { ListInput } from '../lib/enrich-list-input';
 import type { ListCopy, ListField } from '../lib/enrich-list';
 import type { RunFail } from './run-shared';
+import { isTestCopy, LIST_ON_TEST_COPY } from './sheet-test-store';
 
 export interface DestPlan {
   tableId: string;
@@ -75,6 +76,7 @@ export function planListDest(
   const source = db.prepare('SELECT table_id FROM sheets WHERE id = ? AND user_id = ?')
     .get(sourceSheetId, userId) as { table_id: string } | undefined;
   if (!source) return { fail: 'not_found', message: 'Sheet not found' };
+  if (isTestCopy(sourceSheetId)) return bad(LIST_ON_TEST_COPY);
   const gone = input.copy.find(c => c.value === undefined && !sourceColumns.includes(c.from));
   if (gone) return bad(`The column "${gone.from}" isn't in this sheet anymore.`);
   let sheetId: string | null = null, newName: string | null = null, name: string;

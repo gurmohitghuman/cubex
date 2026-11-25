@@ -39,6 +39,10 @@ const { aiRunStamper } = await import('../../server/src/lib/run-inputs/stampers'
 const { ensureRunInputKey } = await import('../../server/src/lib/run-inputs/keys')
 const { deleteRowsToTrash } = await import('../../server/src/services/trash-rows')
 const { listTrash } = await import('../../server/src/services/trash-read')
+const { planListDest } = await import('../../server/src/services/enrich-list-dest')
+const { planListStart } = await import('../../server/src/services/enrich-list-start')
+const { autorunListProblem } = await import('../../server/src/services/autorun-list')
+const { LIST_ON_TEST_COPY } = await import('../../server/src/services/sheet-test-store')
 
 const uid = uuid(), tid = uuid(), sid = uuid()
 const COLS = ['Name', 'Domain', 'Fit', 'Short']
@@ -123,6 +127,20 @@ await check('a second test, and a test of the copy, are refused', async () => {
   assert.ok('fail' in again && /already being tested/.test(again.message))
   const ofCopy = await startSheetTest(uid, copy, {})
   assert.ok('fail' in ofCopy && /test copy/.test(ofCopy.message))
+})
+
+await check('a list enrichment can\'t run on the copy or auto-run there; on the sheet its plan goes on', () => {
+  const list = { dest: { newSheetName: 'People' }, provider: null, maxItems: 5, fields: null, copy: [],
+    dedupePath: null }
+  const planned = planListDest(uid, copy, list as never, COLS)
+  assert.ok('fail' in planned && planned.message === LIST_ON_TEST_COPY, JSON.stringify(planned))
+  const started = planListStart(uid, copy, { list, rows: { test: 3 } } as never,
+    { enrichment: { v: 1, list: { fields: null } } } as never, COLS)
+  assert.ok('fail' in started && started.message === LIST_ON_TEST_COPY, JSON.stringify(started))
+  const fields = [{ path: '$.name', columnName: 'Person' }]
+  const config = { enrichment: { v: 1, list: { fields, destSheetId: sid } } }
+  assert.equal(autorunListProblem(copy, uid, config as never), LIST_ON_TEST_COPY)
+  assert.ok('ok' in planListDest(uid, sid, list as never, COLS))
 })
 
 await check('webhook deliveries wait, kept, while the sheet is tested', () => {
