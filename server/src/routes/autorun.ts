@@ -57,7 +57,7 @@ router.put('/sheets/:id/columns', async (req: AuthRequest, res) => {
     // The account owner (cookie session) may set up auto-run on saved keys.
     const out = await saveAutorunSettings(req.userId!, req.params.id, {
       column: b.column, enabled: b.enabled, where, dailyCapUsd: cap, dailyRowCap: rowCap,
-      ...(runIf ? { runIf: runIf.ok } : {}),
+      ...(runIf ? { runIf: runIf.ok } : {}), ...(b.keepPause === true ? { keepPause: true } : {}),
     }, { hasSecretsScope: true });
     if ('fail' in out) return res.status(runFailHttpStatus(out)).json({ error: out.message });
     res.json(sheetAutorunView(req.params.id, req.userId!));

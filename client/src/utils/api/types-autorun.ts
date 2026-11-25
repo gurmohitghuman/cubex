@@ -58,6 +58,8 @@ export interface AutorunSave {
   runIf?: string
   dailyCapUsd?: number | null
   dailyRowCap?: number | null
+  // An edit's Save (the setup saved, nothing run): an auto-run already on and paused stays paused.
+  keepPause?: boolean
 }
 
 export interface AutorunRowsEstimate {

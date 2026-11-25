@@ -63,6 +63,16 @@ test('enrichment and waterfall columns: Save in the drawer runs nothing', async 
   ])
   const enrich = await api.post(`/api/enrich/sheets/${sheetId}/runs`, { data: verifiedEmailRun({ saveOnly: true }) })
   expect(enrich.status(), await enrich.text()).toBe(200)
+  // Its auto-run on, then paused by hand: the drawer's Save keeps it paused (a Save runs nothing).
+  const on = await api.put(`/api/autorun/sheets/${sheetId}/columns`, { data: {
+    column: 'Work email', enabled: true, dailyCapUsd: 1 } })
+  expect(on.status(), await on.text()).toBe(200)
+  const paused = await api.post(`/api/autorun/sheets/${sheetId}/pause`, {
+    data: { paused: true, column: 'Work email' } })
+  expect(paused.status(), await paused.text()).toBe(200)
+  const autoRun = () => readDb(db => db.prepare(`SELECT enabled, paused_reason FROM autorun_columns
+    WHERE sheet_id = ? AND status_column = ?`).get(sheetId, 'Work email'))
+  expect(autoRun()).toEqual({ enabled: 1, paused_reason: 'user' })
   const cells = cellsOf(sheetId)
   const before = runCount(sheetId, 'http_runs')
   await context.addCookies((await api.storageState()).cookies)
@@ -72,8 +82,12 @@ test('enrichment and waterfall columns: Save in the drawer runs nothing', async 
   await page.getByRole('menuitem', { name: /Edit Enrichment/ }).click()
   await expect(page.locator('#enrich-column-name')).toHaveValue('Work email', { timeout: 15_000 })
   await expect(page.getByTestId('enrich-run-all')).toContainText('Save and run on')
+  const autoRunSaved = page.waitForResponse(r => r.request().method() === 'PUT'
+    && r.url().includes(`/autorun/sheets/${sheetId}/columns`))
   await page.getByTestId('enrich-save-setup').click()
   await expect(page.getByText('Setup saved. Nothing ran.')).toBeVisible()
+  expect((await autoRunSaved).status()).toBe(200)
+  expect(autoRun()).toEqual({ enabled: 1, paused_reason: 'user' })
   await expect(page.locator('#enrich-column-name')).toHaveCount(0)
   expect(runCount(sheetId, 'http_runs')).toBe(before + 1)
   expect(newest(sheetId, 'http_runs')).toMatchObject({ setup_only: 3, status: 'completed' })

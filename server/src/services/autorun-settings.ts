@@ -44,6 +44,8 @@ export interface AutorunSettingsInput {
   runIf?: string | null;
   dailyCapUsd: number | null;           // enrichment columns
   dailyRowCap: number | null;           // HTTP API columns
+  // An edit's Save (the setup saved, nothing run): an auto-run already on and paused stays paused.
+  keepPause?: boolean;
 }
 
 const bad = (message: string): RunFail => ({ fail: 'bad_request', message });
@@ -160,6 +162,7 @@ async function applyAutorunSettings(
   const watched = JSON.stringify(watchedColumns(reads, where, runIf));
   // A first turn-on (or after it was off) starts from the rows there now.
   const fresh = !prior || !prior.enabled;
+  const keepPause = !fresh && input.keepPause === true;
   if (prior && fresh) await autorunDropPending(sheetId, userId, prior.id);
   db.transaction(() => {
     const top = db.prepare('SELECT IFNULL(MAX(row_index), -1) FROM rows WHERE sheet_id = ? AND user_id = ?')
@@ -177,10 +180,13 @@ async function applyAutorunSettings(
         access_token_id = excluded.access_token_id,
         watermark_row_index = CASE WHEN ? THEN excluded.watermark_row_index ELSE watermark_row_index END,
         row_generation_seen = CASE WHEN ? THEN excluded.row_generation_seen ELSE row_generation_seen END,
-        rescan = 1, paused_reason = NULL, paused_message = NULL, paused_at = NULL, updated_at = datetime('now')`)
+        rescan = 1, paused_reason = CASE WHEN ? THEN paused_reason END,
+        paused_message = CASE WHEN ? THEN paused_message END, paused_at = CASE WHEN ? THEN paused_at END,
+        updated_at = datetime('now')`)
       .run(uuidv4(), userId, sheetId, input.column, kind, watched, JSON.stringify(where), runIf, caps.capMicro,
         // Its batches are done for whoever saved it last (a token's spend cap counts them).
-        caps.rowCap, top, gen, actorTokenId(), fresh ? 1 : 0, fresh ? 1 : 0);
+        caps.rowCap, top, gen, actorTokenId(), fresh ? 1 : 0, fresh ? 1 : 0,
+        ...Array<number>(3).fill(keepPause ? 1 : 0));
   }).immediate();
   return { ok: { column: input.column } };
 }
