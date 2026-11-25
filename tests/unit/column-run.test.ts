@@ -230,7 +230,7 @@ const big = uuid()
 db.prepare('INSERT INTO sheets (id,table_id,user_id,name,column_order) VALUES (?,?,?,?,?)')
   .run(big, tid, uid, 'Big', JSON.stringify(['Name']))
 const add = db.prepare('INSERT INTO rows (id,sheet_id,user_id,row_index,data) VALUES (?,?,?,?,?)')
-db.transaction(() => { for (let i = 0; i < 20_000; i++) add.run(uuid(), big, uid, i, `{"Name":"P${i}"}`) })()
+db.transaction(() => { for (let i = 0; i < 20_000; i++) add.run(uuid(), big, uid, i, `{"Name":"P${i}"}`) }).immediate()
 let between = false
 setImmediate(() => { between = true })
 assert.deepEqual(await wherePlaces(big, uid, [{ column: 'Name', operator: 'eq', value: 'P19999' }]), [19999])
