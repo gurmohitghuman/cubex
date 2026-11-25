@@ -291,3 +291,7 @@ export const BUILD_ID_RECHECK_MS = 5000;
 // the app's SAMPLE_CREATE_TIMEOUT_MS.
 export const SAMPLE_STEP_WAIT_MS = 20_000;
 export const SAMPLE_STEP_POLL_MS = 20;
+
+// How many of a run column's input lists (lib/run-inputs/sets.ts) the out-of-date check reads, newest first. A row
+// made from an older list never reads out of date, as a row no run stamped (docs/mcp.md says 16).
+export const RUN_INPUT_SETS_READ = 16;
