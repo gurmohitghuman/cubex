@@ -45,13 +45,12 @@ export const manageTable = obj({
 
 // The table's sheets in order: other fields of the sheet too.
 const sheetRow = open({ id: str, name: str, position: num });
-// A test of the sheet's column changes (manage_sheet's test actions; get_sheet's test).
-export const sheetTest = obj({ test_id: str, sheet_id: str, test_sheet_id: str, table_id: str, sheet_name: str,
-  rows: num, started_at: str, state: z.enum(['open', 'ending']) });
+// A test of the sheet's column changes (manage_sheet's test actions; get_sheet's test): test_id, sheet_id,
+// test_sheet_id, table_id, sheet_name, rows, started_at and state, kept short in tools/list.
+export const sheetTest = info('The test');
 export const manageSheet = obj({
-  sheet: opt(sheetRef), sheets: opt(z.array(sheetRow)).describe('Not for the test actions'), deleted: opt(bool),
-  trash: opt(trash), test: opt(sheetTest), added: opt(num).describe('test_add_rows'),
-  apply: opt(info('apply_test: what it did or would do')),
+  sheet: opt(sheetRef), sheets: opt(z.array(sheetRow)), deleted: opt(bool),
+  trash: opt(trash), test: opt(sheetTest), added: opt(num), apply: opt(info('apply_test')),
   rows_copied: opt(num), columns: opt(strs), list_results_dropped: opt(info('List results that were not added')),
   ...madeWebhook, changed,
 });

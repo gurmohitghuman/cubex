@@ -50,8 +50,7 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
         + 'setups of clean, formula and lookup columns (a lookup\'s broken says why it stopped, and kept_changing '
         + 'why rows it looked up may hold older values), active_runs and '
         + 'active_setup_runs (control_run cancel_all stops them all), views (pass view to read_rows or '
-        + 'export_csv), auto_dedupe (set_auto_dedupe\'s setting, or null) and test (a test of its column changes, '
-        + 'manage_sheet\'s test: the sheet takes no changes until it is applied or discarded; work in test_sheet_id).',
+        + 'export_csv), auto_dedupe (set_auto_dedupe\'s setting, or null) and test (manage_sheet\'s test, or null).',
       inputSchema: {
         sheet_id: z.string().describe(SHEET_ID),
         columns: z.array(z.string()).optional()
