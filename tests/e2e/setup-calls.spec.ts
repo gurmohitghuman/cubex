@@ -41,9 +41,9 @@ test('a setup called on items: priced, run without a sheet, each item\'s outputs
   await expect.poll(async () => (done = await call(client, 'get_setup_call',
     { setup_call_id: started.id, wait_seconds: 5 })).status, { timeout: 60_000 }).toBe('done')
   expect(done.results).toEqual([
-    { item: 0, outputs: { Domain: 'navy', 'Clean name': 'Grace Hopper' } },
-    { item: 1, outputs: { Domain: 'nasa', 'Clean name': null } },
-    { item: 2, outputs: { Domain: null, 'Clean name': 'Alan Turing' } },
+    { item: 0, status: 'done', error: null, outputs: { Domain: 'navy', 'Clean name': 'Grace Hopper' } },
+    { item: 1, status: 'done', error: null, outputs: { Domain: 'nasa', 'Clean name': null } },
+    { item: 2, status: 'done', error: null, outputs: { Domain: null, 'Clean name': 'Alan Turing' } },
   ])
   expect(done.keep_until).toBeTruthy()
   expect(await tables()).toBe(before)
@@ -61,7 +61,8 @@ test('a setup called on items: priced, run without a sheet, each item\'s outputs
   let restDone: any
   await expect.poll(async () => (restDone = await (await api.get(`${BASE}/api/v1/setup-calls/${restCall.id}`,
     { headers: auth })).json()).status, { timeout: 60_000 }).toBe('done')
-  expect(restDone.results).toEqual([{ item: 0, outputs: { Domain: 'nasa', 'Clean name': 'Katherine Johnson' } }])
+  expect(restDone.results).toEqual([{ item: 0, status: 'done', error: null,
+    outputs: { Domain: 'nasa', 'Clean name': 'Katherine Johnson' } }])
   const priced = await api.post(`${BASE}/api/v1/setups/${setup.id}/calls`, { headers: auth,
     data: { items: [{ Name: 'x' }], estimate_only: true } })
   expect(priced.status()).toBe(200)

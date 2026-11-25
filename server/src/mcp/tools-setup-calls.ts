@@ -47,7 +47,8 @@ export function registerSetupCallTools(server: McpServer, ctx: McpAuthCtx): void
     if (denied) return denied;
     const input = callInputOf(a, 'mcp');
     if ('fail' in input) return err(input.message);
-    const out = await callSetup(ctx.userId, setup_id, items, input, { hasSecretsScope: ctx.scopes.has('secrets') });
+    const out = await callSetup(ctx.userId, setup_id, items, input,
+      { hasSecretsScope: ctx.scopes.has('secrets'), tokenId: ctx.tokenId });
     if ('fail' in out) return err(out.message + (out.estimate ? ` Estimate: ${JSON.stringify(out.estimate)}` : ''));
     return ok(out.ok);
   });
@@ -55,9 +56,10 @@ export function registerSetupCallTools(server: McpServer, ctx: McpAuthCtx): void
   registerTool(server, 'get_setup_call', {
     description:
       'Where a setup call (call_setup) is: running, paused, done, failed or cancelled, each step\'s state and '
-      + 'run_id, and once it has finished, results: each item, in the order sent, with its outputs by column '
-      + '(null when empty). With wait_seconds it answers when the call finishes or the time is up, so you poll '
-      + `less. Results are kept ${SETUP_CALL_KEEP_HOURS} hours after the call finishes (keep_until). Read-only.`,
+      + 'run_id, and once it has finished, results: each item, in the order sent, with its status, error and '
+      + 'outputs by column (null when it has no value). With wait_seconds it answers when the call finishes or '
+      + `the time is up, so you poll less. Results are kept ${SETUP_CALL_KEEP_HOURS} hours after the call finishes `
+      + '(keep_until). Read-only.',
     inputSchema: z.object({
       setup_call_id: z.string().describe('The call (call_setup returned it)'),
       wait_seconds: z.number().int().min(0).max(25).optional()

@@ -4,6 +4,7 @@
 import express from 'express';
 import { requireScope, TokenAuthRequest } from '../middleware/access-token-auth';
 import { runFailHttpStatus } from '../services/run-shared';
+import { setRateLimitedHeaders } from '../lib/rate-window';
 import { CALL_NOT_FOUND, callSetup, getSetupCall } from '../services/setup-call';
 import { callInputOf } from '../services/setup-call-input';
 
@@ -28,11 +29,16 @@ router.post('/setups/:setupId/calls', requireScope('run'), guarded('POST /v1/set
   const input = callInputOf(b, 'v1');
   if ('fail' in input) return res.status(runFailHttpStatus(input)).json({ error: input.message });
   const out = await callSetup(req.userId!, req.params.setupId, b.items, input,
-    { hasSecretsScope: !!req.tokenScopes?.has('secrets') });
+    { hasSecretsScope: !!req.tokenScopes?.has('secrets'), tokenId: req.accessTokenId });
   if ('fail' in out) {
+    const kind = out.fail;
+    if (kind === 'rate_limited') {
+      if (out.rate) setRateLimitedHeaders(res, out.rate);
+      return res.status(429).json({ error: out.message, retry_after_seconds: out.rate?.retryAfterSec });
+    }
     // Over the ceiling: 409 with the estimate it was checked against (over_ceiling: true).
-    const over = out.fail === 'over_ceiling' ? { over_ceiling: true, estimate: out.estimate } : {};
-    return res.status(runFailHttpStatus(out)).json({ error: out.message, ...over });
+    const over = kind === 'over_ceiling' ? { over_ceiling: true, estimate: out.estimate } : {};
+    return res.status(runFailHttpStatus({ fail: kind, message: out.message })).json({ error: out.message, ...over });
   }
   return res.status('setup_call' in out.ok ? 201 : 200).json(out.ok);
 }));
