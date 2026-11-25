@@ -4,6 +4,7 @@ import { BASE, authedApi } from './helpers'
 // A toast that quotes a long word with no spaces (a saved key's 200-character name) breaks it inside its box
 // instead of running past it: the saved-key form's refusal, at desktop and phone width.
 const LONG = 'k'.repeat(200)
+const REFUSAL = `A saved key named "${LONG}" already exists. Use it, or choose another name.`
 for (const size of [{ name: 'desktop', width: 1280, height: 800 }, { name: 'phone', width: 390, height: 844 }]) {
   test(`a toast with a 200-character word stays in its box (${size.name})`, async ({ page, context }) => {
     await page.setViewportSize({ width: size.width, height: size.height })
@@ -11,7 +12,7 @@ for (const size of [{ name: 'desktop', width: 1280, height: 800 }, { name: 'phon
     await context.addCookies((await api.storageState()).cookies)
     await page.route('**/api/settings/api-keys', route => (route.request().method() === 'POST'
       ? route.fulfill({ status: 409, contentType: 'application/json',
-        body: JSON.stringify({ error: `A saved key named "${LONG}" already exists. Use it, or choose another name.` }) })
+        body: JSON.stringify({ error: REFUSAL }) })
       : route.continue()))
     await page.goto(`${BASE}/settings/http-enrichment`)
     await page.getByRole('button', { name: /Add (first )?key/ }).first().click()
