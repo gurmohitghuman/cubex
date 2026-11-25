@@ -12,7 +12,9 @@ const { normalizeColumnName } = promptMod as typeof import('../../server/src/lib
 
 let failures = 0
 function check(label: string, fn: () => void) {
-  try { fn(); console.log('ok  ', label) } catch (e) { failures++; console.log('FAIL', label, '\n ', (e as Error).message) }
+  try { fn(); console.log('ok  ', label) } catch (e) {
+    failures++; console.log('FAIL', label, '\n ', (e as Error).message)
+  }
 }
 
 // Column lists that reach every rule: each slot's words, first match wins, a run's (Status)/(Data) columns left
