@@ -65,7 +65,8 @@ export function WebhookToken({ sheetId, source, onSource }: {
             Send this with every event as the header <code>Authorization: Bearer &lt;token&gt;</code>.
           </p>
           <div className="flex items-center gap-2">
-            <code className="flex-1 min-w-0 truncate rounded border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs font-mono text-gray-800"
+            <code className={'flex-1 min-w-0 truncate rounded border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs'
+              + ' font-mono text-gray-800'}
               data-testid="webhook-token-value">
               {token}
             </code>
