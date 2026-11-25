@@ -67,6 +67,42 @@ test('HTTP API column: Edit opens its setup; Save runs nothing; Save and run rer
   await expect(url).toHaveCount(0)
 })
 
+// A column the request read was deleted, and a saved key has its name: the {{name}} must never send the key
+// (lib/template-token-match.ts). The dialog keeps the deleted names it has no field for, so its Save is refused
+// as a rerun would be, until the request stops reading it.
+test('Edit keeps a deleted input deleted: a saved key of its name is never read instead', async ({ page, context }) => {
+  test.setTimeout(60_000)
+  const api = await authedApi()
+  const { tableId, sheetId } = await seedCsv(api, 'Name,Extra\nAda,a\nBo,b')
+  const made = await api.post('/api/http/run', { data: {
+    sheetId, masterColumnName: 'Lookup', saveOnly: true,
+    config: { requestConfig: { method: 'GET', url: 'https://api.example.test/?q={{Name}}&k={{Extra}}', headers: {} },
+      responseMapping: [{ jsonPath: '$.x', columnName: 'X' }], previewSize: 5, batchSize: 5 },
+  } })
+  expect(made.status(), await made.text()).toBe(200)
+  expect((await api.delete(`/api/sheets/${sheetId}/columns/Extra`)).status()).toBe(200)
+  await expect.poll(() => JSON.parse(runsOf(sheetId)[0].config).requestConfig.goneColumns).toEqual(['Extra'])
+  const dropKey = async () => {
+    for (const k of await (await api.get('/api/settings/api-keys')).json()) {
+      if (k.name === 'Extra') await api.delete(`/api/settings/api-keys/${k.id}`)
+    }
+  }
+  await dropKey()
+  const key = await api.post('/api/settings/api-keys', { data: { name: 'Extra', key_type: 'api_key',
+    key_value: ['not', 'a', 'real', 'key'].join('-') } })
+  expect(key.ok(), await key.text()).toBe(true)
+  try {
+    await context.addCookies((await api.storageState()).cookies)
+    await page.goto(`${BASE}/table/${tableId}`)
+    await openEdit(page)
+    await expect(page.getByPlaceholder('https://api.example.com/data'))
+      .toHaveValue('https://api.example.test/?q={{Name}}&k={{Extra}}', { timeout: 10_000 })
+    await page.getByTestId('http-save-setup').click()
+    await expect(page.getByText(/reads Extra, which isn't in this sheet anymore/)).toBeVisible()
+    expect(runsOf(sheetId)).toHaveLength(1)
+  } finally { await dropKey() }
+})
+
 // WORKFLOW Tests step 6: what a click opens is on screen within 100 ms, its content may load after (the setup).
 test('click to visible: Edit HTTP API Column opens its drawer within 100 ms on a 10,000-row sheet', async ({
   page, context,

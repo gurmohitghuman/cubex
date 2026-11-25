@@ -43,6 +43,7 @@ export function toServerConfig(c: HTTPAPIConfig) {
       body: c.body && c.body.trim() ? c.body : undefined,
       ...(c.skipEmpty ? { skipEmpty: true } : {}),
       ...(c.timeoutMs ? { timeout: c.timeoutMs } : {}),
+      ...(c.goneColumns?.length ? { goneColumns: c.goneColumns } : {}),
     },
     responseMapping: c.responseMapping ?? [],
     previewSize: c.previewSize,
@@ -55,12 +56,14 @@ export function toServerConfig(c: HTTPAPIConfig) {
 }
 
 // Back the other way: a column's stored setup into the dialog (its Edit). The query string stays in the URL,
-// headers become rows, and what the dialog has no field for (the timeout) is kept.
+// headers become rows, and what the dialog has no field for (the timeout, the deleted columns it read) is kept.
 export function fromServerConfig(s: any): HTTPAPIConfig {
   const rc = s?.requestConfig ?? {}
   const headers = Object.entries((rc.headers ?? {}) as Record<string, string>).map(([key, value]) => ({ key, value }))
   const mapping = Array.isArray(s?.responseMapping) ? s.responseMapping as HTTPAPIConfig['responseMapping'] : []
   const batch = typeof s?.batchSize === 'number' ? s.batchSize : typeof s?.concurrency === 'number' ? s.concurrency : 5
+  const gone = (Array.isArray(rc.goneColumns) ? rc.goneColumns as unknown[] : [])
+    .filter((c): c is string => typeof c === 'string')
   return {
     method: rc.method ?? 'GET', endpointUrl: rc.url ?? '', queryParams: [{ key: '', value: '' }],
     headers: headers.length ? headers : [{ key: '', value: '' }], body: rc.body ?? '',
@@ -70,5 +73,6 @@ export function fromServerConfig(s: any): HTTPAPIConfig {
     retries: typeof s?.retries === 'number' ? s.retries : HTTP_RETRY_DEFAULT, retryPost: s?.retryPost === true,
     skipEmpty: rc.skipEmpty === true, ...(s?.runIf ? { runIf: s.runIf } : {}),
     ...(typeof rc.timeout === 'number' ? { timeoutMs: rc.timeout } : {}),
+    ...(gone.length ? { goneColumns: gone } : {}),
   }
 }

@@ -17,6 +17,9 @@ export interface HTTPAPIConfig {
   runIf?: string
   // The request's timeout in ms, set over the API: kept when the dialog edits a column (it has no field).
   timeoutMs?: number
+  // Columns the request read that were deleted since (the server's requestConfig.goneColumns): kept when the
+  // dialog edits a column, so a {{name}} of one never reads a saved key of that name instead.
+  goneColumns?: string[]
 }
 
 export interface HTTPPreview {
