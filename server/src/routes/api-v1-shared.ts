@@ -3,7 +3,7 @@
 // this module only maps TxnFail outcomes onto Express responses.
 import express from 'express';
 import { MAX_ROWS_PER_SHEET } from '../lib/constants';
-import { isBusyMessage, type BusyAllowed } from '../lib/sheet-busy';
+import { isBusyMessage, webhookControl, type BusyAllowed } from '../lib/sheet-busy';
 import { TxnFail, txnFailMessage } from '../services/data-plane-shared';
 
 export { parseCellMap } from '../services/data-plane-shared';
@@ -48,6 +48,7 @@ export const V1_SHEET_BUSY_ALLOWED: BusyAllowed[] = [
   req => req.path === '/rows/update' && rawIdempotencyKey(req) !== undefined,
   req => KEYED_RUN_STARTS.has(req.path) && rawIdempotencyKey(req) !== undefined,
   req => req.path === '/rows/transfer' && rawIdempotencyKey(req) !== undefined,
+  webhookControl,
 ];
 
 // A run start's refusal as JSON. One for a busy sheet says busy: true, as the busy guard's does (lib/sheet-busy.ts).
