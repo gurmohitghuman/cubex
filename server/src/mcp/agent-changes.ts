@@ -147,6 +147,14 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
       },
       {
         change: 'added',
+        tools: ['manage_run_schedule'],
+        summary: 'manage_run_schedule reruns a sheet\'s or a table\'s run columns on a schedule: daily, on weekdays, '
+          + 'weekly, monthly or every N hours, at a time in a time zone.',
+        details: 'Each firing is a column run as the token that made it (get_setup_run follows it). max_cost_usd '
+          + 'refuses a firing that could cost more; last_error says why a firing didn\'t start.',
+      },
+      {
+        change: 'added',
         tools: ['run_columns'],
         summary: 'run_columns runs several of a sheet\'s run columns again in one call, on the rows a mode picks '
           + '(among row_ids or a where), with an estimate first and an optional max_cost_usd.',

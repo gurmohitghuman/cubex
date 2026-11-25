@@ -1,4 +1,4 @@
-import { envMs } from './env-int';
+import { envInt, envMs } from './env-int';
 
 // Setups (lib/setups/, services/setup-*.ts). Guards, not quotas: a step makes
 // at least one column, and a sheet holds at most MAX_COLUMNS_PER_SHEET.
@@ -30,3 +30,8 @@ export const MAX_SETUP_VERSION_BYTES = 4 * 1024 * 1024;
 // API callers (answers stay bounded); the app shows prompts and bodies whole.
 export const SETUP_VERSION_DIFF_CHARS = 400;
 export const SETUP_VERSION_DIFF_CHARS_APP = 20_000;
+
+// Scheduled reruns (services/run-schedule*.ts): at most this many schedules on one sheet or table, and how often the
+// sweep looks for schedules due (a firing is at most this late).
+export const RUN_SCHEDULES_PER_TARGET = envInt('RUN_SCHEDULES_PER_SHEET', 20);
+export const RUN_SCHEDULE_SWEEP_MS = envMs('RUN_SCHEDULE_SWEEP_MS', 60_000);

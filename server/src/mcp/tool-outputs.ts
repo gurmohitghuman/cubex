@@ -38,6 +38,7 @@ export const TOOL_OUTPUTS = {
   social_research: enrich.socialResearch,
   get_usage: enrich.getUsage,
   list_setups: setups.listSetups, save_setup: setups.saveSetup, delete_setup: setups.deleteSetup,
+  manage_run_schedule: setups.manageRunSchedule,
   apply_setup: setups.applySetup, get_setup_run: setups.getSetupRun, control_setup_run: setups.controlSetupRun,
   run_columns: setups.runColumns,
   list_setup_versions: setups.listSetupVersions, manage_setup_version: setups.manageSetupVersion,
