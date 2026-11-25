@@ -6,7 +6,8 @@
 // over (the write adds a frame, and the checkpoint after the reader ends starts it over); a writer holding the
 // lock is met without waiting for it (busy_timeout, 5 s, otherwise). Each case checks the WAL itself (its frames,
 // and the header SQLite rewrites on starting over: sqlite-write-probe.ts), never timing, save the lock case's
-// bound well under that 5 s.
+// bound well under that 5 s. Each worker started takes its turn to write (lib/wal-shared.ts) under its own value,
+// and one that ends frees only its own: a closing worker can still be exiting when a newer one has taken the turn.
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
 import { performance } from 'node:perf_hooks'
@@ -14,11 +15,14 @@ import { v4 as uuid } from 'uuid'
 import dbMod from '../../server/src/lib/db'
 import migMod from '../../server/src/db/migrate'
 import walMod from '../../server/src/lib/wal-checkpointer'
+import sharedMod from '../../server/src/lib/wal-shared'
 import { sqliteWriteProbe, transactionLine } from './sqlite-write-probe'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
-const { checkpointInBackground, closeWalCheckpointer, takeWalCheckpointerStats, walState } =
-  walMod as typeof import('../../server/src/lib/wal-checkpointer')
+const { checkpointInBackground, closeWalCheckpointer, setCheckpointWorkerFileForTests, stopCheckpointWorkerForTests,
+  takeWalCheckpointerStats, walState } = walMod as typeof import('../../server/src/lib/wal-checkpointer')
+const { FREE, PAGE, TURN, endStartOverHoldForTests, holdStartOverForTests, startOverHeldForTests, walShared } =
+  sharedMod as typeof import('../../server/src/lib/wal-shared')
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 runMigrations()
@@ -46,6 +50,22 @@ const write = db.transaction((count: number) => {
 })
 const sheetNow = () => db.prepare('SELECT data_version, updated_at FROM sheets WHERE id = ?').get(sid)
 const other = () => new Database(process.env.DB_PATH!)
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
+// The turn's value while the worker holds it, in its start-over write (held there, the tests-only hold).
+async function turnHeld(): Promise<number> {
+  write.immediate(200)
+  holdStartOverForTests(5000)
+  try {
+    const asked = checkpointInBackground()
+    for (const t0 = Date.now(); !startOverHeldForTests(); await sleep(2)) {
+      assert.ok(Date.now() - t0 < 5000, 'the worker never held its write')
+    }
+    const value = Atomics.load(walShared, TURN)
+    endStartOverHoldForTests()
+    await asked
+    return value
+  } finally { holdStartOverForTests(0); endStartOverHoldForTests() }
+}
 
 async function main() {
   await check('after a checkpoint that copied every frame the WAL starts over on the worker, before it answers: '
@@ -109,6 +129,26 @@ async function main() {
     await checkpointInBackground()
     assert.equal(takeWalCheckpointerStats().restarts, 1)
     assert.deepEqual(walState(), { log: 1, checkpointed: 0 })
+  })
+
+  await check('each worker started takes the turn under its own value, and one that ends frees only its own: the '
+    + 'turn held under another worker\'s stays held', async () => {
+    const first = await turnHeld()
+    await stopCheckpointWorkerForTests()
+    // A stop counts toward falling back to the main thread: forgotten, so the next ask starts a worker again.
+    setCheckpointWorkerFileForTests(null)
+    const second = await turnHeld()
+    assert.ok(first !== second && ![FREE, PAGE].includes(first) && ![FREE, PAGE].includes(second),
+      `the turn's values: ${first}, then ${second}`)
+    assert.equal(Atomics.load(walShared, TURN), FREE)
+    Atomics.store(walShared, TURN, first)
+    try {
+      await stopCheckpointWorkerForTests()
+      assert.equal(Atomics.load(walShared, TURN), first, 'the worker that ended freed another worker\'s turn')
+    } finally {
+      Atomics.store(walShared, TURN, FREE)
+      setCheckpointWorkerFileForTests(null)
+    }
   })
   await closeWalCheckpointer()
 }
