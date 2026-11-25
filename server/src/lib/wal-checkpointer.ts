@@ -46,10 +46,10 @@ export function walState(): WalState | null {
 // The worker's file next to this one: .ts under tsx (it registers tsx itself: a
 // worker thread doesn't get the parent's loaders), .js once built.
 let workerFile = (): string => join(__dirname, `wal-checkpoint-worker${extname(__filename)}`);
-function newWorker(): Worker {
+function newWorker(turn: number): Worker {
   const file = workerFile();
-  // walCheckpointer: lib/db.ts skips PRAGMA optimize on this thread's connection.
-  const workerData = { shared: walShared, walCheckpointer: true };
+  // walCheckpointer: lib/db.ts skips PRAGMA optimize on this thread's connection. turn: its own value in TURN.
+  const workerData = { shared: walShared, walCheckpointer: true, turn };
   if (!file.endsWith('.ts')) return new Worker(file, { workerData });
   const tsx = require.resolve('tsx/cjs/api');
   return new Worker(`require(${JSON.stringify(tsx)}).register(); require(${JSON.stringify(file)});`,
@@ -60,6 +60,7 @@ let worker: Worker | null = null;
 let starting: Promise<Worker | null> | null = null;
 let running: Promise<Checkpointed | null> | null = null;
 let seq = 0;
+let workersStarted = 0;
 let delayMs = 0;
 // Set for the rest of the process once a worker couldn't start, or the one started again stopped too.
 let onMainThread = false;
@@ -74,11 +75,12 @@ const fallBack = (why: string, err: unknown) => {
 
 function start(): Promise<Worker | null> {
   stats.starts++;
+  const turn = WORKER + workersStarted++;
   return new Promise(resolve => {
     let ready = false;
     let failure: unknown;
     let w: Worker;
-    try { w = newWorker(); } catch (err) {
+    try { w = newWorker(turn); } catch (err) {
       fallBack('could not start', err);
       resolve(null);
       return;
@@ -95,8 +97,8 @@ function start(): Promise<Worker | null> {
     w.on('exit', code => {
       const stopped = worker === w;
       if (stopped) worker = null;
-      // Its turn, if it ended in its start-over write.
-      Atomics.compareExchange(walShared, TURN, WORKER, FREE);
+      // Its turn, if it ended in its start-over write: its own value only (lib/wal-shared.ts).
+      Atomics.compareExchange(walShared, TURN, turn, FREE);
       Atomics.store(walShared, HELD, 0);
       for (const [id, done] of waiting) done({ id, busy: 1, log: -1, checkpointed: -1, error: 'stopped' });
       waiting.clear();
