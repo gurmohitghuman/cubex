@@ -128,7 +128,8 @@ export function runSheetColumns(
 // placeholder_work='clearing' mark (migration 004). Whoever ends the run sets
 // that mark in the same statement (cancel, a worker's failure, a start that
 // could not finish), so a restart midway finishes the clear
-// (resumeRunCleanups) and a sort, which moves rows, waits for it. A cell still
+// (resumeRunCleanups). A sort may run meanwhile: the clear finds its cells by
+// rowid, which a sort never changes (services/sheet-sort.ts). A cell still
 // holding ⏳ is at a row the run never reached: it gets back what it held
 // before the run, from the run's undo journal, else ''
 // (lib/placeholder-cells.ts); rows the run answered keep their new values.
@@ -175,23 +176,4 @@ export function resumeRunCleanups(staleMinutes?: number): void {
       finally { clearing.delete(id); }
     }
   })();
-}
-
-// Clear placeholders for ALL of a sheet's runs, scoped to the columns those runs
-// actually own (NOT every column on the sheet — a blanket value-match clear could
-// wipe a legit user cell that literally contains "⏳ Processing..."). Used by the
-// CSV-replace rollback path: if we aborted active runs but the replace then
-// failed, the surviving rows can hold ⏳ cells no live worker will ever clear.
-export async function clearPlaceholdersForSheetRuns(sheetId: string, userId: string): Promise<void> {
-  const aiRuns = db.prepare(
-    'SELECT column_name, use_openrouter_web_search, output_columns, data_column FROM ai_runs WHERE sheet_id = ? AND user_id = ?',
-  ).all(sheetId, userId) as AIRunCols[];
-  const httpRuns = db.prepare(
-    'SELECT id, master_column_name FROM http_runs WHERE sheet_id = ? AND user_id = ?',
-  ).all(sheetId, userId) as Array<{ id: string; master_column_name: string | null }>;
-
-  const columns = new Set<string>();
-  for (const r of aiRuns) for (const c of aiRunColumns(r)) columns.add(c);
-  for (const r of httpRuns) for (const c of httpRunColumns(r.id, userId, r.master_column_name)) columns.add(c);
-  if (columns.size > 0) await clearProcessingPlaceholders(sheetId, userId, Array.from(columns));
 }

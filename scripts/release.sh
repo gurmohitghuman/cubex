@@ -133,9 +133,11 @@ cmd_notes() {
 AGENT_CHANGES=server/src/mcp/agent-changes.ts
 TOOL_LIST=tests/unit/mcp-tool-list.json
 
-# The releases the file lists in text $1, newest first, one a line (each written version: 'vX.Y.Z').
+# The releases the file lists in text $1, newest first, one a line (each written version: 'vX.Y.Z'); nothing for a
+# text that lists none (grep finds no line and exits 1, which pipefail would turn into a silent stop of the script).
 agent_changes_versions() {
-  printf '%s\n' "$1" | grep -o "version: 'v[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*'" | sed "s/version: '\(.*\)'/\1/"
+  printf '%s\n' "$1" | { grep -o "version: 'v[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*'" || true; } \
+    | sed "s/version: '\(.*\)'/\1/"
 }
 
 # The newest release the file lists in text $1, or nothing.

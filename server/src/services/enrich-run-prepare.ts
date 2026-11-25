@@ -3,6 +3,7 @@
 // names, the column a run adds to, the rows in scope, the config built against
 // treg's catalog and a list job's destination. A pure read (catalog reads are
 // cached), so the agents' estimate_only checks exactly what a start would.
+import { SAVE_ONLY_LIST } from './column-setup-save';
 import { db } from '../lib/db';
 import { getSheetColumns, verifySheetOwnership } from '../lib/sql-helpers';
 import { findColumnNameCollision, columnCollisionMessage } from '../lib/column-names';
@@ -133,7 +134,11 @@ export async function prepareEnrichmentStart(
   if (!verifySheetOwnership(sheetId, userId)) return { fail: 'not_found', message: 'Sheet not found' };
   const columns = getSheetColumns(sheetId, userId, false);
   const span = sheetRowSpan(sheetId, userId);
-  if (span.count === 0) return bad('There are no rows to run on.');
+  // Saving without running: every check of the setup, none of the rows it would take (a save is often made on
+  // a column whose every row is enriched).
+  const save = !!input.saveOnly;
+  if (save && input.list) return bad(SAVE_ONLY_LIST);
+  if (span.count === 0 && !save) return bad('There are no rows to run on.');
 
   // Names: a new status column, or an existing enrichment column to add to.
   const mapping = input.outputs.map(o => ({ columnName: o.columnName, jsonPath: '$.x' }));
@@ -147,25 +152,27 @@ export async function prepareEnrichmentStart(
     if ('fail' in cont) return cont;
     prior = cont.prior;
   }
-  if (input.rows.mode === 'selected' && !input.rows.rowIndexes?.length) return bad('Select some rows first.');
+  if (!save && input.rows.mode === 'selected' && !input.rows.rowIndexes?.length) return bad('Select some rows first.');
   const rule = startRunRule(sheetId, userId, input.runIf, { conditions: input.conditions.map(c => c.column) });
   if ('fail' in rule) return rule;
   // An input column another run holds, as bound: refused before the rows are counted (a setup's step waiting
   // for it asks every sweep). The built request is checked again below, after the catalog read.
   const bound = heldRefusal('The request', firstHeldRead(sheetId, userId,
     () => Object.values(input.inputs).flatMap(b => ('column' in b ? [b.column] : [])), [statusColumn, ...outputNames]));
-  if (bound) return heldFail(bound);
+  if (bound && !save) return heldFail(bound);
   // Out of date as the column's setup reads it before this run starts: its count, the estimate and seeding agree.
-  const stale = input.continueColumn ? statusStaleCheck(sheetId, userId, statusColumn, input.rows.status) : null;
-  const inScope = await rowsInScope(sheetId, userId, input, statusColumn, span.count, rule.ok?.tree ?? null, stale);
+  const stale = input.continueColumn && !save
+    ? statusStaleCheck(sheetId, userId, statusColumn, input.rows.status) : null;
+  const inScope = save ? span.count
+    : await rowsInScope(sheetId, userId, input, statusColumn, span.count, rule.ok?.tree ?? null, stale);
   // Nothing left to run here (a setup carrying the column on counts it as done).
-  if (inScope === 0 && (input.conditions.length || rule.ok)) {
+  if (inScope === 0 && !save && (input.conditions.length || rule.ok)) {
     return { ...bad('No rows here pass "Only run if". Pick other rows to run.'), nothingToRun: true };
   }
-  if (inScope === 0) {
+  if (inScope === 0 && !save) {
     return { ...bad(NOTHING_TO_RUN[input.rows.status] ?? 'There are no rows to run on.'), nothingToRun: true };
   }
-  const upperBound = Math.min(input.rows.test ?? inScope, inScope);
+  const upperBound = save ? inScope : Math.min(input.rows.test ?? inScope, inScope);
 
   const named = { ...input, outputs: input.outputs.map((o, i) => ({ ...o, columnName: outputNames[i] })) };
   const priorChoices = prior && prior.enrichment.toolId === named.toolId ? recallChoices(prior, statusColumn) : null;
@@ -174,7 +181,7 @@ export async function prepareEnrichmentStart(
   const built = await buildEnrichmentConfig(named, columns, upperBound, saved);
   if ('fail' in built) return built;
   // An input another run holds would be sent (and billed) as its ⏳ (lib/http-held-inputs.ts).
-  const held = heldRequestInput(sheetId, userId, built.ok, statusColumn);
+  const held = save ? null : heldRequestInput(sheetId, userId, built.ok, statusColumn);
   if (held) return heldFail(held);
   const listPlan = planListStart(userId, sheetId, input, built.ok, columns);
   if ('fail' in listPlan) return listPlan;

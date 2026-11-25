@@ -55,6 +55,7 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   // Rows it later removes go to the trash; the same call again changes nothing.
   set_auto_dedupe: write('Keep one row per key as rows arrive', true, true),
   manage_table: write('Create, rename or delete a table (to the trash)', true, false),
+  manage_sheet_webhook: write("Set up or change a sheet's incoming webhook", true, false),
   manage_sheet: write('Create, rename, copy, delete or reorder sheets (to the trash)', true, false),
   import_csv: write('Import a CSV', true, false),
   // A one-time link is not read-only (it is a credential for one transfer), so
@@ -120,6 +121,7 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   // Puts columns' setups back (and gone columns, empty); nothing runs, but later runs and auto-run use it.
   restore_setup_version: write('Restore a setup version', true, true),
   list_run_webhooks: read('List run webhooks'),
+  list_prompt_starters: read('List prompt starters for an AI column'),
   // Names and where they're used; a value never leaves Settings.
   list_saved_keys: read('List saved API keys (names only)'),
   // Adds, changes or deletes where Cubex sends run notices; test sends one now (outside Cubex).

@@ -1,4 +1,4 @@
-import { envInt } from './env-int';
+import { envInt, envMs } from './env-int';
 
 // Setups (lib/setups/, services/setup-*.ts). Guards, not quotas: a step makes
 // at least one column, and a sheet holds at most MAX_COLUMNS_PER_SHEET.
@@ -9,7 +9,7 @@ export const MAX_SETUP_DESCRIPTION_CHARS = 1000;
 // The whole spec as stored or imported (prompts and request bodies included).
 export const MAX_SETUP_SPEC_BYTES = 512 * 1024;
 // How often the runner moves setups being used along (services/setup-runner.ts).
-export const SETUP_SWEEP_MS = envInt('SETUP_SWEEP_MS', 3000);
+export const SETUP_SWEEP_MS = envMs('SETUP_SWEEP_MS', 3000);
 // A test of a setup on the first rows of a sheet takes at most this many.
 export const MAX_SETUP_TEST_ROWS = 1000;
 // Column runs (services/column-run*.ts): chosen run columns on chosen rows, kept as a setup run.
@@ -34,4 +34,4 @@ export const SETUP_VERSION_DIFF_CHARS_APP = 20_000;
 // Scheduled reruns (services/run-schedule*.ts): at most this many schedules on one sheet or table, and how often the
 // sweep looks for schedules due (a firing is at most this late).
 export const RUN_SCHEDULES_PER_TARGET = envInt('RUN_SCHEDULES_PER_SHEET', 20);
-export const RUN_SCHEDULE_SWEEP_MS = envInt('RUN_SCHEDULE_SWEEP_MS', 60_000);
+export const RUN_SCHEDULE_SWEEP_MS = envMs('RUN_SCHEDULE_SWEEP_MS', 60_000);

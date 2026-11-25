@@ -16,7 +16,7 @@ import { activeWhere, whereConditions } from '../lib/row-filter/where';
 import { isStateOp } from '../lib/row-filter/ops';
 import { stepColumns } from '../lib/setups/spec';
 import { httpRunSecretRefsRequiringScope } from '../lib/http-secrets-scan';
-import { columnRunInputs } from './run-inputs';
+import { columnRunInputs } from './column-run-inputs';
 import { liveRunColumns, prepareWhere } from './row-filter';
 import { runColumnOf, type RunKind } from './run-controls-column';
 import { planOf, type SetupRunRow } from './setup-run-store';
