@@ -5,7 +5,7 @@ import { mcpClient, call, waitMcpRun } from './helpers-mcp'
 
 // The sheet's Scheduled reruns drawer (the ⋯ menu): it lists the sheet's run columns to pick from, adds a weekly
 // schedule (it shows when it fires next), pauses and resumes it, runs it now (the last firing shows, no error),
-// and deletes it.
+// and deletes it. A run now that can't start (its column renamed since) says why instead of "Started".
 test('scheduled reruns from the sheet menu: add, pause, run now, delete', async ({ page, context }) => {
   test.setTimeout(120_000)
   const api = await authedApi()
@@ -40,8 +40,20 @@ test('scheduled reruns from the sheet menu: add, pause, run now, delete', async 
 
   await page.getByTestId('schedule-fire').click()
   await expect(item).not.toContainText('Last: never', { timeout: 10_000 })
+  await expect(page.getByText('Started', { exact: true })).toBeVisible()
   await expect(page.getByTestId('schedule-error')).toHaveCount(0)
 
   await page.getByTestId('schedule-delete').click()
   await expect(page.getByTestId('schedules-empty')).toBeVisible()
+
+  await call(client, 'manage_run_schedule', { action: 'create', sheet_id: sheetId, columns: ['Work email'],
+    rows: 'errored', cadence: 'daily', at_time: '09:00' })
+  await call(client, 'rename_column', { sheet_id: sheetId, column: 'Work email', new_name: 'Found email' })
+  await page.keyboard.press('Escape')
+  await page.getByTestId('more-menu').click()
+  await page.getByTestId('sheet-schedules').click()
+  await expect(item).toHaveCount(1)
+  await page.getByTestId('schedule-fire').click()
+  await expect(page.getByText(/^It didn't start: /)).toBeVisible({ timeout: 10_000 })
+  await expect(page.getByTestId('schedule-error')).toBeVisible()
 })

@@ -1,3 +1,4 @@
+// Over 200 lines: the drawer's list of schedules and its add form, one screen read together.
 import React, { useCallback, useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import { CalendarClock, Loader2, Pause, Play, Trash2, Zap } from 'lucide-react'
@@ -71,6 +72,13 @@ export const SchedulesDrawer: React.FC<Props> = ({ isOpen, onClose, sheetId }) =
     } finally { setBusy(null) }
   }
 
+  // Run now answers the schedule: a firing that couldn't start (or started only on some sheets) says why.
+  const fireNow = (id: string) => void act(id, async () => {
+    const s = await runSchedulesAPI.fireNow(id)
+    if (!s.last_error) toast.success('Started')
+    else toast.error(s.last_run_ids.length ? `Started, except: ${s.last_error}` : `It didn't start: ${s.last_error}`)
+  })
+
   const add = (e: React.FormEvent) => {
     e.preventDefault()
     const f = form
@@ -126,7 +134,7 @@ export const SchedulesDrawer: React.FC<Props> = ({ isOpen, onClose, sheetId }) =
                 </button>
                 <button type="button" className="flex items-center gap-1 underline text-gray-700"
                   disabled={busy !== null} data-testid="schedule-fire"
-                  onClick={() => void act(s.id, () => runSchedulesAPI.fireNow(s.id), 'Started')}>
+                  onClick={() => fireNow(s.id)}>
                   <Zap className="h-3 w-3" />Run now
                 </button>
                 <button type="button" className="flex items-center gap-1 underline text-red-700"
