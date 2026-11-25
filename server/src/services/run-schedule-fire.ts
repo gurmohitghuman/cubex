@@ -28,14 +28,15 @@ export function sheetRunColumns(sheetId: string, userId: string): string[] {
   return getSheetColumns(sheetId, userId, false).filter(c => RUN_KINDS.has(kinds[c] ?? ''));
 }
 
-// The live sheets a schedule fires on: its sheet, or its table's, none in the trash.
+// The live sheets a schedule fires on: its sheet, or its table's, none in the trash. A table's never takes a test's
+// hidden copy (services/sheet-test-*.ts): what runs there is the person's to start.
 function targetSheets(s: ScheduleRow): string[] {
   return s.sheet_id
     ? db.prepare(`SELECT s.id FROM sheets s JOIN tables t ON t.id = s.table_id WHERE s.id = ? AND s.user_id = ?
         AND s.trash_id IS NULL AND t.trash_id IS NULL`).pluck().all(s.sheet_id, s.user_id) as string[]
     : db.prepare(`SELECT s.id FROM sheets s JOIN tables t ON t.id = s.table_id WHERE t.id = ? AND t.user_id = ?
-        AND s.trash_id IS NULL AND t.trash_id IS NULL ORDER BY s.position`).pluck().all(s.table_id, s.user_id) as
-        string[];
+        AND s.trash_id IS NULL AND s.test_of IS NULL AND t.trash_id IS NULL ORDER BY s.position`)
+      .pluck().all(s.table_id, s.user_id) as string[];
 }
 
 type Run = Omit<ColumnRunInput, 'estimateOnly' | 'maxCostUsd'>;

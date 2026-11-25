@@ -8,7 +8,7 @@
 //   - paused: not fired; resumed: next_at from now, not at once;
 //   - a firing that can't start (a column gone, a revoked token, the sheet in the trash)
 //     keeps why in last_error and the schedule goes on;
-//   - a table's schedule fires on each of its sheets that has the columns; fire now; delete;
+//   - a table's schedule fires on each of its sheets that has the columns, never on a test's copy; fire now; delete;
 //   - a misspelled field and a column the sheet doesn't run are refused; every N hours keeps its own times;
 //   - change and resume make the schedule the caller's, fire now runs as the caller;
 //   - a table's max_cost_usd is shared by its sheets (OpenRouter's model list from a stand-in, for a price).
@@ -195,6 +195,20 @@ await check('a table\'s schedule fires on each sheet that has the columns', asyn
   assert.equal(fired.next_at, s.next_at) // fire now leaves the next time as it was
   assert.deepEqual(store.listSchedules(uid, { sheetId: other }).map(x => x.id), [s.id])
   ok(store.deleteSchedule(uid, s.id))
+})
+
+await check('a table\'s schedule never fires on a test copy; the sheet being tested refuses as busy', async () => {
+  const { startSheetTest } = await import('../../server/src/services/sheet-test-start')
+  const { discardSheetTest } = await import('../../server/src/services/sheet-test-end')
+  const t = await startSheetTest(uid, sid, { rows: 2 })
+  if (!('ok' in t)) throw new Error(t.message)
+  const s = ok(store.createSchedule(uid, { ...daily, sheet_id: undefined, table_id: tid }, caller))
+  const fired = ok(await fireMod.fireScheduleNow(uid, s.id, caller))
+  assert.deepEqual(fired.last_run_ids, [])
+  assert.match(fired.last_error ?? '', /testing changes on sample rows/)
+  assert.equal(db.prepare('SELECT COUNT(*) FROM setup_runs WHERE sheet_id = ?').pluck().get(t.ok.test_sheet_id), 0)
+  ok(store.deleteSchedule(uid, s.id))
+  discardSheetTest(uid, sid)
 })
 
 await check('the sheet in the trash: the firing says so', async () => {
