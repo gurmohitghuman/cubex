@@ -39,6 +39,19 @@ export const CHANGES_RECORDED_AFTER = 'v0.8.12';
 // Newest first.
 export const AGENT_CHANGES: ReleaseChanges[] = [
   {
+    version: 'v0.8.45',
+    changes: [
+      {
+        change: 'changed',
+        tools: ['hiring_signals'],
+        summary: 'hiring_signals takes action "update" (write scope, free): change min_roles, leave_out_companies or '
+          + 'both after create. They apply from the next check.',
+        details: 'A company kept off before gets its row at the next check if it passes now; a row already on '
+          + 'Companies stays. null resets one (every company, none left out). PATCH /api/v1/hiring/{id} does the same.',
+      },
+    ],
+  },
+  {
     version: 'v0.8.44',
     changes: [
       {
