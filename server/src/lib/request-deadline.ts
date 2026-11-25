@@ -2,7 +2,7 @@ import type express from 'express';
 import type { IncomingMessage } from 'node:http';
 import { MAX_CSV_UPLOAD_BYTES } from './constants';
 import { HTTP_HEADERS_TIMEOUT_MS } from './constants-server';
-import { envInt } from './env-int';
+import { envInt, envMs } from './env-int';
 
 // A deadline on receiving each request, for the whole app (index.ts mounts it before anything reads a body). Any
 // request has REQUEST_BODY_TIMEOUT_MS from its headers to send its body. A CSV upload gets longer, by its size,
@@ -15,7 +15,7 @@ import { envInt } from './env-int';
 // the request is all in, the answer can take as long as it needs (run progress streams).
 
 // 2 minutes: the largest JSON body the app takes (32 MB) at about 2 Mbit/s.
-export const REQUEST_BODY_TIMEOUT_MS = envInt('REQUEST_BODY_TIMEOUT_MS', 120_000);
+export const REQUEST_BODY_TIMEOUT_MS = envMs('REQUEST_BODY_TIMEOUT_MS', 120_000);
 // A CSV upload gets one more second per this many bytes of its size: 128 KB/s, a 500 MB file at 1 Mbit/s.
 export const UPLOAD_MIN_BYTES_PER_SECOND = envInt('UPLOAD_MIN_KB_PER_SECOND', 128) * 1024;
 
@@ -25,8 +25,9 @@ export const uploadDeadlineMs = (bytes: number): number =>
 
 // Node's requestTimeout, counted from a request's first byte: the headers' deadline, the largest upload's, and a
 // minute to spare.
+// At most 2^32-1 ms: Node's requestTimeout doesn't hold a larger value (it wraps to about 30 s).
 export const receiveBackstopMs = (): number =>
-  HTTP_HEADERS_TIMEOUT_MS + uploadDeadlineMs(MAX_CSV_UPLOAD_BYTES) + 60_000;
+  Math.min(4_294_967_295, HTTP_HEADERS_TIMEOUT_MS + uploadDeadlineMs(MAX_CSV_UPLOAD_BYTES) + 60_000);
 
 const TIMED_OUT = 'HTTP/1.1 408 Request Timeout\r\nConnection: close\r\nContent-Length: 0\r\n\r\n';
 // How long a connection that got its 408 waits for the client to close its side: time to read the 408 on a slow

@@ -11,7 +11,8 @@ import { call, callError, mcpClient } from './helpers-mcp'
 // search costs what a table's without the filter costs; the next check adds the company that reached 3. In the
 // app, More options make a table with "at least 2" and one company left out: the check's estimate says their
 // roles are still searched and paid for, Companies gets the 4 others, the banner says 1 was kept off. /api/v1 and
-// MCP take min_roles and leave_out_companies, answer them back and refuse them word for word.
+// MCP take min_roles and leave_out_companies, answer them back and refuse them word for word. Changed after create
+// (the banner's Filters…, PATCH /api/v1/hiring/:id, MCP's update), they apply from the next check.
 
 const jobSpend = async () => (await mockBilling()).filter(b => b.toolId.includes('jobs.search')
   && !b.toolId.endsWith('.count')).reduce((n, b) => n + b.costMicro, 0)
@@ -151,5 +152,52 @@ test('/api/v1 and MCP: taken, answered back, refused word for word; a table with
   const many = await api.post('/api/v1/hiring', { headers: writer,
     data: { roles: ['AE'], leave_out_companies: Array.from({ length: 201 }, (_, i) => `site${i}.com`) } })
   expect((await many.json()).error).toBe('leave_out_companies takes at most 200 companies.')
+  await api.dispose()
+})
+
+test('changed after create: the app\'s Filters…, /api/v1 and MCP; the next check lists those kept off', async ({
+  page, context,
+}) => {
+  test.setTimeout(150_000)
+  const api = await authedApi()
+  await freshTreg(api)
+  const h = await make(api, { roles: ['SDR'], country: 'US', minRoles: 3 })
+  expect(await check(api, h)).toMatchObject({ rolesAdded: 10, companiesNew: 0, companiesKeptOff: 5 })
+
+  // The app: every company from the next check on.
+  await context.addCookies((await api.storageState()).cookies)
+  await page.goto(`${BASE}/table/${h.tableId}/${h.companiesSheetId}`)
+  const banner = page.getByTestId('hiring-banner')
+  await expect(banner).toContainText('at least 3 roles a company', { timeout: 15_000 })
+  await banner.getByTestId('hiring-filters').click()
+  const dialog = page.getByTestId('hiring-filters-dialog')
+  await expect(dialog.getByLabel('Companies with at least N matching roles')).toHaveValue('3')
+  await dialog.getByLabel('Companies with at least N matching roles').fill('1')
+  await dialog.getByTestId('hiring-filters-save').click()
+  await expect(dialog).toBeHidden()
+  await expect(banner).not.toContainText('roles a company')
+  expect(await hiring(api, h.id)).toMatchObject({ minRoles: 1, leaveOutCompanies: [] })
+  expect(await rowsOf(api, h.companiesSheetId)).toEqual([])
+  // No new role: the summary still reads every role in Roles, so the 5 kept off get their rows.
+  expect(await check(api, h)).toMatchObject({ rolesAdded: 0, companiesNew: 5, companiesKeptOff: 0 })
+  expect(await rowsOf(api, h.companiesSheetId)).toHaveLength(5)
+
+  // /api/v1: PATCH with the write scope, only these two; MCP's update the same.
+  const writer = { Authorization: `Bearer ${await makeAccessToken(api, ['read', 'write'], 'e2e filters update')}` }
+  const reader = { Authorization: `Bearer ${await makeAccessToken(api, ['read'], 'e2e filters read')}` }
+  const patched = await api.patch(`/api/v1/hiring/${h.id}`, { headers: writer,
+    data: { min_roles: 2, leave_out_companies: ['https://www.Quillmark.io'] } })
+  expect(patched.status(), await patched.text()).toBe(200)
+  expect(await patched.json()).toMatchObject({ id: h.id, min_roles: 2, leave_out_companies: ['quillmark.io'] })
+  expect((await api.patch(`/api/v1/hiring/${h.id}`, { headers: reader, data: { min_roles: 1 } })).status()).toBe(403)
+  const other = await api.patch(`/api/v1/hiring/${h.id}`, { headers: writer, data: { roles: ['AE'] } })
+  expect(other.status()).toBe(400)
+  expect((await other.json()).error).toBe('Only min_roles and leave_out_companies change after create (not roles): '
+    + 'make another table for other roles or search filters.')
+  const client = await mcpClient(await makeAccessToken(api, ['read', 'write'], 'e2e filters update mcp'))
+  expect(await call(client, 'hiring_signals', { action: 'update', id: h.id, min_roles: null,
+    leave_out_companies: null })).toMatchObject({ min_roles: 1, leave_out_companies: [], changed: [] })
+  expect(await callError(client, 'hiring_signals', { action: 'update', id: h.id }))
+    .toBe('Send min_roles, leave_out_companies or both.')
   await api.dispose()
 })

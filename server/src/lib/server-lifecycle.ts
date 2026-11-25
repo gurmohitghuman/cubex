@@ -45,6 +45,9 @@ function redactForLog(value: unknown): string {
 // that stopped receiving so a deleted/rotated token doesn't linger.
 let webhookBucketSweep: ReturnType<typeof setInterval> | null = null;
 
+// Set once a stop begins: what waits for the queue to start doesn't start then (startBackground).
+let stopping = false;
+
 // Start the HTTP server, then bring up the background-job queue.
 // The queue runs Sidequest in-process (worker threads), so it shares the
 // lifecycle of this Node process.
@@ -67,6 +70,8 @@ export const startBackground = (recovered?: RecoveredRuns) => {
   startReleaseCheckLoop();
   startQueue()
     .then(() => {
+      // A stop asked while the queue started: nothing more starts, the stop is closing the queue.
+      if (stopping) return;
       // Auto-run starts runs, so it waits for the queue (services/autorun-loop.ts).
       startAutorunLoop();
       // Setups being used on sheets start their next steps (services/setup-runner.ts).
@@ -101,14 +106,24 @@ export const startBackground = (recovered?: RecoveredRuns) => {
   webhookBucketSweep.unref();
 };
 
+// How long a stop lets requests still being answered finish (a live-update stream never does) before it closes
+// their connections, and how long it waits for the process to end on its own before it ends it.
+export const STOP_GRACE_MS = 2000;
+export const STOP_BACKSTOP_MS = 5000;
+
 // Graceful shutdown — important under tsx-watch, where the dev server
 // restarts on file changes. Without stopQueue() we'd leak Sidequest worker
 // threads across reloads and eventually exhaust the libuv thread pool.
+// This is the only stop: the queue's own signal handlers are off (queue.ts).
 export const installShutdownHandlers = (server: Server) => {
   let shuttingDown = false;
   const shutdown = async (signal: string): Promise<void> => {
     if (shuttingDown) return;
     shuttingDown = true;
+    stopping = true;
+    // After a crash, a failing exit, so the service manager starts Cubex again: systemd restarts it on failure
+    // and launchd when it didn't exit cleanly (bin/cubex-service.sh). A requested stop is a clean exit.
+    process.exitCode = signal === 'uncaughtException' ? 1 : 0;
     console.log(`Shutting down (${signal})...`);
     if (webhookBucketSweep) { clearInterval(webhookBucketSweep); webhookBucketSweep = null; }
     try { await stopQueue(); }
@@ -124,9 +139,19 @@ export const installShutdownHandlers = (server: Server) => {
     // Best effort — never block shutdown on it.
     try { db.pragma('optimize'); }
     catch (err) { console.error('PRAGMA optimize failed:', err); }
-    server.close(() => process.exit(0));
-    // Hard timeout: if the HTTP server doesn't drain in 5s, exit anyway.
-    setTimeout(() => process.exit(0), 5000).unref();
+    // Then the process ends on its own: no new connections, idle ones closed now, and the rest once
+    // STOP_GRACE_MS has let their requests finish. Ending so, not with process.exit, lets V8 finish compiling on
+    // its threads first: an exit while it does can hang the process (nodejs/node#54918, the unit tests' kit too).
+    server.close(() => console.log('Stopped.'));
+    server.closeIdleConnections();
+    setTimeout(() => server.closeAllConnections(), STOP_GRACE_MS).unref();
+    // Backstop: something still keeping the process up after STOP_BACKSTOP_MS is named in the log, then the
+    // process exits. V8 has long finished compiling by then.
+    setTimeout(() => {
+      console.error('Still running after the stop, ending it. Kept up by:',
+        JSON.stringify(process.getActiveResourcesInfo()));
+      process.exit();
+    }, STOP_BACKSTOP_MS).unref();
   };
 
   // Last-resort safety nets.

@@ -8,8 +8,23 @@ import type { AGGridSpreadsheetProps, GridSearchTarget } from './types'
 // cell found (a cell class read from the grid's context, so no column is
 // rebuilt) and scroll it into view, now or once its rows arrive (a jump loads
 // a new window). Also keeps the viewport still when the rows above a deep
-// window are added on top (loadEarlier).
+// window are added on top (loadEarlier): the row first in view stays at the
+// same pixel, as a browser's scroll anchoring keeps it (never the first row
+// AG Grid renders, up to rowBuffer rows above the view).
 const PENDING_MS = 15_000
+
+// The first row the viewport shows (its top may be scrolled past) and how far past: the rows AG Grid renders start
+// up to rowBuffer rows above the view.
+function firstInView(api: GridApi): { node: IRowNode; offset: number } | null {
+  const { top } = api.getVerticalPixelRange()
+  for (let i = api.getFirstDisplayedRowIndex(), last = api.getLastDisplayedRowIndex(); i <= last; i++) {
+    const node = api.getDisplayedRowAtIndex(i)
+    if (node && typeof node.rowTop === 'number' && node.rowTop + (node.rowHeight ?? 0) > top) {
+      return { node, offset: top - node.rowTop }
+    }
+  }
+  return null
+}
 
 export function useGridSearch(args: {
   gridRef: RefObject<AgGridReact>
@@ -19,8 +34,10 @@ export function useGridSearch(args: {
   registerSearch?: AGGridSpreadsheetProps['registerSearch']
   onLoadEarlier?: AGGridSpreadsheetProps['onLoadEarlier']
   onOpenSearch?: () => void
+  // The grid's scroll box (.ag-body-viewport), to put the anchored row back at its pixel.
+  viewport: () => HTMLElement | null
 }) {
-  const { gridRef, windowStart, data, colIdFor, registerSearch, onLoadEarlier, onOpenSearch } = args
+  const { gridRef, windowStart, data, colIdFor, registerSearch, onLoadEarlier, onOpenSearch, viewport } = args
   // The grid's context: read by cells (the "#" column, the search highlight)
   // without rebuilding any column.
   const context = useRef<GridContext>({ windowStart: 0, hit: null }).current
@@ -28,9 +45,10 @@ export function useGridSearch(args: {
   // A cell to show once its rows arrive; it waits a little while, not for a
   // later scroll to pull the viewport to it.
   const pending = useRef<(GridSearchTarget & { until: number }) | null>(null)
-  // The row at the top of the viewport while earlier rows load above it (for
-  // a few seconds: a page dropped as stale never arrives).
-  const anchor = useRef<{ rowIndex: number; firstHeld: number; until: number } | null>(null)
+  // The row first in view while earlier rows load above it, and how far the
+  // view's top is past that row's top (for a few seconds: a page dropped as
+  // stale never arrives).
+  const anchor = useRef<{ rowIndex: number; offset: number; firstHeld: number; until: number } | null>(null)
   // AG Grid can call a handler from an earlier render: read rows through a ref.
   const dataRef = useRef(data)
   dataRef.current = data
@@ -91,9 +109,10 @@ export function useGridSearch(args: {
     const api = liveApi(), rows = dataRef.current, p = pending.current
     if (!api || !onLoadEarlier || context.windowStart <= 0 || rows.length === 0) return
     if (p && p.until >= Date.now() && rows.some(r => r.rowIndex === p.rowIndex)) return
-    const top = api.getDisplayedRowAtIndex(api.getFirstDisplayedRowIndex())
-    if (typeof top?.data?.__rowIndex === 'number') {
-      anchor.current = { rowIndex: top.data.__rowIndex, firstHeld: rows[0].rowIndex, until: Date.now() + 5000 }
+    const top = firstInView(api)
+    if (top && typeof top.node.data?.__rowIndex === 'number') {
+      anchor.current = { rowIndex: top.node.data.__rowIndex, offset: top.offset, firstHeld: rows[0].rowIndex,
+        until: Date.now() + 5000 }
     }
     onLoadEarlier(context.windowStart, rows[0].rowIndex)
   }, [onLoadEarlier, context]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -109,7 +128,9 @@ export function useGridSearch(args: {
     else if (a && dataRef.current[0]?.rowIndex !== a.firstHeld) {
       anchor.current = null
       const node = api.getRowNode(String(a.rowIndex))
-      if (node?.rowIndex !== null && node?.rowIndex !== undefined) api.ensureIndexVisible(node.rowIndex, 'top')
+      const box = viewport()
+      if (node && typeof node.rowTop === 'number' && box) box.scrollTop = node.rowTop + a.offset
+      else if (node?.rowIndex !== null && node?.rowIndex !== undefined) api.ensureIndexVisible(node.rowIndex, 'top')
     }
     const target = pending.current
     if (target && target.until < Date.now()) pending.current = null

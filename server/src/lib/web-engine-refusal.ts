@@ -13,13 +13,18 @@
 // names an engine together with web fetch, server tools or Exa. Moderation
 // (its metadata carries the flagged input, the user's own words), guardrail,
 // budget and key refusals don't match, and a 403 this doesn't recognise fails
-// its row with OpenRouter's own words, as before.
+// its row with OpenRouter's own words, as before. So does a refused web search
+// engine (one that names search and not fetch): Exa and the Server Tools page
+// serve web search too, and the pause would blame the fetch engine for it.
 import { redactSecrets } from './redact';
 import { hasFetchLimits, runFetchLimits } from './web-fetch-options';
 
 const ENGINE = /\bengines?\b/i;
 const FETCH = /web[\s_-]?fetch|server[\s_-]?tools?|\bexa\b/i;
 const NAMED_FIELD = /engine|tool/i;
+// The word alone or in a field's name (search_engine, openrouter:web_search), never inside another (research).
+const SEARCH = /(?<![a-z])search(?![a-z])/i;
+const NAMES_FETCH = /(?<![a-z])fetch(?![a-z])/i;
 
 const text = (v: unknown): string => (typeof v === 'string' ? v : JSON.stringify(v) ?? '');
 
@@ -33,6 +38,7 @@ export function webEngineRefusalWords(error: unknown): string | null {
   const message = typeof body.message === 'string' ? body.message : text(e.message);
   const fields = Object.entries(meta).filter(([k]) => NAMED_FIELD.test(k)).map(([k, v]) => `${k}: ${text(v)}`);
   const all = [message, ...fields].join(' ');
+  if (SEARCH.test(all) && !NAMES_FETCH.test(all)) return null;
   return ENGINE.test(all) && FETCH.test(all) ? redactSecrets(all).slice(0, 200) : null;
 }
 
