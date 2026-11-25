@@ -16,6 +16,9 @@ process.env.RESPONSE_STALL_TIMEOUT_MS = '1000'
 process.env.RESPONSE_MIN_KB_PER_SECOND = '2048'
 const STALL = 1000
 const RATE = 2048 * 1024
+// A steady reader here reads at twice the pace the wait grows by, whatever size of chunk the system hands it: one a
+// tick (every 10 ms) is about 800 KB/s on a Mac, whose Unix sockets buffer 8 KB, so one 16 MB write was cut there.
+const PACE = 2 * RATE
 const express = (await import('express')).default
 const { answerStall, progressOf } = await import('../../server/src/lib/answer-stall')
 const { responseWriter } = await import('../../server/src/lib/csv-write')
@@ -55,7 +58,7 @@ const closeServer = await listen(app)
 
 // A file goes out in writes of 64 KB: their progress shows, whatever the system.
 {
-  const r = await steady('/big.bin')
+  const r = await steady('/big.bin', PACE)
   check(`a steady reader of a file gets all of it over ${r.ms} ms`, r.got[0]?.bytes === BIG
     && r.got[0].length === BIG && r.ms > 2 * STALL, r)
   const cut = await stalled('/big.bin')
@@ -65,7 +68,7 @@ const closeServer = await listen(app)
 
 // One large write shows nothing until all of it is out: it gets its size's time.
 {
-  const r = await steady('/one')
+  const r = await steady('/one', PACE)
   check(`a steady reader of one 16 MB write gets all of it over ${r.ms} ms`, r.got[0]?.bytes === BIG
     && r.got[0].length === BIG && r.ms > 2 * STALL, r)
   const more = (BIG / RATE) * 1000

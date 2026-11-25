@@ -32,6 +32,24 @@ export function generateWebhookToken(): GeneratedWebhookToken {
   };
 }
 
+// A webhook's optional token, which senders put in Authorization: Bearer <token> (services/sheet-webhook.ts).
+// The same shape as the URL's secret; only its hash is kept, and it is shown once, when it is made.
+export function generateWebhookAuthToken(): { token: string; tokenHash: string } {
+  const token = crypto.randomBytes(RAW_BYTES).toString('base64url');
+  return { token, tokenHash: sha256Hex(token) };
+}
+
+// Does this Authorization header carry the token whose hash is kept? The scheme is case-insensitive (RFC 9110),
+// as for the API's keys. The hashes are compared in constant time.
+export function webhookAuthMatches(header: string | undefined, tokenHash: string): boolean {
+  if (typeof header !== 'string' || !/^bearer /i.test(header)) return false;
+  const token = header.slice('Bearer '.length).trim();
+  if (!/^[A-Za-z0-9_-]{43}$/.test(token)) return false;
+  const sent = Buffer.from(sha256Hex(token), 'hex');
+  const kept = Buffer.from(tokenHash, 'hex');
+  return sent.length === kept.length && crypto.timingSafeEqual(sent, kept);
+}
+
 // Recover the raw secret from its transient ciphertext during the reveal window.
 // Returns null if the ciphertext is gone (post-first-event) or undecryptable.
 export function revealWebhookSecret(tokenCiphertext: string | null | undefined): string | null {

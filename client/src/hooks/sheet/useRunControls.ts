@@ -4,6 +4,7 @@ import { aiAPI, httpAPI, runsStopAPI, AIRun, HTTPRun } from '@/utils/api'
 import { setupRunsChanged } from '@/lib/setup-runs-signal'
 import { asksForHigherLimit } from '@/components/ai-modal/raise-limit-ask'
 import type { PausedLine } from '@/lib/paused-runs'
+import { resumeFailedText } from '@/lib/resume-copy'
 
 interface UseRunControlsArgs {
   sheetId: string | null
@@ -52,19 +53,22 @@ export const useRunControls = ({ sheetId, aiRuns, httpRuns, setupLive, refetch }
   // (RaiseLimitDialog), for each such run one after another (closing or
   // raising one opens the next), and resumes the rest.
   const [raiseQueue, setRaiseQueue] = useState<string[]>([])
+  // A resume that fails says which column's run it was and why, as a single resume does (resumeOne).
   const resumeAll = async () => {
-    const actions: Promise<any>[] = []
+    const actions: Array<{ column: string; done: Promise<unknown> }> = []
     const paused = aiRuns.filter(r => r.status === 'paused')
     const asks = await Promise.all(paused.map(asksForHigherLimit))
     const atLimit = paused.filter((_, i) => asks[i])
     if (atLimit.length) setRaiseQueue(atLimit.map(r => r.id))
-    paused.filter((_, i) => !asks[i]).forEach(r => actions.push(aiAPI.resumeRun(r.id)))
-    httpRuns.filter(r => r.status === 'paused').forEach(r => actions.push(httpAPI.controlRun(r.id, 'resume')))
-    const results = await Promise.allSettled(actions)
-    const failed = results.filter(r => r.status === 'rejected').length
-    if (failed > 0) {
-      toast.error(failed === results.length ? 'Failed to resume runs' : `Resumed some runs (${failed} failed)`)
-    }
+    paused.filter((_, i) => !asks[i])
+      .forEach(r => actions.push({ column: r.column_name, done: aiAPI.resumeRun(r.id) }))
+    httpRuns.filter(r => r.status === 'paused').forEach(r => actions.push({
+      column: r.master_column_name ?? 'HTTP API column', done: httpAPI.controlRun(r.id, 'resume'),
+    }))
+    const results = await Promise.allSettled(actions.map(a => a.done))
+    const reasons = results.flatMap((r, i) => (r.status === 'rejected'
+      ? [`${actions[i].column}: ${(r.reason as any)?.response?.data?.error || "couldn't resume"}`] : []))
+    if (reasons.length > 0) toast.error(resumeFailedText(reasons, results.length), { duration: 10_000 })
     await refetch()
   }
 

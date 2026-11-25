@@ -118,6 +118,6 @@ export function useWebhook(sheetId: string | null, isOpen: boolean) {
 
   return {
     loading, busy, source, mappings, deliveries,
-    refresh, create, rotate, setEnabled, remove, addMapping, deleteMapping,
+    refresh, create, rotate, setEnabled, remove, addMapping, deleteMapping, setSource,
   }
 }

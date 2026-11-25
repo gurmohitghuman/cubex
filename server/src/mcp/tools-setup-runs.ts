@@ -21,17 +21,21 @@ const names = z.record(z.string(), z.string());
 export function registerSetupRunTools(server: McpServer, ctx: McpAuthCtx): void {
   registerTool(server, 'apply_setup', {
     description:
-      'Build a saved setup\'s columns (save_setup, list_setups) on a sheet and fill them, each step once the columns '
-      + 'it reads are filled. For one column use its own tool; for items without a sheet, call_setup. COSTS MONEY: '
-      + 'AI steps call your model per row, enrichments spend your treg balance, HTTP API steps send a request per '
-      + 'row; clean and formula steps are free. ESTIMATE_ONLY DEFAULTS TO TRUE: the first call prices each step and '
-      + 'starts nothing; tell the user, then call again with estimate_only:false. A step whose columns this setup '
-      + 'made on the sheet before CARRIES THEM ON, filling only the rows it hasn\'t done (carries_on lists them): '
-      + 'call again with the same inputs and names to fill new rows or finish a stopped setup. Auto-run is turned '
-      + 'on only after a run on every row. Saved keys need the "secrets" scope. max_cost_usd refuses to start '
-      + 'when the estimate\'s high end, plus one row\'s most per AI step, is above it, or a step has no known '
-      + 'price unless allow_unpriced; once started, each AI and enrichment step\'s spend limit is what is left of '
-      + 'it. Returns a setup_run with each step\'s run_id. Next: get_setup_run.'
+      'Build a saved setup\'s columns (list_setups) on a sheet and fill them, each step once the columns it reads '
+      + 'are filled: a whole chain of columns on another sheet (for one column, use its own tool; for items without '
+      + 'a sheet, call_setup). '
+      + 'COSTS MONEY: AI steps call your model per row, enrichments spend your treg balance, HTTP API '
+      + 'steps send a request per row; clean and formula steps are free. '
+      + 'ESTIMATE_ONLY DEFAULTS TO TRUE: the first call prices each step and starts nothing; tell the user, then '
+      + 'call again with estimate_only:false. A step whose columns this setup made before CARRIES THEM ON, filling '
+      + 'only rows it hasn\'t done: call again with the same inputs and names to fill new rows or finish a stopped '
+      + 'run (get_setup_run shows the choices a run used). Auto-run is turned on only after a run on every row. '
+      + 'Saved keys in its requests need the "secrets" scope. COST CEILING: max_cost_usd refuses to start (nothing '
+      + 'is created) when the estimate\'s high end, plus one row\'s most for each AI step, is above it, or when a '
+      + 'step has no known price unless allow_unpriced is true. Each started AI and enrichment step gets a spend '
+      + 'limit within what is left of the ceiling (one with no known price runs without one). Returns a setup_run '
+      + 'with each step\'s run_id (get_run_status '
+      + 'works on those); follow it with get_setup_run.'
       + capToolNote(ctx.spend ?? null, true),
     inputSchema: z.object({
       sheet_id: z.string().describe(SHEET_ID),

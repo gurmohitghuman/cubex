@@ -52,6 +52,9 @@ export function testEnv(env, { testDir, port, tregBase, receiverPort }) {
     RUN_HOOK_SWEEP_MS: env.RUN_HOOK_SWEEP_MS || '200',
     // Runs leave the queue on a faster beat here (the Sidequest worker looks every 1 s in production).
     SIDEQUEST_POLL_MS: env.SIDEQUEST_POLL_MS || '100',
+    // A run parked behind a paused run looks again after 2 s here (30 s in production, lib/run-park.ts), so a
+    // spec that resumes the paused one doesn't wait out the rest.
+    RUN_PARK_PAUSED_MS: env.RUN_PARK_PAUSED_MS || '2000',
     // Specs reach a receiver they start on 127.0.0.1 through the real outbound path (SSRF guard
     // included) via names under .cubex-e2e.invalid (tests/e2e/net-shim.cjs).
     E2E_RECEIVER_PORT: receiverPort,

@@ -1,48 +1,40 @@
 // What makes a run column's results out of date now (lib/run-inputs): its key
-// in rows.run_inputs and the columns its NEWEST run reads. A result a run made
-// from other columns (its setup was edited since to read different ones) reads
-// as out of date too: it wasn't made from what the column reads now. Read per
-// request: a few small queries, one newest run per column, never every run.
+// in rows.run_inputs and the input lists its stamps name (lib/run-inputs/sets.ts),
+// each resolved against the sheet's columns now (a gone column reads empty).
+// Each row is checked against the list its own run read, so a setup that reads
+// other columns marks nothing out of date. Stamps from before migration 066
+// read against the key's legacy_set (lib/run-inputs/legacy.ts). Read per
+// request: a few small queries per column, never every run.
 import { db } from '../lib/db';
 import { getSheetColumns } from '../lib/sql-helpers';
-import { runInputKey, sheetRunInputKeys } from '../lib/run-inputs/keys';
-import {
-  aiRunInputColumns, requestRunInputColumns, type AiInputFields, type RunInputList,
-} from '../lib/run-inputs/columns';
-import { staleSql, type RunInputs } from '../lib/run-inputs/stale-sql';
+import { runInputSet, runInputSets } from '../lib/run-inputs/sets';
+import type { RunInputList } from '../lib/run-inputs/columns';
+import { staleSql, type RunInputs, type RunInputSet } from '../lib/run-inputs/stale-sql';
 import type { CompiledFilter } from '../lib/row-filter/sql';
-import type { HTTPAPIConfig } from '../lib/http-request-template';
 import { statusReadsStale, type EnrichRowsStatus } from '../lib/enrich-run-config';
 
-// The columns the newest run filling `main` reads, or null when no run fills it.
-// An AI run wins over an HTTP one of the same name, as in lib/column-types.ts.
-export function columnRunInputs(
-  sheetId: string, userId: string, main: string, columns: readonly string[],
-): RunInputList | null {
-  const ai = db.prepare(`SELECT column_name, prompt, output_columns, data_column, use_openrouter_web_search
-    FROM ai_runs WHERE sheet_id = ? AND user_id = ? AND column_name = ? ORDER BY rowid DESC LIMIT 1`)
-    .get(sheetId, userId, main) as AiInputFields | undefined;
-  if (ai) return aiRunInputColumns(ai, columns);
-  // MAX(rowid) over the (sheet, column) index: an auto-run column holds a run per batch.
-  const config = db.prepare(`SELECT config FROM http_runs WHERE rowid = (SELECT MAX(rowid) FROM http_runs
-    WHERE sheet_id = ? AND master_column_name = ?) AND user_id = ?`).pluck()
-    .get(sheetId, main, userId) as string | null | undefined;
-  if (!config) return null;
-  try {
-    return requestRunInputColumns(JSON.parse(config) as HTTPAPIConfig, main, [...columns]);
-  } catch { return null; }
+interface KeyRow { id: number; column_name: string; legacy_set: number | null }
+
+// A key's lists, newest first, then the one its pre-066 stamps read against.
+function keyInputs(k: KeyRow, userId: string, columns: readonly string[]): RunInputs {
+  const resolve = (list: RunInputList): RunInputList => list.map(c => (c !== null && columns.includes(c) ? c : null));
+  const sets: RunInputSet[] = runInputSets(k.id, userId).map(s => ({ id: s.id, inputs: resolve(s.inputs) }));
+  const legacy = k.legacy_set === null ? undefined : runInputSet(k.legacy_set, k.id, userId);
+  if (legacy) sets.push({ id: null, inputs: resolve(legacy) });
+  return { key: k.id, sets };
 }
 
 // Every run column of the sheet a run has fingerprinted rows of → its key and inputs.
 export function sheetRunInputs(sheetId: string, userId: string, columns?: readonly string[]): Map<string, RunInputs> {
-  const keys = sheetRunInputKeys(sheetId, userId);
+  const keys = db.prepare('SELECT id, column_name, legacy_set FROM run_input_keys WHERE sheet_id = ? AND user_id = ?')
+    .all(sheetId, userId) as KeyRow[];
   const out = new Map<string, RunInputs>();
-  if (keys.size === 0) return out;
+  if (keys.length === 0) return out;
   const sheetColumns = columns ?? getSheetColumns(sheetId, userId, false);
-  for (const [main, key] of keys) {
-    if (!sheetColumns.includes(main)) continue;
-    const inputs = columnRunInputs(sheetId, userId, main, sheetColumns);
-    if (inputs) out.set(main, { key, inputs });
+  for (const k of keys) {
+    if (!sheetColumns.includes(k.column_name)) continue;
+    const r = keyInputs(k, userId, sheetColumns);
+    if (r.sets.length > 0) out.set(k.column_name, r);
   }
   return out;
 }
@@ -50,10 +42,11 @@ export function sheetRunInputs(sheetId: string, userId: string, columns?: readon
 // The out-of-date check of one run column (its main column), or null when no
 // run has fingerprinted a row of it: rerun targets and counts select it.
 export function columnStaleCheck(sheetId: string, userId: string, main: string): CompiledFilter | null {
-  const key = runInputKey(sheetId, userId, main);
-  if (key === null) return null;
-  const inputs = columnRunInputs(sheetId, userId, main, getSheetColumns(sheetId, userId, false));
-  return inputs ? staleSql({ key, inputs }) : null;
+  const k = db.prepare(`SELECT id, column_name, legacy_set FROM run_input_keys
+    WHERE sheet_id = ? AND user_id = ? AND column_name = ?`).get(sheetId, userId, main) as KeyRow | undefined;
+  if (!k) return null;
+  const r = keyInputs(k, userId, getSheetColumns(sheetId, userId, false));
+  return r.sets.length > 0 ? staleSql(r) : null;
 }
 
 // An enrichment or waterfall run's seeding and counts: the check, when the

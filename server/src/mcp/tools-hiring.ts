@@ -6,7 +6,7 @@ import {
 import { perSearchRefusal, postedDaysRefusal } from '../lib/hiring/input';
 import { EMPLOYMENT_TYPES, SENIORITY_LEVELS } from '../lib/hiring/filters';
 import { minRolesRefusal } from '../lib/hiring/company-filters';
-import { agentCheckHiring, agentCreateHiring, agentGetHiring } from '../services/hiring-agent';
+import { agentCheckHiring, agentCreateHiring, agentGetHiring, agentUpdateHiring } from '../services/hiring-agent';
 import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean, lenientInt } from './tool-helpers';
 import { changedOf, madeSheet } from './changed';
 
@@ -19,11 +19,11 @@ export function registerHiringTool(server: McpServer, ctx: McpAuthCtx): void {
       'Companies hiring for chosen roles. create (free): a table of Companies (New roles since the last check), '
       + 'Roles and Searches. check (run scope, PAID): adds only new roles, sums up Companies. estimate_only '
       + '(default true): high_usd, its most, and a free count; then estimate_only false with max_cost_usd = '
-      + 'high_usd. get: the checks.',
+      + 'high_usd. get: the checks. update (free): min_roles and leave_out_companies, from the next check.',
     inputSchema: z.object({
-      action: z.enum(['create', 'check', 'get']).describe('check is paid'),
+      action: z.enum(['create', 'check', 'get', 'update']).describe('check is paid'),
       id: z.string().optional()
-        .describe('check, get: from create'),
+        .describe('check, get, update: from create'),
       roles: z.union([z.array(z.string()), z.string()]).optional()
         .describe(`create: role titles (a list or lines; at most ${HIRING_MAX_ROLES})`),
       country: z.string().nullable().optional().describe('create: country code (US)'),
@@ -42,10 +42,10 @@ export function registerHiringTool(server: McpServer, ctx: McpAuthCtx): void {
       companies: words().describe('create: only these companies (websites)'),
       // lib/hiring/company-filters.ts: which companies get a Companies row; the search stays the same.
       min_roles: lenientInt(1, HIRING_MAX_MIN_ROLES, minRolesRefusal('min_roles')).optional()
-        .describe('create: companies with fewer matching roles get no Companies row (default 1). Their roles are '
-          + 'still searched and paid for.'),
-      leave_out_companies: words().describe('create: these companies (websites) get no Companies row. Their roles '
-        + 'are still searched and paid for.'),
+        .nullable().describe('create, update: companies with fewer matching roles get no Companies row (default 1). '
+          + 'Their roles are still searched and paid for.'),
+      leave_out_companies: words().nullable().describe('create, update: these companies (websites) get no Companies '
+        + 'row. Their roles are still searched and paid for.'),
       estimate_only: lenientBoolean().optional().describe('check: default true'),
       // Checked as /api/v1 checks it (lib/hiring/input.ts checkMostOf): the same refusals.
       max_cost_usd: z.number().optional()
@@ -62,6 +62,13 @@ export function registerHiringTool(server: McpServer, ctx: McpAuthCtx): void {
       const { companies_sheet_id: companies, roles_sheet_id: roles, searches_sheet_id: searches } = out.ok;
       return ok({ ...out.ok, changed: changedOf(ctx.userId, [madeSheet(ctx.userId, companies),
         madeSheet(ctx.userId, roles), madeSheet(ctx.userId, searches)]) });
+    }
+    if (a.action === 'update') {
+      const denied = missingScope(ctx, 'write');
+      if (denied) return denied;
+      const { action: _a, id, ...rest } = a;
+      const out = agentUpdateHiring(ctx.userId, id, rest);
+      return 'ok' in out ? ok({ ...out.ok, changed: [] }) : err(out.message);
     }
     if (a.action === 'get') {
       const denied = missingScope(ctx, 'read');

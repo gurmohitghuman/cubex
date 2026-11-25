@@ -2,6 +2,7 @@ import {
   WEBHOOK_RATE_PER_SEC,
   WEBHOOK_RATE_BURST,
   WEBHOOK_BUCKET_IDLE_EVICT_MS,
+  WEBHOOK_MAX_OPEN_BODIES,
 } from './constants';
 
 // Per-SOURCE ingestion rate limiter for POST /api/webhooks/:token.
@@ -65,6 +66,30 @@ export function takeWebhookToken(sourceId: string, now: number = Date.now()): Ra
   const retryAfterSec = Math.max(1, Math.ceil(deficit / WEBHOOK_RATE_PER_SEC));
   return { allowed: false, retryAfterSec };
 }
+
+// Events still arriving, per source (the bucket above counts starts only: many slow bodies could be open at
+// once within it). Same rule 1: only a validated source's id is kept, and an entry goes when its count is 0,
+// so the Map holds only webhooks with an event coming in right now.
+const openBodies = new Map<string, number>();
+
+// Counts one more event arriving for sourceId, or null when WEBHOOK_MAX_OPEN_BODIES already are. The caller
+// calls the release it gets once the request ends, however it ends; a second call does nothing.
+export function holdWebhookBody(sourceId: string): (() => void) | null {
+  const open = openBodies.get(sourceId) ?? 0;
+  if (open >= WEBHOOK_MAX_OPEN_BODIES) return null;
+  openBodies.set(sourceId, open + 1);
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    const left = (openBodies.get(sourceId) ?? 1) - 1;
+    if (left > 0) openBodies.set(sourceId, left);
+    else openBodies.delete(sourceId);
+  };
+}
+
+// For tests: how many events are arriving for a source.
+export const openWebhookBodies = (sourceId: string): number => openBodies.get(sourceId) ?? 0;
 
 // Drop a source's bucket immediately — call on delete so a removed webhook
 // doesn't keep a stale entry. NOT called on rotate: rotate keeps the same
