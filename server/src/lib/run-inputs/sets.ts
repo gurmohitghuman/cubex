@@ -14,14 +14,17 @@ export const RUN_INPUT_SETS_READ = 16;
 // base 36, never holding ':'). A stamp written before migration 066 has no id.
 export const stampText = (setId: number, fp: string): string => `${setId}:${fp}`;
 
-// The list's id under the key, made when no list of the key holds these
-// columns in this order. Immediate, so two runs starting at once (each on its
-// own connection) make one list; inside a caller's transaction, a savepoint.
+// The list's id under the key, made when none of the key's newest lists (the
+// ones a reader checks) holds these columns in this order: a setup back to an
+// older list gets a new one, or the rows it fills would never read out of date.
+// Immediate, so two runs starting at once (each on its own connection) make
+// one list; inside a caller's transaction, a savepoint.
 export function ensureRunInputSet(key: number, userId: string, inputs: Readonly<RunInputList>): number {
   const columns = JSON.stringify(inputs);
   return db.transaction(() => {
-    const id = db.prepare(`SELECT id FROM run_input_sets WHERE key = ? AND user_id = ? AND columns = ?
-      ORDER BY id DESC LIMIT 1`).pluck().get(key, userId, columns) as number | undefined;
+    const id = db.prepare(`SELECT id FROM (SELECT id, columns FROM run_input_sets WHERE key = ? AND user_id = ?
+      ORDER BY id DESC LIMIT ?) WHERE columns = ? LIMIT 1`).pluck()
+      .get(key, userId, RUN_INPUT_SETS_READ, columns) as number | undefined;
     if (id !== undefined) return id;
     return Number(db.prepare('INSERT INTO run_input_sets (user_id, key, columns) VALUES (?, ?, ?)')
       .run(userId, key, columns).lastInsertRowid);

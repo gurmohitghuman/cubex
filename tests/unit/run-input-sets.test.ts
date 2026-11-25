@@ -172,6 +172,16 @@ await check(`a row made from a list older than the newest ${RUN_INPUT_SETS_READ}
   assert.deepEqual(stale(OUT), [])
 })
 
+await check('a setup back to a list older than the newest 16: the rows it fills read out of date again', () => {
+  // The column reads Name only again, a list no reader checks any more: its new rows get a list that is read.
+  aiRun('Only /name', [2])
+  setCell(2, 'Name', 'Renamed')
+  assert.deepEqual(stale(OUT), [2])
+  // Row 5 keeps the old list's stamp: still never out of date.
+  setCell(5, 'Name', 'Again')
+  assert.deepEqual(stale(OUT), [2])
+})
+
 await check('one list is made once per key, and a deleted key takes its lists', () => {
   const key = ensureRunInputKey(sid, uid, 'Call')
   const a = ensureRunInputSet(key, uid, ['Name'])
