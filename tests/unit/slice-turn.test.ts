@@ -27,7 +27,8 @@ async function pair(): Promise<{ client: net.Socket; server: net.Socket; close: 
 }
 
 async function main() {
-  await check('a slice written in the poll phase: the next one begins after the data then waiting was read', async () => {
+  const pollPhase = 'a slice written in the poll phase: the next one begins after the data then waiting was read'
+  await check(pollPhase, async () => {
     const trigger = await pair()
     const probe = await pair()
     try {
