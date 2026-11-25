@@ -58,6 +58,15 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
           + 'with estimate_only, output_columns, a list job, or what only a run takes (target_row_ids, preview_rows).',
       },
       {
+        change: 'added',
+        tools: ['social_research'],
+        summary: 'social_research makes a table of social posts on a topic (TikTok, Instagram, YouTube, X), with '
+          + 'transcripts, an AI breakdown, creators and comments set up and not run; find_posts searches (paid).',
+        details: 'create is free. find_posts is an estimate unless estimate_only is false, then needs the estimate\'s '
+          + 'high_usd as max_cost_usd; running it again adds only new posts. Run the steps on the Top posts view\'s '
+          + 'rows with each column\'s own run.',
+      },
+      {
         change: 'changed',
         tools: ['export_csv'],
         summary: 'export_csv puts its leading quote on a cell whose first visible character is a formula trigger: '

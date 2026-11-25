@@ -1,0 +1,412 @@
+{
+ "endpoint": {
+  "id": "treg.x.post.comments",
+  "provider": "treg",
+  "provider_display": "treg",
+  "name": "x.post.comments \u2014 routed: best of 3 providers, own keys first",
+  "summary": "Replies to an X (Twitter) post by tweet id \u2014 provider-native rows in `comments`",
+  "method": "POST",
+  "path": "/x.post.comments",
+  "scope": "",
+  "tier": "core",
+  "kind": "routed",
+  "domain": "post",
+  "call_template": "treg call treg.x.post.comments",
+  "cost": {
+   "type": "per_success",
+   "value": 0.0005,
+   "currency": "USD",
+   "per": 1,
+   "unit": "call",
+   "source": "inferred",
+   "confidence": "documented",
+   "checked": null,
+   "varies": true,
+   "note": "Not free: $0.0005\u2013$0.01476 per hit across 3 providers, 0% markup. A call also pays each provider tried before the hit that bills a miss (2 of 3 do), up to X-Treg-Route-Max-Cost (default $1); X-Treg-Route-Waterfall: 0 pays for one provider only",
+   "usd": 0.0005
+  },
+  "async": null,
+  "platform_eligible": true,
+  "platform_blocked": null,
+  "miss": {
+   "status": 200,
+   "means": "output.comments == []"
+  },
+  "status": null,
+  "status_note": null,
+  "superseded_by": null,
+  "verified": null,
+  "added": null,
+  "docs_url": "",
+  "has_example": false,
+  "input": {
+   "bodyType": "json",
+   "body": {
+    "tweet_id": {
+     "type": "string",
+     "required": false,
+     "note": "identity"
+    }
+   },
+   "note": "Send what you know; treg sends each provider only the fields it accepts ({tweet_id}). On a miss it tries the next provider, cheapest first. Options are X-Treg-Route-* headers, never body fields. The answer is {output, raw, _treg}; X-Treg-Served-By names the provider."
+  },
+  "routed_children": [
+   "anyapi.x.post.comments",
+   "justoneapi.x.twitter-get-post-comments-v1",
+   "tikhub.x.twitter-web-fetch-latest-post-comments"
+  ],
+  "capability": "x.post.comments",
+  "capability_description": "List a post's comments",
+  "platform": "x",
+  "platform_label": "X (Twitter)",
+  "observed": {
+   "samples": 68542,
+   "decided": 68517,
+   "ok_rate": 0.9996,
+   "p50_ms": null,
+   "p95_ms": null,
+   "last_ok_days": 0,
+   "hit_rate": null,
+   "hit_samples": 0
+  },
+  "wallet": {
+   "payable": false,
+   "reason": "routed",
+   "note": "a routed treg tool needs a treg account; sign in to call it"
+  }
+ },
+ "provider": {
+  "service": "treg",
+  "display_name": "treg"
+ },
+ "siblings": [
+  {
+   "id": "anyapi.x.post.comments",
+   "provider": "anyapi",
+   "provider_display": "AnyAPI",
+   "name": "X / Twitter Post Replies",
+   "scope": "any_account",
+   "kind": "data",
+   "cost": {
+    "type": "per_call",
+    "value": 0.0005,
+    "currency": "USD",
+    "unit": "call",
+    "reported_charge": {
+     "path": "costUsd",
+     "unit": "usd"
+    },
+    "usd": 0.0005
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-09-19",
+   "params": [
+    "fields",
+    "max_items",
+    "summary",
+    "jq",
+    "cursor",
+    "limit",
+    "url"
+   ],
+   "observed": {
+    "samples": 160013,
+    "decided": 159662,
+    "ok_rate": 0.9882,
+    "p50_ms": 1627,
+    "p95_ms": 3480,
+    "last_ok_days": 0,
+    "hit_rate": 0.4792,
+    "hit_samples": 157758
+   },
+   "reviews": {
+    "teams": 10,
+    "share": {
+     "useful": 0.92,
+     "partly": 0.08,
+     "not_useful": 0.0
+    }
+   }
+  },
+  {
+   "id": "crawl4ai.x.post.comments",
+   "provider": "crawl4ai",
+   "provider_display": "Crawl4AI",
+   "name": "Replies to an X (Twitter) post",
+   "scope": "any_account",
+   "kind": "data",
+   "cost": {
+    "type": "per_success",
+    "value": 0.45,
+    "currency": "credit",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.00045
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": null,
+   "params": [
+    "limit",
+    "tweet"
+   ],
+   "observed": {
+    "samples": 156,
+    "decided": 0,
+    "ok_rate": null,
+    "p50_ms": null,
+    "p95_ms": null,
+    "last_ok_days": null,
+    "hit_rate": null,
+    "hit_samples": 0
+   }
+  },
+  {
+   "id": "justoneapi.x.twitter-get-post-comments-v1",
+   "provider": "justoneapi",
+   "provider_display": "Just One API",
+   "name": "X (Twitter) post comments by tweet id",
+   "scope": "",
+   "kind": "data",
+   "cost": {
+    "type": "per_success",
+    "value": 0.1,
+    "currency": "CNY",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.01476
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "tweetId",
+    "cursor"
+   ],
+   "observed": {
+    "samples": 2010,
+    "decided": 1656,
+    "ok_rate": 1.0,
+    "p50_ms": 3111,
+    "p95_ms": 4937,
+    "last_ok_days": 0,
+    "hit_rate": 0.0684,
+    "hit_samples": 1653
+   },
+   "reviews": {
+    "teams": 0
+   }
+  },
+  {
+   "id": "tikhub.x.twitter-web-fetch-latest-post-comments",
+   "provider": "tikhub",
+   "provider_display": "TikHub",
+   "name": "X (Twitter) newest post comments by tweet id",
+   "scope": "",
+   "kind": "data",
+   "cost": {
+    "type": "per_call",
+    "value": 0.001,
+    "currency": "USD",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.001
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "tweet_id",
+    "cursor"
+   ],
+   "observed": {
+    "samples": 113102,
+    "decided": 109032,
+    "ok_rate": 0.9941,
+    "p50_ms": 2170,
+    "p95_ms": 4063,
+    "last_ok_days": 0,
+    "hit_rate": 0.9096,
+    "hit_samples": 108389
+   },
+   "reviews": {
+    "teams": 0
+   }
+  },
+  {
+   "id": "tikhub.x.twitter-web-fetch-post-comments",
+   "provider": "tikhub",
+   "provider_display": "TikHub",
+   "name": "X (Twitter) post comments by tweet id",
+   "scope": "",
+   "kind": "data",
+   "cost": {
+    "type": "per_call",
+    "value": 0.001,
+    "currency": "USD",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.001
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "tweet_id",
+    "cursor"
+   ],
+   "observed": {
+    "samples": 306809,
+    "decided": 305030,
+    "ok_rate": 0.998,
+    "p50_ms": 2306,
+    "p95_ms": 3738,
+    "last_ok_days": 0,
+    "hit_rate": null,
+    "hit_samples": 0
+   },
+   "reviews": {
+    "teams": 5,
+    "share": {
+     "useful": 1.0,
+     "partly": 0.0,
+     "not_useful": 0.0
+    }
+   }
+  }
+ ],
+ "related_capabilities": [
+  {
+   "endpoint_id": "treg.x.search.posts",
+   "capability": "x.search.posts",
+   "does": "Search posts by keyword"
+  },
+  {
+   "endpoint_id": "treg.x.user.posts",
+   "capability": "x.user.posts",
+   "does": "List a user's recent posts"
+  },
+  {
+   "endpoint_id": "treg.x.user.profile",
+   "capability": "x.user.profile",
+   "does": "Get a user's public profile"
+  }
+ ],
+ "routing": {
+  "contract": {
+   "identity": [
+    [
+     "tweet_id"
+    ]
+   ],
+   "output": {
+    "comments": {
+     "type": "array",
+     "items": {
+      "type": "object"
+     },
+     "required": true
+    },
+    "next_cursor": {
+     "type": "string"
+    }
+   },
+   "miss": "comments == []",
+   "derive": {}
+  },
+  "plan": [
+   {
+    "endpoint_id": "anyapi.x.post.comments",
+    "accepts": [
+     [
+      "tweet_id"
+     ]
+    ],
+    "usd": 0.0005,
+    "cost": {
+     "type": "per_call",
+     "usd": 0.0005
+    },
+    "hit_rate": 0.4792,
+    "usd_per_hit": 0.001043405676126878,
+    "works": 0.9882
+   },
+   {
+    "endpoint_id": "tikhub.x.twitter-web-fetch-latest-post-comments",
+    "accepts": [
+     [
+      "tweet_id"
+     ]
+    ],
+    "usd": 0.001,
+    "cost": {
+     "type": "per_call",
+     "usd": 0.001
+    },
+    "hit_rate": 0.9096,
+    "usd_per_hit": 0.0010993843447669306,
+    "works": 0.9941
+   },
+   {
+    "endpoint_id": "justoneapi.x.twitter-get-post-comments-v1",
+    "accepts": [
+     [
+      "tweet_id"
+     ]
+    ],
+    "usd": 0.01476,
+    "cost": {
+     "type": "per_success",
+     "value": 0.1,
+     "currency": "CNY",
+     "usd": 0.01476
+    },
+    "hit_rate": 0.0684,
+    "usd_per_hit": 0.01476,
+    "works": 1.0
+   }
+  ],
+  "also": [
+   {
+    "endpoint_id": "crawl4ai.x.post.comments",
+    "usd": 0.00045,
+    "cost": {
+     "type": "per_success",
+     "value": 0.45,
+     "currency": "credit",
+     "usd": 0.00045
+    }
+   },
+   {
+    "endpoint_id": "tikhub.x.twitter-web-fetch-post-comments",
+    "usd": 0.001,
+    "cost": {
+     "type": "per_call",
+     "usd": 0.001
+    }
+   }
+  ],
+  "max_cost_usd": 1.0,
+  "headers": {
+   "X-Treg-Route-Waterfall": "on by default: a miss tries the next provider; 0 = stop at the first miss",
+   "X-Treg-Route-Max-Cost": "USD ceiling for the whole call (default 1.00)",
+   "X-Treg-Route-Prefer": "provider[,\u2026], the name before an id's first dot (quickenrich), not an endpoint id",
+   "X-Treg-Route-Exclude": "provider[,\u2026], the name before an id's first dot (quickenrich), not an endpoint id",
+   "X-Treg-Route-Strict-Filters": "1 = never call a provider that cannot apply a filter you sent (answers 422, nothing charged); off by default \u2014 the answer names what was ignored in X-Treg-Ignored-Filters"
+  }
+ },
+ "call_template": "treg call treg.x.post.comments",
+ "example_response": null,
+ "hints": []
+}

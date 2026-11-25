@@ -53,7 +53,7 @@ test('MCP: discover tools, read and write a sheet end-to-end', async () => {
     'run_ai_column', 'run_columns', 'run_enrichment', 'run_http_enrichment', 'save_setup', 'search_enrichments',
     'set_auto_dedupe',
     'set_auto_run',
-    'set_column_order', 'set_default_model', 'set_description', 'sort_sheet',
+    'set_column_order', 'set_default_model', 'set_description', 'social_research', 'sort_sheet',
     'transfer_rows', 'transform_column',
     'undo_run', 'update_cells', 'waterfall_column', 'write_formula', 'write_run_condition',
   ])
