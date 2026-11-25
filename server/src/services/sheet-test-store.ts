@@ -37,3 +37,11 @@ export function testView(t: TestRecord): TestView {
 export function testsIn(state: TestRecord['state']): TestRecord[] {
   return db.prepare(`SELECT ${COLUMNS} FROM sheet_tests WHERE state = ? ORDER BY rowid`).all(state) as TestRecord[];
 }
+
+// A test's hidden copy (sheets.test_of). A list enrichment can't run there: its rows would go into a real sheet of
+// the table and stay after the test is discarded (services/enrich-list-dest.ts, enrich-list-start.ts and
+// autorun-list.ts refuse it before anything is spent or made).
+export const isTestCopy = (sheetId: string): boolean =>
+  !!db.prepare('SELECT 1 FROM sheets WHERE id = ? AND test_of IS NOT NULL').get(sheetId);
+export const LIST_ON_TEST_COPY = 'List enrichments add rows to another sheet, so they can\'t run on a test copy. '
+  + 'Apply your changes first, then run it on the sheet.';

@@ -16,7 +16,8 @@ export const TEST_WORDS = 'test copies the sheet\'s top rows (rows, default 10, 
   + 'setup into a hidden copy (test.test_sheet_id): change and run columns there with the usual tools while the '
   + 'sheet takes no changes and its webhook deliveries wait. test_add_rows adds rows (how: top or random). '
   + 'apply_test makes the copy\'s setup the sheet\'s and puts the sample rows\' results back (dry_run, default '
-  + 'true, says what it would do); discard_test drops the copy. Either ends the test. ';
+  + 'true, says what it would do); discard_test drops the copy. Either ends the test. A list enrichment can\'t run '
+  + 'on the copy (its rows would go to another sheet). ';
 
 export interface TestArgs {
   table_id: string; sheet_id?: string; row_ids?: string[]; rows?: number; how?: 'top' | 'random';
