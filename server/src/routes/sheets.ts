@@ -25,6 +25,7 @@ import usageRoutes from './sheets-usage';
 import searchRoutes from './sheets-search';
 import descriptionRoutes from './sheets-descriptions';
 import historyRoutes from './sheets-history';
+import skipWhyRoutes from './sheets-skip-why';
 import setupVersionRoutes from './sheets-setup-versions';
 import { refuseChangesWhileBusy } from '../lib/sheet-busy';
 
@@ -78,6 +79,7 @@ router.use(usageRoutes);
 router.use(searchRoutes);
 router.use(descriptionRoutes);
 router.use(historyRoutes);
+router.use(skipWhyRoutes);
 router.use(setupVersionRoutes);
 
 export default router;

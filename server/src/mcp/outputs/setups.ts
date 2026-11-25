@@ -28,12 +28,17 @@ const setupRun = obj({
     column: str, kind: str, layer: num, mode: str, state: str, run_id: nul(str), note: nul(str),
   })),
   max_cost_usd: opt(num),
+  column_run: opt(info('A column run (run_columns): mode, how many row_ids, where')),
 });
 // estimate_only (its default): estimate, inputs, makes and carries_on. Started: setup_run.
 export const applySetup = obj({
   setup_run: opt(setupRun), estimate: opt(info('What it would cost, by column')),
   inputs: opt(info('Input -> the column it reads')), makes: opt(strs).describe('The columns it would make'),
   carries_on: opt(strs).describe('The columns it carries on'), changed,
+});
+// estimate_only (its default): estimate. Started: setup_run.
+export const runColumns = obj({
+  setup_run: opt(setupRun), estimate: opt(info('What it would cost, by column')), changed,
 });
 // No setup_run_id: setup_runs. With one: that setup run.
 export const getSetupRun = obj({ setup_runs: opt(z.array(setupRun)), ...setupRun.partial().shape });

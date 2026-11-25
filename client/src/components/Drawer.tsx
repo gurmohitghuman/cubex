@@ -1,4 +1,4 @@
-import React, { Fragment, ReactNode } from 'react'
+import React, { Fragment, ReactNode, useLayoutEffect, useRef } from 'react'
 import { Dialog, Transition } from '@headlessui/react'
 import { X } from 'lucide-react'
 import { useCloseAfterOpen } from '@/hooks/useCloseAfterOpen'
@@ -85,8 +85,12 @@ export function DrawerHeader({
 
 // Scrollable drawer body. flex-1 so it fills the panel below the header and
 // scrolls on overflow; p-4 space-y-5 gives the standard padding + section rhythm.
-export function DrawerBody({ children }: { children: ReactNode }) {
-  return <div className="flex-1 overflow-y-auto p-4 space-y-5">{children}</div>
+// `topKey`: when it changes, the body is back at its top before it is drawn, as it
+// opened (a side panel swapping in another row's content).
+export function DrawerBody({ children, topKey }: { children: ReactNode; topKey?: string }) {
+  const ref = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => { if (ref.current) ref.current.scrollTop = 0 }, [topKey])
+  return <div ref={ref} className="flex-1 overflow-y-auto p-4 space-y-5">{children}</div>
 }
 
 export default Drawer

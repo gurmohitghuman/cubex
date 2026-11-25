@@ -2,14 +2,14 @@
 // provider keeps failing or its results can't be saved, and a run whose worker
 // stopped is picked up again (lib/call-deadline.ts, lib/run-breaker.ts,
 // lib/storage-failure.ts, services/stalled-runs.ts).
-import { envInt } from './env-int';
+import { envInt, envMs } from './env-int';
 
 // One AI call, body included. The SDK's own timeout (AI_REQUEST_TIMEOUT_MS)
 // stops counting once the response headers arrive, so a body that stalls
 // would hold its row, its run and a worker slot forever. Long enough for a
 // slow reasoning model with web search; a call that reaches it may still be
 // billed, so it is never sent again on its own.
-export const AI_CALL_DEADLINE_MS = envInt('AI_CALL_DEADLINE_MS', 10 * 60_000);
+export const AI_CALL_DEADLINE_MS = envMs('AI_CALL_DEADLINE_MS', 10 * 60_000);
 // One HTTP API request: the column's own timeout bounds the wait for the
 // headers and each gap in the body; this much on top of twice that bounds the
 // whole request, so a server trickling bytes can't hold the row.
@@ -28,16 +28,16 @@ export const RUN_BREAKER_FAILURES = envInt('RUN_BREAKER_FAILURES', 5);
 export const RUN_STOP_POLL_MS = 1_000;
 // A running row whose request or prompt reads a column another run holds
 // looks again this often whether it's free (services/run-input-gate.ts).
-export const RUN_INPUT_WAIT_POLL_MS = envInt('RUN_INPUT_WAIT_POLL_MS', 1_000);
+export const RUN_INPUT_WAIT_POLL_MS = envMs('RUN_INPUT_WAIT_POLL_MS', 1_000);
 // A run whose rows wait for a run that can't go on in a job slot (queued,
 // paused, or parked itself) gives its slot back and is picked up again after
 // this long (lib/run-park.ts); after the longer one when what it waits for is
 // paused, which waits for a person. Never under three of the queue's polls.
-export const RUN_PARK_MS = envInt('RUN_PARK_MS', 5_000);
-export const RUN_PARK_PAUSED_MS = envInt('RUN_PARK_PAUSED_MS', 30_000);
+export const RUN_PARK_MS = envMs('RUN_PARK_MS', 5_000);
+export const RUN_PARK_PAUSED_MS = envMs('RUN_PARK_PAUSED_MS', 30_000);
 // Rows waiting inside a waterfall's lookup step change their count often: the run's waiting_on takes a new
 // count at most this often (a new column or holder is written at once; lib/run-waiting.ts).
-export const RUN_WAITING_ROWS_WRITE_MS = envInt('RUN_WAITING_ROWS_WRITE_MS', 5_000);
+export const RUN_WAITING_ROWS_WRITE_MS = envMs('RUN_WAITING_ROWS_WRITE_MS', 5_000);
 // A running run beats updated_at this often while it waits on its rows.
 export const RUN_HEARTBEAT_MS = 30_000;
 // A running run whose beat is older than this has lost its worker: it is

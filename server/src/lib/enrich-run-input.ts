@@ -1,3 +1,4 @@
+// Over 200 lines: one parse of the run-start request, each field checked in one place.
 // The run-start request from the drawer (and later MCP and /api/v1), parsed
 // strictly (pure): it spends money, so anything unexpected is refused with a
 // plain reason instead of being guessed at.
@@ -14,6 +15,7 @@ import {
 } from './enrich-run-config';
 import { parseListInput, type ListInput } from './enrich-list-input';
 import { parseRuleField } from './run-condition';
+import { jsonTemplateOf } from './enrich-template';
 
 export type InputBinding = { column: string } | { value: string };
 // fromAnswer: a field added from a stored answer ("Add as column"), kept by its path.
@@ -82,7 +84,10 @@ export const RATE_LIMIT_RETRIES_ERROR =
 export const rateLimitRetriesOf = (v: unknown): number | null | undefined => (v === undefined || v === null ? null
   : typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= ENRICH_PROVIDER_RATE_RETRIES_MAX ? v : undefined);
 
-function parseInputs(v: unknown): Record<string, InputBinding> | string {
+// templates: a fixed value may be a JSON template (lib/enrich-template.ts: a list or object whose strings read
+// columns), as Cubex writes one for a Find jobs table with More filters, so the app's drawer can save that column's
+// setup again. Any other fixed value can't hold "{{".
+function parseInputs(v: unknown, templates: boolean): Record<string, InputBinding> | string {
   if (!isObj(v)) return 'inputs must map input names to a column or a fixed value.';
   const out: Record<string, InputBinding> = {};
   for (const [name, b] of Object.entries(v)) {
@@ -90,7 +95,9 @@ function parseInputs(v: unknown): Record<string, InputBinding> | string {
     const column = str(b.column), value = str(b.value, MAX_FIXED);
     if (column !== null && column.trim()) out[name] = { column };
     else if (value !== null && value.trim()) {
-      if (value.includes('{{')) return `The fixed value for ${name} can't contain "{{".`;
+      if (value.includes('{{') && !(templates && jsonTemplateOf(value))) {
+        return `The fixed value for ${name} can't contain "{{".`;
+      }
       out[name] = { value: value.trim() };
     } else return `Input ${name} needs a column or a value.`;
   }
@@ -172,13 +179,15 @@ function parseEmail(v: unknown): EnrichRunInput['email'] | 'bad' {
   return { accept, guess: e.guess !== false, pattern };
 }
 
-export function parseEnrichRunInput(body: unknown): { ok: EnrichRunInput } | { error: string } {
+// opts.templates: the app's drawer (routes/enrich-runs.ts); /api/v1 and MCP take no JSON template.
+export function parseEnrichRunInput(body: unknown, opts: { templates?: boolean } = {}):
+  { ok: EnrichRunInput } | { error: string } {
   const b = isObj(body) ? body : {};
   if (typeof b.toolId !== 'string' || !TREG_TOOL_ID_PATTERN.test(b.toolId)) return { error: 'Pick a tool first.' };
   if (b.preset !== undefined && b.preset !== null && b.preset !== 'verified_email') return { error: 'Unknown preset.' };
   const columnName = str(b.columnName);
   if (!columnName || !columnName.trim()) return { error: 'Add a column name.' };
-  const inputs = parseInputs(b.inputs);
+  const inputs = parseInputs(b.inputs, opts.templates === true);
   if (typeof inputs === 'string') return { error: inputs };
   const order = names(b.providerOrder), skip = names(b.skipProviders);
   if (!order || !skip) return { error: 'providerOrder and skipProviders must be lists of provider names.' };

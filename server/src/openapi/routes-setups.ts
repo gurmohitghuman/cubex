@@ -72,6 +72,17 @@ export const setupRoutes = (): RouteDoc[] => [
     responses: { 200: 'The estimate.', 201: 'Started: the setup_run.' },
   }),
   op({
+    method: 'post', path: '/sheets/{id}/column-runs', operationId: 'runColumns', tag: 'setups', scope: 'run',
+    summary: "Run several of a sheet's run columns again on chosen rows, or price that first.",
+    description: "Same as MCP's run_columns, but estimate_only defaults to false here. Followed as a setup run "
+      + '(GET /setup-runs/{runId}). Saved keys need secrets.',
+    body: toolBody('run_columns', {
+      omit: ['sheet_id', 'estimate_only'],
+      extend: { estimate_only: z.boolean().optional().describe('true prices it and starts nothing. Default false.') },
+    }),
+    responses: { 200: 'The estimate.', 201: 'Started: the setup_run.' },
+  }),
+  op({
     method: 'get', path: '/sheets/{id}/setup-runs', operationId: 'listSetupRuns', tag: 'setups', scope: 'read',
     summary: 'The setups being used on a sheet, newest first.',
     query: z.object({ setup_id: z.string().optional().describe("Only this setup's runs.") }),

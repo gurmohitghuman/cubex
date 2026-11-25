@@ -1,10 +1,12 @@
 // Hiring tables over /api/v1 (services/hiring-agent.ts): make one (write),
-// read it, check it (run: paid, an estimate unless estimate_only is false;
+// read it, change its filters on Companies (write), check it (run: paid, an estimate unless estimate_only is false;
 // the check needs max_cost_usd, and over it answers 409 with the estimate now).
 import express from 'express';
 import { requireScope, TokenAuthRequest } from '../middleware/access-token-auth';
 import { runFailHttpStatus, type RunFail } from '../services/run-shared';
-import { agentCheckHiring, agentCreateHiring, agentGetHiring, type AgentCheckFail } from '../services/hiring-agent';
+import {
+  agentCheckHiring, agentCreateHiring, agentGetHiring, agentUpdateHiring, type AgentCheckFail,
+} from '../services/hiring-agent';
 
 const router = express.Router();
 const send = (res: express.Response, out: { ok: unknown } | RunFail | AgentCheckFail, created = false) => ('ok' in out
@@ -23,6 +25,17 @@ router.get('/hiring/:id', requireScope('read'), (req: TokenAuthRequest, res) => 
   try { send(res, agentGetHiring(req.userId!, req.params.id)); } catch (error) {
     console.error('GET /v1/hiring/:id error:', error);
     res.status(500).json({ error: 'Failed to read the hiring table' });
+  }
+});
+
+// Its filters on Companies: min_roles, leave_out_companies or both, from the next check.
+router.patch('/hiring/:id', requireScope('write'), (req: TokenAuthRequest, res) => {
+  try {
+    const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+    send(res, agentUpdateHiring(req.userId!, req.params.id, body));
+  } catch (error) {
+    console.error('PATCH /v1/hiring/:id error:', error);
+    res.status(500).json({ error: 'Failed to change the hiring table' });
   }
 });
 

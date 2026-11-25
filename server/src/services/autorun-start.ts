@@ -39,6 +39,9 @@ import { isWaterfallConfig } from '../lib/waterfall/config';
 import { prepareWaterfallAutorun } from './waterfall-autorun';
 import { lookupStepsMoved } from './waterfall-build-lookup';
 import { journalSeed } from '../lib/run-undo/journal';
+import { derivedReaderIds } from '../lib/autorun-mark';
+import { dropRunSpans, kickSpanReaders, tellDerivedSpan } from '../lib/derived-spans';
+import { inputText } from './derived-write';
 
 // dest: a list job's destination sheet and the columns it still needs there.
 export interface PreparedRun {
@@ -140,9 +143,9 @@ export async function startAutorunRun(
       if (dest && fills && destMoved(e.user_id, dest.destSheetId, '', fills, dest.newColumns)) return;
       if (destHave.length + destAdd.length > MAX_COLUMNS_PER_SHEET) { out = { full: true }; return; }
       const queued = new Map(picked.rows.map(r => [r.id, r.fromPending]));
-      const found = db.prepare(`SELECT id, row_index, data FROM rows WHERE id IN (SELECT value FROM json_each(?))
+      const found = db.prepare(`SELECT rowid, id, row_index, data FROM rows WHERE id IN (SELECT value FROM json_each(?))
         AND +sheet_id = ? AND +user_id = ?`).all(JSON.stringify([...queued.keys()]), e.sheet_id, e.user_id) as
-        Array<{ id: string; row_index: number; data: string }>;
+        Array<{ rowid: number; id: string; row_index: number; data: string }>;
       // A row queued now (an input written since the pick) counts its ❌ as not run, as the queue does.
       const inQueue = new Set(db.prepare(`SELECT row_id FROM autorun_pending WHERE autorun_id = ?
         AND row_id IN (SELECT value FROM json_each(?))`).pluck().all(e.id, JSON.stringify([...queued.keys()])));
@@ -167,13 +170,20 @@ export async function startAutorunRun(
       const assoc = db.prepare(`INSERT INTO http_column_associations
           (id, sheet_id, user_id, master_column_name, extracted_column_name, run_id) VALUES (?, ?, ?, ?, ?, ?)`);
       for (const name of prep.outputs) assoc.run(uuidv4(), e.sheet_id, e.user_id, e.status_column, name, runId);
-      const paths = [e.status_column, ...prep.outputs].map(jsonPath);
+      const cols = [e.status_column, ...prep.outputs];
+      const paths = cols.map(jsonPath);
+      const readers = derivedReaderIds(e.sheet_id, e.user_id, cols);
+      const heard = readers.length
+        ? keep.filter(r => { const d = parseRowData(r.data); return cols.some(c => inputText(d[c]) !== ''); })
+          .map(r => r.rowid).sort((a, b) => a - b)
+        : [];
       // What the cells held goes into the run's undo journal first (lib/run-undo/journal.ts).
       journalSeed({ kind: 'http', id: runId }, e.sheet_id, e.user_id, { ids: JSON.stringify(keep.map(r => r.id)) },
-        [e.status_column, ...prep.outputs].map((c): [string, string] => [c, PLACEHOLDER]));
+        cols.map((c): [string, string] => [c, PLACEHOLDER]));
       db.prepare(`UPDATE rows SET data = json_set(data${paths.map(() => ', ?, ?').join('')}),
         updated_at = datetime('now') WHERE id IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ?`)
         .run(...paths.flatMap(p => [p, PLACEHOLDER]), JSON.stringify(keep.map(r => r.id)), e.sheet_id, e.user_id);
+      tellDerivedSpan(e.sheet_id, e.user_id, readers, heard, { kind: 'http', id: runId });
       db.prepare('UPDATE sheets SET data_version = data_version + 1 WHERE id = ? AND user_id = ?')
         .run(e.sheet_id, e.user_id);
       out = { started: { runId, rows: keep.length } };
@@ -188,6 +198,7 @@ export async function startAutorunRun(
   if ('started' in outcome) {
     try {
       await enqueueHTTPRerun(runId, targets);
+      kickSpanReaders(e.sheet_id);
     } catch (error) {
       const reason = redactSecrets(error instanceof Error ? error.message : String(error)).slice(0, 400);
       // Its rows wait in the queue, and auto-run tries again a few minutes on (a restart, a busy queue).
@@ -196,6 +207,7 @@ export async function startAutorunRun(
             placeholder_work = 'clearing', updated_at = datetime('now') WHERE id = ? AND status = 'pending'`)
           .run(`The run could not start: ${reason}`, runId).changes > 0;
         if (!failed) return;   // someone cancelled it meanwhile
+        dropRunSpans(e.sheet_id, { kind: 'http', id: runId });
         // Nothing was sent: every row goes back in the queue, HTTP columns' too.
         requeueUnfinished(e.id, e.sheet_id, e.user_id, e.status_column, targets);
         pauseEntry(e.id, 'queue', 'It tries again in a few minutes.');

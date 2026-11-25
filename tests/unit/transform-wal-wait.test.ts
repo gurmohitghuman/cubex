@@ -5,7 +5,8 @@
 // at once too. With a checkpoint already running that takes 5 s on the worker, the call answers within its budget
 // and one page, not when the checkpoint ends; the next call, made at once, waits for that checkpoint all its time
 // and says so, writing no rows and answering the same cursor; the one after waits for it before its first page,
-// so no page is written past the WAL's bound. Going on with the cursors ends every row exactly once. That case runs
+// so no page is written past the WAL's bound (the one-frame data_version write after each call must be made, past it
+// too). Going on with the cursors ends every row exactly once. That case runs
 // with writesWaitForCheckpoints off, as on macOS: on Windows and Linux the call's last writes, past its deadline,
 // wait for that checkpoint first, so it answers once the checkpoint has (wal-turn-late.test.ts).
 import assert from 'node:assert/strict'
@@ -91,9 +92,11 @@ async function checkpointRunning() {
     { ok: { updated: 0, created_column: null, next_cursor: first.cursor, note: TRANSFORM_WAITED_NOTE } })
   // At once again, while that checkpoint still runs with the WAL past its bound.
   const next = await timed('b', first.cursor)
-  const w = probe.read()
-  console.log('     ', JSON.stringify({ next: [next.ms, next.updated], before: w.mostWalFramesBeforeWrite }))
-  assert.ok(w.mostWalFramesBeforeWrite < WAL_PAUSE_FRAMES, `a page was written with ${w.mostWalFramesBeforeWrite} `
+  // The most frames waiting in the WAL before a page added its own: a page adds dozens, data_version's write one.
+  const before = Math.max(0, ...probe.records().filter(r => r.after.log > r.before.log + 1
+    && r.before.checkpointed < r.before.log).map(r => r.before.log))
+  console.log('     ', JSON.stringify({ next: [next.ms, next.updated], before }))
+  assert.ok(before < WAL_PAUSE_FRAMES, `a page was written with ${before} `
     + 'frames waiting in the WAL')
   await walCheckpointerIdle()
   await finish('b', next.cursor)

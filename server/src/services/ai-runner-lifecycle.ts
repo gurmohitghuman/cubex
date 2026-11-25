@@ -12,6 +12,7 @@ import {
   type AIRunRow, type SheetRow,
 } from './ai-runner-status';
 import { clearRunPlaceholders, hasUnfinishedRow } from '../lib/run-placeholders';
+import { dropRunSpans } from '../lib/derived-spans';
 import { spendCapRefusal } from './token-spend';
 import { RUN_BREAKER_FAILURES } from '../lib/constants';
 import { brakeMessage, RunBreaker, type RowOutcome } from '../lib/run-breaker';
@@ -220,9 +221,15 @@ export const markFailed = async (runId: string, myGeneration: number, run?: AIRu
   //    the user's action. So we CAS on (status='running', worker_generation=ours):
   //    only a run still running under our generation can be failed.
   const reason = errorMessage ? redactSecrets(errorMessage).slice(0, 500) : null;
-  const failed = db.prepare(
-    "UPDATE ai_runs SET status = 'failed', error_message = ?, placeholder_work = 'clearing', updated_at = datetime('now') WHERE id = ? AND status = 'running' AND worker_generation = ?",
-  ).run(reason, runId, myGeneration);
+  const failed = db.transaction(() => {
+    const r = db.prepare(
+      `UPDATE ai_runs SET status = 'failed', error_message = ?, placeholder_work = 'clearing',
+         updated_at = datetime('now')
+       WHERE id = ? AND status = 'running' AND worker_generation = ?`,
+    ).run(reason, runId, myGeneration);
+    if (r.changes > 0 && run) dropRunSpans(run.sheet_id, { kind: 'ai', id: runId });
+    return r;
+  }).immediate();
   // Clear the ⏳ placeholders this run wrote — unfinished rows would otherwise
   // stay stuck "Loading..." forever (matches the cancel path). `run` is
   // undefined only if catch fired before we read it (myGeneration -1 → the CAS

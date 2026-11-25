@@ -31,7 +31,10 @@ export type CheckpointReply = {
   id: number; busy: number; log: number; checkpointed: number; startOver?: StartOver; error?: string;
 };
 
-const shared: Int32Array = (workerData as { shared?: Int32Array } | null)?.shared ?? walShared;
+const data = workerData as { shared?: Int32Array; turn?: number } | null;
+const shared: Int32Array = data?.shared ?? walShared;
+// Its own value in TURN while it holds the turn (lib/wal-shared.ts).
+const mine = data?.turn ?? WORKER;
 // Tests only: wait this long before a checkpoint, as a slow disk would (the API thread is never held by it).
 const pause = new Int32Array(new SharedArrayBuffer(4));
 
@@ -48,7 +51,7 @@ const rewrite = db.transaction(() => {
 });
 // undefined: a write since the checkpoint left frames uncopied, nothing to start over.
 function startOver(): StartOver | undefined {
-  if (Atomics.compareExchange(shared, TURN, FREE, WORKER) !== FREE) return 'turn';
+  if (Atomics.compareExchange(shared, TURN, FREE, mine) !== FREE) return 'turn';
   try {
     const before = walNow();
     if (!before || before.log < 0 || before.checkpointed < before.log) return undefined;
@@ -71,7 +74,7 @@ function startOver(): StartOver | undefined {
     // Started over, the WAL holds that write's frame (and any written since), fewer than before.
     return before.log === 0 || (walNow()?.log ?? before.log + 1) <= before.log ? 'done' : 'reader';
   } finally {
-    Atomics.compareExchange(shared, TURN, WORKER, FREE);
+    Atomics.compareExchange(shared, TURN, mine, FREE);
   }
 }
 
