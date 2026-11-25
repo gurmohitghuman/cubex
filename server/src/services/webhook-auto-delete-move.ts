@@ -22,6 +22,7 @@ import { isPristineSeedSheet } from './transfer-seed';
 import { settleRows } from './auto-dedupe-settle';
 import { forgetUnlistedTransformPasses } from './column-transform-pass-moves';
 import { logSheetChange, rewriteSheetChange } from '../lib/change-log';
+import { rowsChanged } from '../lib/rows-changed';
 
 export interface CopyTo {
   sheetId: string; name: string;
@@ -62,8 +63,12 @@ export function copyRows(
     for (const marker of plan.ghostMarkers) data[marker] = '';
     added.push(Number(insert.run(orderedUuid(), to.sheetId, userId, index++, JSON.stringify(data)).lastInsertRowid));
   }
-  if (pristine) db.prepare('DELETE FROM rows WHERE sheet_id = ? AND user_id = ? AND row_index >= 0 AND row_index < ?')
-    .run(to.sheetId, userId, SEED_ROW_COUNT);
+  rowsChanged(to.sheetId);
+  if (pristine) {
+    db.prepare('DELETE FROM rows WHERE sheet_id = ? AND user_id = ? AND row_index >= 0 AND row_index < ?')
+      .run(to.sheetId, userId, SEED_ROW_COUNT);
+    rowsChanged(to.sheetId);
+  }
   applyTransferColumnOrder(to.sheetId, userId, plan.finalOrder);
   forgetUnlistedTransformPasses(to.sheetId, userId);
   settleRows(to.sheetId, userId, added, 'arrived');

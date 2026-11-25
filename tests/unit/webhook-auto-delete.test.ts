@@ -5,7 +5,8 @@
 //    add stay; one History line.
 // C: what holds a row: an auto-run column that hasn't run it (paused, by hand too, or not), one it was queued for
 //    again, a ⏳ cell; the panel's waiting note.
-// D: a success column; E: runs keep it out, and auto-run's own only for so long before the sheet yields.
+// D: a success column; E: runs and setups being used keep it out, and auto-run's own only for so long before the
+//    sheet yields.
 // F: the copy to another sheet, a run there waits, a destination gone pauses; G: a full destination takes what
 //    fits, then pauses.
 // H: a sort pauses it until saved again; I: rows a clean, formula or lookup column still has to work out wait.
@@ -47,7 +48,7 @@ function fill(sheetId: string, n: number, data: (i: number) => Record<string, st
   const insert = db.prepare('INSERT INTO rows (id, sheet_id, user_id, row_index, data) VALUES (?, ?, ?, ?, ?)')
   db.transaction(() => {
     for (let i = from; i < from + n; i++) insert.run(uuid(), sheetId, uid, i, JSON.stringify(data(i)))
-  })()
+  }).immediate()
 }
 // A webhook sheet with n rows the webhook added (its 📥 mark), after its marker column the given ones.
 function webhookSheet(name: string, columns: string[], n: number, data: (i: number) => Record<string, string>) {
@@ -214,8 +215,18 @@ function more(sheetId: string, raw: string) {
   check('E a paused run: the panel says so', view(id)?.waiting === 'A run on this sheet is paused: no row leaves '
     + 'until it is resumed or cancelled.', view(id))
   db.prepare("UPDATE http_runs SET status = 'completed' WHERE id = ?").run(run)
+  // A setup being used on the sheet, between its steps (no run going): its next step still fills the rows.
+  const setupRun = uuid()
+  db.prepare(`INSERT INTO setup_runs (id, user_id, sheet_id, setup_name, plan, steps, status)
+    VALUES (?, ?, ?, 'Enrich', '{}', '[]', 'running')`).run(setupRun, uid, id)
   await sweep()
-  check('E the run done: they go', left(id).length === 100)
+  check('E a setup being used, between its steps: nothing goes', left(id).length === 200, left(id).length)
+  db.prepare("UPDATE setup_runs SET status = 'paused' WHERE id = ?").run(setupRun)
+  check('E a paused setup: the panel says so', view(id)?.waiting === 'The setup "Enrich" is paused on this sheet: '
+    + 'no row leaves until it is resumed or cancelled.', view(id))
+  db.prepare("UPDATE setup_runs SET status = 'done' WHERE id = ?").run(setupRun)
+  await sweep()
+  check('E the run and the setup done: they go', left(id).length === 100)
 }
 
 // F: copied first; a run there waits; a destination gone pauses it.
