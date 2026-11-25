@@ -17,7 +17,8 @@
 // E2E_RECEIVER_PORT (the local receiver specs start, default 3097), E2E_SPEC (default the
 // data-consistency specs; a Playwright path filter or a concrete .spec.ts path), E2E_INSTANCE (a
 // number: data in server/data/e2e-<n> and logs tagged with it, so several harnesses can run at once;
-// see scripts/e2e-parallel.mjs). Logs go to cubex-e2e-*.log in the OS temp folder.
+// see scripts/e2e-parallel.mjs). Logs go to cubex-e2e-*.log in the OS temp folder; specs get the server's
+// as E2E_SERVER_LOG.
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import os from 'node:os';
@@ -155,7 +156,7 @@ async function main() {
   console.log(`[test] ${SPEC} ...`);
   const playwright = track(start(process.execPath, [playwrightCli, 'test', SPEC, '--reporter=list', ...PW_ARGS], {
     env: { ...runEnv, E2E_BASE: `http://localhost:${PORT}`, E2E_TREG: tregBase,
-      E2E_CLOCK_FILE: runEnv.CUBEX_TEST_CLOCK_FILE },
+      E2E_CLOCK_FILE: runEnv.CUBEX_TEST_CLOCK_FILE, E2E_SERVER_LOG: SERVER_LOG },
   }));
   const rc = await playwright.exited;
   console.log(`[done] exit ${rc} - tearing down server + test data`);

@@ -31,6 +31,8 @@ interface Props {
   onAddField: (jsonPath: string, name: string) => void
   onRerun: () => void
   onCopy: () => void
+  // Read the cell again after a read that failed.
+  onRetry: () => void
   slideIn?: boolean
 }
 
@@ -101,7 +103,15 @@ export const AnswerPanel: React.FC<Props> = (p) => {
             <p className="text-sm text-gray-600 flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" />
               Loading the answer…</p>
           )}
-          {p.error && <p className="text-sm text-gray-700" data-testid="answer-error">{p.error}</p>}
+          {p.error && (
+            <div className="space-y-2">
+              <p className="text-sm text-gray-700" data-testid="answer-error">{p.error}</p>
+              <button type="button" className="btn-secondary" onClick={p.onRetry} disabled={p.loading}
+                data-testid="answer-retry">
+                {p.loading ? 'Loading…' : 'Try again'}
+              </button>
+            </div>
+          )}
           {p.diagText && (
             <div ref={diagRef} className="space-y-1" data-testid="answer-diagnostics">
               <p className="text-xs text-gray-600">This browser can&apos;t copy here. Select the text and copy it.</p>

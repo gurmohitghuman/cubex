@@ -9,6 +9,7 @@ import { timeZoneOf } from '../lib/ai-visibility/check';
 import { createHiringTable } from './hiring-create';
 import { estimateHiringCheck, startHiringCheck, type HiringEstimate, type HiringStartFail } from './hiring-check';
 import { companyFiltersOf, hiringFor, hiringView, type HiringCheckView, type HiringView } from './hiring-store';
+import { setHiringCompanyFilters } from './hiring-filters-set';
 import { spendCapRefusal } from './token-spend';
 import { startRefusalMessage, takeRunStart, type RunFail } from './run-shared';
 
@@ -65,6 +66,21 @@ export async function agentCreateHiring(userId: string, body: unknown) {
 export function agentGetHiring(userId: string, id: unknown) {
   const rec = hiringFor(userId, id);
   return rec ? { ok: hiringJson(hiringView(rec)) } : notFound;
+}
+
+// Its filters on Companies changed (services/hiring-filters-set.ts): only those two, the rest is set at create. The
+// answer always names both, so an update back to every company says so.
+const UPDATABLE: readonly string[] = Object.values(COMPANY_FILTER_NAMES.snake);
+export function agentUpdateHiring(userId: string, id: unknown, body: Json) {
+  const other = Object.keys(body).filter(k => body[k] !== undefined && !UPDATABLE.includes(k));
+  if (other.length) {
+    return bad(`Only ${UPDATABLE.join(' and ')} change after create (not ${other.join(', ')}): make another table `
+      + 'for other roles or search filters.');
+  }
+  const out = setHiringCompanyFilters(userId, id, body, 'snake');
+  if ('fail' in out) return out;
+  return { ok: { ...hiringJson(out.ok), min_roles: out.ok.minRoles, leave_out_companies: out.ok.leaveOutCompanies,
+    next: 'They apply from the next check: hiring_signals action "check".' } };
 }
 
 // What a table made with description words, seniority and the rest was made with (none: nothing).

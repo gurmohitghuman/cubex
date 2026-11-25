@@ -1,3 +1,4 @@
+// Over 200 lines: one fixture testing every span-follow edge case (edits, sorts, trash, caps, concurrent runs).
 // A stopped run's ⏳ clear tells the formula reading its column the rows it put back as spans
 // (lib/derived-spans.ts, span-kit.ts has the scene), and the formula works them out once the clear has ended
 // (services/derived-follow.ts). Exactly those rows, whatever happens in between: the formula, and a formula
@@ -5,9 +6,9 @@
 // run's real end; a person's edit in a row not told stays; a row edited while the clear goes; the formula waits
 // for the clear's end; a sort between the clear and the follow; rows deleted or sent to the trash after the
 // clear, one restored before the formula's turn; long text in the formula's cells, a span worked out in slices the
-// read cap ends; long answers, slices that end early; a second run on the column before the formula caught up,
-// waited for at its ⏳, so no wrong value shows; and a ⏳ a person typed, with no run holding the column, not
-// waited for.
+// read cap ends; long answers, slices that end early; a second run going on the column before the formula caught up
+// (reads ⏳ as empty, then follows its answers) and a second run clearing (waits at its ⏳ until the clear ends);
+// and a ⏳ a person typed, with no run holding the column, not waited for.
 import assert from 'node:assert/strict'
 import { spanKit, fOf } from './span-kit'
 import endMod from '../../server/src/lib/run-placeholders'
@@ -159,22 +160,36 @@ await ok('long answers: slices end early (the read cap, or the time one may take
   k.right(sid, paid)
 })
 
-await ok('a second run on Answer before F caught up: F waits at its ⏳, no wrong value shows, both end right',
+await ok('a second run going on Answer before F caught up: F reads its ⏳ as empty, then follows its answers',
   async () => {
-  // F and F2 were right before the first run: the clear tells every row, and nothing changes.
+  // F and F2 were right before the first run: the clear tells every row, then a second run starts on rows 5 and 6.
   const { sid, run, paid } = await scene(10, { before: true })
   await clear(sid, run)
   const again = await runOn(sid, { going: true, targets: [5, 6] })
-  for (let t = 0; t < 2; t++) {
-    await tick(sid, 'F')
-    assert.deepEqual(progress(sid, 'F'), [5], 'F works rows 0 to 4 out, and waits at row 5')
-    assert.deepEqual([cells(sid, 'F')[5], cells(sid, 'F2')[5]], ['has Old 5', 'has Old 5!'], 'no ⏳ read as empty')
-  }
+  await follow(sid)
+  assert.deepEqual([cells(sid, 'F')[5], cells(sid, 'F2')[5]], ['empty', 'empty!'], 'going ⏳ reads as empty')
+  assert.deepEqual([cells(sid, 'F')[6], cells(sid, 'F2')[6]], ['empty', 'empty!'])
+  assert.deepEqual(paid.map(p => queued(sid, p)), [[], []], 'no paid auto-run hears of the ⏳')
   write(sid, 5, [['Answer', 'New 5']], again)
   write(sid, 6, [['Answer', 'New 6']], again)
   db.prepare("UPDATE http_runs SET status = 'completed' WHERE id = ?").run(again.id)
   await follow(sid)
   k.right(sid, paid, { loud: [[5, 6], [5, 6]] })
+})
+
+await ok('a second run clearing on Answer before F caught up: F waits at its ⏳, no wrong value shows, both end right',
+  async () => {
+  const { sid, run, paid } = await scene(10, { before: true })
+  await clear(sid, run)
+  const again = await runOn(sid, { targets: [5, 6] })
+  for (let t = 0; t < 2; t++) {
+    await tick(sid, 'F')
+    assert.deepEqual(progress(sid, 'F'), [5], 'F works rows 0 to 4 out, and waits at row 5 while clearing')
+    assert.deepEqual([cells(sid, 'F')[5], cells(sid, 'F2')[5]], ['has Old 5', 'has Old 5!'], 'clearing ⏳ waits')
+  }
+  await clearRunPlaceholders('http', again.id)
+  await follow(sid)
+  k.right(sid, paid)
 })
 
 await ok('the ⏳ text typed into Answer, no run holding it: F works that row out (as empty), not waiting there',

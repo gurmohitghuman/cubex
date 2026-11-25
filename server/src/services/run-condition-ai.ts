@@ -21,11 +21,13 @@ import { redactSecrets } from '../lib/redact';
 import { actorSpendRefusal } from './token-spend';
 import { addCall, noSpend, recordCallUsage } from './usage-calls';
 import { batchOnlyRefusal } from '../lib/ai-model-check';
+import { ruleMisses } from '../lib/run-condition-explain';
 
 export interface RuleCheckResult {
   rule: string; columns: string[];
   rows_checked: number; rows_passing: number; rows_skipped: number;
-  sample: Array<{ row_index: number; values: Record<string, string>; passes: boolean }>;
+  // why: for a row the rule keeps out, each part that fails (lib/run-condition-explain.ts).
+  sample: Array<{ row_index: number; values: Record<string, string>; passes: boolean; why?: string[] }>;
 }
 
 const bad = (message: string): RunFail => ({ fail: 'bad_request', message });
@@ -47,7 +49,10 @@ export async function checkRuleOnSheet(
     ok: {
       rule: rule.rule, columns: rule.columns, rows_checked: scan.considered, rows_passing: scan.passing,
       rows_skipped: scan.considered - scan.passing,
-      sample: scan.firstRows.map(r => ({ row_index: r.rowIndex, values: r.values, passes: r.passes })),
+      sample: scan.firstRows.map(r => ({
+        row_index: r.rowIndex, values: r.values, passes: r.passes,
+        ...(r.passes ? {} : { why: ruleMisses(rule.tree, r.values) }),
+      })),
     },
   };
 }

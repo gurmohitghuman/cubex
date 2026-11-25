@@ -91,11 +91,12 @@ export const SheetHeader: React.FC<SheetHeaderProps> = ({
 }) => {
   return (
     <header className="bg-white border-b border-gray-200 flex-shrink-0">
-      <div className="px-6">
-        {/* One line at every width: the left side (the name, run controls) gives way and truncates,
-            the right side never wraps, and its labels fold into icons on narrow screens. */}
-        <div className="flex h-14 items-center justify-between gap-3">
-          <div className="flex min-w-0 flex-1 items-center gap-3">
+      <div className="px-4 sm:px-6">
+        {/* One line from sm up: the name gives way and truncates, the run controls sit after it, the right side
+            never wraps and its labels fold into icons. On a phone two rows: the name and its counts on the first,
+            the run controls and the menus on the second, so nothing lies over anything. */}
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-2 py-2 sm:h-14 sm:flex-nowrap sm:gap-x-3 sm:py-0">
+          <div className="flex min-w-0 items-center gap-3 max-sm:w-full">
             <Link
               to="/dashboard"
               className={
@@ -116,7 +117,9 @@ export const SheetHeader: React.FC<SheetHeaderProps> = ({
                 {columnCount} column{columnCount === 1 ? '' : 's'}
               </p>
             </div>
+          </div>
 
+          <div className="flex shrink-0 items-center gap-3">
             {canStopAll && (
               <div className="flex shrink-0 items-center gap-1">
                 {anyActiveRuns && (anyRunning ? (
@@ -149,6 +152,7 @@ export const SheetHeader: React.FC<SheetHeaderProps> = ({
             )}
             {autorunChip}
           </div>
+          <div className="flex-1" aria-hidden="true" />
 
           <div className="flex shrink-0 items-center gap-2">
             <SaveStatus status={saveStatus} onRetry={retrySave} />

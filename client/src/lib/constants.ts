@@ -119,6 +119,8 @@ export const ENRICH_SPEND_WINDOWS = [7, 30, 90] as const;
 export const AUTORUN_DEFAULT_DAILY_CAP_USD = 5;
 export const AUTORUN_HTTP_DEFAULT_DAILY_ROWS = 500;
 export const AUTORUN_HTTP_MAX_DAILY_ROWS = 1_000_000;
+// The longest a row may wait after its last change before auto-run runs it (server constants-enrich.ts).
+export const AUTORUN_MAX_START_DELAY_S = 600;
 export const AUTORUN_IMPORT_COUNT_BYTES = 8 * 1024 * 1024;
 
 // Lookup columns (server lib/constants-lookup.ts): "all matches" (at most LOOKUP_LIST_MAX,
