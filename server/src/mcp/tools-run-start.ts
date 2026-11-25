@@ -19,6 +19,7 @@ import { tokenStartAiRun, type TokenAiRunArgs } from '../services/run-start-toke
 import { tokenStartHttpRun, type TokenHttpRunArgs } from '../services/run-start-token-http';
 import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean, lenientInt, SHEET_ID } from './tool-helpers';
 import { runIfSchema } from './run-if-schema';
+import { saveOnlySchema } from './save-only-schema';
 import { capToolNote } from '../lib/token-spend';
 import { AI_SPEND_LIMIT_NOTE } from '../lib/ai-spend-limit';
 
@@ -98,6 +99,7 @@ export function registerRunStartTools(server: McpServer, ctx: McpAuthCtx) {
           + 'through Exa; then the model answers from what it read.'),
         target_row_ids: targetRowIdsSchema.describe('Stable row ids (from read_rows) to run; omit for all rows'),
         run_if: runIfSchema,
+        save_only: saveOnlySchema('On an existing AI column it replaces the setup. Not with output_columns.'),
         estimate_only: lenientBoolean().optional().describe('Price it and start nothing (no AI calls, no '
           + 'columns): rows_to_process, estimated_cost_usd, per_row_usd {low, high}, web_fees_usd, web_search, '
           + 'in_flight (OpenRouter holds each running call\'s possible cost, also on your own provider key, so a high '
@@ -180,6 +182,8 @@ export function registerRunStartTools(server: McpServer, ctx: McpAuthCtx) {
         status_code_column: z.string().optional().describe('New column to hold the HTTP status code of each row'),
         target_row_ids: targetRowIdsSchema.describe('Stable row ids to run; omit for all rows'),
         run_if: runIfSchema,
+        save_only: saveOnlySchema('The only way to change an existing HTTP API column\'s setup: save it, then '
+          + 'rerun the column with control_run.'),
         estimate_only: lenientBoolean().optional()
           .describe('Dry run: rows_to_process and checks, nothing started. No AI cost (it calls your own API).'),
         idempotency_key: idempotencyKeySchema

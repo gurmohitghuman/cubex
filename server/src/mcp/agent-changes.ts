@@ -39,7 +39,7 @@ export const CHANGES_RECORDED_AFTER = 'v0.8.12';
 // Newest first.
 export const AGENT_CHANGES: ReleaseChanges[] = [
   {
-    version: 'v0.8.45',
+    version: 'v0.8.44',
     changes: [
       {
         change: 'added',
@@ -52,11 +52,47 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
       },
       {
         change: 'changed',
+        tools: ['run_enrichment', 'waterfall_column'],
+        summary: 'run_enrichment and waterfall_column take rate_limit_retries (0-10, default 5): how many times a '
+          + 'step retries for free when providers answer 429.',
+        details: 'Each waterfall step and check counts its own, and a verified email\'s finds and checks share one. '
+          + 'Reruns, auto-run and waterfall_column describe keep it. Set 0 to fail fast on a 429, or up to 10 to '
+          + 'wait longer for tight provider limits.',
+      },
+      {
+        change: 'changed',
+        tools: ['list_tables'],
+        summary: 'list_tables no longer counts every row on the call: a sheet whose rows changed is counted first, '
+          + 'waiting up to 2 seconds. One still being counted then answers its last count with '
+          + 'row_count_updating: true.',
+        details: 'row_count_updating means that row_count may be out of date: call list_tables again in a moment for '
+          + 'the new count. GET /api/v1/tables answers the same.',
+      },
+      {
+        change: 'changed',
         tools: ['create_download_link'],
         summary: 'create_download_link takes format: csv (default) or jsonl, one {"id", "data"} object a line as '
           + 'read_rows answers a row, values keeping their type.',
         details: 'Use jsonl to feed a script or another tool; CSV stays the one to open in a spreadsheet. REST: GET '
           + '/sheets/:id/export?format=jsonl.',
+      },
+      {
+        change: 'changed',
+        tools: ['run_ai_column', 'run_http_enrichment', 'run_enrichment', 'waterfall_column'],
+        summary: 'save_only: true stores a column\'s new setup and runs nothing (no rows, no cost). It answers '
+          + 'saved: true and run_id, the setup\'s record: control_run rerun with it runs the column so.',
+        details: 'A new column is made empty. An existing HTTP API column takes a new setup only this way. Refused '
+          + 'with estimate_only, output_columns, a list job, or what only a run takes (target_row_ids, preview_rows).',
+      },
+      {
+        change: 'added',
+        tools: ['social_research'],
+        summary: 'social_research makes a table of social posts on a topic (TikTok, Instagram, YouTube, X), with '
+          + 'transcripts, an AI breakdown, creators, their usual views and comments set up and not run; find_posts '
+          + 'searches (paid).',
+        details: 'create is free. find_posts is an estimate unless estimate_only is false, then needs the estimate\'s '
+          + 'high_usd as max_cost_usd; running it again adds only new posts. Run the steps on the Top posts view\'s '
+          + 'rows with each column\'s own run.',
       },
       {
         change: 'changed',
@@ -137,28 +173,27 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
         details: 'For rows filled in over a while (by hand, a webhook in parts, another column): each new write starts '
           + 'the wait again. Omitted keeps it; null sets 0. PUT /api/v1/sheets/{id}/enrichment-auto-run takes it too.',
       },
-    ],
-  },
-  {
-    version: 'v0.8.44',
-    changes: [
       {
-        change: 'changed',
-        tools: ['run_enrichment', 'waterfall_column'],
-        summary: 'run_enrichment and waterfall_column take rate_limit_retries (0-10, default 5): how many times a '
-          + 'step retries for free when providers answer 429.',
-        details: 'Each waterfall step and check counts its own, and a verified email\'s finds and checks share one. '
-          + 'Reruns, auto-run and waterfall_column describe keep it. Set 0 to fail fast on a 429, or up to 10 to '
-          + 'wait longer for tight provider limits.',
+        change: 'added',
+        tools: ['manage_run_schedule'],
+        summary: 'manage_run_schedule reruns a sheet\'s or a table\'s run columns on a schedule: daily, on weekdays, '
+          + 'weekly, monthly or every N hours, at a time in a time zone.',
+        details: 'Each firing is a column run as the token that made it (get_setup_run follows it). max_cost_usd '
+          + 'refuses a firing that could cost more; last_error says why a firing didn\'t start.',
+      },
+      {
+        change: 'added',
+        tools: ['run_columns'],
+        summary: 'run_columns runs several of a sheet\'s run columns again in one call, on the rows a mode picks '
+          + '(among row_ids or a where), with an estimate first and an optional max_cost_usd.',
+        details: 'A column reading another chosen column waits for that one\'s whole run. It answers a setup_run: '
+          + 'follow it with get_setup_run, and pause, resume or stop it with control_setup_run.',
       },
       {
         change: 'changed',
-        tools: ['list_tables'],
-        summary: 'list_tables no longer counts every row on the call: a sheet whose rows changed is counted first, '
-          + 'waiting up to 2 seconds. One still being counted then answers its last count with '
-          + 'row_count_updating: true.',
-        details: 'row_count_updating means that row_count may be out of date: call list_tables again in a moment for '
-          + 'the new count. GET /api/v1/tables answers the same.',
+        tools: ['get_setup_run', 'control_setup_run'],
+        summary: 'A column run (run_columns) shows as a setup run with no setup: setup_id null, column_run with its '
+          + 'mode and rows, and a step for each column (kind can be waterfall).',
       },
     ],
   },

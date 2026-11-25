@@ -33,6 +33,8 @@ interface Props {
   nameError: string
   // Output columns: each row shows its typed fields, and only a run fills them (no edit, no Add Column).
   structured: boolean
+  // An edit: the run button saves the setup, then runs it on every row.
+  editSetup?: boolean
   onBack: () => void
   onCommit: () => Promise<unknown>
   onStartRun: () => Promise<unknown>
@@ -40,7 +42,7 @@ interface Props {
 
 export const PreviewStep: React.FC<Props> = ({
   previewResults, setPreviewResults, isCommittingPreview, isGeneratingPreview, expectedRows,
-  runTargetRows, modelPricing, usesWebTools, webSearchPlan, nameError, structured,
+  runTargetRows, modelPricing, usesWebTools, webSearchPlan, nameError, structured, editSetup,
   onBack, onCommit, onStartRun,
 }) => {
   const [editing, setEditing] = useState<{ rowIndex: number; value: string } | null>(null)
@@ -182,7 +184,7 @@ export const PreviewStep: React.FC<Props> = ({
             title={estimate && !estimate.isFree
               ? `Run on all ${plural(estimate.totalRows, 'row')} — est. ${formatCost(estimate.costLow)}–${formatCost(estimate.costHigh)}`
               : 'Run on all rows'}>
-            <Play className="h-4 w-4" /><span>Run All Rows</span>
+            <Play className="h-4 w-4" /><span>{editSetup ? 'Save and run on all rows' : 'Run All Rows'}</span>
           </button>
         </div>
       </div>

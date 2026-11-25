@@ -12,6 +12,7 @@ interface SheetRunDrawersProps {
   selectedRowIndices: number[]
   showAddColumnModal: boolean
   showHTTPAPIColumnModal: boolean
+  httpEditColumn: string | null
   showEnrichmentDrawer: boolean
   enrichOpen: EnrichOpenRequest | null
   clearEnrichOpen: () => void
@@ -33,7 +34,7 @@ interface SheetRunDrawersProps {
 // HTTP API. Split out of SheetModals (200-line guardrail).
 export const SheetRunDrawers: React.FC<SheetRunDrawersProps> = ({
   activeSheet, sheetData, selectedRowIndices,
-  showAddColumnModal, showHTTPAPIColumnModal, showEnrichmentDrawer, enrichOpen, clearEnrichOpen,
+  showAddColumnModal, showHTTPAPIColumnModal, httpEditColumn, showEnrichmentDrawer, enrichOpen, clearEnrichOpen,
   enrichWatch, stopEnrichWatch,
   setShowAddColumnModal, setShowHTTPAPIColumnModal, setShowEnrichmentDrawer,
   setSheetData, silentReload, setupSSEConnection, fetchActiveAIRuns, fetchActiveHTTPRuns, waterfall,
@@ -110,7 +111,7 @@ export const SheetRunDrawers: React.FC<SheetRunDrawersProps> = ({
       />
 
       <HTTPAPIColumnModal
-        isOpen={showHTTPAPIColumnModal}
+        isOpen={showHTTPAPIColumnModal} editColumn={httpEditColumn}
         onClose={() => setShowHTTPAPIColumnModal(false)}
         sheetId={activeSheet.id}
         rowGeneration={sheetData?.sheet?.row_generation}

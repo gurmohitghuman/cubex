@@ -176,7 +176,7 @@ export const AIColumnModal: React.FC<AIColumnModalProps> = ({
             columnSuggestions={columnSuggestions}
             runIf={runIf} setRunIf={setRunIf} active={isOpen}
             outputColumns={outputColumns} setOutputColumns={setOutputColumns} outputsError={outputsError}
-            editing={!!editingName}
+            editing={!!editingName} onSave={h.handleSave} isSaving={h.isSaving}
             sugg={sugg} models={models}
             model={sel.model} setModel={sel.setModel}
             systemPrompt={systemPrompt} setSystemPrompt={setSystemPrompt}
@@ -198,7 +198,7 @@ export const AIColumnModal: React.FC<AIColumnModalProps> = ({
             isGeneratingPreview={h.isGeneratingPreview} expectedRows={h.expectedRows}
             runTargetRows={h.runTargetRows} modelPricing={models.selectedModel?.pricing}
             usesWebTools={useOpenRouterWebSearch || useWebFetch} webSearchPlan={h.previewWebSearch}
-            nameError={nameError} structured={outputColumns.length > 0}
+            nameError={nameError} structured={outputColumns.length > 0} editSetup={!!editingName}
             // Back is the explicit "discard this attempt": it deletes the
             // persisted draft (owner decision), so the NEXT open starts fresh —
             // draftDiscarded makes the next close reset the retained state too.
