@@ -50,11 +50,6 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
           + 'setup run id: control_setup_run pauses or cancels it, a run webhook reports it as kind setup. Results '
           + 'are kept 24 hours.',
       },
-    ],
-  },
-  {
-    version: 'v0.8.44',
-    changes: [
       {
         change: 'changed',
         tools: ['create_upload_link', 'create_download_link'],
@@ -63,6 +58,11 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
         details: 'get_setup_call pages results with results_from and limit (next_from says where the next page '
           + 'starts); create_download_link takes setup_call_id to save every item\'s inputs and outputs as a CSV.',
       },
+    ],
+  },
+  {
+    version: 'v0.8.44',
+    changes: [
       {
         change: 'changed',
         tools: ['run_enrichment', 'waterfall_column'],
