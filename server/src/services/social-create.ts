@@ -113,7 +113,7 @@ function makeTable(userId: string, input: SocialInput, runs: PlatformRuns[], col
       writeListColumn(userId, searches, sheet, r.search, `The ${spec.label} search`);
       writeFormulas(userId, sheet, spec);
       if (r.transcript) writeStepColumn(userId, sheet, r.transcript, `${spec.label} transcripts`);
-      if (input.steps.includes('breakdown')) writeBreakdown(userId, sheet, spec);
+      if (input.steps.includes('breakdown')) writeBreakdown(userId, sheet, spec, !!r.transcript);
       if (r.creator) writeStepColumn(userId, sheet, r.creator, `${spec.label} creators`);
       if (r.comments) writeListColumn(userId, sheet, comments!, r.comments, `${spec.label} comments`);
       writeTopPosts(userId, sheet, topPostsWhere({ minViews: input.minViews, minComments: input.minComments, since },

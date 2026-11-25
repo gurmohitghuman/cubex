@@ -8,7 +8,7 @@ import { getSheetColumns } from '../lib/sql-helpers';
 import { withoutChangeLog } from '../lib/change-log';
 import type { EnrichRunConfig } from '../lib/enrich-run-config';
 import type { WhereItem } from '../lib/row-filter/where';
-import { COMMENT_COLUMNS as C, POST_COLUMNS as P, REACTION_PROMPT, BREAKDOWN_PROMPT, STEP_COLUMNS as S }
+import { COMMENT_COLUMNS as C, POST_COLUMNS as P, REACTION_PROMPT, STEP_COLUMNS as S, breakdownPrompt }
   from '../lib/social/names';
 import type { PlatformSpec } from '../lib/social/platforms';
 import { applyListStart, planListStart } from './enrich-list-start';
@@ -57,8 +57,9 @@ const aiFill = (prompt: string, outputs: string[] | null) => ({
   outputColumns: outputs ? outputs.map(c => ({ columnName: c, type: 'string' as const, description: '' })) : null,
 });
 
-export function writeBreakdown(userId: string, sheetId: string, spec: PlatformSpec) {
-  writeAiSetup(sheetId, userId, BREAKDOWN_STATUS, aiFill(BREAKDOWN_PROMPT.replace('{{platform}}', spec.label),
+// withTranscript: the transcript step is set up on this sheet too, so the prompt can read Transcript text.
+export function writeBreakdown(userId: string, sheetId: string, spec: PlatformSpec, withTranscript: boolean) {
+  writeAiSetup(sheetId, userId, BREAKDOWN_STATUS, aiFill(breakdownPrompt(spec.label, withTranscript),
     BREAKDOWN_OUTPUTS), 2);
 }
 
