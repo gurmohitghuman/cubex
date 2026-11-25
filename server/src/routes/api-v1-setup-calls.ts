@@ -114,12 +114,7 @@ router.post('/enrichments/:toolId/calls', requireScope('run'),
       estimateOnly: b.estimate_only === true, ...ceiling,
       webhookId: typeof b.webhook_id === 'string' ? b.webhook_id : null,
     });
-    if ('fail' in out) {
-      const over = out.fail === 'over_ceiling' ? { over_ceiling: true, estimate: out.estimate } : {};
-      const status = out.fail === 'rate_limited' ? 429
-        : runFailHttpStatus(out as Parameters<typeof runFailHttpStatus>[0]);
-      return res.status(status).json({ error: out.message, ...over });
-    }
+    if ('fail' in out) return sendFail(res, out);
     return res.status('run_id' in out.ok ? 202 : 200).json(out.ok);
   }));
 

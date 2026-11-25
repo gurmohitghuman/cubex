@@ -6,7 +6,8 @@ import { mcpClient, call, callError } from './helpers-mcp'
 // One enrichment tool called on items without a sheet (services/enrich-call.ts), against the mock treg:
 // call_enrichment prices by default and makes nothing; a ceiling it could pass refuses it before anything runs;
 // started, it is an enrichment run on a working table no list shows, and get_run_results gives each item's row
-// (row_index is the item). REST prices it (estimate_only), refuses an input the tool lacks, and needs "run".
+// (row_index is the item); a tool with a "status" field runs too. REST prices it (estimate_only), refuses an input
+// the tool lacks, and needs "run".
 const TOOL = 'treg.people.email.find'
 
 test('an enrichment called on items: priced, refused over a ceiling, run without a sheet', async () => {
@@ -39,6 +40,15 @@ test('an enrichment called on items: priced, refused over a ceiling, run without
   const results = await call(client, 'get_run_results', { run_type: 'enrichment', run_id: started.run_id,
     status_filter: 'all' })
   expect(results.results.map((r: any) => r.row_index).sort()).toEqual([0, 1])
+  expect(await tables()).toBe(before)
+
+  // An email check: its tool answers a "status" field, so the status column takes another name.
+  const checked = await call(client, 'call_enrichment', { tool_id: 'treg.people.email.verify',
+    items: [{ email: 'ada@acme.com' }], estimate_only: false, max_cost_usd: 10 })
+  expect(checked.status_column).toBe('Status 2')
+  expect(checked.output_columns).toContain('status')
+  await expect.poll(async () => (await call(client, 'get_run_status', { run_type: 'enrichment',
+    run_id: checked.run_id, wait_seconds: 5 })).status, { timeout: 60_000 }).toMatch(/completed|failed/)
   expect(await tables()).toBe(before)
 
   const auth = { Authorization: `Bearer ${token}` }

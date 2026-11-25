@@ -21,6 +21,8 @@ import { tokenStartEnrichmentRun, type TokenEnrichArgs } from './enrich-token-ru
 import { readTokenSpend } from './token-spend';
 import type { RunFail } from './run-shared';
 import type { TokenCaller } from './run-start-token';
+import type { CallFail } from './setup-call';
+import { findColumnNameCollision } from '../lib/column-names';
 import { v4 as uuidv4 } from 'uuid';
 
 export interface EnrichCallInput {
@@ -30,7 +32,7 @@ export interface EnrichCallInput {
 export type EnrichCallOutcome =
   | { ok: { estimate_only: true; estimate: Record<string, unknown> } }
   | { ok: { run_id: string; run_type: 'enrichment'; items: number; status_column: string; output_columns: string[] } }
-  | { fail: RunFail['fail'] | 'rate_limited'; message: string; estimate?: object };
+  | CallFail;
 
 const STATUS = 'Status';
 const bad = (message: string): RunFail => ({ fail: 'bad_request', message });
@@ -40,8 +42,19 @@ type Estimate = {
   may_pass_balance?: boolean; daily_limit: { remaining_usd: number | null };
 };
 
+// The working table's column names. Each output field keeps its own (get_run_results reads it by that name); an
+// input named like one, in any case, gets " (input)", and the status column is "Status" unless a field or input
+// takes it (an email check's tool answers a "status" field), then "Status 2" and on.
+export function callColumns(used: string[], fields: string[]): { input: Map<string, string>; status: string } {
+  const input = new Map(used.map(n => [n, findColumnNameCollision(n, fields) ? `${n} (input)` : n]));
+  const names = [...fields, ...input.values()];
+  let status = STATUS;
+  for (let i = 2; findColumnNameCollision(status, names); i++) status = `${STATUS} ${i}`;
+  return { input, status };
+}
+
 // Why a priced call can't start without running halfway, or null.
-function refusal(est: Estimate, input: EnrichCallInput, c: TokenCaller): string | null {
+export function callRefusal(est: Estimate, input: EnrichCallInput, c: TokenCaller): string | null {
   if (!est.price_known) {
     return input.allowUnpriced ? null : 'This tool has no known price (it runs on your own provider key), so it '
       + 'can\'t be held to a ceiling. Pass allow_unpriced: true to run it anyway.';
@@ -84,20 +97,22 @@ export async function callEnrichment(c: TokenCaller, input: EnrichCallInput): Pr
   const used = inputNames.filter(n => items.some(it => n in it));
   if (used.length === 0) return bad('No item has any of the tool\'s inputs.');
 
+  const cols = callColumns(used, fields);
   const made = withoutChangeLog(() => createTable(c.userId, `Enrichment call ${uuidv4()}`, { hidden: true }));
   if ('fail' in made) return bad(made.message);
   const { id: tableId, sheetId } = made.ok;
   let started = false;
   try {
-    for (const name of used) {
+    for (const name of cols.input.values()) {
       const added = withoutChangeLog(() => addSheetColumn(sheetId, c.userId, name, { seedEmptyRow: false }));
       if ('fail' in added) return bad(added.error);
     }
-    const appended = withoutChangeLog(() => appendRows(sheetId, c.userId, items));
+    const rows = items.map(it => Object.fromEntries(Object.entries(it).map(([k, v]) => [cols.input.get(k) ?? k, v])));
+    const appended = withoutChangeLog(() => appendRows(sheetId, c.userId, rows));
     if ('fail' in appended) return bad(txnFailMessage(appended, MAX_ROWS_PER_SHEET));
     const args: TokenEnrichArgs = {
-      sheet_id: sheetId, tool_id: input.toolId, column_name: STATUS,
-      inputs: Object.fromEntries(used.map(n => [n, n])),
+      sheet_id: sheetId, tool_id: input.toolId, column_name: cols.status,
+      inputs: Object.fromEntries(used.map(n => [n, cols.input.get(n)!])),
       outputs: fields.map(f => ({ field: f, column_name: f })),
       ...(input.maxCostPerRowUsd != null ? { max_cost_per_row_usd: input.maxCostPerRowUsd } : {}),
       ...(input.webhookId ? { webhook_id: input.webhookId } : {}),
@@ -107,7 +122,7 @@ export async function callEnrichment(c: TokenCaller, input: EnrichCallInput): Pr
     const est = priced.ok as unknown as Estimate & Record<string, unknown>;
     const { status_column: _s, ...estimate } = est;
     if (input.estimateOnly) return { ok: { estimate_only: true, estimate } };
-    const no = refusal(est, input, c);
+    const no = callRefusal(est, input, c);
     if (no) return { fail: 'over_ceiling', message: no, estimate };
     const high = est.estimated_cost_usd?.high;
     const out = await tokenStartEnrichmentRun(c, { ...args, ...(high ? { spend_limit_usd: high } : {}) });
@@ -116,7 +131,7 @@ export async function callEnrichment(c: TokenCaller, input: EnrichCallInput): Pr
     db.prepare('INSERT INTO enrichment_item_calls (id, user_id, table_id, sheet_id, items) VALUES (?, ?, ?, ?, ?)')
       .run(runId, c.userId, tableId, sheetId, items.length);
     started = true;
-    return { ok: { run_id: runId, run_type: 'enrichment', items: items.length, status_column: STATUS,
+    return { ok: { run_id: runId, run_type: 'enrichment', items: items.length, status_column: cols.status,
       output_columns: fields } };
   } finally {
     if (!started) removeWorkingTable(c.userId, tableId);
