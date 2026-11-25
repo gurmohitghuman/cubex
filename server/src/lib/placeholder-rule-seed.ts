@@ -16,8 +16,10 @@ import { PLACEHOLDER } from './placeholder-cells';
 import { CELL_HAS_VALUE_SQL, CONDITION_NOT_MET, isConditionNotMet, takesConditionMark } from './run-markers';
 import { rulePasses, type RuleNode } from './run-condition';
 import { journalSeed, type RunRef } from './run-undo/journal';
-import { derivedReaderIds } from './autorun-mark';
+import { derivedReaderCount, derivedReaderIds } from './autorun-mark';
 import { tellDerivedSpan } from './derived-spans';
+import { sliceClock } from './slice-clock';
+import { FIRST_TIMED_PAGE, pageByTime } from '../services/derived-write';
 import { pickedCells } from './row-cell';
 
 export interface RuleSeed { tree: RuleNode; columns: string[]; markColumn: string }
@@ -46,9 +48,14 @@ export async function seedPlaceholdersByRule(args: {
   const running = columns.map((c): [string, string] => [c, PLACEHOLDER]);
   const keptOutCells = columns.map((c): [string, string] => [c, c === rule.markColumn ? CONDITION_NOT_MET : '']);
   const rowIds = await sheetRowIds(sheetId, userId, args.targets ? { targets: args.targets } : { upTo: args.lastRow });
-  let notMet = 0, stopped = false;
-  await eachRowIdSlice(rowIds, ids => {
+  let notMet = 0, stopped = false, toldPage = FIRST_TIMED_PAGE;
+  await eachRowIdSlice(rowIds, (json, window) => {
     if (!live()) { stopped = true; return false; }
+    const began = sliceClock();
+    // Telling columns that read these costs a slice more time: sized by it then (lib/placeholder-cells.ts).
+    const took = derivedReaderCount(sheetId, userId, columns) > 0 ? Math.min(window.length, toldPage) : window.length;
+    const ids = took === window.length ? json : JSON.stringify(Array.from(window.subarray(0, took)));
+    let told = false;
     const pass: number[] = [], mark: number[] = [];
     for (const r of read.all(...readPaths, ids, sheetId, userId) as unknown[][]) {
       if (skip.has(r[1] as number)) continue;
@@ -61,6 +68,7 @@ export async function seedPlaceholdersByRule(args: {
     // What the cells held goes into the run's undo journal first (lib/run-undo/journal.ts).
     oneTransaction(() => {
       const readers = derivedReaderIds(sheetId, userId, columns);
+      told = readers.length > 0;
       if (pass.length) {
         const passJson = JSON.stringify(pass);
         const heard = readers.length > 0 ? tell.all(passJson, sheetId, userId, ...paths) as number[] : [];
@@ -77,6 +85,8 @@ export async function seedPlaceholdersByRule(args: {
         tellDerivedSpan(sheetId, userId, readers, heard);
       }
     });
+    if (told) toldPage = pageByTime(took, sliceClock() - began);
+    return took;
   });
   return stopped ? null : { notMet };
 }

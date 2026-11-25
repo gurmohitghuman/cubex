@@ -1,32 +1,16 @@
-// Over 200 lines: one fixture testing run-start derived spans across run kinds, rules, filters and cancels.
+// Over 200 lines: the run starts of AI and HTTP columns, their rule seeding and their stops, on one fixture.
 // Starting a run tells clean, formula and lookup columns reading its columns by span (lib/derived-spans.ts),
 // quiet, for every taken row whose pre-seed cell did not already read as empty. Readers wait while seeding
 // (placeholder_work = 'seeding'), then follow ⏳ as empty as soon as seeding finishes while the run is going, so
 // formulas never keep stale old answers next to ⏳. No paid auto-run is ever triggered. Covers AI/HTTP
-// seedThenEnqueue, rule seeding (pass + kept-out rows), enrichment seedEnrichmentThenEnqueue, auto-run
-// startAutorunRun, preview skip rows, empty/marker cell filtering, loud-write priority over quiet spans,
-// AI writeFailure + cancel, and resetOrphanedRuns dropping leftover seed spans.
+// seedThenEnqueue, rule seeding (pass + kept-out rows), preview skip rows, empty/marker cell filtering, loud-write
+// priority over quiet spans, AI writeFailure + cancel, and resetOrphanedRuns dropping leftover seed spans.
+// Enrichment and auto-run starts: run-start-derived-enrich.test.ts.
 import assert from 'node:assert/strict'
-import fs from 'node:fs'
-import path from 'node:path'
-import { createRequire } from 'node:module'
-import { v4 as uuid } from 'uuid'
-import { undoKit } from './run-undo-kit'
-
-let enqueueErr: Error | null = null
-const queued: unknown[][] = []
-const { Sidequest } = createRequire(path.resolve('server/src/queue.ts'))('sidequest')
-Sidequest.build = () => ({
-  enqueue: async (...args: unknown[]) => {
-    if (enqueueErr) throw enqueueErr
-    queued.push(args)
-    return {}
-  },
-})
-
+import {
+  entry, finish, insertRun, kit, marks, queuedIndexes, run, setupDerivedScene, spans, tick, toldIndexes, until,
+} from './run-start-kit'
 import seedRunMod from '../../server/src/services/run-seed'
-import enrichSeedMod from '../../server/src/services/enrich-seed-run'
-import autorunStartMod from '../../server/src/services/autorun-start'
 import busyMod from '../../server/src/lib/sheet-busy'
 import cellsMod from '../../server/src/lib/placeholder-cells'
 import ruleSeedMod from '../../server/src/lib/placeholder-rule-seed'
@@ -39,19 +23,10 @@ import spansMod from '../../server/src/lib/derived-spans'
 import lifecycleMod from '../../server/src/services/run-lifecycle'
 import orphanMod from '../../server/src/lib/orphan-runs'
 import formulaMod from '../../server/src/services/formula-column'
-import cleanMod from '../../server/src/services/clean-column'
-import lookupMod from '../../server/src/services/lookup-column'
 import followMod from '../../server/src/services/derived-follow'
-import entryMod from '../../server/src/services/autorun-entry'
 import condMod from '../../server/src/lib/run-condition'
-import enrichToolMod from '../../server/src/lib/enrich-tool'
-import enrichCfgMod from '../../server/src/lib/enrich-run-config'
 import walMod from '../../server/src/lib/wal-checkpointer'
-import type { EnrichRunConfig } from '../../server/src/lib/enrich-run-config'
-import type { HTTPAPIConfig } from '../../server/src/lib/http-request-template'
 const { seedThenEnqueue } = seedRunMod as typeof import('../../server/src/services/run-seed')
-const { seedEnrichmentThenEnqueue } = enrichSeedMod as typeof import('../../server/src/services/enrich-seed-run')
-const { startAutorunRun } = autorunStartMod as typeof import('../../server/src/services/autorun-start')
 const { withSheetBusy } = busyMod as typeof import('../../server/src/lib/sheet-busy')
 const { seedProcessingPlaceholders, PLACEHOLDER } = cellsMod as typeof import('../../server/src/lib/placeholder-cells')
 const { seedPlaceholdersByRule } = ruleSeedMod as typeof import('../../server/src/lib/placeholder-rule-seed')
@@ -65,138 +40,10 @@ const { nextSpan } = spansMod as typeof import('../../server/src/lib/derived-spa
 const { cancelRun } = lifecycleMod as typeof import('../../server/src/services/run-lifecycle')
 const { resetOrphanedRuns } = orphanMod as typeof import('../../server/src/lib/orphan-runs')
 const { startFormulaColumn } = formulaMod as typeof import('../../server/src/services/formula-column')
-const { startCleanColumn } = cleanMod as typeof import('../../server/src/services/clean-column')
-const { startLookupColumn } = lookupMod as typeof import('../../server/src/services/lookup-column')
-const { derivedFollowTick, kickDerivedFollow } = followMod as typeof import('../../server/src/services/derived-follow')
-const { entryFor, loadEntry } = entryMod as typeof import('../../server/src/services/autorun-entry')
+const { kickDerivedFollow } = followMod as typeof import('../../server/src/services/derived-follow')
 const { checkRule } = condMod as typeof import('../../server/src/lib/run-condition')
-const { normalizeTool } = enrichToolMod as typeof import('../../server/src/lib/enrich-tool')
-const { requestToolOf } = enrichCfgMod as typeof import('../../server/src/lib/enrich-run-config')
 const { closeWalCheckpointer } = walMod as typeof import('../../server/src/lib/wal-checkpointer')
-
-const { db, uid, idle, sheet, cells } = undoKit('run-start-derived')
-console.error = () => {}
-
-const FIND_FIXTURE = 'tests/mock-treg/fixtures/catalog/endpoints/treg.people.email.find.json'
-const FIND_TOOL = normalizeTool(JSON.parse(fs.readFileSync(FIND_FIXTURE, 'utf8')))!
-
-const until = async (what: string, cond: () => boolean, ms = 15_000) => {
-  for (const end = Date.now() + ms; !cond();) {
-    if (Date.now() > end) throw new Error(`Timed out waiting until ${what}`)
-    await new Promise(r => setTimeout(r, 15))
-  }
-}
-const entry = (sid: string, col: string) => entryFor(sid, uid, col)!.id
-const spans = (sid: string) => db.prepare('SELECT COUNT(*) FROM derived_spans WHERE sheet_id = ?')
-  .pluck().get(sid) as number
-const marks = (sid: string) => db.prepare(`SELECT COUNT(*) FROM derived_span_marks
-  WHERE autorun_id IN (SELECT id FROM autorun_columns WHERE sheet_id = ?)`).pluck().get(sid) as number
-const queuedIndexes = (sid: string, entryId: string) => db.prepare(`SELECT r.row_index FROM autorun_pending p
-  JOIN rows r ON r.id = p.row_id WHERE p.autorun_id = ? ORDER BY r.row_index`).pluck().all(entryId) as number[]
-const toldIndexes = (sid: string, col: string) => db.prepare(`SELECT r.row_index FROM derived_span_marks m
-  JOIN derived_spans s ON s.id = m.span_id, json_each(s.rowids) j JOIN rows r ON r.rowid = j.value
-  WHERE m.autorun_id = ? ORDER BY r.row_index`).pluck().all(entry(sid, col)) as number[]
-const tick = (sid: string, col: string) => derivedFollowTick(loadEntry(entry(sid, col))!)
-const addPaid = (
-  sid: string, status: string, kind: 'http' | 'enrichment', input: string, watermark: number,
-) => {
-  const id = uuid()
-  db.prepare(`INSERT INTO autorun_columns
-    (id, user_id, sheet_id, status_column, kind, input_columns, watermark_row_index)
-    VALUES (?, ?, ?, ?, ?, ?, ?)`).run(id, uid, sid, status, kind, JSON.stringify([input]), watermark)
-  return id
-}
-
-function insertRun(
-  kind: 'ai' | 'http', sid: string, columns: string[], status = 'pending', work: string | null = 'seeding',
-) {
-  const id = uuid()
-  if (kind === 'ai') {
-    db.prepare(`INSERT INTO ai_runs
-      (id, sheet_id, user_id, column_name, prompt, status, worker_generation, placeholder_work)
-      VALUES (?, ?, ?, ?, 'p', ?, 1, ?)`).run(id, sid, uid, columns[0], status, work)
-  } else {
-    db.prepare(`INSERT INTO http_runs
-      (id, sheet_id, user_id, config, status, master_column_name, worker_generation, placeholder_work)
-      VALUES (?, ?, ?, '{}', ?, ?, 1, ?)`).run(id, sid, uid, status, columns[0], work)
-    for (const c of columns.slice(1)) {
-      db.prepare(`INSERT INTO http_column_associations
-        (id, sheet_id, user_id, master_column_name, extracted_column_name, run_id)
-        VALUES (?, ?, ?, ?, ?, ?)`).run(uuid(), sid, uid, columns[0], c, id)
-    }
-  }
-  return id
-}
-
-async function setupDerivedScene() {
-  const other = sheet([{ Key: 'Old A', Label: 'Matched A' }, { Key: 'Old B', Label: 'Matched B' },
-    { Key: 'New A', Label: 'Matched New A' }], ['Key', 'Label'])
-  const sid = sheet([
-    { Name: 'a', Answer: 'Old A' },
-    { Name: 'b', Answer: 'Old B' },
-    { Name: 'c', Answer: '' },
-  ], ['Name', 'Answer', 'Status', 'Hook', 'Enriched', 'Enriched 2'])
-  const f = '{{Answer}} ? "has " + {{Answer}} : "empty"'
-  assert.ok('ok' in await startFormulaColumn(uid, sid, { column: 'F', formula: f }))
-  await idle(sid)
-  assert.ok('ok' in await startFormulaColumn(uid, sid, { column: 'F2', formula: '{{F}}.toUpperCase()' }))
-  await idle(sid)
-  assert.ok('ok' in await startCleanColumn(uid, sid, { source: 'Answer', cleaner: 'lowercase', column: 'Low' }))
-  await idle(sid)
-  assert.ok('ok' in await startLookupColumn(uid, sid, {
-    column: 'Look', sourceColumn: 'Answer', otherSheetId: other, matchColumn: 'Key', returns: 'value',
-    returnColumn: 'Label',
-  }))
-  await idle(sid)
-  await tick(sid, 'F2')
-  assert.deepEqual(cells(sid, 'F'), ['has Old A', 'has Old B', 'empty'])
-  assert.deepEqual(cells(sid, 'F2'), ['HAS OLD A', 'HAS OLD B', 'EMPTY'])
-  assert.deepEqual(cells(sid, 'Low'), ['old a', 'old b', ''])
-  assert.deepEqual(cells(sid, 'Look'), ['Matched A', 'Matched B', ''])
-  const paid = [
-    addPaid(sid, 'Hook', 'http', 'Answer', 2),
-    addPaid(sid, 'Enriched', 'enrichment', 'F', 2),
-    addPaid(sid, 'Enriched 2', 'enrichment', 'F2', 2),
-  ]
-  return { sid, paid }
-}
-
-function makeEnrichConfig(): EnrichRunConfig {
-  return {
-    requestConfig: {
-      method: 'POST', url: '',
-      body: JSON.stringify({ full_name: '{{Name}}', domain: '{{Domain}}' }),
-    },
-    responseMapping: [{ jsonPath: '$.email', columnName: 'Email' }],
-    previewSize: 5,
-    enrichment: { toolSnapshot: requestToolOf(FIND_TOOL), cleanDomains: false },
-  } as unknown as EnrichRunConfig
-}
-
-async function setupEnrichScene() {
-  const cols = ['Name', 'Domain', 'Status', 'Email', 'Paid']
-  const sid = sheet([
-    { Name: 'Ada L', Domain: 'a.com', Status: '✅ Found', Email: 'A@A.com' },
-    { Name: 'Bo K', Domain: 'b.com', Status: '✅ Found', Email: 'B@B.com' },
-  ], cols)
-  assert.ok('ok' in await startFormulaColumn(uid, sid, { column: 'F', formula: '{{Email}} || "none"' }))
-  await idle(sid)
-  assert.ok('ok' in await startCleanColumn(uid, sid, { source: 'Email', cleaner: 'lowercase', column: 'Low' }))
-  await idle(sid)
-  const paid = addPaid(sid, 'Paid', 'enrichment', 'F', 1)
-  return { sid, paid, cols: [...cols, 'F', 'Low'] }
-}
-
-let failures = 0
-async function run(name: string, fn: () => Promise<void> | void) {
-  try {
-    await fn()
-    console.log('ok  ', name)
-  } catch (e) {
-    failures++
-    console.log('FAIL', name, '\n ', (e as Error).stack)
-  }
-}
+const { db, uid, idle, sheet, cells } = kit
 
 for (const kind of ['ai', 'http'] as const) {
   await run(`${kind} run start kicks clean, formula, chained formula and lookup while going, quiet (0 paid runs)`,
@@ -329,182 +176,6 @@ await run('rule seeding: pass rows get run-linked spans, kept-out rows with empt
     assert.deepEqual(cells(sid, 'F'), ['has Old 0', 'empty', 'has Old 2'])
   })
 
-await run('enrichment seeding (seedEnrichmentThenEnqueue) clears readers while pending and restores on cancel',
-  async () => {
-    const { sid, paid, cols } = await setupEnrichScene()
-    const runId = insertRun('http', sid, ['Status', 'Email'], 'pending', 'seeding')
-    const config = makeEnrichConfig()
-    db.prepare('UPDATE http_runs SET config = ? WHERE id = ?').run(JSON.stringify(config), runId)
-    enqueueErr = null
-    const before = queued.length
-    onFollowQueued(kickDerivedFollow)
-    try {
-      await withSheetBusy(sid, 'starting a run', async () => {
-        seedEnrichmentThenEnqueue({
-          runId, sheetId: sid, userId: uid, columns: ['Status', 'Email'],
-          plan: { statusColumn: null, status: 'any', where: [], rule: null, config, columns: cols },
-          rowFilter: { clause: '', params: [] }, targets: null, lastRow: 1, test: null,
-        })
-      })
-      await until('readers cleared while enrichment is pending', () =>
-        db.prepare('SELECT placeholder_work FROM http_runs WHERE id = ?').pluck().get(runId) === null
-        && JSON.stringify(cells(sid, 'F')) === JSON.stringify(['none', 'none'])
-        && JSON.stringify(cells(sid, 'Low')) === JSON.stringify(['', '']), 10_000)
-      assert.equal(queued.length, before + 1, 'run enqueued once')
-      assert.equal(db.prepare('SELECT status FROM http_runs WHERE id = ?').pluck().get(runId), 'pending')
-      assert.deepEqual(cells(sid, 'Email'), [PLACEHOLDER, PLACEHOLDER])
-      assert.deepEqual([spans(sid), marks(sid)], [0, 0])
-      assert.deepEqual(queuedIndexes(sid, paid), [], 'zero paid auto-runs queued')
-
-      assert.deepEqual(await cancelRun('http', runId, uid), { ok: true })
-      await until('readers restored after enrichment cancel', () =>
-        db.prepare('SELECT placeholder_work FROM http_runs WHERE id = ?').pluck().get(runId) === null
-        && JSON.stringify(cells(sid, 'F')) === JSON.stringify(['A@A.com', 'B@B.com'])
-        && JSON.stringify(cells(sid, 'Low')) === JSON.stringify(['a@a.com', 'b@b.com']), 10_000)
-      assert.deepEqual(cells(sid, 'Email'), ['A@A.com', 'B@B.com'])
-      assert.deepEqual(queuedIndexes(sid, paid), [], 'zero paid auto-runs queued on cancel')
-    } finally { onFollowQueued(() => {}); enqueueErr = null }
-  })
-
-await run('enrichment seeding enqueue failure drops seed spans, restores cells and readers, quiet',
-  async () => {
-    const { sid, paid, cols } = await setupEnrichScene()
-    const runId = insertRun('http', sid, ['Status', 'Email'], 'pending', 'seeding')
-    const config = makeEnrichConfig()
-    db.prepare('UPDATE http_runs SET config = ? WHERE id = ?').run(JSON.stringify(config), runId)
-    enqueueErr = new Error('the queue is down')
-    onFollowQueued(kickDerivedFollow)
-    try {
-      await withSheetBusy(sid, 'starting a run', async () => {
-        seedEnrichmentThenEnqueue({
-          runId, sheetId: sid, userId: uid, columns: ['Status', 'Email'],
-          plan: { statusColumn: null, status: 'any', where: [], rule: null, config, columns: cols },
-          rowFilter: { clause: '', params: [] }, targets: null, lastRow: 1, test: null,
-        })
-      })
-      await until('enrichment failure settled and cleared', () =>
-        db.prepare('SELECT status FROM http_runs WHERE id = ?').pluck().get(runId) === 'failed'
-        && db.prepare('SELECT placeholder_work FROM http_runs WHERE id = ?').pluck().get(runId) === null
-        && spans(sid) === 0 && marks(sid) === 0, 10_000)
-      assert.deepEqual(cells(sid, 'Email'), ['A@A.com', 'B@B.com'])
-      assert.deepEqual(cells(sid, 'F'), ['A@A.com', 'B@B.com'])
-      assert.deepEqual(cells(sid, 'Low'), ['a@a.com', 'b@b.com'])
-      assert.deepEqual(queuedIndexes(sid, paid), [], 'zero paid auto-runs queued')
-    } finally { onFollowQueued(() => {}); enqueueErr = null }
-  })
-
-await run('enrichment seeding with seeded = 0 (all kept out by runIf) completes and kicks unlinked readers',
-  async () => {
-    const cols = ['Name', 'Domain', 'Flag', 'Status', 'Paid']
-    const sid = sheet([
-      { Name: 'Ada L', Domain: 'a.com', Flag: 'no', Status: '  ' },
-      { Name: 'Bo K', Domain: 'b.com', Flag: 'no', Status: '✅ Kept' },
-    ], cols)
-    const f = '{{Status}} ? "has:" + {{Status}} : "empty"'
-    assert.ok('ok' in await startFormulaColumn(uid, sid, { column: 'F', formula: f }))
-    await idle(sid)
-    assert.deepEqual(cells(sid, 'F'), ['has:  ', 'has:✅ Kept'])
-    const paid = addPaid(sid, 'Paid', 'enrichment', 'F', 1)
-    const checked = checkRule('{{Flag}} is "yes"', cols)
-    const runId = insertRun('http', sid, ['Status'], 'pending', 'seeding')
-    const config = makeEnrichConfig()
-    db.prepare('UPDATE http_runs SET config = ? WHERE id = ?').run(JSON.stringify(config), runId)
-    enqueueErr = null
-    const before = queued.length
-    onFollowQueued(kickDerivedFollow)
-    try {
-      await withSheetBusy(sid, 'starting a run', async () => {
-        seedEnrichmentThenEnqueue({
-          runId, sheetId: sid, userId: uid, columns: ['Status'],
-          plan: {
-            statusColumn: null, status: 'any', where: [], rule: checked.tree, config, columns: [...cols, 'F'],
-          },
-          rowFilter: { clause: '', params: [] }, targets: null, lastRow: 1, test: null,
-        })
-      })
-      await until('kept-out run completes and reader clears row 0', () =>
-        db.prepare('SELECT status FROM http_runs WHERE id = ?').pluck().get(runId) === 'completed'
-        && db.prepare('SELECT placeholder_work FROM http_runs WHERE id = ?').pluck().get(runId) === null
-        && cells(sid, 'F')[0] === 'empty' && spans(sid) === 0, 10_000)
-      assert.equal(queued.length, before, 'zero-seeded run does not enqueue')
-      assert.deepEqual(cells(sid, 'Status'), [CONDITION_NOT_MET, '✅ Kept'])
-      assert.deepEqual(cells(sid, 'F'), ['empty', 'has:✅ Kept'])
-      assert.deepEqual(queuedIndexes(sid, paid), [], 'zero paid auto-runs queued')
-    } finally { onFollowQueued(() => {}); enqueueErr = null }
-  })
-
-await run('startAutorunRun tells derived readers while pending, and drops seed spans if enqueue throws',
-  async () => {
-    const httpCfg: HTTPAPIConfig = {
-      requestConfig: { method: 'POST', url: 'https://x.test/go', headers: {}, body: '{"d":"{{Domain}}"}' },
-      responseMapping: [{ jsonPath: '$.answer', columnName: 'Answer' }],
-    }
-    const cols = ['Domain', 'Status', 'Answer', 'Paid']
-    const makeAutorunSheet = () => sheet([
-      { Domain: 'a.com', Status: `${FAILED_MARK} old`, Answer: 'Old A' },
-      { Domain: 'b.com', Status: '✅', Answer: 'Old B' },
-    ], cols)
-    const addHttpAuto = (sid: string) => {
-      const id = uuid()
-      db.prepare(`INSERT INTO autorun_columns
-        (id, user_id, sheet_id, status_column, kind, input_columns, watermark_row_index)
-        VALUES (?, ?, ?, 'Status', 'http', '["Domain"]', 1)`).run(id, uid, sid)
-      return id
-    }
-
-    // Success path: startAutorunRun seeds, tells F, kicks F after enqueue, F clears while run stays pending.
-    const sid = makeAutorunSheet()
-    const row0Id = db.prepare('SELECT id FROM rows WHERE sheet_id = ? AND row_index = 0').pluck().get(sid) as string
-    const f = '{{Answer}} ? "has " + {{Answer}} : "empty"'
-    assert.ok('ok' in await startFormulaColumn(uid, sid, { column: 'F', formula: f }))
-    await idle(sid)
-    assert.deepEqual(cells(sid, 'F'), ['has Old A', 'has Old B'])
-    const paid = addPaid(sid, 'Paid', 'enrichment', 'F', 1)
-    const autoId = addHttpAuto(sid)
-    const plan = {
-      kind: 'http' as const, statusColumn: 'Status', config: httpCfg,
-      columns: [...cols, 'F'], requestCols: ['Domain'], where: [], rule: null,
-    }
-    const prep = { config: httpCfg, allowSecrets: 0, outputs: ['Answer'], dest: null }
-    enqueueErr = null
-    onFollowQueued(kickDerivedFollow)
-    try {
-      const res = await startAutorunRun(
-        loadEntry(autoId)!, plan, { rows: [{ id: row0Id, fromPending: true }], watermark: 1 }, prep,
-      )
-      assert.ok('started' in res, JSON.stringify(res))
-      await until('F clears row 0 while auto-run is pending', () =>
-        cells(sid, 'F')[0] === 'empty' && spans(sid) === 0, 10_000)
-      assert.deepEqual(cells(sid, 'Answer'), [PLACEHOLDER, 'Old B'])
-      assert.deepEqual(cells(sid, 'F'), ['empty', 'has Old B'])
-      assert.deepEqual(queuedIndexes(sid, paid), [], 'zero paid auto-runs queued')
-    } finally { onFollowQueued(() => {}); enqueueErr = null }
-
-    // Enqueue-failure path: drops seed span before clear writes one clear span, restores cells, keeps F intact.
-    const sid2 = makeAutorunSheet()
-    const row0Id2 = db.prepare('SELECT id FROM rows WHERE sheet_id = ? AND row_index = 0').pluck().get(sid2) as string
-    assert.ok('ok' in await startFormulaColumn(uid, sid2, { column: 'F', formula: f }))
-    await idle(sid2)
-    const paid2 = addPaid(sid2, 'Paid', 'enrichment', 'F', 1)
-    const autoId2 = addHttpAuto(sid2)
-    enqueueErr = new Error('the queue is down')
-    onFollowQueued(() => {})
-    try {
-      const res2 = await startAutorunRun(
-        loadEntry(autoId2)!, plan, { rows: [{ id: row0Id2, fromPending: true }], watermark: 1 }, prep,
-      )
-      assert.ok('started' in res2, JSON.stringify(res2))
-      assert.deepEqual([spans(sid2), marks(sid2)], [1, 1],
-        'only the clear span remains; the seed span was dropped')
-      assert.deepEqual(cells(sid2, 'Answer'), ['Old A', 'Old B'])
-      assert.deepEqual(cells(sid2, 'Status'), [`${FAILED_MARK} old`, '✅'])
-      await tick(sid2, 'F')
-      assert.deepEqual([spans(sid2), marks(sid2)], [0, 0])
-      assert.deepEqual(cells(sid2, 'F'), ['has Old A', 'has Old B'])
-      assert.deepEqual(queuedIndexes(sid2, paid2), [], 'zero paid auto-runs queued')
-    } finally { enqueueErr = null }
-  })
-
 await run('loud worker answer in autorun_pending is never swallowed by a quiet seed span', async () => {
   const { sid, paid } = await setupDerivedScene()
   const runId = insertRun('http', sid, ['Status', 'Answer'], 'running', null)
@@ -565,9 +236,4 @@ await run('resetOrphanedRuns drops seed spans of runs interrupted while seeding'
 })
 
 await closeWalCheckpointer()
-if (failures > 0) {
-  console.error(`${failures} run-start-derived assertion(s) failed`)
-  process.exitCode = 1
-} else {
-  console.log('All run-start-derived assertions passed.')
-}
+finish('run-start-derived')
