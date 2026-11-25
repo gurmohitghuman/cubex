@@ -1,0 +1,171 @@
+{
+ "endpoint": {
+  "id": "anyapi.youtube.video_transcript",
+  "provider": "anyapi",
+  "provider_display": "AnyAPI",
+  "name": "YouTube Video Transcript",
+  "summary": "Fetch the transcript/captions of a YouTube video or Short by URL or ID.",
+  "method": "POST",
+  "path": "/v1/run/youtube.video_transcript",
+  "scope": "",
+  "tier": "extended",
+  "kind": "data",
+  "domain": "video",
+  "call_template": "treg call anyapi.youtube.video_transcript",
+  "cost": {
+   "type": "per_call",
+   "value": 0.002,
+   "currency": "USD",
+   "unit": "call",
+   "reported_charge": {
+    "path": "costUsd",
+    "unit": "usd"
+   },
+   "source": "observed",
+   "source_url": "https://api.getanyapi.com/v1/apis/youtube.video_transcript",
+   "checked": "2026-10-02",
+   "confidence": "verified",
+   "note": "5 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.011 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A not-found or empty answer is billed too, at its own `costUsd`.",
+   "usd": 0.002
+  },
+  "async": null,
+  "platform_eligible": true,
+  "platform_blocked": null,
+  "miss": null,
+  "status": null,
+  "status_note": null,
+  "superseded_by": null,
+  "verified": "2026-09-19",
+  "added": "2026-09-19",
+  "docs_url": "https://getanyapi.com/api/youtube/video-transcript",
+  "has_example": true,
+  "input": {
+   "body": {
+    "id": {
+     "type": "string",
+     "required": false,
+     "note": "YouTube video ID. A Short uses the same ID as any other video."
+    },
+    "url": {
+     "type": "string",
+     "required": false,
+     "note": "Full YouTube video URL. Shorts (youtube.com/shorts/...), youtu.be, live, and embed URLs all work.",
+     "example": "https://www.example.com/sample"
+    }
+   },
+   "bodyType": "json",
+   "queryArrayEncoding": "comma",
+   "queryParams": {
+    "fields": {
+     "type": "string",
+     "required": false,
+     "note": "Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, not the charge."
+    },
+    "max_items": {
+     "type": "integer",
+     "required": false,
+     "min": 0,
+     "note": "Caps the result rows returned; `_truncated` says how many were withheld. Not the charge."
+    },
+    "summary": {
+     "type": "boolean",
+     "required": false,
+     "note": "`true` returns only an outline: keys, item counts, per-field sizes."
+    },
+    "jq": {
+     "type": "string",
+     "required": false,
+     "note": "jq expression over the result envelope; its output replaces `output`. A failed expression returns the full result with `jqError`."
+    }
+   }
+  },
+  "capability": "",
+  "capability_description": "",
+  "platform": "youtube",
+  "platform_label": "YouTube",
+  "observed": {
+   "samples": 114476,
+   "decided": 114357,
+   "ok_rate": 0.9996,
+   "p50_ms": 7357,
+   "p95_ms": 28250,
+   "last_ok_days": 0,
+   "hit_rate": null,
+   "hit_samples": 0
+  },
+  "wallet": {
+   "payable": true,
+   "protocols": [
+    "mpp"
+   ],
+   "minimum_payment_micro": 10000,
+   "fee_bps": 0,
+   "note": "pay per call with a wallet, no account. A payment is at least $0.01; the call is charged only its real price, and the rest stays as this wallet's credit for its next calls (credit is not paid back as money)."
+  },
+  "reviews": {
+   "teams": 10,
+   "samples": [
+    {
+     "usefulness": "useful",
+     "reason": "Full English transcript of a long podcast episode in one call with speaker-turn markers; no timestamps.",
+     "client": "mcp",
+     "month": "2026-11"
+    },
+    {
+     "usefulness": "useful",
+     "reason": "Returned remainder of 30-minute YouTube transcript cleanly via jq slice at $0.0009.",
+     "client": "mcp",
+     "month": "2026-11"
+    },
+    {
+     "usefulness": "useful",
+     "reason": "Full caption transcript returned; no timestamps.",
+     "client": "mcp",
+     "month": "2026-11"
+    }
+   ],
+   "share": {
+    "useful": 0.79,
+    "partly": 0.1,
+    "not_useful": 0.1
+   }
+  }
+ },
+ "provider": {
+  "service": "anyapi",
+  "display_name": "AnyAPI",
+  "limits": "no published per-key request-rate limit on /v1/run - AnyAPI does not advertise a quota it does not enforce. Spend is bounded instead by the wallet balance, the key's own spend cap, and the per-request `max_cost_usd` ceiling the caller sets. The unauthenticated /agent/signup trial route is limited to 3 per IP per hour.",
+  "pricing_url": "https://getanyapi.com/catalog",
+  "docs": "https://getanyapi.com/docs"
+ },
+ "siblings": [],
+ "call_template": "treg call anyapi.youtube.video_transcript",
+ "example_response": {
+  "output": {
+   "found": true,
+   "data": {
+    "language": "en",
+    "transcript": "Here is my whole morning, minute by minute.",
+    "segments": [
+     {
+      "startSeconds": 0,
+      "durationSeconds": 4,
+      "text": "Here is my whole morning,"
+     }
+    ]
+   }
+  },
+  "provider": "anyapi",
+  "costUsd": 0.001,
+  "items": 1,
+  "replayed": false,
+  "source": {
+   "id": "sample",
+   "name": "Sample",
+   "kind": "api",
+   "artworkKey": "sample"
+  },
+  "resultId": "sample-result"
+ },
+ "hints": []
+}

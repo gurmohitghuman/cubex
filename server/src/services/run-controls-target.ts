@@ -1,27 +1,35 @@
 // Which rows a run control takes (pure): the column menu's "empty or out of
 // date", "all" and "failed", or one row (a cell's play button), as each run
 // kind's rerun names them: an AI or HTTP API rerun's mode, an enrichment's or
-// a waterfall's row status.
+// a waterfall's row status. A column run (services/column-run*.ts) also takes
+// "empty" and "out_of_date", and may keep to some rows (within: their places).
 import type { EnrichRunInput } from '../lib/enrich-run-input';
 import type { EnrichRowsStatus } from '../lib/enrich-run-config';
 import type { RerunMode } from './ai-rerun-modes';
 import type { RunFail } from './run-shared';
 
-export type RunRows = 'empty_or_out_of_date' | 'all' | 'failed';
-export type RunTarget = { rows: RunRows } | { row: number };
+export type RunRows = 'empty_or_out_of_date' | 'all' | 'failed' | 'empty' | 'out_of_date';
+export type RunTarget = { rows: RunRows; within?: number[] | null } | { row: number };
 
 const MODE: Record<RunRows, RerunMode> = {
-  empty_or_out_of_date: 'empty_or_out_of_date', all: 'all', failed: 'errored',
+  empty_or_out_of_date: 'empty_or_out_of_date', all: 'all', failed: 'errored', empty: 'empty',
+  out_of_date: 'out_of_date',
 };
 const STATUS: Record<RunRows, EnrichRowsStatus> = {
-  empty_or_out_of_date: 'empty_or_out_of_date', all: 'any', failed: 'failed',
+  empty_or_out_of_date: 'empty_or_out_of_date', all: 'any', failed: 'failed', empty: 'not_enriched',
+  out_of_date: 'out_of_date',
 };
 
 export const modeOf = (t: { rows: RunRows }): RerunMode => MODE[t.rows];
 
+// The rows an AI or HTTP API rerun keeps to (rerun-targets.ts); absent: every row.
+export const scopeOf = (t: RunTarget): { withinRows?: number[] } =>
+  ('rows' in t && t.within ? { withinRows: t.within } : {});
+
 export function enrichRowsOf(t: RunTarget): EnrichRunInput['rows'] {
-  return 'row' in t
-    ? { mode: 'selected', status: 'any', test: null, rowIndexes: [t.row] }
+  if ('row' in t) return { mode: 'selected', status: 'any', test: null, rowIndexes: [t.row] };
+  return t.within
+    ? { mode: 'selected', status: STATUS[t.rows], test: null, rowIndexes: t.within }
     : { mode: 'all', status: STATUS[t.rows], test: null, rowIndexes: null };
 }
 

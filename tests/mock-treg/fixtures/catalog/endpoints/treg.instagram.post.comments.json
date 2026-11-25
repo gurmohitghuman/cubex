@@ -1,0 +1,576 @@
+{
+ "endpoint": {
+  "id": "treg.instagram.post.comments",
+  "provider": "treg",
+  "provider_display": "treg",
+  "name": "instagram.post.comments \u2014 routed: best of 4 providers, own keys first",
+  "summary": "Comments on an Instagram post by shortcode or URL \u2014 provider-native comment rows in `comments`",
+  "method": "POST",
+  "path": "/instagram.post.comments",
+  "scope": "",
+  "tier": "core",
+  "kind": "routed",
+  "domain": "post",
+  "call_template": "treg call treg.instagram.post.comments",
+  "cost": {
+   "type": "per_success",
+   "value": 0.00144,
+   "currency": "USD",
+   "per": 1,
+   "unit": "call",
+   "source": "inferred",
+   "confidence": "documented",
+   "checked": null,
+   "varies": true,
+   "note": "Not free: $0.00144\u2013$0.01476 per hit across 4 providers, 0% markup. A call also pays each provider tried before the hit that bills a miss (3 of 4 do), up to X-Treg-Route-Max-Cost (default $1); X-Treg-Route-Waterfall: 0 pays for one provider only",
+   "usd": 0.00144
+  },
+  "async": null,
+  "platform_eligible": true,
+  "platform_blocked": null,
+  "miss": {
+   "status": 200,
+   "means": "output.comments == []"
+  },
+  "status": null,
+  "status_note": null,
+  "superseded_by": null,
+  "verified": null,
+  "added": null,
+  "docs_url": "",
+  "has_example": false,
+  "input": {
+   "bodyType": "json",
+   "body": {
+    "shortcode": {
+     "type": "string",
+     "required": false,
+     "note": "identity"
+    },
+    "url": {
+     "type": "string",
+     "format": "url",
+     "required": false,
+     "note": "identity"
+    }
+   },
+   "note": "Send what you know; treg sends each provider only the fields it accepts ({shortcode} | {url}). Omit a field you don't have: a url field holding something else, such as N/A, is refused (422 invalid_identity). On a miss it tries the next provider, cheapest first. Options are X-Treg-Route-* headers, never body fields. The answer is {output, raw, _treg}; X-Treg-Served-By names the provider."
+  },
+  "routed_children": [
+   "anyapi.instagram.post.comments",
+   "justoneapi.x.instagram-get-post-comments-v1",
+   "scrapecreators.instagram.post.comments",
+   "tikhub.x.instagram-v2-fetch-post-comments"
+  ],
+  "capability": "instagram.post.comments",
+  "capability_description": "List a post's comments",
+  "platform": "instagram",
+  "platform_label": "Instagram",
+  "observed": {
+   "samples": 41532,
+   "decided": 40758,
+   "ok_rate": 0.798,
+   "p50_ms": null,
+   "p95_ms": null,
+   "last_ok_days": 0,
+   "hit_rate": null,
+   "hit_samples": 0
+  },
+  "wallet": {
+   "payable": false,
+   "reason": "routed",
+   "note": "a routed treg tool needs a treg account; sign in to call it"
+  }
+ },
+ "provider": {
+  "service": "treg",
+  "display_name": "treg"
+ },
+ "siblings": [
+  {
+   "id": "anyapi.instagram.post.comments",
+   "provider": "anyapi",
+   "provider_display": "AnyAPI",
+   "name": "Instagram Post Comments",
+   "scope": "any_account",
+   "kind": "data",
+   "cost": {
+    "type": "per_call",
+    "value": 0.00144,
+    "currency": "USD",
+    "unit": "call",
+    "reported_charge": {
+     "path": "costUsd",
+     "unit": "usd"
+    },
+    "usd": 0.00144
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-09-19",
+   "params": [
+    "fields",
+    "max_items",
+    "summary",
+    "jq",
+    "cursor",
+    "url"
+   ],
+   "observed": {
+    "samples": 283257,
+    "decided": 279263,
+    "ok_rate": 0.9992,
+    "p50_ms": 2038,
+    "p95_ms": 4592,
+    "last_ok_days": 0,
+    "hit_rate": 0.9191,
+    "hit_samples": 279037
+   },
+   "reviews": {
+    "teams": 10,
+    "share": {
+     "useful": 0.68,
+     "partly": 0.32,
+     "not_useful": 0.0
+    }
+   }
+  },
+  {
+   "id": "brightdata.x.instagram-comments",
+   "provider": "brightdata",
+   "provider_display": "Bright Data",
+   "name": "Instagram post comments by post URL",
+   "scope": "any_account",
+   "kind": "data",
+   "cost": {
+    "type": "per_result",
+    "value": 0.0015,
+    "currency": "USD",
+    "unit": "record",
+    "reserve": {
+     "entities": {}
+    },
+    "usd": 0.0015
+   },
+   "platform_eligible": false,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-11-10",
+   "params": [
+    "dataset_id",
+    "format",
+    "input"
+   ],
+   "observed": {
+    "samples": 0,
+    "decided": 0,
+    "ok_rate": null,
+    "p50_ms": null,
+    "p95_ms": null,
+    "last_ok_days": null,
+    "hit_rate": null,
+    "hit_samples": 0
+   }
+  },
+  {
+   "id": "crawl4ai.instagram.post.comments",
+   "provider": "crawl4ai",
+   "provider_display": "Crawl4AI",
+   "name": "Comments of an Instagram post",
+   "scope": "any_account",
+   "kind": "data",
+   "cost": {
+    "type": "per_success",
+    "value": 0.7,
+    "currency": "credit",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.0007
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": null,
+   "params": [
+    "limit",
+    "post",
+    "sort"
+   ],
+   "observed": {
+    "samples": 3012,
+    "decided": 0,
+    "ok_rate": null,
+    "p50_ms": null,
+    "p95_ms": null,
+    "last_ok_days": null,
+    "hit_rate": null,
+    "hit_samples": 0
+   }
+  },
+  {
+   "id": "instagram.instagram.post.comments",
+   "provider": "instagram",
+   "provider_display": "Instagram",
+   "name": "Comments on one of your Instagram posts",
+   "scope": "own_account",
+   "kind": "data",
+   "cost": {
+    "type": "free",
+    "value": 0,
+    "currency": "USD",
+    "unit": "call",
+    "usd": 0.0
+   },
+   "platform_eligible": false,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "ig_media_id",
+    "fields",
+    "limit"
+   ],
+   "observed": {
+    "samples": 176739,
+    "decided": 163409,
+    "ok_rate": 1.0,
+    "p50_ms": 129,
+    "p95_ms": 321,
+    "last_ok_days": 0,
+    "hit_rate": null,
+    "hit_samples": 0
+   }
+  },
+  {
+   "id": "justoneapi.x.instagram-get-post-comments-v1",
+   "provider": "justoneapi",
+   "provider_display": "Just One API",
+   "name": "Instagram post comments by shortcode",
+   "scope": "",
+   "kind": "data",
+   "cost": {
+    "type": "per_success",
+    "value": 0.1,
+    "currency": "CNY",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.01476
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "code",
+    "minId",
+    "sortOrder"
+   ],
+   "observed": {
+    "samples": 3012,
+    "decided": 2580,
+    "ok_rate": 1.0,
+    "p50_ms": 1906,
+    "p95_ms": 3204,
+    "last_ok_days": 0,
+    "hit_rate": 0.2473,
+    "hit_samples": 2580
+   }
+  },
+  {
+   "id": "scrapecreators.instagram.post.comments",
+   "provider": "scrapecreators",
+   "provider_display": "ScrapeCreators",
+   "name": "Instagram post or reel comments by URL",
+   "scope": "any_account",
+   "kind": "data",
+   "cost": {
+    "type": "per_call",
+    "value": 1,
+    "currency": "credit",
+    "per": 1,
+    "unit": "call",
+    "reported_charge": {
+     "path": "credits_charged",
+     "unit": "credit"
+    },
+    "usd": 0.00188
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "url",
+    "cursor"
+   ],
+   "observed": {
+    "samples": 85188,
+    "decided": 84092,
+    "ok_rate": 0.9541,
+    "p50_ms": 3472,
+    "p95_ms": 6820,
+    "last_ok_days": 0,
+    "hit_rate": 0.9289,
+    "hit_samples": 79810
+   },
+   "reviews": {
+    "teams": 0
+   }
+  },
+  {
+   "id": "tikhub.x.instagram-v2-fetch-post-comments",
+   "provider": "tikhub",
+   "provider_display": "TikHub",
+   "name": "Instagram post comments by shortcode or URL",
+   "scope": "",
+   "kind": "data",
+   "cost": {
+    "type": "per_call",
+    "value": 0.002,
+    "currency": "USD",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.002
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "code_or_url",
+    "sort_by",
+    "pagination_token"
+   ],
+   "observed": {
+    "samples": 108892,
+    "decided": 99811,
+    "ok_rate": 0.9941,
+    "p50_ms": 2710,
+    "p95_ms": 16185,
+    "last_ok_days": 0,
+    "hit_rate": 0.9561,
+    "hit_samples": 99078
+   },
+   "reviews": {
+    "teams": 0
+   }
+  },
+  {
+   "id": "tikhub.x.instagram-v3-get-post-comments",
+   "provider": "tikhub",
+   "provider_display": "TikHub",
+   "name": "Instagram post comments by shortcode",
+   "scope": "",
+   "kind": "data",
+   "cost": {
+    "type": "per_call",
+    "value": 0.008,
+    "currency": "USD",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.008
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "code",
+    "min_id",
+    "sort_order"
+   ],
+   "observed": {
+    "samples": 1037,
+    "decided": 1007,
+    "ok_rate": 0.9871,
+    "p50_ms": 1211,
+    "p95_ms": 2167,
+    "last_ok_days": 12,
+    "hit_rate": null,
+    "hit_samples": 0
+   }
+  }
+ ],
+ "related_capabilities": [
+  {
+   "endpoint_id": "treg.instagram.hashtag.posts",
+   "capability": "instagram.hashtag.posts",
+   "does": "List posts under a hashtag"
+  },
+  {
+   "endpoint_id": "treg.instagram.post.detail",
+   "capability": "instagram.post.detail",
+   "does": "Get a post's content & stats"
+  },
+  {
+   "endpoint_id": "treg.instagram.search.reels",
+   "capability": "instagram.search.reels",
+   "does": "Search reels by keyword"
+  },
+  {
+   "endpoint_id": "treg.instagram.search.users",
+   "capability": "instagram.search.users",
+   "does": "Search users by keyword"
+  },
+  {
+   "endpoint_id": "treg.instagram.user.posts",
+   "capability": "instagram.user.posts",
+   "does": "List a user's recent posts"
+  }
+ ],
+ "routing": {
+  "contract": {
+   "identity": [
+    [
+     "shortcode"
+    ],
+    [
+     "url"
+    ]
+   ],
+   "output": {
+    "comments": {
+     "type": "array",
+     "items": {
+      "type": "object"
+     },
+     "required": true
+    },
+    "count": {
+     "type": "integer"
+    },
+    "next_cursor": {
+     "type": "string"
+    }
+   },
+   "miss": "comments == []",
+   "derive": {}
+  },
+  "plan": [
+   {
+    "endpoint_id": "anyapi.instagram.post.comments",
+    "accepts": [
+     [
+      "url"
+     ]
+    ],
+    "usd": 0.00144,
+    "cost": {
+     "type": "per_call",
+     "usd": 0.00144
+    },
+    "hit_rate": 0.9191,
+    "usd_per_hit": 0.0015667500816015669,
+    "works": 0.9992
+   },
+   {
+    "endpoint_id": "scrapecreators.instagram.post.comments",
+    "accepts": [
+     [
+      "url"
+     ]
+    ],
+    "usd": 0.00188,
+    "cost": {
+     "type": "per_call",
+     "value": 1,
+     "currency": "credit",
+     "usd": 0.00188
+    },
+    "hit_rate": 0.9289,
+    "usd_per_hit": 0.0020238992356550758,
+    "works": 0.9541
+   },
+   {
+    "endpoint_id": "tikhub.x.instagram-v2-fetch-post-comments",
+    "accepts": [
+     [
+      "shortcode"
+     ]
+    ],
+    "usd": 0.002,
+    "cost": {
+     "type": "per_call",
+     "usd": 0.002
+    },
+    "hit_rate": 0.9561,
+    "usd_per_hit": 0.00209183139838929,
+    "works": 0.9941
+   },
+   {
+    "endpoint_id": "justoneapi.x.instagram-get-post-comments-v1",
+    "accepts": [
+     [
+      "shortcode"
+     ]
+    ],
+    "usd": 0.01476,
+    "cost": {
+     "type": "per_success",
+     "value": 0.1,
+     "currency": "CNY",
+     "usd": 0.01476
+    },
+    "hit_rate": 0.2473,
+    "usd_per_hit": 0.01476,
+    "works": 1.0
+   }
+  ],
+  "also": [
+   {
+    "endpoint_id": "brightdata.x.instagram-comments",
+    "usd": 0.0015,
+    "cost": {
+     "type": "per_result",
+     "usd": 0.0015
+    }
+   },
+   {
+    "endpoint_id": "crawl4ai.instagram.post.comments",
+    "usd": 0.0007,
+    "cost": {
+     "type": "per_success",
+     "value": 0.7,
+     "currency": "credit",
+     "usd": 0.0007
+    }
+   },
+   {
+    "endpoint_id": "instagram.instagram.post.comments",
+    "usd": 0.0,
+    "cost": {
+     "type": "free",
+     "usd": 0.0
+    }
+   },
+   {
+    "endpoint_id": "tikhub.x.instagram-v3-get-post-comments",
+    "usd": 0.008,
+    "cost": {
+     "type": "per_call",
+     "usd": 0.008
+    }
+   }
+  ],
+  "max_cost_usd": 1.0,
+  "headers": {
+   "X-Treg-Route-Waterfall": "on by default: a miss tries the next provider; 0 = stop at the first miss",
+   "X-Treg-Route-Max-Cost": "USD ceiling for the whole call (default 1.00)",
+   "X-Treg-Route-Prefer": "provider[,\u2026], the name before an id's first dot (quickenrich), not an endpoint id",
+   "X-Treg-Route-Exclude": "provider[,\u2026], the name before an id's first dot (quickenrich), not an endpoint id",
+   "X-Treg-Route-Strict-Filters": "1 = never call a provider that cannot apply a filter you sent (answers 422, nothing charged); off by default \u2014 the answer names what was ignored in X-Treg-Ignored-Filters"
+  }
+ },
+ "call_template": "treg call treg.instagram.post.comments",
+ "example_response": null,
+ "hints": []
+}

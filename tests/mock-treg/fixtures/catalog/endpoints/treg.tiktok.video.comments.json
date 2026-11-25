@@ -1,0 +1,570 @@
+{
+ "endpoint": {
+  "id": "treg.tiktok.video.comments",
+  "provider": "treg",
+  "provider_display": "treg",
+  "name": "tiktok.video.comments \u2014 routed: best of 5 providers, own keys first",
+  "summary": "Comments on a TikTok video by aweme/video id or URL \u2014 provider-native comment objects in `comments`",
+  "method": "POST",
+  "path": "/tiktok.video.comments",
+  "scope": "",
+  "tier": "core",
+  "kind": "routed",
+  "domain": "video",
+  "call_template": "treg call treg.tiktok.video.comments",
+  "cost": {
+   "type": "per_success",
+   "value": 0.001,
+   "currency": "USD",
+   "per": 1,
+   "unit": "call",
+   "source": "inferred",
+   "confidence": "documented",
+   "checked": null,
+   "varies": true,
+   "note": "Not free: $0.001\u2013$0.01476 per hit across 5 providers, 0% markup. A call also pays each provider tried before the hit that bills a miss (4 of 5 do), up to X-Treg-Route-Max-Cost (default $1); X-Treg-Route-Waterfall: 0 pays for one provider only",
+   "usd": 0.001
+  },
+  "async": null,
+  "platform_eligible": true,
+  "platform_blocked": null,
+  "miss": {
+   "status": 200,
+   "means": "output.comments == []"
+  },
+  "status": null,
+  "status_note": null,
+  "superseded_by": null,
+  "verified": null,
+  "added": null,
+  "docs_url": "",
+  "has_example": false,
+  "input": {
+   "bodyType": "json",
+   "body": {
+    "video_id": {
+     "type": "string",
+     "required": false,
+     "note": "identity"
+    },
+    "url": {
+     "type": "string",
+     "format": "url",
+     "required": false,
+     "note": "identity"
+    },
+    "limit": {
+     "type": "integer",
+     "required": false,
+     "note": "filter; default 10; comments per page where the provider takes a count"
+    }
+   },
+   "note": "Send what you know; treg sends each provider only the fields it accepts ({video_id} | {url}). Omit a field you don't have: a url field holding something else, such as N/A, is refused (422 invalid_identity). On a miss it tries the next provider, cheapest first. Options are X-Treg-Route-* headers, never body fields. The answer is {output, raw, _treg}; X-Treg-Served-By names the provider."
+  },
+  "routed_children": [
+   "anyapi.tiktok.video.comments",
+   "justoneapi.tiktok.video.comments",
+   "scrapecreators.tiktok.video.comments",
+   "tikhub.tiktok.video.comments",
+   "tikhub.x.tiktok-app-v3-fetch-video-comments"
+  ],
+  "capability": "tiktok.video.comments",
+  "capability_description": "List a video's comments",
+  "platform": "tiktok",
+  "platform_label": "TikTok",
+  "observed": {
+   "samples": 37508,
+   "decided": 37497,
+   "ok_rate": 0.9959,
+   "p50_ms": null,
+   "p95_ms": null,
+   "last_ok_days": 0,
+   "hit_rate": null,
+   "hit_samples": 0
+  },
+  "wallet": {
+   "payable": false,
+   "reason": "routed",
+   "note": "a routed treg tool needs a treg account; sign in to call it"
+  }
+ },
+ "provider": {
+  "service": "treg",
+  "display_name": "treg"
+ },
+ "siblings": [
+  {
+   "id": "anyapi.tiktok.video.comments",
+   "provider": "anyapi",
+   "provider_display": "AnyAPI",
+   "name": "TikTok Video Comments",
+   "scope": "any_account",
+   "kind": "data",
+   "cost": {
+    "type": "per_call",
+    "value": 0.002,
+    "currency": "USD",
+    "unit": "call",
+    "reported_charge": {
+     "path": "costUsd",
+     "unit": "usd"
+    },
+    "usd": 0.002
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-09-19",
+   "params": [
+    "fields",
+    "max_items",
+    "summary",
+    "jq",
+    "cursor",
+    "url"
+   ],
+   "observed": {
+    "samples": 43746,
+    "decided": 43714,
+    "ok_rate": 0.9995,
+    "p50_ms": 688,
+    "p95_ms": 1158,
+    "last_ok_days": 0,
+    "hit_rate": 0.8084,
+    "hit_samples": 43690
+   },
+   "reviews": {
+    "teams": 5,
+    "share": {
+     "useful": 1.0,
+     "partly": 0.0,
+     "not_useful": 0.0
+    }
+   }
+  },
+  {
+   "id": "brightdata.x.tiktok-comments",
+   "provider": "brightdata",
+   "provider_display": "Bright Data",
+   "name": "TikTok video comments by video URL",
+   "scope": "any_account",
+   "kind": "data",
+   "cost": {
+    "type": "per_result",
+    "value": 0.0015,
+    "currency": "USD",
+    "unit": "record",
+    "reserve": {
+     "entities": {}
+    },
+    "usd": 0.0015
+   },
+   "platform_eligible": false,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-11-10",
+   "params": [
+    "dataset_id",
+    "format",
+    "input"
+   ],
+   "observed": {
+    "samples": 2,
+    "decided": 1,
+    "ok_rate": null,
+    "p50_ms": null,
+    "p95_ms": null,
+    "last_ok_days": null,
+    "hit_rate": null,
+    "hit_samples": 0
+   }
+  },
+  {
+   "id": "crawl4ai.tiktok.video.comments",
+   "provider": "crawl4ai",
+   "provider_display": "Crawl4AI",
+   "name": "Comments of a TikTok post",
+   "scope": "any_account",
+   "kind": "data",
+   "cost": {
+    "type": "per_success",
+    "value": 0.5,
+    "currency": "credit",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.0005
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-10-11",
+   "params": [
+    "limit",
+    "post"
+   ],
+   "observed": {
+    "samples": 59667,
+    "decided": 59652,
+    "ok_rate": 0.9991,
+    "p50_ms": 891,
+    "p95_ms": 6678,
+    "last_ok_days": 0,
+    "hit_rate": 0.9494,
+    "hit_samples": 59561
+   },
+   "reviews": {
+    "teams": 10,
+    "share": {
+     "useful": 0.92,
+     "partly": 0.08,
+     "not_useful": 0.0
+    }
+   }
+  },
+  {
+   "id": "justoneapi.tiktok.video.comments",
+   "provider": "justoneapi",
+   "provider_display": "Just One API",
+   "name": "TikTok post comments by post id",
+   "scope": "any_account",
+   "kind": "data",
+   "cost": {
+    "type": "per_success",
+    "value": 0.1,
+    "currency": "CNY",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.01476
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "awemeId",
+    "cursor"
+   ],
+   "observed": {
+    "samples": 2185,
+    "decided": 2168,
+    "ok_rate": 1.0,
+    "p50_ms": 1363,
+    "p95_ms": 1985,
+    "last_ok_days": 0,
+    "hit_rate": 0.0738,
+    "hit_samples": 2168
+   }
+  },
+  {
+   "id": "scrapecreators.tiktok.video.comments",
+   "provider": "scrapecreators",
+   "provider_display": "ScrapeCreators",
+   "name": "TikTok video comments by URL \u2014 replies, engagement",
+   "scope": "any_account",
+   "kind": "data",
+   "cost": {
+    "type": "per_call",
+    "value": 1,
+    "currency": "credit",
+    "per": 1,
+    "unit": "call",
+    "reported_charge": {
+     "path": "credits_charged",
+     "unit": "credit"
+    },
+    "usd": 0.00188
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "url",
+    "cursor"
+   ],
+   "observed": {
+    "samples": 14550,
+    "decided": 14549,
+    "ok_rate": 0.9942,
+    "p50_ms": 1104,
+    "p95_ms": 11262,
+    "last_ok_days": 0,
+    "hit_rate": 0.9269,
+    "hit_samples": 14441
+   },
+   "reviews": {
+    "teams": 0
+   }
+  },
+  {
+   "id": "tikhub.tiktok.video.comments",
+   "provider": "tikhub",
+   "provider_display": "TikHub",
+   "name": "TikTok video comments by video id",
+   "scope": "any_account",
+   "kind": "data",
+   "cost": {
+    "type": "per_call",
+    "value": 0.001,
+    "currency": "USD",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.001
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "aweme_id",
+    "cursor",
+    "count",
+    "current_region"
+   ],
+   "observed": {
+    "samples": 86092,
+    "decided": 51594,
+    "ok_rate": 0.9966,
+    "p50_ms": 712,
+    "p95_ms": 1570,
+    "last_ok_days": 0,
+    "hit_rate": 0.9294,
+    "hit_samples": 51389
+   },
+   "reviews": {
+    "teams": 5,
+    "share": {
+     "useful": 1.0,
+     "partly": 0.0,
+     "not_useful": 0.0
+    }
+   }
+  },
+  {
+   "id": "tikhub.x.tiktok-app-v3-fetch-video-comments",
+   "provider": "tikhub",
+   "provider_display": "TikHub",
+   "name": "TikTok video comments by video id",
+   "scope": "",
+   "kind": "data",
+   "cost": {
+    "type": "per_call",
+    "value": 0.001,
+    "currency": "USD",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.001
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "aweme_id",
+    "cursor",
+    "count"
+   ],
+   "observed": {
+    "samples": 59745,
+    "decided": 59734,
+    "ok_rate": 0.9991,
+    "p50_ms": 568,
+    "p95_ms": 970,
+    "last_ok_days": 0,
+    "hit_rate": 0.933,
+    "hit_samples": 59633
+   },
+   "reviews": {
+    "teams": 5,
+    "share": {
+     "useful": 1.0,
+     "partly": 0.0,
+     "not_useful": 0.0
+    }
+   }
+  }
+ ],
+ "related_capabilities": [
+  {
+   "endpoint_id": "treg.tiktok.comment.replies",
+   "capability": "tiktok.comment.replies",
+   "does": "List replies to a comment"
+  },
+  {
+   "endpoint_id": "treg.tiktok.search.users",
+   "capability": "tiktok.search.users",
+   "does": "Search users by keyword"
+  },
+  {
+   "endpoint_id": "treg.tiktok.search.videos",
+   "capability": "tiktok.search.videos",
+   "does": "Search videos by keyword"
+  },
+  {
+   "endpoint_id": "treg.tiktok.user.profile",
+   "capability": "tiktok.user.profile",
+   "does": "Get a user's public profile"
+  },
+  {
+   "endpoint_id": "treg.tiktok.user.videos",
+   "capability": "tiktok.user.videos",
+   "does": "List a user's recent videos"
+  }
+ ],
+ "routing": {
+  "contract": {
+   "identity": [
+    [
+     "video_id"
+    ],
+    [
+     "url"
+    ]
+   ],
+   "output": {
+    "comments": {
+     "type": "array",
+     "items": {
+      "type": "object"
+     },
+     "required": true
+    },
+    "count": {
+     "type": "integer"
+    },
+    "next_cursor": {
+     "type": "string"
+    },
+    "has_more": {
+     "type": "boolean"
+    }
+   },
+   "miss": "comments == []",
+   "derive": {}
+  },
+  "plan": [
+   {
+    "endpoint_id": "tikhub.x.tiktok-app-v3-fetch-video-comments",
+    "accepts": [
+     [
+      "video_id"
+     ]
+    ],
+    "usd": 0.001,
+    "cost": {
+     "type": "per_call",
+     "usd": 0.001
+    },
+    "hit_rate": 0.933,
+    "usd_per_hit": 0.0010718113612004285,
+    "works": 0.9991
+   },
+   {
+    "endpoint_id": "tikhub.tiktok.video.comments",
+    "accepts": [
+     [
+      "video_id"
+     ]
+    ],
+    "usd": 0.001,
+    "cost": {
+     "type": "per_call",
+     "usd": 0.001
+    },
+    "hit_rate": 0.9294,
+    "usd_per_hit": 0.0010759629868732515,
+    "works": 0.9966
+   },
+   {
+    "endpoint_id": "scrapecreators.tiktok.video.comments",
+    "accepts": [
+     [
+      "url"
+     ]
+    ],
+    "usd": 0.00188,
+    "cost": {
+     "type": "per_call",
+     "value": 1,
+     "currency": "credit",
+     "usd": 0.00188
+    },
+    "hit_rate": 0.9269,
+    "usd_per_hit": 0.0020282662638903878,
+    "works": 0.9942
+   },
+   {
+    "endpoint_id": "anyapi.tiktok.video.comments",
+    "accepts": [
+     [
+      "url"
+     ]
+    ],
+    "usd": 0.002,
+    "cost": {
+     "type": "per_call",
+     "usd": 0.002
+    },
+    "hit_rate": 0.8084,
+    "usd_per_hit": 0.002474022761009401,
+    "works": 0.9995
+   },
+   {
+    "endpoint_id": "justoneapi.tiktok.video.comments",
+    "accepts": [
+     [
+      "video_id"
+     ]
+    ],
+    "usd": 0.01476,
+    "cost": {
+     "type": "per_success",
+     "value": 0.1,
+     "currency": "CNY",
+     "usd": 0.01476
+    },
+    "hit_rate": 0.0738,
+    "usd_per_hit": 0.01476,
+    "works": 1.0
+   }
+  ],
+  "also": [
+   {
+    "endpoint_id": "brightdata.x.tiktok-comments",
+    "usd": 0.0015,
+    "cost": {
+     "type": "per_result",
+     "usd": 0.0015
+    }
+   },
+   {
+    "endpoint_id": "crawl4ai.tiktok.video.comments",
+    "usd": 0.0005,
+    "cost": {
+     "type": "per_success",
+     "value": 0.5,
+     "currency": "credit",
+     "usd": 0.0005
+    }
+   }
+  ],
+  "max_cost_usd": 1.0,
+  "headers": {
+   "X-Treg-Route-Waterfall": "on by default: a miss tries the next provider; 0 = stop at the first miss",
+   "X-Treg-Route-Max-Cost": "USD ceiling for the whole call (default 1.00)",
+   "X-Treg-Route-Prefer": "provider[,\u2026], the name before an id's first dot (quickenrich), not an endpoint id",
+   "X-Treg-Route-Exclude": "provider[,\u2026], the name before an id's first dot (quickenrich), not an endpoint id",
+   "X-Treg-Route-Strict-Filters": "1 = never call a provider that cannot apply a filter you sent (answers 422, nothing charged); off by default \u2014 the answer names what was ignored in X-Treg-Ignored-Filters"
+  }
+ },
+ "call_template": "treg call treg.tiktok.video.comments",
+ "example_response": null,
+ "hints": []
+}

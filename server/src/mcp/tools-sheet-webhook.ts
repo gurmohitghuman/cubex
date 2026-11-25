@@ -53,8 +53,11 @@ export function registerSheetWebhookTools(server: McpServer, ctx: McpAuthCtx): v
       return ok({ webhook: got.ok && sheetWebhookView(got.ok, ctx.scopes.has('write') ? mcpLinkBase(ctx) : null),
         changed: [] });
     }
-    // get reads while a sort or an import runs, as get_sheet does; a change waits, as over REST.
-    const busy = sheetBusyWith(sheet_id);
+    // get reads while a sort or an import runs, as get_sheet does. Setting one up and adding or removing a field
+    // change columns and wait, as over REST; the webhook's own controls (on, off, a new URL or token, delete) go
+    // through, so a leaked URL can be cut off mid-import (lib/sheet-busy.ts webhookControl).
+    const waits = action === 'create' || action === 'add_field' || action === 'remove_field';
+    const busy = waits ? sheetBusyWith(sheet_id) : null;
     if (busy) return err(busyMessage(busy));
     if (action === 'delete') {
       const gone = deleteSheetWebhook(ctx.userId, sheet_id);

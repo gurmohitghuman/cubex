@@ -40,6 +40,8 @@ export interface StepInput {
 }
 
 export interface WaterfallRunInput {
+  // Save: the setup becomes the column's and nothing runs (the answer says saved).
+  saveOnly?: boolean
   columnName: string
   continueColumn: boolean
   resultType: ResultType

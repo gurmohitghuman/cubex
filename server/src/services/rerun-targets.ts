@@ -51,15 +51,21 @@ async function eachTarget(
     return each(db.prepare(`SELECT row_index${sel} FROM rows WHERE sheet_id = ? AND user_id = ?
       ORDER BY row_index LIMIT ?`).raw().all(...paths, sheetId, userId, scope.firstRows) as unknown[][]);
   }
+  // Out of date hashes each row's inputs: half the rows a page, so a page holds the server about as long.
+  const size = stale ? PAGE_ROWS / 2 : PAGE_ROWS;
   if (scope.withinRows) {
-    return each(db.prepare(`SELECT row_index${sel} FROM rows WHERE sheet_id = ? AND user_id = ?
-      AND row_index IN (SELECT value FROM json_each(?)) ORDER BY row_index`).raw()
-      .all(...paths, sheetId, userId, JSON.stringify(scope.withinRows)) as unknown[][]);
+    // A page of the chosen rows at a time (a column run's where can choose a million), in row order.
+    const within = [...scope.withinRows].sort((a, b) => a - b);
+    const chosen = db.prepare(`SELECT row_index${sel} FROM rows WHERE sheet_id = ? AND user_id = ?
+      AND row_index IN (SELECT value FROM json_each(?)) ORDER BY row_index`).raw();
+    for (let i = 0; i < within.length; i += size) {
+      if (i > 0) await yieldToRequests();
+      each(chosen.all(...paths, sheetId, userId, JSON.stringify(within.slice(i, i + size))) as unknown[][]);
+    }
+    return;
   }
   const page = db.prepare(`SELECT row_index${sel} FROM rows WHERE sheet_id = ? AND user_id = ? AND row_index > ?
     ORDER BY row_index LIMIT ?`).raw();
-  // Out of date hashes each row's inputs: half the rows a page, so a page holds the server about as long.
-  const size = stale ? PAGE_ROWS / 2 : PAGE_ROWS;
   for (let after = Number.MIN_SAFE_INTEGER; ;) {
     const rows = page.all(...paths, sheetId, userId, after, size) as unknown[][];
     each(rows);

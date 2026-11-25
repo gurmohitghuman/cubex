@@ -1,0 +1,1016 @@
+{
+ "endpoint": {
+  "id": "treg.instagram.user.profile",
+  "provider": "treg",
+  "provider_display": "treg",
+  "name": "instagram.user.profile \u2014 routed: best of 11 providers, own keys first",
+  "summary": "Get an Instagram user's public profile \u2014 treg picks the provider (own keys first, then cheapest) and names the one that served",
+  "method": "POST",
+  "path": "/instagram.user.profile",
+  "scope": "",
+  "tier": "core",
+  "kind": "routed",
+  "domain": "user",
+  "call_template": "treg call treg.instagram.user.profile",
+  "cost": {
+   "type": "per_success",
+   "value": 0.001,
+   "currency": "USD",
+   "per": 1,
+   "unit": "call",
+   "source": "inferred",
+   "confidence": "documented",
+   "checked": null,
+   "varies": true,
+   "note": "Not free: $0.001\u2013$0.015 per hit across 11 providers, 0% markup. A call also pays each provider tried before the hit that bills a miss (8 of 11 do), up to X-Treg-Route-Max-Cost (default $1); X-Treg-Route-Waterfall: 0 pays for one provider only",
+   "usd": 0.001
+  },
+  "async": null,
+  "platform_eligible": true,
+  "platform_blocked": null,
+  "miss": {
+   "status": 200,
+   "means": "output.username == null"
+  },
+  "status": null,
+  "status_note": null,
+  "superseded_by": null,
+  "verified": null,
+  "added": null,
+  "docs_url": "",
+  "has_example": false,
+  "input": {
+   "bodyType": "json",
+   "body": {
+    "username": {
+     "type": "string",
+     "required": false,
+     "note": "identity"
+    },
+    "user_id": {
+     "type": "string",
+     "required": false,
+     "note": "identity"
+    }
+   },
+   "note": "Send what you know; treg sends each provider only the fields it accepts ({username} | {user_id}). On a miss it tries the next provider, cheapest first. Options are X-Treg-Route-* headers, never body fields. The answer is {output, raw, _treg}; X-Treg-Served-By names the provider."
+  },
+  "routed_children": [
+   "brightdata.instagram.user.profile",
+   "justoneapi.instagram.user.profile",
+   "scrapecreators.instagram.user.profile",
+   "scrapecreators.x.v1-instagram-basic-profile",
+   "serpapi.x.instagram-profile",
+   "tikhub.instagram.user.profile",
+   "tikhub.x.instagram-v1-fetch-user-info-by-id",
+   "tikhub.x.instagram-v1-fetch-user-info-by-id-v2",
+   "tikhub.x.instagram-v1-fetch-user-info-by-username-v2",
+   "tikhub.x.instagram-v1-fetch-user-info-by-username-v3",
+   "tikhub.x.instagram-v3-get-user-profile"
+  ],
+  "capability": "instagram.user.profile",
+  "capability_description": "Get a user's public profile",
+  "platform": "instagram",
+  "platform_label": "Instagram",
+  "observed": {
+   "samples": 440625,
+   "decided": 439698,
+   "ok_rate": 0.992,
+   "p50_ms": null,
+   "p95_ms": null,
+   "last_ok_days": 0,
+   "hit_rate": null,
+   "hit_samples": 0
+  },
+  "wallet": {
+   "payable": false,
+   "reason": "routed",
+   "note": "a routed treg tool needs a treg account; sign in to call it"
+  }
+ },
+ "provider": {
+  "service": "treg",
+  "display_name": "treg"
+ },
+ "siblings": [
+  {
+   "id": "brightdata.instagram.user.profile",
+   "provider": "brightdata",
+   "provider_display": "Bright Data",
+   "name": "Instagram profile by URL \u2014 followers, bio, verification",
+   "scope": "any_account",
+   "kind": "data",
+   "cost": {
+    "type": "per_result",
+    "value": 0.0015,
+    "currency": "USD",
+    "unit": "record",
+    "reserve": {
+     "entities": {}
+    },
+    "usd": 0.0015
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "dataset_id",
+    "format",
+    "input"
+   ],
+   "observed": {
+    "samples": 17500,
+    "decided": 17467,
+    "ok_rate": 0.9981,
+    "p50_ms": 60437,
+    "p95_ms": 61188,
+    "last_ok_days": 0,
+    "hit_rate": 0.0093,
+    "hit_samples": 17319
+   }
+  },
+  {
+   "id": "crawl4ai.instagram.user.profile",
+   "provider": "crawl4ai",
+   "provider_display": "Crawl4AI",
+   "name": "Profile of an Instagram account",
+   "scope": "any_account",
+   "kind": "data",
+   "cost": {
+    "type": "per_success",
+    "value": 0.84,
+    "currency": "credit",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.00084
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-10-11",
+   "params": [
+    "full_profile",
+    "username"
+   ],
+   "observed": {
+    "samples": 820272,
+    "decided": 819648,
+    "ok_rate": 0.905,
+    "p50_ms": 1983,
+    "p95_ms": 17182,
+    "last_ok_days": 0,
+    "hit_rate": 0.9166,
+    "hit_samples": 741714
+   },
+   "reviews": {
+    "teams": 25,
+    "share": {
+     "useful": 0.92,
+     "partly": 0.05,
+     "not_useful": 0.03
+    }
+   }
+  },
+  {
+   "id": "instagram.instagram.user.profile",
+   "provider": "instagram",
+   "provider_display": "Instagram",
+   "name": "Your Instagram profile and follower counts",
+   "scope": "own_account",
+   "kind": "data",
+   "cost": {
+    "type": "free",
+    "value": 0,
+    "currency": "USD",
+    "unit": "call",
+    "usd": 0.0
+   },
+   "platform_eligible": false,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "ig_user_id",
+    "fields"
+   ],
+   "observed": {
+    "samples": 16832,
+    "decided": 16485,
+    "ok_rate": 0.9999,
+    "p50_ms": 166,
+    "p95_ms": 421,
+    "last_ok_days": 0,
+    "hit_rate": null,
+    "hit_samples": 0
+   },
+   "reviews": {
+    "teams": 0
+   }
+  },
+  {
+   "id": "justoneapi.instagram.user.profile",
+   "provider": "justoneapi",
+   "provider_display": "Just One API",
+   "name": "Instagram user profile by username",
+   "scope": "any_account",
+   "kind": "data",
+   "cost": {
+    "type": "per_success",
+    "value": 0.1,
+    "currency": "CNY",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.01476
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "username"
+   ],
+   "observed": {
+    "samples": 3229,
+    "decided": 2956,
+    "ok_rate": 1.0,
+    "p50_ms": 2414,
+    "p95_ms": 4416,
+    "last_ok_days": 0,
+    "hit_rate": 0.0068,
+    "hit_samples": 2951
+   },
+   "reviews": {
+    "teams": 0
+   }
+  },
+  {
+   "id": "justoneapi.x.instagram-get-user-detail-v1",
+   "provider": "justoneapi",
+   "provider_display": "Just One API",
+   "name": "Instagram user profile by username",
+   "scope": "",
+   "kind": "data",
+   "cost": {
+    "type": "per_success",
+    "value": 0.1,
+    "currency": "CNY",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.01476
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "username"
+   ],
+   "observed": {
+    "samples": 11,
+    "decided": 11,
+    "ok_rate": 1.0,
+    "p50_ms": 4416,
+    "p95_ms": 8804,
+    "last_ok_days": 4,
+    "hit_rate": null,
+    "hit_samples": 2
+   }
+  },
+  {
+   "id": "scrapecreators.instagram.user.profile",
+   "provider": "scrapecreators",
+   "provider_display": "ScrapeCreators",
+   "name": "Instagram profile by username \u2014 bio, followers, links",
+   "scope": "any_account",
+   "kind": "data",
+   "cost": {
+    "type": "per_call",
+    "value": 1,
+    "currency": "credit",
+    "per": 1,
+    "unit": "call",
+    "reported_charge": {
+     "path": "credits_charged",
+     "unit": "credit"
+    },
+    "usd": 0.00188
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "handle"
+   ],
+   "observed": {
+    "samples": 316918,
+    "decided": 268530,
+    "ok_rate": 0.9828,
+    "p50_ms": 7137,
+    "p95_ms": 13814,
+    "last_ok_days": 0,
+    "hit_rate": 0.9999,
+    "hit_samples": 250624
+   },
+   "reviews": {
+    "teams": 10,
+    "share": {
+     "useful": 0.93,
+     "partly": 0.07,
+     "not_useful": 0.0
+    }
+   }
+  },
+  {
+   "id": "scrapecreators.x.v1-instagram-basic-profile",
+   "provider": "scrapecreators",
+   "provider_display": "ScrapeCreators",
+   "name": "Instagram basic profile by user id \u2014 bio, followers",
+   "scope": "",
+   "kind": "data",
+   "cost": {
+    "type": "per_call",
+    "value": 1,
+    "currency": "credit",
+    "per": 1,
+    "unit": "call",
+    "reported_charge": {
+     "path": "credits_charged",
+     "unit": "credit"
+    },
+    "usd": 0.00188
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "userId",
+    "cache_max_age"
+   ],
+   "observed": {
+    "samples": 794,
+    "decided": 668,
+    "ok_rate": 1.0,
+    "p50_ms": 2138,
+    "p95_ms": 4804,
+    "last_ok_days": 0,
+    "hit_rate": 1.0,
+    "hit_samples": 666
+   },
+   "reviews": {
+    "teams": 0
+   }
+  },
+  {
+   "id": "serpapi.x.instagram-profile",
+   "provider": "serpapi",
+   "provider_display": "SerpApi",
+   "name": "Public Instagram profile by username \u2014 bio, followers",
+   "scope": "",
+   "kind": "data",
+   "cost": {
+    "type": "per_success",
+    "value": 0.015,
+    "currency": "USD",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.015
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "engine",
+    "profile_id",
+    "next_page_token"
+   ],
+   "observed": {
+    "samples": 3394,
+    "decided": 3353,
+    "ok_rate": 1.0,
+    "p50_ms": 1358,
+    "p95_ms": 5106,
+    "last_ok_days": 0,
+    "hit_rate": 0.0423,
+    "hit_samples": 3263
+   }
+  },
+  {
+   "id": "tikhub.instagram.user.profile",
+   "provider": "tikhub",
+   "provider_display": "TikHub",
+   "name": "Instagram profile by username",
+   "scope": "any_account",
+   "kind": "data",
+   "cost": {
+    "type": "per_call",
+    "value": 0.001,
+    "currency": "USD",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.001
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "username"
+   ],
+   "observed": {
+    "samples": 1067081,
+    "decided": 1058146,
+    "ok_rate": 0.9957,
+    "p50_ms": 2398,
+    "p95_ms": 7136,
+    "last_ok_days": 0,
+    "hit_rate": 0.9309,
+    "hit_samples": 1053471
+   },
+   "reviews": {
+    "teams": 50,
+    "share": {
+     "useful": 0.81,
+     "partly": 0.19,
+     "not_useful": 0.0
+    }
+   }
+  },
+  {
+   "id": "tikhub.x.instagram-v1-fetch-user-info-by-id",
+   "provider": "tikhub",
+   "provider_display": "TikHub",
+   "name": "Instagram profile by user id",
+   "scope": "",
+   "kind": "data",
+   "cost": {
+    "type": "per_call",
+    "value": 0.001,
+    "currency": "USD",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.001
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "user_id"
+   ],
+   "observed": {
+    "samples": 33456,
+    "decided": 32967,
+    "ok_rate": 0.9286,
+    "p50_ms": 3563,
+    "p95_ms": 9739,
+    "last_ok_days": 0,
+    "hit_rate": 0.9965,
+    "hit_samples": 30611
+   }
+  },
+  {
+   "id": "tikhub.x.instagram-v1-fetch-user-info-by-id-v2",
+   "provider": "tikhub",
+   "provider_display": "TikHub",
+   "name": "Instagram profile by user id",
+   "scope": "",
+   "kind": "data",
+   "cost": {
+    "type": "per_call",
+    "value": 0.001,
+    "currency": "USD",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.001
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "user_id"
+   ],
+   "observed": {
+    "samples": 32799,
+    "decided": 32261,
+    "ok_rate": 0.9999,
+    "p50_ms": 1788,
+    "p95_ms": 4567,
+    "last_ok_days": 0,
+    "hit_rate": 0.9978,
+    "hit_samples": 32259
+   },
+   "reviews": {
+    "teams": 0
+   }
+  },
+  {
+   "id": "tikhub.x.instagram-v1-fetch-user-info-by-username-v2",
+   "provider": "tikhub",
+   "provider_display": "TikHub",
+   "name": "Instagram profile by username",
+   "scope": "",
+   "kind": "data",
+   "cost": {
+    "type": "per_call",
+    "value": 0.001,
+    "currency": "USD",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.001
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "username"
+   ],
+   "observed": {
+    "samples": 28764,
+    "decided": 28704,
+    "ok_rate": 0.9814,
+    "p50_ms": 2201,
+    "p95_ms": 7526,
+    "last_ok_days": 0,
+    "hit_rate": 0.3366,
+    "hit_samples": 28169
+   },
+   "reviews": {
+    "teams": 0
+   }
+  },
+  {
+   "id": "tikhub.x.instagram-v1-fetch-user-info-by-username-v3",
+   "provider": "tikhub",
+   "provider_display": "TikHub",
+   "name": "Instagram profile by username",
+   "scope": "",
+   "kind": "data",
+   "cost": {
+    "type": "per_call",
+    "value": 0.001,
+    "currency": "USD",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.001
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "username"
+   ],
+   "observed": {
+    "samples": 27954,
+    "decided": 27113,
+    "ok_rate": 0.985,
+    "p50_ms": 1979,
+    "p95_ms": 6941,
+    "last_ok_days": 0,
+    "hit_rate": 0.2979,
+    "hit_samples": 26704
+   },
+   "reviews": {
+    "teams": 0
+   }
+  },
+  {
+   "id": "tikhub.x.instagram-v2-fetch-user-info",
+   "provider": "tikhub",
+   "provider_display": "TikHub",
+   "name": "Instagram profile by username or user id",
+   "scope": "",
+   "kind": "data",
+   "cost": {
+    "type": "per_call",
+    "value": 0.002,
+    "currency": "USD",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.002
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "username",
+    "user_id"
+   ],
+   "observed": {
+    "samples": 19783,
+    "decided": 17408,
+    "ok_rate": 0.9548,
+    "p50_ms": 2348,
+    "p95_ms": 5480,
+    "last_ok_days": 0,
+    "hit_rate": null,
+    "hit_samples": 0
+   }
+  },
+  {
+   "id": "tikhub.x.instagram-v3-get-user-brief",
+   "provider": "tikhub",
+   "provider_display": "TikHub",
+   "name": "Instagram profile brief by username and user id",
+   "scope": "",
+   "kind": "data",
+   "cost": {
+    "type": "per_call",
+    "value": 0.008,
+    "currency": "USD",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.008
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "user_id",
+    "username"
+   ],
+   "observed": {
+    "samples": 22,
+    "decided": 20,
+    "ok_rate": 1.0,
+    "p50_ms": 1807,
+    "p95_ms": 6724,
+    "last_ok_days": 3,
+    "hit_rate": null,
+    "hit_samples": 0
+   }
+  },
+  {
+   "id": "tikhub.x.instagram-v3-get-user-profile",
+   "provider": "tikhub",
+   "provider_display": "TikHub",
+   "name": "Instagram profile by username",
+   "scope": "",
+   "kind": "data",
+   "cost": {
+    "type": "per_call",
+    "value": 0.008,
+    "currency": "USD",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.008
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "username"
+   ],
+   "observed": {
+    "samples": 9879,
+    "decided": 6402,
+    "ok_rate": 0.99,
+    "p50_ms": 1884,
+    "p95_ms": 3601,
+    "last_ok_days": 0,
+    "hit_rate": 1.0,
+    "hit_samples": 5921
+   },
+   "reviews": {
+    "teams": 0
+   }
+  }
+ ],
+ "related_capabilities": [
+  {
+   "endpoint_id": "treg.instagram.hashtag.posts",
+   "capability": "instagram.hashtag.posts",
+   "does": "List posts under a hashtag"
+  },
+  {
+   "endpoint_id": "treg.instagram.post.comments",
+   "capability": "instagram.post.comments",
+   "does": "List a post's comments"
+  },
+  {
+   "endpoint_id": "treg.instagram.post.detail",
+   "capability": "instagram.post.detail",
+   "does": "Get a post's content & stats"
+  },
+  {
+   "endpoint_id": "treg.instagram.search.reels",
+   "capability": "instagram.search.reels",
+   "does": "Search reels by keyword"
+  },
+  {
+   "endpoint_id": "treg.instagram.search.users",
+   "capability": "instagram.search.users",
+   "does": "Search users by keyword"
+  }
+ ],
+ "routing": {
+  "contract": {
+   "identity": [
+    [
+     "username"
+    ],
+    [
+     "user_id"
+    ]
+   ],
+   "output": {
+    "username": {
+     "type": "string",
+     "required": true
+    },
+    "user_id": {
+     "type": "string"
+    },
+    "full_name": {
+     "type": "string"
+    },
+    "followers": {
+     "type": "integer"
+    },
+    "following": {
+     "type": "integer"
+    },
+    "posts_count": {
+     "type": "integer"
+    },
+    "is_verified": {
+     "type": "boolean"
+    },
+    "is_private": {
+     "type": "boolean"
+    },
+    "biography": {
+     "type": "string"
+    }
+   },
+   "miss": "username == null",
+   "derive": {}
+  },
+  "plan": [
+   {
+    "endpoint_id": "tikhub.x.instagram-v1-fetch-user-info-by-id-v2",
+    "accepts": [
+     [
+      "user_id"
+     ]
+    ],
+    "usd": 0.001,
+    "cost": {
+     "type": "per_call",
+     "usd": 0.001
+    },
+    "hit_rate": 0.9978,
+    "usd_per_hit": 0.001002204850671477,
+    "works": 0.9999
+   },
+   {
+    "endpoint_id": "tikhub.x.instagram-v1-fetch-user-info-by-id",
+    "accepts": [
+     [
+      "user_id"
+     ]
+    ],
+    "usd": 0.001,
+    "cost": {
+     "type": "per_call",
+     "usd": 0.001
+    },
+    "hit_rate": 0.9965,
+    "usd_per_hit": 0.0010035122930255895,
+    "works": 0.9286
+   },
+   {
+    "endpoint_id": "tikhub.instagram.user.profile",
+    "accepts": [
+     [
+      "username"
+     ]
+    ],
+    "usd": 0.001,
+    "cost": {
+     "type": "per_call",
+     "usd": 0.001
+    },
+    "hit_rate": 0.9309,
+    "usd_per_hit": 0.001074229240519927,
+    "works": 0.9957
+   },
+   {
+    "endpoint_id": "brightdata.instagram.user.profile",
+    "accepts": [
+     [
+      "username"
+     ]
+    ],
+    "usd": 0.0015,
+    "cost": {
+     "type": "per_result",
+     "usd": 0.0015
+    },
+    "hit_rate": 0.0093,
+    "usd_per_hit": 0.0015,
+    "works": 0.9981
+   },
+   {
+    "endpoint_id": "scrapecreators.x.v1-instagram-basic-profile",
+    "accepts": [
+     [
+      "user_id"
+     ]
+    ],
+    "usd": 0.00188,
+    "cost": {
+     "type": "per_call",
+     "value": 1,
+     "currency": "credit",
+     "usd": 0.00188
+    },
+    "hit_rate": 1.0,
+    "usd_per_hit": 0.00188,
+    "works": 1.0
+   },
+   {
+    "endpoint_id": "scrapecreators.instagram.user.profile",
+    "accepts": [
+     [
+      "username"
+     ]
+    ],
+    "usd": 0.00188,
+    "cost": {
+     "type": "per_call",
+     "value": 1,
+     "currency": "credit",
+     "usd": 0.00188
+    },
+    "hit_rate": 0.9999,
+    "usd_per_hit": 0.00188018801880188,
+    "works": 0.9828
+   },
+   {
+    "endpoint_id": "tikhub.x.instagram-v1-fetch-user-info-by-username-v2",
+    "accepts": [
+     [
+      "username"
+     ]
+    ],
+    "usd": 0.001,
+    "cost": {
+     "type": "per_call",
+     "usd": 0.001
+    },
+    "hit_rate": 0.3366,
+    "usd_per_hit": 0.0029708853238265003,
+    "works": 0.9814
+   },
+   {
+    "endpoint_id": "tikhub.x.instagram-v1-fetch-user-info-by-username-v3",
+    "accepts": [
+     [
+      "username"
+     ]
+    ],
+    "usd": 0.001,
+    "cost": {
+     "type": "per_call",
+     "usd": 0.001
+    },
+    "hit_rate": 0.2979,
+    "usd_per_hit": 0.003356831151393085,
+    "works": 0.985
+   },
+   {
+    "endpoint_id": "tikhub.x.instagram-v3-get-user-profile",
+    "accepts": [
+     [
+      "username"
+     ]
+    ],
+    "usd": 0.008,
+    "cost": {
+     "type": "per_call",
+     "usd": 0.008
+    },
+    "hit_rate": 1.0,
+    "usd_per_hit": 0.008,
+    "works": 0.99
+   },
+   {
+    "endpoint_id": "justoneapi.instagram.user.profile",
+    "accepts": [
+     [
+      "username"
+     ]
+    ],
+    "usd": 0.01476,
+    "cost": {
+     "type": "per_success",
+     "value": 0.1,
+     "currency": "CNY",
+     "usd": 0.01476
+    },
+    "hit_rate": 0.0068,
+    "usd_per_hit": 0.01476,
+    "works": 1.0
+   },
+   {
+    "endpoint_id": "serpapi.x.instagram-profile",
+    "accepts": [
+     [
+      "username"
+     ]
+    ],
+    "usd": 0.015,
+    "cost": {
+     "type": "per_success",
+     "usd": 0.015
+    },
+    "hit_rate": 0.0423,
+    "usd_per_hit": 0.015,
+    "works": 1.0
+   }
+  ],
+  "also": [
+   {
+    "endpoint_id": "crawl4ai.instagram.user.profile",
+    "usd": 0.00084,
+    "cost": {
+     "type": "per_success",
+     "value": 0.84,
+     "currency": "credit",
+     "usd": 0.00084
+    }
+   },
+   {
+    "endpoint_id": "instagram.instagram.user.profile",
+    "usd": 0.0,
+    "cost": {
+     "type": "free",
+     "usd": 0.0
+    }
+   },
+   {
+    "endpoint_id": "justoneapi.x.instagram-get-user-detail-v1",
+    "usd": 0.01476,
+    "cost": {
+     "type": "per_success",
+     "value": 0.1,
+     "currency": "CNY",
+     "usd": 0.01476
+    }
+   },
+   {
+    "endpoint_id": "tikhub.x.instagram-v2-fetch-user-info",
+    "usd": 0.002,
+    "cost": {
+     "type": "per_call",
+     "usd": 0.002
+    }
+   },
+   {
+    "endpoint_id": "tikhub.x.instagram-v3-get-user-brief",
+    "usd": 0.008,
+    "cost": {
+     "type": "per_call",
+     "usd": 0.008
+    }
+   }
+  ],
+  "max_cost_usd": 1.0,
+  "headers": {
+   "X-Treg-Route-Waterfall": "on by default: a miss tries the next provider; 0 = stop at the first miss",
+   "X-Treg-Route-Max-Cost": "USD ceiling for the whole call (default 1.00)",
+   "X-Treg-Route-Prefer": "provider[,\u2026], the name before an id's first dot (quickenrich), not an endpoint id",
+   "X-Treg-Route-Exclude": "provider[,\u2026], the name before an id's first dot (quickenrich), not an endpoint id",
+   "X-Treg-Route-Strict-Filters": "1 = never call a provider that cannot apply a filter you sent (answers 422, nothing charged); off by default \u2014 the answer names what was ignored in X-Treg-Ignored-Filters"
+  }
+ },
+ "call_template": "treg call treg.instagram.user.profile",
+ "example_response": null,
+ "hints": []
+}
