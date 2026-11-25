@@ -26,6 +26,7 @@ import { resolveAiConcurrency } from '../lib/ai-model-resolve';
 import { readRunLedger, writeRunLedger, type RunLedgerResult } from '../lib/run-idempotency';
 import type { ServiceAnswer } from '../mcp/tool-outputs';
 import { runChanged, storedChanged, type Changed } from '../mcp/changed';
+import { saveAiSetupOverToken, saveOnlyOf } from './setup-save-token';
 import { IDEMPOTENCY_CONFLICT_MESSAGE } from './data-plane-shared';
 import { parseRunRequest, type RunParams } from '../routes/ai-run-parse';
 import { startAiRun } from './ai-run-start';
@@ -155,7 +156,7 @@ export interface TokenAiRunArgs {
   estimate_only?: unknown; preview_rows?: unknown; idempotency_key?: unknown;
   search_engine?: unknown; search_mode?: unknown; max_searches_per_row?: unknown; run_if?: unknown;
   webhook_id?: unknown; max_cost_usd?: unknown; allow_unpriced?: unknown; spend_limit_usd?: unknown;
-  max_content_tokens?: unknown; max_pages_per_row?: unknown;
+  max_content_tokens?: unknown; max_pages_per_row?: unknown; save_only?: unknown;
 }
 
 // What the arguments say, read as the start reads them (no state): output_columns' shape, then the request.
@@ -190,7 +191,10 @@ function aiSentHash(a: TokenAiRunArgs): string | null {
 type AiRunAnswer = ServiceAnswer<'run_ai_column'>;
 
 export async function tokenStartAiRun(c: TokenCaller, a: TokenAiRunArgs): Promise<TokenRunResult<AiRunAnswer>> {
-  const first = replayFirst<AiRunAnswer>(c, a.idempotency_key, () => aiSentHash(a));
+  // Read first: with save_only no key replays a run (services/setup-save-token.ts).
+  const save = saveOnlyOf(a as unknown as Record<string, unknown>);
+  if (typeof save === 'object') return bad(save.error);
+  const first = save ? null : replayFirst<AiRunAnswer>(c, a.idempotency_key, () => aiSentHash(a));
   if (first) return first;
   const busy = busyRefusal(a);
   if (busy) return busy;
@@ -250,6 +254,7 @@ export async function tokenStartAiRun(c: TokenCaller, a: TokenAiRunArgs): Promis
     }, `token:${c.tokenId}`);
     return 'fail' in prev ? { fail: prev.fail === 'no_model' ? 'no_model' : 'bad_request', message: prev.message } : { ok: prev.ok, started: false };
   }
+  if (save) return saveAiSetupOverToken(c, sheetId, parsed);
   const hash = aiRunRequestHash(sheetId, a, parsed, limits);
   const replay = ledgerReplay<AiRunAnswer>(c, a.idempotency_key, hash);
   if (replay) return replay;

@@ -51,6 +51,14 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
       },
       {
         change: 'changed',
+        tools: ['run_ai_column', 'run_http_enrichment', 'run_enrichment', 'waterfall_column'],
+        summary: 'save_only: true stores a column\'s new setup and runs nothing (no rows, no cost). It answers '
+          + 'saved: true and run_id, the setup\'s record: control_run rerun with it runs the column so.',
+        details: 'A new column is made empty. An existing HTTP API column takes a new setup only this way. Refused '
+          + 'with estimate_only, output_columns, a list job, or what only a run takes (target_row_ids, preview_rows).',
+      },
+      {
+        change: 'changed',
         tools: ['export_csv'],
         summary: 'export_csv puts its leading quote on a cell whose first visible character is a formula trigger: '
           + 'after spaces or invisible characters, and for full-width forms like ＝, not only at the start.',

@@ -33,6 +33,7 @@ import { agentSetup } from './waterfall-agent-view';
 import { answerDryRun, tokenDryRun, type WaterfallAnswer } from './waterfall-token-dry';
 import { spendPart } from './token-spend';
 import { runChanged } from '../mcp/changed';
+import { saveOnlyOf, saveWaterfallOverToken } from './setup-save-token';
 
 type Json = Record<string, unknown>;
 const isObj = (v: unknown): v is Json => !!v && typeof v === 'object' && !Array.isArray(v);
@@ -78,15 +79,18 @@ export async function tokenWaterfall(
     const setup = waterfallSetup(a.sheet_id, c.userId, a.column_name);
     return 'fail' in setup ? setup : { ok: agentSetup(setup.ok, { secrets: c.scopes.has('secrets') }), started: false };
   }
+  // Read first: with save_only no key replays a run (services/setup-save-token.ts).
+  const save = saveOnlyOf(a);
+  if (typeof save === 'object') return bad(save.error);
   const dry = a.dry_run === true;
   const estimateOnly = a.estimate_only === undefined
-    ? opts.estimateDefault && !dry
+    ? opts.estimateDefault && !dry && !save
     : parseBooleanOption(a.estimate_only) === true;
   // A dry run's answer is its trace, read again; a start's is what it answered. Only estimate_only false or left
   // out is a start: another value the start refuses (preamble) never hashes like one.
   const sent = () => (estimateOnly || !startsRun(a.estimate_only)
     ? null : sentArgsHash(dry ? 'waterfall_dry' : 'waterfall_run', a, ['action']));
-  const known = firstStart(c, a.idempotency_key, sent);
+  const known = save ? null : firstStart(c, a.idempotency_key, sent);
   // A token without 'secrets' replaying a run whose steps read a saved key: the start's own checks answer.
   if (known && !replayKeysRefusal(c.userId, known.run_id, c.scopes.has('secrets'))) {
     return dry ? answerDryRun(c, known.run_id, true) : replayOf<WaterfallAnswer>(known);
@@ -113,6 +117,7 @@ export async function tokenWaterfall(
   if (parsed.ok.dry) return tokenDryRun(c, sheetId, parsed.ok, a, sent());
   const hookProblem = webhookIdProblem(c.userId, a.webhook_id);
   if (hookProblem) return bad(hookProblem);
+  if (save) return saveWaterfallOverToken(c, sheetId, { ...parsed.ok, saveOnly: true });
   if (estimateOnly) {
     const est = await estimateWaterfall(c.userId, sheetId, parsed.ok);
     if ('fail' in est) {

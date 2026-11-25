@@ -25,14 +25,14 @@ export const runAiColumn = obj({
   in_flight: opt(info('What a row reserves while it runs')),
   assumptions: opt(info('The tokens the estimate assumes per row')), own_provider_key: opt(bool),
   max_cost_usd: opt(num), over_ceiling: opt(bool), ceiling_problem: opt(nul(str)), spend_limit_usd: opt(num),
-  ...runIf, webhook_id: opt(str), note: opt(str), replayed,
+  ...runIf, webhook_id: opt(str), note: opt(str), replayed, saved: opt(bool),
   token_spend: opt(info('A started run: this token\'s spend cap, spent and left, when it has one')), changed,
 });
 
 export const runHttpEnrichment = obj({
   run_id: opt(str), master_column: opt(str), mapped_columns: opt(strs), target_rows: opt(num),
   rows_to_process: opt(num), saved_keys: opt(strs), notes: opt(strs), ai_cost_usd: opt(z.null()),
-  ...runIf, webhook_id: opt(str), note: opt(str), replayed, changed,
+  ...runIf, webhook_id: opt(str), note: opt(str), replayed, saved: opt(bool), changed,
 });
 
 export const checkRunCondition = obj({
