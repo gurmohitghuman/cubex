@@ -2,8 +2,11 @@
 // body nested deeper than MAX_JSON_DEPTH is refused with a 400 before any route reads it. No tool takes anything
 // near that deep, but a run start that hashes or copies its arguments could overflow on one (a 10 KB body nests
 // about 3,000 levels), answering 500. Walked with a stack, not recursion, and stops at the first level too deep.
-export const MAX_JSON_DEPTH = 64;
-export const TOO_DEEP = `The request nests arrays or objects more than ${MAX_JSON_DEPTH} levels deep. Send a flatter body.`;
+import { MAX_JSON_DEPTH } from './api-v1-constants';
+
+export { MAX_JSON_DEPTH };
+export const TOO_DEEP = `The request nests arrays or objects more than ${MAX_JSON_DEPTH} levels deep. `
+  + 'Send a flatter body.';
 
 export function jsonTooDeep(value: unknown, max = MAX_JSON_DEPTH): boolean {
   const stack: Array<[unknown, number]> = [[value, 0]];
