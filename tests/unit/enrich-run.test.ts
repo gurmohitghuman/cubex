@@ -137,6 +137,15 @@ check('no guess without a last name', guessParts({ full_name: 'Cher', domain: 'a
 const good = { toolId: 'treg.people.email.find', columnName: 'Email', inputs: { full_name: { column: 'Name' } }, outputs: [], rows: { mode: 'all' } }
 check('a plain request parses', 'ok' in parseEnrichRunInput(good))
 check('a fixed value with {{ is refused', 'error' in parseEnrichRunInput({ ...good, inputs: { full_name: { value: '{{Name}}' } } }))
+// A Find jobs table with More filters keeps JSON templates as its fixed values: the app's drawer saves them again.
+const filterTitles = { job_titles: { value: '["{{Role title}}", "-{{Leave out title words}}"]' } }
+check('the drawer saves a JSON template again', 'ok' in parseEnrichRunInput({ ...good, inputs: filterTitles },
+  { templates: true }))
+check('/api/v1 and MCP take no JSON template', 'error' in parseEnrichRunInput({ ...good, inputs: filterTitles }))
+check('the drawer still refuses {{ in text', 'error' in parseEnrichRunInput(
+  { ...good, inputs: { full_name: { value: 'Mr {{Name}}' } } }, { templates: true }))
+check('the drawer refuses a list that only looks like JSON', 'error' in parseEnrichRunInput(
+  { ...good, inputs: { full_name: { value: '[{{Name}}]' } } }, { templates: true }))
 check('selected rows need row numbers', 'error' in parseEnrichRunInput({ ...good, rows: { mode: 'selected' } }))
 check('a bad tool id is refused', 'error' in parseEnrichRunInput({ ...good, toolId: '../x' }))
 check('a zero run limit is refused', 'error' in parseEnrichRunInput({ ...good, spendLimitUsd: 0 }))

@@ -26,7 +26,7 @@ router.post('/sheets/:id/runs', async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
     if (!UUID_PATTERN.test(id)) return badSheet(res);
-    const parsed = parseEnrichRunInput(req.body);
+    const parsed = parseEnrichRunInput(req.body, { templates: true });
     if ('error' in parsed) return res.status(400).json({ error: parsed.error });
     // Selected rows go by row number: a sort elsewhere since they were picked
     // would run (and pay for) other rows. 409 on a row_generation mismatch.
@@ -52,7 +52,7 @@ router.post('/sheets/:id/reuse-count', async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
     if (!UUID_PATTERN.test(id)) return badSheet(res);
-    const parsed = parseEnrichRunInput(req.body);
+    const parsed = parseEnrichRunInput(req.body, { templates: true });
     if ('error' in parsed) return res.status(400).json({ error: parsed.error });
     // The drawer drops a count it no longer needs: stop counting then.
     let gone = false;

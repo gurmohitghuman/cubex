@@ -14,6 +14,7 @@ import { continueInBackground, sheetGone, withLiveSheetBusy } from '../lib/sheet
 import { seedProcessingPlaceholders } from '../lib/placeholder-cells';
 import { seedPlaceholdersByRule, type RuleSeed } from '../lib/placeholder-rule-seed';
 import { clearRunPlaceholders, type RunKind } from '../lib/run-placeholders';
+import { dropRunSpans, kickSpanReaders } from '../lib/derived-spans';
 import { redactSecrets } from '../lib/redact';
 import type { RunFail } from './run-shared';
 
@@ -64,10 +65,14 @@ async function seedAndEnqueue(args: Parameters<typeof seedThenEnqueue>[0]): Prom
   };
   const giveUp = async (error: unknown): Promise<never> => {
     const reason = error instanceof Error ? error.message : String(error);
-    db.prepare(
-      `UPDATE ${table} SET status = 'failed', error_message = ?, placeholder_work = 'clearing', updated_at = datetime('now')
-       WHERE id = ? AND status = 'pending'`,
-    ).run(redactSecrets(`The run could not start: ${reason}`).slice(0, 500), args.runId);
+    db.transaction(() => {
+      const r = db.prepare(
+        `UPDATE ${table} SET status = 'failed', error_message = ?, placeholder_work = 'clearing',
+           updated_at = datetime('now')
+         WHERE id = ? AND status = 'pending'`,
+      ).run(redactSecrets(`The run could not start: ${reason}`).slice(0, 500), args.runId);
+      if (r.changes > 0) dropRunSpans(args.sheetId, { kind: args.kind, id: args.runId });
+    }).immediate();
     await clearRunPlaceholders(args.kind, args.runId);
     throw error;
   };
@@ -99,6 +104,7 @@ async function seedAndEnqueue(args: Parameters<typeof seedThenEnqueue>[0]): Prom
     return r.changes > 0;
   }).immediate();
   if (!ready) return;
+  kickSpanReaders(args.sheetId);
   // Queueing doesn't need the rows to hold still, so the sheet is released now.
   args.enqueue().then(
     () => args.queued?.(),

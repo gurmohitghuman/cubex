@@ -43,6 +43,14 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
     changes: [
       {
         change: 'changed',
+        tools: ['export_csv'],
+        summary: 'export_csv puts its leading quote on a cell whose first visible character is a formula trigger: '
+          + 'after spaces or invisible characters, and for full-width forms like ＝, not only at the start.',
+        details: 'Spreadsheet apps hide the quote and show the text; import_csv takes it off again. A plain number '
+          + 'after spaces, like " -5", is left as it is.',
+      },
+      {
+        change: 'changed',
         tools: ['transfer_rows'],
         summary: 'A transfer_rows retry with its idempotency_key answers its first transfer even while either sheet '
           + 'is busy, and doesn\'t count toward the 10 transfers a minute.',

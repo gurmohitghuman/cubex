@@ -35,7 +35,8 @@ assert.equal(sniffSeparator('only'), ',')
   const semi = await scanCsvText('name;city;amount\nAnna;Berlin;1,50\n')
   assert.deepEqual(semi.summary.headers, ['name', 'city', 'amount'])
   const [row] = [...await collect(semi.rows())]
-  assert.deepEqual(row, { name: 'Anna', city: 'Berlin', amount: '1,50' })
+  // Rows are null-prototype (csv-object-key-headers.test.ts): their cells, as a plain object.
+  assert.deepEqual({ ...row }, { name: 'Anna', city: 'Berlin', amount: '1,50' })
 
   // Round trip: export the values, import the file, get the same values back.
   const values = ['-5', '+44 20 7946 0958', '=1+1', '@x', "'quoted", 'plain', '3.14']
