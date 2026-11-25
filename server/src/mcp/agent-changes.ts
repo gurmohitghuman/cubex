@@ -58,6 +58,14 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
           + 'after spaces, like " -5", is left as it is.',
       },
       {
+        change: 'changed',
+        tools: ['read_rows', 'control_run'],
+        summary: 'Out of date now checks each row against the columns its own run read: a new setup that reads other '
+          + 'columns no longer marks the rows made before it out of date.',
+        details: 'read_rows where out_of_date, include_status and control_run\'s out_of_date modes agree. A row made '
+          + '16 or more such setups ago never reads out of date.',
+      },
+      {
         change: 'added',
         tools: ['list_prompt_starters'],
         summary: 'list_prompt_starters gives good first prompts for an AI column on a sheet, the ones the app offers, '

@@ -348,7 +348,7 @@ With `include_status: true`, `read_rows` (and the REST row reads) return each ru
 | `not_run` | Never run. |
 | `out_of_date` | The row has a result (`value`, or `reason` for one without a value) made from input cells that changed since. A rerun with mode `out_of_date` refreshes it. |
 
-**Out of date.** Each run remembers, row by row, the values of the input cells it was sent: an AI column's `/column` references, an HTTP API column's `{{column}}` tokens, an enrichment's or a waterfall's inputs. When one of them changes, the row's result is out of date: `include_status` says so, `where` finds it with `out_of_date`, and `control_run` (or REST) with mode `out_of_date` reruns only those rows (`empty_or_out_of_date` adds the rows never run). A column whose setup now reads other columns than a row was made from counts that row as out of date too. Rows filled before this version, and rows restored from the trash, carry no record and never read as out of date until they run again.
+**Out of date.** Each run remembers, row by row, the values of the input cells it was sent: an AI column's `/column` references, an HTTP API column's `{{column}}` tokens, an enrichment's or a waterfall's inputs. When one of them changes, the row's result is out of date: `include_status` says so, `where` finds it with `out_of_date`, and `control_run` (or REST) with mode `out_of_date` reruns only those rows (`empty_or_out_of_date` adds the rows never run). Only the cells a row's own run read count: a new setup that reads other columns leaves the rows made before it as they were, and the rows it fills are checked against what it reads. A row made 16 or more such setups ago never reads as out of date. Rows filled before this version, and rows restored from the trash, carry no record and never read as out of date until they run again.
 
 Other columns come back as text, the same as without it.
 
@@ -398,7 +398,7 @@ A view is a name, an optional description, filters and hidden columns. It never 
 
 `filling` lists the columns you read that are being filled right now: a clean, formula or lookup column, or a column added from stored answers. Other reads show their cells as `⏳ Processing...` until the fill ends; a read by time gives what the rows hold instead, because a fill changes `updated_at` only on the rows whose value it changes. Those rows come in a later read, so keep reading from `as_of` and treat those columns as unfinished while `filling` names them.
 
-With `include_status`, a run cell's state can change without its row's `updated_at` moving: `out_of_date` compares the row's cells with what the column's newest run reads, so a change outside the row, such as a new setup for the column that reads other columns, can turn rows out of date (or back). If your copy keeps run states, read them again with `row_ids` when you need them current.
+With `include_status`, a run cell's state can change without its row's `updated_at` moving: `out_of_date` compares the row's cells with what its own run read; a change outside the row moves it only when a column that run read is deleted (it then reads empty), or when the column has had 16 newer setups reading other columns (the row then never reads out of date). If your copy keeps run states, read them again with `row_ids` when you need them current.
 
 ### Long cells
 
