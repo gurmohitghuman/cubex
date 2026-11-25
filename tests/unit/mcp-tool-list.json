@@ -13,6 +13,105 @@
       "tools": [
         "list_tables"
       ]
+    },
+    {
+      "change": "changed",
+      "tools": [
+        "create_download_link"
+      ]
+    },
+    {
+      "change": "changed",
+      "tools": [
+        "run_ai_column",
+        "run_http_enrichment",
+        "run_enrichment",
+        "waterfall_column"
+      ]
+    },
+    {
+      "change": "added",
+      "tools": [
+        "social_research"
+      ]
+    },
+    {
+      "change": "changed",
+      "tools": [
+        "export_csv"
+      ]
+    },
+    {
+      "change": "changed",
+      "tools": [
+        "read_rows",
+        "control_run"
+      ]
+    },
+    {
+      "change": "added",
+      "tools": [
+        "list_prompt_starters"
+      ]
+    },
+    {
+      "change": "changed",
+      "tools": [
+        "transfer_rows"
+      ]
+    },
+    {
+      "change": "server"
+    },
+    {
+      "change": "changed",
+      "tools": [
+        "hiring_signals"
+      ]
+    },
+    {
+      "change": "added",
+      "tools": [
+        "manage_sheet_webhook"
+      ]
+    },
+    {
+      "change": "changed",
+      "tools": [
+        "set_auto_run"
+      ]
+    },
+    {
+      "change": "changed",
+      "tools": [
+        "manage_table",
+        "manage_sheet"
+      ]
+    },
+    {
+      "change": "changed",
+      "tools": [
+        "set_auto_run"
+      ]
+    },
+    {
+      "change": "added",
+      "tools": [
+        "manage_run_schedule"
+      ]
+    },
+    {
+      "change": "added",
+      "tools": [
+        "run_columns"
+      ]
+    },
+    {
+      "change": "changed",
+      "tools": [
+        "get_setup_run",
+        "control_setup_run"
+      ]
     }
   ],
   "tools": {
@@ -462,6 +561,13 @@
           },
           "minItems": 1,
           "type": "array"
+        },
+        "format": {
+          "enum": [
+            "csv",
+            "jsonl"
+          ],
+          "type": "string"
         },
         "sheet_id": {
           "type": "string"
@@ -1020,7 +1126,8 @@
           "enum": [
             "create",
             "check",
-            "get"
+            "get",
+            "update"
           ],
           "type": "string"
         },
@@ -1082,13 +1189,20 @@
         "leave_out_companies": {
           "anyOf": [
             {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "string"
+                }
+              ]
             },
             {
-              "type": "string"
+              "type": "null"
             }
           ]
         },
@@ -1122,9 +1236,16 @@
           "type": "number"
         },
         "min_roles": {
-          "maximum": 100,
-          "minimum": 1,
-          "type": "integer"
+          "anyOf": [
+            {
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "per_search": {
           "maximum": 100,
@@ -1222,6 +1343,18 @@
           "type": "string"
         }
       },
+      "type": "object"
+    },
+    "list_prompt_starters": {
+      "additionalProperties": false,
+      "properties": {
+        "sheet_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sheet_id"
+      ],
       "type": "object"
     },
     "list_run_webhooks": {
@@ -1422,6 +1555,104 @@
       ],
       "type": "object"
     },
+    "manage_run_schedule": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "enum": [
+            "list",
+            "create",
+            "change",
+            "pause",
+            "resume",
+            "delete",
+            "fire_now"
+          ],
+          "type": "string"
+        },
+        "allow_unpriced": {
+          "type": "boolean"
+        },
+        "at_time": {
+          "type": "string"
+        },
+        "cadence": {
+          "enum": [
+            "daily",
+            "weekdays",
+            "weekly",
+            "monthly",
+            "hours"
+          ],
+          "type": "string"
+        },
+        "columns": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "every_hours": {
+          "maximum": 168,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "max_cost_usd": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 1000000,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "month_day": {
+          "maximum": 28,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "rows": {
+          "enum": [
+            "empty",
+            "errored",
+            "out_of_date",
+            "all"
+          ],
+          "type": "string"
+        },
+        "schedule_id": {
+          "type": "string"
+        },
+        "sheet_id": {
+          "type": "string"
+        },
+        "table_id": {
+          "type": "string"
+        },
+        "time_zone": {
+          "type": "string"
+        },
+        "weekday": {
+          "maximum": 6,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "type": "object"
+    },
     "manage_run_webhook": {
       "additionalProperties": false,
       "properties": {
@@ -1517,11 +1748,58 @@
         },
         "table_id": {
           "type": "string"
+        },
+        "webhook": {
+          "type": "boolean"
         }
       },
       "required": [
         "action",
         "table_id"
+      ],
+      "type": "object"
+    },
+    "manage_sheet_webhook": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "enum": [
+            "get",
+            "create",
+            "turn_on",
+            "turn_off",
+            "rotate",
+            "add_field",
+            "remove_field",
+            "new_token",
+            "remove_token",
+            "delete"
+          ],
+          "type": "string"
+        },
+        "as": {
+          "enum": [
+            "text",
+            "json"
+          ],
+          "type": "string"
+        },
+        "column": {
+          "type": "string"
+        },
+        "field_id": {
+          "type": "string"
+        },
+        "json_path": {
+          "type": "string"
+        },
+        "sheet_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "sheet_id"
       ],
       "type": "object"
     },
@@ -1541,6 +1819,9 @@
         },
         "table_id": {
           "type": "string"
+        },
+        "webhook": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -2193,6 +2474,9 @@
           "maxLength": 2000,
           "type": "string"
         },
+        "save_only": {
+          "type": "boolean"
+        },
         "search_engine": {
           "enum": [
             "auto",
@@ -2249,6 +2533,167 @@
       "required": [
         "column_name",
         "prompt",
+        "sheet_id"
+      ],
+      "type": "object"
+    },
+    "run_columns": {
+      "additionalProperties": false,
+      "properties": {
+        "allow_unpriced": {
+          "type": "boolean"
+        },
+        "columns": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "type": "array"
+        },
+        "estimate_only": {
+          "type": "boolean"
+        },
+        "max_cost_usd": {
+          "exclusiveMinimum": 0,
+          "maximum": 1000000,
+          "type": "number"
+        },
+        "mode": {
+          "enum": [
+            "empty",
+            "errored",
+            "out_of_date",
+            "empty_or_out_of_date",
+            "all"
+          ],
+          "type": "string"
+        },
+        "row_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 10000,
+          "minItems": 1,
+          "type": "array"
+        },
+        "sheet_id": {
+          "type": "string"
+        },
+        "webhook_id": {
+          "type": "string"
+        },
+        "where": {
+          "items": {
+            "anyOf": [
+              {
+                "properties": {
+                  "column": {
+                    "type": "string"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "operator": {
+                    "enum": [
+                      "eq",
+                      "neq",
+                      "contains",
+                      "not_contains",
+                      "starts_with",
+                      "ends_with",
+                      "empty",
+                      "not_empty",
+                      "any_of",
+                      "not_any_of",
+                      "gt",
+                      "gte",
+                      "lt",
+                      "lte",
+                      "date_eq",
+                      "date_neq",
+                      "date_gt",
+                      "date_gte",
+                      "date_lt",
+                      "date_lte",
+                      "has_error",
+                      "has_result",
+                      "not_run",
+                      "condition_not_met",
+                      "running",
+                      "out_of_date"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {
+                    "type": "string"
+                  },
+                  "values": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 200,
+                    "minItems": 1,
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "operator"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "or": {
+                    "items": {
+                      "additionalProperties": {},
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "type": "object"
+                    },
+                    "maxItems": 50,
+                    "minItems": 1,
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "or"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "and": {
+                    "items": {
+                      "additionalProperties": {},
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "type": "object"
+                    },
+                    "maxItems": 50,
+                    "minItems": 1,
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "and"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "maxItems": 50,
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "columns",
+        "mode",
         "sheet_id"
       ],
       "type": "object"
@@ -2481,6 +2926,9 @@
           "maxLength": 2000,
           "type": "string"
         },
+        "save_only": {
+          "type": "boolean"
+        },
         "sheet_id": {
           "type": "string"
         },
@@ -2649,6 +3097,9 @@
             }
           ]
         },
+        "save_only": {
+          "type": "boolean"
+        },
         "sheet_id": {
           "type": "string"
         },
@@ -2794,6 +3245,26 @@
         "sheet_id": {
           "type": "string"
         },
+        "start_delay_s": {
+          "anyOf": [
+            {
+              "maximum": 600,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "waiting_rows": {
+          "enum": [
+            "run",
+            "empty_only",
+            "skip"
+          ],
+          "type": "string"
+        },
         "where": {
           "items": {
             "additionalProperties": false,
@@ -2889,6 +3360,90 @@
       "required": [
         "description",
         "sheet_id"
+      ],
+      "type": "object"
+    },
+    "social_research": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "enum": [
+            "create",
+            "find_posts",
+            "get"
+          ],
+          "type": "string"
+        },
+        "estimate_only": {
+          "type": "boolean"
+        },
+        "id": {
+          "type": "string"
+        },
+        "max_cost_usd": {
+          "type": "number"
+        },
+        "min_comments": {
+          "maximum": 1000000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "min_views": {
+          "maximum": 1000000000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "platforms": {
+          "items": {
+            "enum": [
+              "tiktok",
+              "instagram",
+              "youtube",
+              "x"
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "posted_within_days": {
+          "maximum": 365,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "posts_per_search": {
+          "maximum": 50,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "searches": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 10,
+          "type": "array"
+        },
+        "steps": {
+          "items": {
+            "enum": [
+              "transcript",
+              "breakdown",
+              "creator",
+              "usual",
+              "comments"
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "time_zone": {
+          "type": "string"
+        },
+        "topic": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "action"
       ],
       "type": "object"
     },
@@ -3497,6 +4052,9 @@
         "run_if": {
           "maxLength": 2000,
           "type": "string"
+        },
+        "save_only": {
+          "type": "boolean"
         },
         "sheet_id": {
           "type": "string"
