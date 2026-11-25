@@ -25,6 +25,9 @@ import { listRunInto } from './enrich-list-guard';
 import { autoRunsHolding, finishedRows, newestLeaving } from './webhook-auto-delete-rows';
 import { copyRows, deleteRows, logRows, type CopyTo } from './webhook-auto-delete-move';
 import type { AutoDeleteRow } from './webhook-auto-delete';
+import { compileAutoDeleteRules } from './webhook-auto-delete-rules';
+import type { CompiledFilter } from '../lib/row-filter/sql';
+import { sheetColumnKinds } from '../lib/column-types';
 
 // Source id → the last row looked at; the time runs started keeping finished rows waiting; when its destination
 // last refused a copy (a restart tries again at once).
@@ -50,7 +53,20 @@ function runsIn(sheetId: string, userId: string): 'none' | 'autorun' | 'other' {
 const sheetsOf = (cfg: AutoDeleteRow): string[] =>
   (cfg.copy_to_sheet_id === null ? [cfg.sheet_id] : [cfg.sheet_id, cfg.copy_to_sheet_id]);
 
-interface Pause { reason: 'success_column' | 'copy_gone' | 'copy' | 'order'; message: string }
+interface Pause { reason: 'success_column' | 'copy_gone' | 'copy' | 'order' | 'rules'; message: string }
+
+// Mode rules: its where compiled against the sheet as it is now (a column it names may be gone, or be filling
+// for a moment); null otherwise.
+function rulesOf(cfg: AutoDeleteRow): { ok: CompiledFilter | null } | { wait: true } | { error: string } {
+  if (cfg.mode !== 'rules' || cfg.where_json === null) return { ok: null };
+  return compileAutoDeleteRules(cfg.sheet_id, cfg.user_id, cfg.where_json);
+}
+
+// Every run column of the sheet and the column holding its state: a ⏳ or ➕ in any keeps its row.
+const runColumnsOf = (cfg: AutoDeleteRow): string[] => {
+  const kinds = sheetColumnKinds(cfg.sheet_id, cfg.user_id).runState;
+  return [...new Set([...kinds.keys(), ...kinds.values()])];
+};
 
 // Why no row may leave until the person acts, or null.
 function needsPerson(cfg: AutoDeleteRow): Pause | null {
@@ -58,6 +74,11 @@ function needsPerson(cfg: AutoDeleteRow): Pause | null {
   if (generation !== cfg.row_generation_seen) {
     return { reason: 'order', message: 'Rows were sorted, imported or had duplicates removed since auto-delete '
       + 'was saved, so the rows at the bottom may not be the newest. Check the order, then save auto-delete again.' };
+  }
+  const rules = rulesOf(cfg);
+  if ('error' in rules) {
+    const error = /[.!?]$/.test(rules.error) ? rules.error : `${rules.error}.`;
+    return { reason: 'rules', message: `The rules can't be checked: ${error} Change the rules, or the sheet.` };
   }
   if (cfg.success_column !== null && !getSheetColumns(cfg.sheet_id, cfg.user_id).includes(cfg.success_column)) {
     return { reason: 'success_column',
@@ -86,7 +107,8 @@ function unchanged(cfg: AutoDeleteRow): boolean {
   const now = db.prepare(`SELECT a.* FROM webhook_auto_delete a JOIN sheets s ON s.id = a.sheet_id
     AND s.user_id = a.user_id AND s.trash_id IS NULL WHERE a.source_id = ?`).get(cfg.source_id) as
     AutoDeleteRow | undefined;
-  return !!now && now.keep_rows === cfg.keep_rows && now.success_column === cfg.success_column
+  return !!now && now.mode === cfg.mode && now.where_json === cfg.where_json && now.keep_rows === cfg.keep_rows
+    && now.success_column === cfg.success_column
     && now.copy_to_sheet_id === cfg.copy_to_sheet_id && now.row_generation_seen === cfg.row_generation_seen;
 }
 
@@ -106,8 +128,10 @@ function slice(cfg: AutoDeleteRow, raw: string, to: CopyTo | null): Step {
   if (why) return why;
   const upTo = newestLeaving(cfg.sheet_id, cfg.user_id, cfg.keep_rows);
   if (upTo === undefined) { after.delete(cfg.source_id); return 'done'; }
+  const rules = rulesOf(cfg);
+  if (!('ok' in rules)) return 'stop';
   const found = finishedRows({ id: cfg.sheet_id, userId: cfg.user_id, raw }, holding, cfg.success_column,
-    after.get(cfg.source_id) ?? -1, upTo, AUTO_DELETE_SCAN_ROWS, AUTO_DELETE_SLICE_ROWS);
+    after.get(cfg.source_id) ?? -1, upTo, AUTO_DELETE_SCAN_ROWS, AUTO_DELETE_SLICE_ROWS, rules.ok, runColumnsOf(cfg));
   let leaving = found.rowids;
   if (leaving.length > 0 && to) {
     const copied = copyRows(cfg.sheet_id, cfg.user_id, raw, leaving, to);
@@ -163,8 +187,11 @@ async function sweepSheet(cfg: AutoDeleteRow, now: number): Promise<void> {
   if (cfg.paused_reason === 'copy' && now - (copyRefusedAt.get(cfg.source_id) ?? 0) < COPY_RETRY_MS) return;
   // The read: a finished row that may leave, in this sweep's window.
   const upTo = newestLeaving(cfg.sheet_id, cfg.user_id, cfg.keep_rows);
-  const peek = upTo === undefined ? null : finishedRows({ id: cfg.sheet_id, userId: cfg.user_id, raw }, holding,
-    cfg.success_column, after.get(cfg.source_id) ?? -1, upTo, AUTO_DELETE_SCAN_ROWS, 1);
+  const rules = rulesOf(cfg);
+  if ('wait' in rules) return;
+  const peek = upTo === undefined || !('ok' in rules) ? null : finishedRows({ id: cfg.sheet_id, userId: cfg.user_id,
+    raw }, holding, cfg.success_column, after.get(cfg.source_id) ?? -1, upTo, AUTO_DELETE_SCAN_ROWS, 1, rules.ok,
+    runColumnsOf(cfg));
   if (!peek || peek.rowids.length === 0) {
     keptOutSince.delete(cfg.source_id);
     if (!peek || peek.end) after.delete(cfg.source_id); else after.set(cfg.source_id, peek.last);

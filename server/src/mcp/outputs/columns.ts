@@ -23,7 +23,8 @@ const sheetWebhook = obj({
   last_error_at: nul(str), created_at: str, rotated_at: nul(str),
   fields: z.array(obj({ id: str, json_path: str, column: str, as: z.enum(['text', 'json']), created_at: str })),
   auto_delete: nul(obj({
-    mode: z.enum(['actions_finish']), keep_rows: num, success_column: nul(str), copy_to_sheet_id: nul(str),
+    mode: z.enum(['actions_finish', 'rules']), where: nul(z.array(z.unknown())), keep_rows: num,
+    success_column: nul(str), copy_to_sheet_id: nul(str),
     copy_to_sheet: nul(str), paused: nul(str).describe('Why no row leaves until you act'),
     waiting: nul(str).describe('What rows wait for now: a paused auto-run or run'),
     rows_deleted: num, last_deleted_at: nul(str),

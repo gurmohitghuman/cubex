@@ -12,6 +12,7 @@ import {
 import type { WebhookSourceFull } from '../lib/webhook-service';
 import { McpAuthCtx, ok, err, missingScope, registerTool, SHEET_ID, mcpLinkBase } from './tool-helpers';
 import { busyMessage, sheetBusyWith } from '../lib/sheet-busy';
+import { nullableWhereLike } from './where-schema';
 import { changedOf } from './changed';
 
 const ACTIONS = [
@@ -32,7 +33,8 @@ export function registerSheetWebhookTools(server: McpServer, ctx: McpAuthCtx): v
       + 'token (shown once) as Authorization: Bearer <token>, or get 404; an old one stops. remove_token: no '
       + 'token needed. set_auto_delete: keep the newest keep_rows rows (default 100); older rows the webhook added '
       + 'are deleted (not to the trash) once every auto-run column has run on them and, with success_column, once '
-      + 'it has a result; with copy_to_sheet_id they are copied there first. What it leaves out stays; null clears. '
+      + 'it has a result; with copy_to_sheet_id they are copied there first. mode rules: once they pass where '
+      + 'instead. What it leaves out stays; null clears. '
       + 'auto_delete_off stops it. delete: the webhook '
       + 'and its kept events go; its columns and rows stay. manage_table or manage_sheet create with webhook true '
       + 'makes a sheet with one. '
@@ -44,21 +46,25 @@ export function registerSheetWebhookTools(server: McpServer, ctx: McpAuthCtx): v
       column: z.string().optional().describe('add_field: the new column\'s name'),
       as: z.enum(['text', 'json']).optional().describe('add_field: text (default) or the value as JSON'),
       field_id: z.string().optional().describe('remove_field: the field (get lists them)'),
+      mode: z.enum(['actions_finish', 'rules']).optional().describe('set_auto_delete: when rows leave'),
+      where: nullableWhereLike('set_auto_delete, mode rules: rows leave once they pass it.'),
       keep_rows: z.number().int().optional().describe('set_auto_delete: newest rows kept, 0 to 100000'),
       success_column: z.string().nullable().optional()
         .describe('set_auto_delete: rows leave once this column has a result'),
       copy_to_sheet_id: z.string().nullable().optional()
         .describe('set_auto_delete: copy rows to this sheet before they leave'),
     }).strict(),
-  }, async ({ action, sheet_id, json_path, column, as, field_id, keep_rows, success_column, copy_to_sheet_id }) => {
+  }, async ({
+    action, sheet_id, json_path, column, as, field_id, mode, where, keep_rows, success_column, copy_to_sheet_id,
+  }) => {
     const denied = missingScope(ctx, action === 'get' ? 'read' : 'write');
     if (denied) return denied;
     const addOnly = json_path !== undefined || column !== undefined || as !== undefined;
     if (addOnly && action !== 'add_field') return err('json_path, column and as are for add_field.');
     if (field_id !== undefined && action !== 'remove_field') return err('field_id is for remove_field.');
-    const autoDelete = keep_rows !== undefined || success_column !== undefined || copy_to_sheet_id !== undefined;
+    const autoDelete = [mode, where, keep_rows, success_column, copy_to_sheet_id].some(v => v !== undefined);
     if (autoDelete && action !== 'set_auto_delete') {
-      return err('keep_rows, success_column and copy_to_sheet_id are for set_auto_delete.');
+      return err('mode, where, keep_rows, success_column and copy_to_sheet_id are for set_auto_delete.');
     }
 
     if (action === 'get') {
@@ -97,7 +103,8 @@ export function registerSheetWebhookTools(server: McpServer, ctx: McpAuthCtx): v
     }
     if (action === 'remove_token') return answer(removeSheetWebhookToken(ctx.userId, sheet_id));
     if (action === 'set_auto_delete') {
-      return answer(setSheetWebhookAutoDelete(ctx.userId, sheet_id, { keep_rows, success_column, copy_to_sheet_id }));
+      return answer(setSheetWebhookAutoDelete(ctx.userId, sheet_id,
+        { mode, where, keep_rows, success_column, copy_to_sheet_id }));
     }
     if (action === 'auto_delete_off') return answer(removeSheetWebhookAutoDelete(ctx.userId, sheet_id));
     if (action === 'add_field') {

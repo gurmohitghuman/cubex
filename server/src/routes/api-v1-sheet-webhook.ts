@@ -80,7 +80,8 @@ router.delete('/sheets/:id/webhook', requireScope('write'), guarded('DELETE /v1/
   res.json({ deleted: true });
 }));
 
-// PUT auto-delete { keep_rows?, success_column?, copy_to_sheet_id? }: turn it on or change it. What it leaves out
+// PUT auto-delete { mode?, where?, keep_rows?, success_column?, copy_to_sheet_id? }: turn it on or change it (mode
+// rules: rows leave once they pass where, read_rows' language). What it leaves out
 // stays (on a first PUT: 100 rows kept, no success column, no copy); null clears; any other field is a 400.
 router.put('/sheets/:id/webhook/auto-delete', requireScope('write'),
   guarded('PUT /v1/sheets/:id/webhook/auto-delete', (req, res) =>

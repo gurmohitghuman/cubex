@@ -23,7 +23,8 @@ function source(src: WebhookSourceFull): Record<string, unknown> {
   return {
     ...serializeSource(src),
     autoDelete: a && {
-      keepRows: a.keep_rows, successColumn: a.success_column, copyToSheetId: a.copy_to_sheet_id,
+      mode: a.mode, where: a.where, keepRows: a.keep_rows, successColumn: a.success_column,
+      copyToSheetId: a.copy_to_sheet_id,
       copyToSheet: a.copy_to_sheet, paused: a.paused, waiting: a.waiting, rowsDeleted: a.rows_deleted,
       lastDeletedAt: a.last_deleted_at,
     },
@@ -73,12 +74,13 @@ router.delete('/:id/webhook/token', (req: AuthRequest, res) => {
   res.json({ source: source(out.ok) });
 });
 
-// PUT /:id/webhook/auto-delete { keepRows, successColumn, copyToSheetId }: turn it on or change it (the drawer
-// sends all three; null clears).
+// PUT /:id/webhook/auto-delete { mode, where, keepRows, successColumn, copyToSheetId }: turn it on or change it
+// (the drawer sends them all; null clears).
 router.put('/:id/webhook/auto-delete', (req: AuthRequest, res) => {
   const b = req.body ?? {};
   const out = setSheetWebhookAutoDelete(req.userId!, req.params.id,
-    { keep_rows: b.keepRows, success_column: b.successColumn, copy_to_sheet_id: b.copyToSheetId });
+    { mode: b.mode, where: b.where, keep_rows: b.keepRows, success_column: b.successColumn,
+      copy_to_sheet_id: b.copyToSheetId });
   if ('fail' in out) return refuse(res, out);
   res.json({ source: source(out.ok) });
 });

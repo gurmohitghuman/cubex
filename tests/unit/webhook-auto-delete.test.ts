@@ -96,8 +96,8 @@ const sweep = async (ms = 10_000) => { clock += ms; await autoDeleteSweep(clock)
   check('A off: auto_delete is null', view(id) === null)
   const on = set(id, {})
   check('A on with nothing given keeps 100 rows, no success column, no copy', 'ok' in on && same(view(id),
-    { mode: 'actions_finish', keep_rows: 100, success_column: null, copy_to_sheet_id: null, copy_to_sheet: null,
-      paused: null, waiting: null, rows_deleted: 0, last_deleted_at: null }), view(id))
+    { mode: 'actions_finish', where: null, keep_rows: 100, success_column: null, copy_to_sheet_id: null,
+      copy_to_sheet: null, paused: null, waiting: null, rows_deleted: 0, last_deleted_at: null }), view(id))
   set(id, { keep_rows: 5, success_column: 'Company', copy_to_sheet_id: other })
   check('A the copy names its sheet', view(id)?.copy_to_sheet === 'Other', view(id))
   set(id, { keep_rows: 7 })
