@@ -11,9 +11,14 @@ import { heldFail, type RunFail } from './run-shared';
 export type RuleCheck = { ok: CheckedRule | null } | { error: string };
 
 export function checkRunRule(sheetId: string, userId: string, text: string | null | undefined): RuleCheck {
+  return checkRuleOn(() => getSheetColumns(sheetId, userId, false), text);
+}
+
+// The same against the given columns (a setup call priced on its items, without a sheet: run-estimate-rows.ts).
+export function checkRuleOn(columns: () => string[], text: string | null | undefined): RuleCheck {
   if (text === null || text === undefined || text.trim() === '') return { ok: null };
   try {
-    return { ok: checkRule(text, getSheetColumns(sheetId, userId, false)) };
+    return { ok: checkRule(text, columns()) };
   } catch (e) {
     if (e instanceof RuleError) return { error: `"Only run if": ${e.message}` };
     throw e;

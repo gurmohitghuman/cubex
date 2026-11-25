@@ -35,3 +35,5 @@ export const SETUP_CALL_KEEP_HOURS = envInt('SETUP_CALL_KEEP_HOURS', 24);
 export const SETUP_CALL_ORPHAN_HOURS = 1;
 // How often the sweep looks for working tables to remove.
 export const SETUP_CALL_SWEEP_MS = 10 * 60_000;
+// The most call_sheets rows (migration 075) one sweep drops.
+export const CALL_SHEETS_PRUNE_ROWS = 1000;
