@@ -39,7 +39,7 @@ export const CHANGES_RECORDED_AFTER = 'v0.8.12';
 // Newest first.
 export const AGENT_CHANGES: ReleaseChanges[] = [
   {
-    version: 'v0.8.44',
+    version: 'v0.8.45',
     changes: [
       {
         change: 'added',
@@ -50,6 +50,11 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
           + 'setup run id: control_setup_run pauses or cancels it, a run webhook reports it as kind setup. Results '
           + 'are kept 24 hours.',
       },
+    ],
+  },
+  {
+    version: 'v0.8.44',
+    changes: [
       {
         change: 'changed',
         tools: ['create_upload_link', 'create_download_link'],
