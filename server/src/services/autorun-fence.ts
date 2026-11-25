@@ -20,9 +20,11 @@ export function hasWork(e: AutorunEntry): boolean {
 
 // Whether a clean, formula or lookup column on the sheet still has rows to work out (queued, in a span, a look
 // asked for, or new rows above its watermark): a pure read, unlike hasWork. None: each cell reads its row as it is.
+// A paused one (by the person, its setup, too slow, or a missing input) works nothing out until it runs again, so
+// it isn't counted: waiting for it would wait for nothing.
 export function followsPending(sheetId: string, userId: string): boolean {
   return !!db.prepare(`SELECT 1 FROM autorun_columns a WHERE a.sheet_id = ? AND a.user_id = ? AND a.enabled = 1
-      AND a.kind IN ('clean', 'formula', 'lookup') AND (a.rescan = 1
+      AND a.paused_reason IS NULL AND a.kind IN ('clean', 'formula', 'lookup') AND (a.rescan = 1
         OR EXISTS (SELECT 1 FROM autorun_pending p WHERE p.autorun_id = a.id)
         OR EXISTS (SELECT 1 FROM derived_span_marks m WHERE m.autorun_id = a.id)
         OR (SELECT IFNULL(MAX(row_index), -1) FROM rows r WHERE r.sheet_id = a.sheet_id AND r.user_id = a.user_id)
