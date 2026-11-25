@@ -19,7 +19,8 @@ if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway D
 
 let failures = 0
 async function check(label: string, fn: () => Promise<void>) {
-  try { await fn(); console.log('ok  ', label) } catch (e) { failures++; console.log('FAIL', label, '\n ', (e as Error).message) }
+  try { await fn(); console.log('ok  ', label) }
+  catch (e) { failures++; console.log('FAIL', label, '\n ', (e as Error).message) }
 }
 
 const requireHere = createRequire(import.meta.url)
