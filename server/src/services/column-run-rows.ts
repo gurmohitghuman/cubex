@@ -1,14 +1,13 @@
 // The rows a column run keeps to (services/column-run*.ts), as row places:
-// the chosen row ids, or the rows a where matches now, read a page at a time
-// (a where can match a million rows; the API thread yields between pages).
+// the chosen row ids, or the rows a where matches now, found a slice of the
+// sheet at a time (lib/sheet-slices.ts: a where can match a million rows, or a
+// few among a million, and other requests run between slices).
 import { db } from '../lib/db';
-import { yieldToRequests } from '../lib/slices';
+import { sliceSql, walkSlices, withSlicedRedo } from '../lib/sheet-slices';
 import type { WhereItem } from '../lib/row-filter/where';
 import { MAX_SELECTED_ROWS } from '../lib/enrich-run-input';
 import { prepareWhere } from './row-filter';
 import type { RunKind } from './run-controls-column';
-
-const PAGE = 20_000;
 
 export function rowIdPlaces(sheetId: string, userId: string, ids: string[]): number[] {
   return db.prepare(`SELECT row_index FROM rows WHERE sheet_id = ? AND user_id = ?
@@ -22,16 +21,16 @@ export async function wherePlaces(
   const prepared = prepareWhere(sheetId, userId, where);
   if ('error' in prepared) return { problem: prepared.error };
   const { sql, params } = prepared.ok.filter;
-  const page = db.prepare(`SELECT row_index FROM rows WHERE sheet_id = ? AND user_id = ? AND row_index > ?
-    AND (${sql}) ORDER BY row_index LIMIT ?`).pluck();
-  const out: number[] = [];
-  for (let after = -1; ;) {
-    const got = page.all(sheetId, userId, after, ...params, PAGE) as number[];
-    for (const i of got) out.push(i);
-    if (got.length < PAGE) return out;
-    after = got[got.length - 1];
-    await yieldToRequests();
-  }
+  const inSlice = db.prepare(`SELECT row_index FROM rows WHERE sheet_id = ? AND user_id = ? AND ${sliceSql()}
+    AND (${sql}) ORDER BY row_index`).pluck();
+  return withSlicedRedo(sheetId, async sliced => {
+    const out: number[] = [];
+    await walkSlices(sheetId, userId, { sliced }, (lo, hi) => {
+      for (const i of inSlice.all(sheetId, userId, lo, hi, ...params) as number[]) out.push(i);
+      return false;
+    });
+    return out;
+  });
 }
 
 // An enrichment or a waterfall keeps its chosen rows in its run (at most MAX_SELECTED_ROWS, as the column

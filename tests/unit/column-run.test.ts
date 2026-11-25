@@ -13,7 +13,9 @@
 //   - a start whose columns have nothing to do ends done, one History line, the view a setup run with no
 //     setup; a live column run on Ping refuses another one there, and a setup that makes Ping;
 //   - the hold: a step not started holds its column's auto-run; once it ran or the run ended, it lets go;
-//   - a paused run on a chosen column stops the column run with words.
+//   - two starts at once on one column: one starts, the other is refused (not a second run after the first);
+//   - a paused run on a chosen column stops the column run with words;
+//   - a where finding a few rows among many is read a slice at a time (other requests run meanwhile).
 import http from 'node:http'
 import type { AddressInfo } from 'node:net'
 import assert from 'node:assert/strict'
@@ -38,7 +40,7 @@ const { columnRunInputOf } = await import('../../server/src/services/column-run-
 const { planColumnRun } = await import('../../server/src/services/column-run-plan')
 const { runColumns } = await import('../../server/src/services/column-run')
 const { columnRunHolds } = await import('../../server/src/services/column-run-hold')
-const { selectedRowsProblem } = await import('../../server/src/services/column-run-rows')
+const { selectedRowsProblem, wherePlaces } = await import('../../server/src/services/column-run-rows')
 const { startColumnStep } = await import('../../server/src/services/column-run-step')
 const { getSetupRun, insertSetupRun, loadSetupRun } = await import('../../server/src/services/setup-run-store')
 const { liveSetupClash } = await import('../../server/src/services/setup-apply-checks')
@@ -216,6 +218,20 @@ assert.equal(columnRunHolds(sid, uid, 'Ping'), false)
 assert.ok('ok' in plan({ columns: ['Ping'] }))
 ok('a live column run refuses another on its column and a setup making it; its waiting step holds auto-run')
 
+// --- Two starts at once: each reads its where (a wait) between its checks and its record --------------------
+const busyPing = uuid()
+db.prepare(`INSERT INTO http_runs (id,sheet_id,user_id,config,status,master_column_name,total_rows)
+  VALUES (?,?,?,?,'running','Ping',6)`).run(busyPing, sid, uid, pingConfig({}))
+const byName = [{ column: 'Name', operator: 'contains', value: 'Person' }]
+const twice = await Promise.all([1, 2].map(() =>
+  runColumns(uid, sid, input({ columns: ['Ping'], mode: 'all', where: byName }), { hasSecretsScope: true })))
+assert.deepEqual(twice.map(o => ('fail' in o ? o.fail : 'started')).sort(), ['conflict', 'started'],
+  JSON.stringify(twice))
+assert.equal(count(`SELECT COUNT(*) FROM setup_runs WHERE status IN ('running', 'paused')`), 1)
+db.prepare(`UPDATE setup_runs SET status = 'cancelled' WHERE status IN ('running', 'paused')`).run()
+db.prepare(`UPDATE http_runs SET status = 'completed' WHERE id = ?`).run(busyPing)
+ok('two starts at once on one column: one starts, the other is refused, never a second paid run after it')
+
 // --- A paused run on a chosen column ----------------------------------------------------------
 db.prepare(`INSERT INTO ai_runs (id,sheet_id,user_id,column_name,prompt,model,status,total_rows)
   VALUES (?,?,?,'Fit (Output)','Describe /name','test/priced','paused',6)`).run(uuid(), sid, uid)
@@ -225,6 +241,18 @@ const paused = await startColumnStep(r, { column: 'Fit (Output)', kind: 'ai', wr
 assert.ok('fail' in paused && paused.fail === 'conflict')
 assert.match(paused.message, /A run on "Fit \(Output\)" is paused\. Resume or stop it, then run the columns again\./)
 ok('a paused run on a chosen column stops its step with words')
+
+// --- A where finding a few rows among many: read a slice of the sheet at a time ------------------------------
+const big = uuid()
+db.prepare('INSERT INTO sheets (id,table_id,user_id,name,column_order) VALUES (?,?,?,?,?)')
+  .run(big, tid, uid, 'Big', JSON.stringify(['Name']))
+const add = db.prepare('INSERT INTO rows (id,sheet_id,user_id,row_index,data) VALUES (?,?,?,?,?)')
+db.transaction(() => { for (let i = 0; i < 20_000; i++) add.run(uuid(), big, uid, i, `{"Name":"P${i}"}`) })()
+let between = false
+setImmediate(() => { between = true })
+assert.deepEqual(await wherePlaces(big, uid, [{ column: 'Name', operator: 'eq', value: 'P19999' }]), [19999])
+assert.equal(between, true, 'other requests ran while the where was read')
+ok('a where finding one row among 20,000 reads the sheet a slice at a time, letting other requests in')
 
 server.close()
 console.log('All column-run assertions passed.')

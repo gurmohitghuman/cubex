@@ -19,7 +19,7 @@ import { ceilingProblem, ceilingView } from '../lib/cost-ceiling';
 import { countOf, logSheetChange } from '../lib/change-log';
 import { webhookIdProblem } from './run-hooks-attach';
 import { actorSpendRefusal } from './token-spend';
-import { planColumnRun } from './column-run-plan';
+import { liveColumnClash, planColumnRun } from './column-run-plan';
 import { rowIdPlaces, selectedRowsProblem, wherePlaces } from './column-run-rows';
 import {
   columnCeilingFigures, columnCeilingOf, estimateColumnRun, type ColumnRunEstimate,
@@ -94,8 +94,11 @@ export async function runColumns(
   if (capped) return { fail: 'forbidden', message: capped };
   const busy = sheetBusyWith(sheetId);
   if (busy) return { fail: 'conflict', message: busyMessage(busy) };
-
   const columns = plan.columns.map(c => c.column);
+  // Asked again: another start may have written its record while this one read its where or priced it.
+  const clash = liveColumnClash(sheetId, userId, columns);
+  if (clash) return clash;
+
   const kept = priced && ceiling.maxCostUsd !== null
     ? { ceiling: columnCeilingOf(priced, { maxCostUsd: ceiling.maxCostUsd, allowUnpriced: ceiling.allowUnpriced }) }
     : {};
