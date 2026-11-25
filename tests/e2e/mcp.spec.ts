@@ -35,7 +35,7 @@ test('MCP: discover tools, read and write a sheet end-to-end', async () => {
 
   // Tool discovery: the data-plane + enrichment + structure + model toolset.
   const tools = (await client.listTools()).tools.map(t => t.name).sort()
-  // Keep this list sorted — it's compared with toEqual.
+  // Keep this list sorted: it's compared with toEqual.
   expect(tools).toEqual([
     'add_column', 'add_enrichment_field', 'add_list_rows', 'ai_visibility', 'append_rows', 'apply_setup',
     'check_run_condition',
