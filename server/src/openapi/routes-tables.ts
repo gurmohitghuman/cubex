@@ -13,6 +13,8 @@ const sheetName = z.string().max(MAX_SHEET_NAME_LENGTH);
 const describing = (max: number) => z.string().max(max).nullable()
   .describe('What it holds, for whoever reads it next. "" or null removes it.');
 
+const newSheetWebhook = z.boolean().optional()
+  .describe('true: the new sheet also gets an incoming webhook (/sheets/{id}/webhook); its url is in the answer.');
 export const tableRoutes = (): RouteDoc[] => [
   op({
     method: 'get', path: '/me', operationId: 'getMe', tag: 'account', scope: 'read',
@@ -43,8 +45,8 @@ export const tableRoutes = (): RouteDoc[] => [
   op({
     method: 'post', path: '/tables', operationId: 'createTable', tag: 'tables', scope: 'write',
     summary: 'Make a table with one empty sheet.',
-    body: z.object({ name: tableName }),
-    responses: { 201: 'The new table and its first sheet.' },
+    body: z.object({ name: tableName, webhook: newSheetWebhook }),
+    responses: { 201: 'The new table and its first sheet, with its webhook when asked for.' },
   }),
   op({
     method: 'post', path: '/tables/sample', operationId: 'createSampleTable', tag: 'tables', scope: 'write',
@@ -67,8 +69,9 @@ export const tableRoutes = (): RouteDoc[] => [
     body: z.object({
       name: sheetName.optional().describe('The sheet name. Left out, Cubex picks one.'),
       after_sheet_id: z.string().optional().describe('Put it right after this sheet. Default: at the end.'),
+      webhook: newSheetWebhook,
     }),
-    responses: { 201: 'The new sheet and the table\'s sheets.' },
+    responses: { 201: 'The new sheet and the table\'s sheets, with its webhook when asked for.' },
   }),
   op({
     method: 'patch', path: '/tables/{tableId}/sheets/order', operationId: 'reorderSheets', tag: 'tables',
@@ -115,12 +118,14 @@ export const tableRoutes = (): RouteDoc[] => [
   }),
   op({
     method: 'get', path: '/sheets/{id}/export', operationId: 'exportSheetCsv', tag: 'tables', scope: 'read',
-    summary: 'Download a sheet as CSV, streamed, any size.',
+    summary: 'Download a sheet as CSV or JSON lines, streamed, any size.',
     query: z.object({
       view: z.string().optional().describe('A saved view, by name or id: export its rows and visible columns.'),
+      format: z.enum(['csv', 'jsonl']).optional()
+        .describe('csv (default), or jsonl: one {"id", "data"} object a line, as read_rows answers a row.'),
     }),
-    produces: ['csv'], conflict: true,
-    responses: { 200: 'The CSV: the rows up to the last one the sheet had when it began (rows added past that '
+    produces: ['csv', 'jsonl'], conflict: true,
+    responses: { 200: 'The file: the rows up to the last one the sheet had when it began (rows added past that '
       + 'while it downloads are not in it). An empty sheet gives an empty body.' },
   }),
   op({

@@ -196,3 +196,32 @@ test('"Change tool" starts the new tool with its own providers, none of the old 
   expect([stored.providerOrder ?? [], stored.skipProviders ?? [], stored.stopAtFirst ?? false]).toEqual([[], [], false])
   await api.dispose()
 })
+
+test('"Change tool", then the same tool again, keeps the step\'s provider switches', async ({ page }) => {
+  test.setTimeout(90_000)
+  await page.setViewportSize({ width: 1600, height: 1000 })
+  const api = await authedApi()
+  await freshTreg(api)
+  const old = { ...FIND, providerOrder: ['prospeo', 'hunter'], skipProviders: ['datagma'], stopAtFirst: true }
+  const { sheetId } = await seed(page, api, { choices: old })
+  const datagma = await openProviders(page, /^Providers/, 'Datagma')
+  await expect(datagma).toHaveAttribute('aria-checked', 'false')
+  const name = (await drawer(page).getByTestId('waterfall-tool').locator('p > span').first().textContent())!.trim()
+
+  // Change tool, then pick the very same tool: nothing of the step is lost.
+  await drawer(page).getByRole('button', { name: 'Change tool' }).click()
+  await drawer(page).getByLabel('Search tools').fill(name)
+  await drawer(page).getByTestId('waterfall-tool-search').getByRole('button', { name: new RegExp(`^${name}`) })
+    .first().click()
+  await drawer(page).getByRole('button', { name: /^Providers/ }).click()
+  const list = drawer(page).getByTestId('waterfall-providers')
+  await expect(list.getByRole('switch', { name: 'Use Datagma' })).toHaveAttribute('aria-checked', 'false')
+  await expect(drawer(page).getByLabel(/Stop after the first provider/)).toBeChecked()
+  const sent = await runAll(page, sheetId)
+  expect(sent.choices).toMatchObject({
+    toolId: 'treg.people.email.find', skipProviders: ['datagma'], stopAtFirst: true,
+    inputs: { full_name: 'full_name', domain: 'domain' },
+  })
+  expect(sent.choices.providerOrder.slice(0, 2)).toEqual(['prospeo', 'hunter'])
+  await api.dispose()
+})

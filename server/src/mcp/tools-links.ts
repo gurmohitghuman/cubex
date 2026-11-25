@@ -13,7 +13,9 @@ import { tooManyMessage } from '../lib/rate-window';
 import { MAX_CSV_UPLOAD_BYTES } from '../lib/constants';
 import { FILE_LINK_TTL_MINUTES } from '../lib/api-v1-constants';
 import { GARBLED_HELP, importWindow } from './tools-import';
-import { SHEET_ID, McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean } from './tool-helpers';
+import {
+  SHEET_ID, McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean, mcpLinkBase,
+} from './tool-helpers';
 import { VIEW_HELP, whereLike } from './where-schema';
 import { applyView } from '../services/view-read';
 import type { WhereItem } from '../lib/row-filter/where';
@@ -33,7 +35,7 @@ const NO_WRITE = "This action requires the 'write' scope, which this Cubex acces
   + 'themselves: open the sheet in Cubex and click Import.';
 
 export function registerLinkTools(server: McpServer, ctx: McpAuthCtx) {
-  const base = ctx.linkBase ?? `http://localhost:${process.env.PORT || 3002}`;
+  const base = mcpLinkBase(ctx);
   const canWrite = ctx.scopes.has('write');
 
   registerTool(server,
@@ -109,11 +111,13 @@ export function registerLinkTools(server: McpServer, ctx: McpAuthCtx) {
     {
       description:
         'Save a sheet, or the columns and rows you pick (as in export_csv), as a CSV file of any size without its '
-        + 'contents passing through your context. Returns a one-time link; download it with the curl command in '
-        + 'the result to save it anywhere on your machine, or give the link to the user to open in a browser. '
+        + 'contents passing through your context. format jsonl saves JSON lines instead: one {"id", "data"} object '
+        + 'a row, as read_rows answers it, with its values\' types and no formula quote. Returns a one-time link; '
+        + 'download it with the curl command in the result to save it anywhere on your machine, or give the link '
+        + 'to the user to open in a browser. '
         + `The link works once and expires in ${FILE_LINK_TTL_MINUTES} minutes. Until then anyone who has it can `
         + 'download the data, so give it only to the user. The file holds the rows up to the last one the sheet '
-        + 'had when the download begins. Values are escaped against spreadsheet formula injection. Or '
+        + 'had when the download begins. CSV values are escaped against spreadsheet formula injection. Or '
         + 'setup_call_id: a setup call\'s items.',
       inputSchema: {
         sheet_id: z.string().optional().describe(`${SHEET_ID}. Or setup_call_id.`),
@@ -122,9 +126,10 @@ export function registerLinkTools(server: McpServer, ctx: McpAuthCtx) {
           .describe('Only these columns, in this order. Omit for every column.'),
         where: whereLike('Only the rows it passes.').optional(),
         view: z.string().min(1).optional().describe(VIEW_HELP),
+        format: z.enum(['csv', 'jsonl']).optional().describe('csv (default) or jsonl: one JSON object a row'),
       },
     },
-    async ({ sheet_id: given, setup_call_id, columns, where, view }) => {
+    async ({ sheet_id: given, setup_call_id, columns, where, view, format }) => {
       const denied = missingScope(ctx, 'read');
       if (denied) return denied;
       if (!given === !setup_call_id) return err('Pass sheet_id, or setup_call_id for a setup call\'s results.');
@@ -139,15 +144,18 @@ export function registerLinkTools(server: McpServer, ctx: McpAuthCtx) {
       if ('fail' in plan) return err(plan.fail === 'not_found' ? 'Sheet not found' : plan.error);
       const link = createFileLink({
         userId: ctx.userId, tokenId: ctx.tokenId, sheetId: sheet_id, kind: 'download',
-        options: { columns: selection.columns, where: selection.where, saved: selection.saved },
+        options: {
+          columns: selection.columns, where: selection.where, saved: selection.saved, format: format ?? 'csv',
+        },
       });
       const url = fileLinkUrl(base, 'download', link.token);
+      const file = format === 'jsonl' ? '<file.jsonl>' : '<file.csv>';
       return ok({
         download_url: url,
-        curl: `curl -sS -f -o <file.csv> '${url}'`,
+        curl: `curl -sS -f -o ${file} '${url}'`,
         columns: plan.columns,
         expires_at: link.expiresAt,
-        note: 'Replace <file.csv> with where to save it. The link works once. If curl fails with 409, the sheet '
+        note: `Replace ${file} with where to save it. The link works once. If curl fails with 409, the sheet `
           + 'was busy and the link still works, so try again shortly; with 404, the link is used up or expired.',
       });
     },

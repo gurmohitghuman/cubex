@@ -7,7 +7,8 @@
 // gets it back on restore, marked by the replace. A transfer into a sheet still as created lists only what it
 // brings, leaving out the starter "Column 1": a pass into "Column 1" (stopped at 250 of 600 blank rows, rows 3 to
 // 599 then deleted, so the sheet reads as created again) ends with it, so a new "Column 1" runs, and X renamed
-// "Column 1" takes X's pass along.
+// "Column 1" takes X's pass along. A pass left under a name the sheet doesn't list stays through a refused call into
+// it (a call's checks write nothing) and goes in the write that adds the column (in turn, lib/wal-turn.ts).
 import assert from 'node:assert/strict'
 import transformMod from '../../server/src/services/column-transform'
 import renameMod from '../../server/src/services/column-rename'
@@ -122,6 +123,18 @@ async function main() {
     assert.equal((back.restored as { name?: string } | undefined)?.name, 'T', JSON.stringify(back))
     assert.deepEqual(passes(id), [{ target_column: 'T', started_as: 'T', rows_done: 250, held: 0, marked: 1 }])
     assert.deepEqual(await transformColumn(uid, { ...call(id, 'T'), cursor }), moved('T', 250))
+  })
+  await ok('a pass left under a name the sheet doesn\'t list: a refused call into it writes nothing, and the call '
+    + 'adding the column drops it there, then runs from the top', async () => {
+    const id = fresh()
+    const cursor = await stopped(id, 'T')
+    // T unlisted with no cleanup run, as a leftover would be.
+    db.prepare('UPDATE sheets SET column_order = ? WHERE id = ?').run(JSON.stringify(['S']), id)
+    const refused = await transformColumn(uid, { ...upper(id), cursor })
+    assert.ok('fail' in refused && refused.fail === 'invalid', JSON.stringify(refused))
+    assert.equal(passes(id).length, 1, 'the refused call deleted the pass')
+    assert.deepEqual(await transformColumn(uid, upper(id)), { ok: { updated: ROWS, created_column: 'T' } })
+    assert.deepEqual(passes(id), [])
   })
   const source = sheet(['X'], Array.from({ length: ROWS }, (_, i) => ({ X: `x${i}` })))
   await ok('a transfer into a sheet as created leaves out "Column 1": its pass ends, a new "Column 1" runs',

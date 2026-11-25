@@ -28,17 +28,21 @@ export async function stopAt(track: PassTracker, after: number, callRows: number
 // write lock) tried again TRANSFORM_SETTLE_RETRY_MS later, up to
 // TRANSFORM_SETTLE_TRIES times in all, so readers learn of the rows written
 // once the lock is let go. A wait for the lock there held the event loop up
-// to busy_timeout (5 s) a try. One statement, so it has no first statement to
-// check the WAL with once begun (lib/wal-turn.ts): only its read before it.
+// to busy_timeout (5 s) a try. An immediate transaction, as the pages are: its
+// first statement checks the WAL once it has begun (lib/wal-turn.ts).
 export async function settle(sheetId: string, userId: string, until: number, tries = 1): Promise<void> {
   try {
+    const mark = db.transaction(() => {
+      walTurnCheck();
+      db.prepare(`UPDATE sheets SET data_version = data_version + 1, updated_at = datetime('now')
+        WHERE id = ? AND user_id = ?`).run(sheetId, userId);
+    });
     await inWalTurn(() => {
       // Set and put back within the one synchronous write: other writes on this thread keep busy_timeout.
       const wait = db.pragma('busy_timeout', { simple: true }) as number;
       db.pragma('busy_timeout = 0');
       try {
-        db.prepare(`UPDATE sheets SET data_version = data_version + 1, updated_at = datetime('now')
-          WHERE id = ? AND user_id = ?`).run(sheetId, userId);
+        mark.immediate();
       } finally {
         db.pragma(`busy_timeout = ${wait}`);
       }

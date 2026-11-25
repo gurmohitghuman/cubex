@@ -8,6 +8,8 @@ import { createTable, renameTable, deleteTable, tableFailHttpStatus } from '../s
 import { trashAnswer } from '../services/trash-answer';
 import { createSampleTable } from '../services/sample-table';
 import { sampleAnswer } from '../services/sample-answer';
+import { webhookFlagProblem, webhookForNewSheet } from '../services/sheet-webhook';
+import { linkBase } from '../lib/file-links';
 
 const router = express.Router();
 
@@ -20,15 +22,20 @@ router.get('/tables', requireScope('read'), async (req: TokenAuthRequest, res) =
   }
 });
 
-// POST /v1/tables {name} — creates the table plus its first empty sheet
-// (same contract as the UI route: no starter grid on table-create).
+// POST /v1/tables {name, webhook?}: creates the table plus its first empty sheet
+// (same contract as the UI route: no starter grid on table-create). webhook: true
+// also gives that sheet its incoming webhook, with the URL in the answer.
 router.post('/tables', requireScope('write'), (req: TokenAuthRequest, res) => {
   try {
-    const result = createTable(req.userId!, (req.body as { name?: unknown })?.name);
+    const { name, webhook } = (req.body ?? {}) as { name?: unknown; webhook?: unknown };
+    const flag = webhookFlagProblem(webhook);
+    if (flag) return res.status(400).json({ error: flag });
+    const result = createTable(req.userId!, name);
     if ('fail' in result) return res.status(tableFailHttpStatus(result)).json({ error: result.message });
     res.status(201).json({
       id: result.ok.id, name: result.ok.name,
       sheets: [{ id: result.ok.sheetId, name: 'Sheet1', position: 0, row_count: 0 }],
+      ...(webhook === true ? webhookForNewSheet(req.userId!, result.ok.sheetId, linkBase(req)) : {}),
     });
   } catch (error) {
     console.error('POST /v1/tables error:', error);

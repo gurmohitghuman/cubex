@@ -13,9 +13,13 @@ import { oneTransaction } from './slices';
 import { jsonPath } from './sql-rows';
 import { eachRowIdSlice, sheetRowIds } from './row-order';
 import { PLACEHOLDER } from './placeholder-cells';
-import { CONDITION_NOT_MET, isConditionNotMet, takesConditionMark } from './run-markers';
+import { CELL_HAS_VALUE_SQL, CONDITION_NOT_MET, isConditionNotMet, takesConditionMark } from './run-markers';
 import { rulePasses, type RuleNode } from './run-condition';
 import { journalSeed, type RunRef } from './run-undo/journal';
+import { derivedReaderCount, derivedReaderIds } from './autorun-mark';
+import { tellDerivedSpan } from './derived-spans';
+import { sliceClock } from './slice-clock';
+import { FIRST_TIMED_PAGE, pageByTime } from '../services/derived-write';
 import { pickedCells } from './row-cell';
 
 export interface RuleSeed { tree: RuleNode; columns: string[]; markColumn: string }
@@ -33,6 +37,9 @@ export async function seedPlaceholdersByRule(args: {
   const others = columns.filter(c => c !== rule.markColumn).map(jsonPath);
   const keepOut = db.prepare(`UPDATE rows SET data = json_set(data, ?, ?${others.map(() => ", ?, ''").join('')}),
     updated_at = datetime('now') WHERE rowid IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ?`);
+  const tell = db.prepare(`SELECT rowid FROM rows WHERE rowid IN (SELECT value FROM json_each(?))
+    AND +sheet_id = ? AND +user_id = ? AND (${paths.map(() => CELL_HAS_VALUE_SQL).join(' OR ')}) ORDER BY rowid`)
+    .pluck();
   const picks = rule.columns.map(() => ', json_extract(data, ?)').join('');
   const read = db.prepare(`SELECT rowid, row_index, json_extract(data, ?)${picks}
     FROM rows WHERE rowid IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ?`).raw();
@@ -41,9 +48,14 @@ export async function seedPlaceholdersByRule(args: {
   const running = columns.map((c): [string, string] => [c, PLACEHOLDER]);
   const keptOutCells = columns.map((c): [string, string] => [c, c === rule.markColumn ? CONDITION_NOT_MET : '']);
   const rowIds = await sheetRowIds(sheetId, userId, args.targets ? { targets: args.targets } : { upTo: args.lastRow });
-  let notMet = 0, stopped = false;
-  await eachRowIdSlice(rowIds, ids => {
+  let notMet = 0, stopped = false, toldPage = FIRST_TIMED_PAGE;
+  await eachRowIdSlice(rowIds, (json, window) => {
     if (!live()) { stopped = true; return false; }
+    const began = sliceClock();
+    // Telling columns that read these costs a slice more time: sized by it then (lib/placeholder-cells.ts).
+    const took = derivedReaderCount(sheetId, userId, columns) > 0 ? Math.min(window.length, toldPage) : window.length;
+    const ids = took === window.length ? json : JSON.stringify(Array.from(window.subarray(0, took)));
+    let told = false;
     const pass: number[] = [], mark: number[] = [];
     for (const r of read.all(...readPaths, ids, sheetId, userId) as unknown[][]) {
       if (skip.has(r[1] as number)) continue;
@@ -55,15 +67,26 @@ export async function seedPlaceholdersByRule(args: {
     }
     // What the cells held goes into the run's undo journal first (lib/run-undo/journal.ts).
     oneTransaction(() => {
+      const readers = derivedReaderIds(sheetId, userId, columns);
+      told = readers.length > 0;
       if (pass.length) {
-        journalSeed(runRef, sheetId, userId, { rowids: JSON.stringify(pass) }, running);
-        run.run(...paths, JSON.stringify(pass), sheetId, userId);
+        const passJson = JSON.stringify(pass);
+        const heard = readers.length > 0 ? tell.all(passJson, sheetId, userId, ...paths) as number[] : [];
+        journalSeed(runRef, sheetId, userId, { rowids: passJson }, running);
+        run.run(...paths, passJson, sheetId, userId);
+        tellDerivedSpan(sheetId, userId, readers, heard, runRef);
       }
       if (mark.length) {
-        journalSeed(runRef, sheetId, userId, { rowids: JSON.stringify(mark) }, keptOutCells);
-        keepOut.run(jsonPath(rule.markColumn), CONDITION_NOT_MET, ...others, JSON.stringify(mark), sheetId, userId);
+        const markJson = JSON.stringify(mark);
+        const heard = readers.length > 0 ? tell.all(markJson, sheetId, userId, ...paths) as number[] : [];
+        journalSeed(runRef, sheetId, userId, { rowids: markJson }, keptOutCells);
+        keepOut.run(jsonPath(rule.markColumn), CONDITION_NOT_MET, ...others, markJson, sheetId, userId);
+        // Kept-out rows don't get ⏳ so a later clear never rewrites them; keep their span unlinked to the run.
+        tellDerivedSpan(sheetId, userId, readers, heard);
       }
     });
+    if (told) toldPage = pageByTime(took, sliceClock() - began);
+    return took;
   });
   return stopped ? null : { notMet };
 }

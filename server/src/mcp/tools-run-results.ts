@@ -32,24 +32,17 @@ export function registerRunResultTools(server: McpServer, ctx: McpAuthCtx) {
     {
       description:
         'Each row\'s outcome in a run: row id, status, error message and an error_class saying what to DO. Use it '
-        + 'when a run finished but cells are blank or wrong, instead of rerunning blind; read the cells themselves '
-        + 'with read_rows. AI classes: "retryable" (transient: a rerun works), "prompt_content" (your wording caused '
-        + 'it: a rerun just bills again), "model_output" (try another model), "concurrency" (too many calls at once '
-        + 'for the OpenRouter balance: rerun with a lower concurrency), "configuration" (fix a setting), "unknown". '
-        + 'HTTP classes: "retryable" (rate limit, timeout, 5xx), "not_found" (404 or 410: nothing for that row, or on '
-        + 'every row a wrong URL path), "configuration" (URL, auth, headers, {{name}}, JSONPath, blocked address), '
-        + '"response_format" (not JSON), "unknown". error_summary counts each class on the page, with a hint. '
-        + 'Then retry only the transient ones with control_run rerun (mode errored for AI, missing for HTTP). '
-        + 'AI rows add cost_usd (web fees included; on your own provider key only OpenRouter\'s fee, and '
-        + 'provider_cost_usd what the provider billed), paid_with ("own_key", or "credits" when OpenRouter fell '
-        + 'back to its credits; null when it didn\'t say), tokens and, with web search, searches and '
-        + 'search_queries (ran false: the per-row limit stopped it; a model\'s own search shows them only when the '
-        + 'provider reports them). Enrichment rows add cost_usd, found_by (the provider) and extracted_fields (the '
-        + `status cell and outputs). include_answers adds each row's stored answer (up to ${ANSWERS_PAGE_MAX} rows a `
-        + 'page; answer_cut lists parts left out of a very big one), to find paths for add_enrichment_field; on an '
-        + 'HTTP run that used saved keys it needs the \'secrets\' scope. Waterfall rows add answered_by (the step '
-        + 'that answered), cost_usd and trace: each step reached with its outcome (answered, not_found, no_inputs, '
-        + 'error, budget, or rejected by its check), value, detail and cost. Pages by cursor like read_rows.',
+        + 'when cells are blank or wrong, instead of rerunning blind. AI classes: "retryable" (a rerun works), '
+        + '"prompt_content" (your wording: a rerun just bills again), "model_output" (try another model), '
+        + '"concurrency" (rerun with a lower concurrency), "configuration" (fix a setting), "unknown". HTTP classes: '
+        + '"retryable" (rate limit, timeout, 5xx), "not_found" (404 or 410; on every row, a wrong URL path), '
+        + '"configuration" (URL, auth, headers, {{name}}, JSONPath, blocked address), "response_format" (not JSON), '
+        + '"unknown". Retry only the transient ones with control_run rerun (mode errored for AI, missing for HTTP). '
+        + 'Rows add cost_usd (an AI row on your own provider key: only OpenRouter\'s fee, and provider_cost_usd); AI '
+        + 'rows paid_with, tokens and searches; enrichment rows found_by; waterfall rows '
+        + 'answered_by and trace (each step reached: outcome, value, cost). include_answers adds each row\'s stored '
+        + `answer (up to ${ANSWERS_PAGE_MAX} rows a page), to find paths for add_enrichment_field; on an HTTP run `
+        + 'that used saved keys it needs the \'secrets\' scope. Pages by cursor.',
       inputSchema: {
         run_type: z.enum(['ai', 'http', 'enrichment', 'waterfall']).describe('The kind of run'),
         run_id: z.string().describe('The run (list_runs lists them)'),
