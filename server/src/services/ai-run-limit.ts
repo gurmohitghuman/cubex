@@ -76,10 +76,13 @@ export async function resumeAiRun(
 
 // A setup can't give its step's AI run a higher limit (setup-run-control.ts):
 // why resuming the setup would leave this run where it is, or null.
-export function setupResumeLimitRefusal(runId: string, userId: string): string | null {
+// columnRun: a column run (services/column-run.ts), which is run again rather than applied.
+export function setupResumeLimitRefusal(runId: string, userId: string, columnRun = false): string | null {
   const r = limitRow(runId, userId);
   if (!r || r.status !== 'paused' || r.pause_reason !== 'spend_limit' || r.spend_limit_usd === null) return null;
-  return `"${r.column_name ?? 'Its AI step'}" paused at its ${money(r.spend_limit_usd)} spend limit, and resuming `
-    + "the setup can't raise it. Stop the setup and apply it again with a higher max_cost_usd: that carries on "
-    + 'where this one stopped.';
+  const head = `"${r.column_name ?? 'Its AI step'}" paused at its ${money(r.spend_limit_usd)} spend limit, and `;
+  return columnRun
+    ? `${head}resuming can't raise it. Stop it and run the columns again with a higher max_cost_usd.`
+    : `${head}resuming the setup can't raise it. Stop the setup and apply it again with a higher max_cost_usd: `
+      + 'that carries on where this one stopped.';
 }
