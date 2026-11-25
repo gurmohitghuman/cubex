@@ -5,8 +5,10 @@
 // as a restart finishes it (dated copies after their sheets, the lookup of
 // that day's Named by and the change column after Named by, both filled; the
 // check ends stopped, saying the engines weren't asked); the change column
-// following new answers (Up, Down) and a new question (New); a copy made
-// before a restart taken as it is; a check cut short while asking stopped.
+// following new answers (Up, Down) and a new question (New); a check that
+// waits to copy until those columns caught up with an answer just landed; a
+// copy made before a restart taken as it is; a check cut short while asking
+// stopped.
 // Over 200 lines: one fixture and the check's scenarios, read top to bottom.
 import assert from 'node:assert/strict'
 import { v4 as uuid } from 'uuid'
@@ -247,6 +249,27 @@ async function main() {
     await settle(t.q, 'Named by on 2026-09-16')
     await settle(t.q, 'Change since 2026-09-16')
     assert.equal(cellsOf(t.q, 'Change since 2026-09-16')[3], 'New')
+  })
+
+  await ok('a check copies the questions only once their formula and lookup columns caught up', async () => {
+    // An answer lands; its follow is queued, not yet worked out (the auto-run sweep would, any moment).
+    const first = db.prepare('SELECT id FROM rows WHERE sheet_id = ? ORDER BY row_index').pluck().get(t.q) as string
+    const was = cellsOf(t.q, 'Change since 2026-09-16')[0]
+    db.prepare('UPDATE rows SET data = json_set(data, ?, ?) WHERE id = ?')
+      .run('$."ChatGPT answer"', 'Acme CRM and Northdesk.', first)
+    markAutorunEdits(t.q, uid, [{ column: 'ChatGPT answer', rowId: first }])
+    const plan = checkPlan(uid, t.rec, { fresh: true })
+    assert.ok(!('fail' in plan), JSON.stringify(plan))
+    const id = S.insertCheck(uid, t.rec.id, { day: plan.label, at: plan.askedAt }, plan.names, BRANDS)
+    resumeAiVisibilityChecks()
+    await new Promise(r => setTimeout(r, 500))
+    assert.equal(S.loadCheck(uid, id)!.questions_copy_id, null, 'copied before the follow was worked out')
+    await settle(t.q, 'Change since 2026-09-16')
+    const now = cellsOf(t.q, 'Change since 2026-09-16')[0]
+    assert.notEqual(now, was, 'the answer moved Change since')
+    await until(() => ['stopped', 'done'].includes(S.loadCheck(uid, id)!.stage), 'the check')
+    const copy = S.loadCheck(uid, id)!.questions_copy_id!
+    assert.equal(cellsOf(copy, 'Change since 2026-09-16')[0], now)
   })
 
   await ok('a copy made before a restart is taken as it is; a check cut short while asking stops', async () => {
