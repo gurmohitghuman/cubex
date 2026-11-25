@@ -1,9 +1,11 @@
 import { test, expect } from '@playwright/test'
+import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { authedApi, makeAccessToken } from './helpers'
 import { makeToken, bearer } from './api-v1-run-helpers'
 import { mcpClient, call } from './helpers-mcp'
 import { Receiver } from './helpers-receiver'
-import { sheetWith, waitSetup, column } from './helpers-setups'
+import { waitSetup, column } from './helpers-setups'
+import { SITES, short as shortAs, twoColumns as build } from './helpers-column-runs'
 
 // Running chosen columns on chosen rows (run_columns, POST /api/v1/sheets/:id/column-runs). Two HTTP API
 // columns on the spec's receiver: Lookup (a site's short name into Short), and Echo, which reads the
@@ -15,31 +17,12 @@ import { sheetWith, waitSetup, column } from './helpers-setups'
 //     refused, and so is a formula column; row_ids keep it to those rows; a stop reaches the step's run
 //     and starts nothing more. (The secrets and ceiling refusals: tests/unit/column-run.test.ts.)
 const rx = new Receiver()
+const short = (suffix: string) => shortAs(rx, suffix)
+const twoColumns = async (client: Client, api: Awaited<ReturnType<typeof authedApi>>) =>
+  (await build(rx, client, api)).sheetId
 test.beforeAll(() => rx.start())
 test.afterAll(() => rx.stop())
-const SITES = ['one', 'two', 'three']
-const short = (suffix: string) => SITES.forEach(s =>
-  rx.on(`/short/${s}.com`, { status: 200, body: JSON.stringify({ short: `${s}${suffix}` }) }))
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
-
-type Api = Awaited<ReturnType<typeof authedApi>>
-async function twoColumns(client: Awaited<ReturnType<typeof mcpClient>>, api: Api) {
-  const { sheetId } = await sheetWith(api, null, SITES.map(s => ({ Website: `${s}.com` })))
-  short('')
-  const httpDone = async (runId: string) => expect.poll(async () =>
-    (await call(client, 'get_run_status', { run_type: 'http', run_id: runId })).status, { timeout: 30_000 })
-    .toBe('completed')
-  const lookup = await call(client, 'run_http_enrichment', { sheet_id: sheetId, url: rx.url('/short/{{Website}}'),
-    method: 'POST', master_column_name: 'Lookup', response_mapping: [{ json_path: '$.short', column_name: 'Short' }] })
-  await httpDone(lookup.run_id)
-  await call(client, 'formula_column', { sheet_id: sheetId, column: 'Label', formula: '{{Short}} + "!"' })
-  await expect.poll(() => column(api, sheetId, 'Label'), { timeout: 15_000 }).toEqual(['one!', 'two!', 'three!'])
-  for (const s of SITES) for (const v of ['!', '2!']) rx.on(`/echo/${s}${v}`, { status: 200, body: '{"ok":"yes"}' })
-  const echo = await call(client, 'run_http_enrichment', { sheet_id: sheetId, url: rx.url('/echo/{{Label}}'),
-    method: 'POST', master_column_name: 'Echo', response_mapping: [{ json_path: '$.ok', column_name: 'Echo ok' }] })
-  await httpDone(echo.run_id)
-  return sheetId
-}
 
 test('run_columns: an estimate first; Echo waits for Lookup and its formula, and its auto-run holds off', async () => {
   test.setTimeout(180_000)

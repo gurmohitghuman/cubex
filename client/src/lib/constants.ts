@@ -231,3 +231,5 @@ export const TOAST_TOP_PX = 64;
 // A drawer or dialog closed while it still opens closes once its open transition has ended (200 ms once started,
 // hooks/useCloseAfterOpen.ts). A close never waits longer than this.
 export const CLOSE_AFTER_OPEN_MAX_MS = 1_000;
+// The most columns one Run columns start takes (mirrors server MAX_COLUMN_RUN_COLUMNS, lib/constants-setups.ts).
+export const MAX_COLUMN_RUN_COLUMNS = 20;

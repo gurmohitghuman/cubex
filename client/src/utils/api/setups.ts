@@ -78,9 +78,11 @@ export interface SetupRunView {
   choices: {
     inputs?: Record<string, string>; names?: Record<string, string>; models?: Record<string, string>
   } | null
+  // A column run (the Run columns dialog, services/column-run.ts): no setup, its mode and rows.
+  column_run?: { mode: string; row_ids: number | null; where: unknown[] | null }
   steps: Array<{
-    column: string; kind: SetupKind; layer: number; mode: SetupStepMode; state: string; run_id: string | null
-    note: string | null
+    column: string; kind: SetupKind | 'waterfall'; layer: number; mode: SetupStepMode; state: string
+    run_id: string | null; note: string | null
   }>
 }
 
