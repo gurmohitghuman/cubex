@@ -39,7 +39,7 @@ export const CHANGES_RECORDED_AFTER = 'v0.8.12';
 // Newest first.
 export const AGENT_CHANGES: ReleaseChanges[] = [
   {
-    version: 'v0.8.44',
+    version: 'v0.8.45',
     changes: [
       {
         change: 'added',
@@ -49,6 +49,11 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
         details: 'Read a tool\'s guide before its first paid or destructive call, and after a refusal. Without tool '
           + 'it lists the tools that have one. No tool or argument changed.',
       },
+    ],
+  },
+  {
+    version: 'v0.8.44',
+    changes: [
       {
         change: 'changed',
         tools: ['run_enrichment', 'waterfall_column'],
