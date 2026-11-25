@@ -49,6 +49,13 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
         details: 'Spreadsheet apps hide the quote and show the text; import_csv takes it off again. A plain number '
           + 'after spaces, like " -5", is left as it is.',
       },
+      {
+        change: 'changed',
+        tools: ['transfer_rows'],
+        summary: 'A transfer_rows retry with its idempotency_key answers its first transfer even while either sheet '
+          + 'is busy, and doesn\'t count toward the 10 transfers a minute.',
+        details: 'A new key, or the same key with other arguments, is still refused as busy while a sheet is.',
+      },
     ],
   },
   {
