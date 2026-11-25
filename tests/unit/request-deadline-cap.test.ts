@@ -20,7 +20,9 @@ function check(label: string, cond: boolean, detail?: unknown) {
 // The setting itself is held at the longest wait when read (lib/env-int.ts envMs), and waitMs caps any deadline too.
 check('the setting is held at 2,147,483,647 ms', REQUEST_BODY_TIMEOUT_MS === 2_147_483_647, REQUEST_BODY_TIMEOUT_MS)
 const now = Date.now()
-check('the wait left is capped at 2,147,483,647 ms', waitMs(now, REQUEST_BODY_TIMEOUT_MS) === 2_147_483_647)
+// A limit a minute past the cap: the time since `now` (a millisecond or two by this line) still leaves it above,
+// so the cap is what this reads, not that time.
+check('the wait left is capped at 2,147,483,647 ms', waitMs(now, REQUEST_BODY_TIMEOUT_MS + 60_000) === 2_147_483_647)
 check('... and is the time left below the cap, never under 0', waitMs(now, 60_000) <= 60_000
   && waitMs(now, 60_000) > 59_000 && waitMs(now - 5000, 1000) === 0)
 
