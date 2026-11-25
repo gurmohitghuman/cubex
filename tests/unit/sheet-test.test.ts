@@ -37,6 +37,7 @@ const { listSheets } = await import('../../server/src/lib/sheet-crud-helpers')
 const { liveSheets } = await import('../../server/src/services/table-row-counts')
 const { aiRunStamper } = await import('../../server/src/lib/run-inputs/stampers')
 const { ensureRunInputKey } = await import('../../server/src/lib/run-inputs/keys')
+const { runInputSet } = await import('../../server/src/lib/run-inputs/sets')
 const { deleteRowsToTrash } = await import('../../server/src/services/trash-rows')
 const { listTrash } = await import('../../server/src/services/trash-read')
 const { planListDest } = await import('../../server/src/services/enrich-list-dest')
@@ -101,7 +102,9 @@ await check('start: the top 10 rows and the setup go into a copy no list shows',
   const got = rows(copy)
   assert.deepEqual(got.map(r => JSON.parse(r.data).Name), Array.from({ length: 10 }, (_, i) => `n${i}`))
   const key = ensureRunInputKey(copy, uid, 'Fit')
-  assert.ok(JSON.parse(got[0].run_inputs)[String(key)], 'the stamp moved to the copy\'s key')
+  const moved = JSON.parse(got[0].run_inputs)[String(key)] as string
+  assert.ok(moved, 'the stamp moved to the copy\'s key')
+  assert.ok(runInputSet(Number(moved.split(':')[0]), key, uid), 'its list of columns read is the copy\'s too')
   assert.deepEqual(JSON.parse(db.prepare('SELECT column_order FROM sheets WHERE id = ?').pluck().get(copy) as string),
     COLS)
   assert.equal((db.prepare(`SELECT prompt FROM ai_runs WHERE sheet_id = ? ORDER BY rowid DESC`).get(copy) as any)

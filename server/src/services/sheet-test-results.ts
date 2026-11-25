@@ -20,6 +20,7 @@ import { settingsOf } from '../lib/setup-versions/fields-http';
 import { parseRowData } from '../lib/sql-helpers';
 import type { TestRecord } from './sheet-test-store';
 import { forgetUsage } from './setup-version-write';
+import { sameInputs } from './sheet-test-stamps';
 
 interface Pair {
   test_index: number; live_index: number; test_data: string; live_data: string; test_stamps: string | null;
@@ -100,7 +101,7 @@ function keepColumn(t: TestRecord, column: string, fill: Fill, pairs: Pair[]): n
   const kept = pairs.flatMap(p => {
     const resultId = madeNow(p.test_index);
     const stamp = stamper.stamp(p.live_data);
-    return resultId && stampOf(t, column, p) === stamp.fp ? [{ p, resultId, stamp }] : [];
+    return resultId && sameInputs(t, column, stampOf(t, column, p), stamp.fp) ? [{ p, resultId, stamp }] : [];
   });
   if (!kept.length) return 0;
   const runId = uuidv4();
