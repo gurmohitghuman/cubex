@@ -2,7 +2,8 @@
 // Running chosen columns on chosen rows (services/column-run*.ts) on a migrated throwaway DB, with
 // OpenRouter's model list served by a stand-in. The sheet: an AI column "Fit (Output)", a formula "Len"
 // reading it, and an HTTP API column "Ping" whose request reads Len.
-//   - the body: mode is required; row_ids and where not both; MCP estimates by default;
+//   - the body: mode is required; row_ids and where not both; MCP estimates by default; the app's inFilter
+//     alone, and it keeps the estimate to the filter the sheet shows;
 //   - a formula column or an unknown name is refused, saying why; Ping waits for Fit, through Len;
 //   - a where reading a column the run changes (Len) is refused; one on Name is fine; one choosing more
 //     than 50,000 rows only with an enrichment or waterfall column;
@@ -91,7 +92,13 @@ assert.match(bad({ columns: ['Ping'], mode: 'all', row_ids: [ids[0]], where: [{ 
 assert.match(bad({ columns: ['Ping'], mode: 'all', firstRows: 3 }), /Unknown field firstRows/)
 assert.equal(input({ columns: ['Ping'], mode: 'all' }, 'mcp').estimateOnly, true)
 assert.equal(input({ columns: ['Ping'], mode: 'all' }).estimateOnly, false)
+const app = (b: Record<string, unknown>) => columnRunInputOf(b, 'app')
+assert.equal((app({ columns: ['Ping'], mode: 'all', inFilter: true }) as Input).inFilter, true)
+assert.match((app({ columns: ['Ping'], mode: 'all', inFilter: true, rowIds: [ids[0]] }) as { message: string })
+  .message, /inFilter alone/)
+assert.match(bad({ columns: ['Ping'], mode: 'all', inFilter: true }), /Unknown field inFilter/)
 ok('the body: mode required, row_ids or where, unknown fields refused; MCP estimates unless told not to')
+ok("the app's inFilter is read alone, and only from the app")
 
 // --- What it would do -----------------------------------------------------------------------
 const plan = (b: Partial<Input>, secrets = true) =>
@@ -153,6 +160,16 @@ assert.equal(e.high_usd, efit.high_usd)
 assert.deepEqual(e.unpriced, [])
 assert.equal(e.over_ceiling, undefined) // no max_cost_usd: no ceiling fields
 ok('the estimate: Fit on its 2 empty rows, priced; Ping after it in an out-of-date mode, its 2 rows plus Fit\'s 2')
+
+// The app's "only rows in the current filter": the filter the sheet shows, read on the server.
+db.prepare('UPDATE sheets SET column_filters = ? WHERE id = ?')
+  .run(JSON.stringify({ Name: { type: 'contains', value: 'Person 1' } }), sid)
+const shown = await runColumns(uid, sid, columnRunInputOf({ columns: ['Fit (Output)'], mode: 'all', inFilter: true,
+  estimateOnly: true }, 'app') as Input, { hasSecretsScope: true })
+assert.ok('ok' in shown && 'estimate' in shown.ok)
+assert.equal(shown.ok.estimate.rows_in_scope, 1)
+db.prepare('UPDATE sheets SET column_filters = NULL WHERE id = ?').run(sid)
+ok('inFilter keeps the estimate to the rows of the filter the sheet shows')
 
 const over = await runColumns(uid, sid, input({ columns: ['Fit (Output)'], mode: 'all', max_cost_usd: 0.000001 }),
   { hasSecretsScope: true })
