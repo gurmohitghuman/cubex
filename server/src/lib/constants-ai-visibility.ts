@@ -11,3 +11,8 @@ export const AI_VISIBILITY_SOURCES_PER_ROW = 20;
 // Checking again sooner than this after the answers kept were asked says that
 // answers move slowly and vary between asks (a warning, never a refusal).
 export const AI_VISIBILITY_CHECK_SOON_DAYS = 21;
+// A check copies the questions once its formula and lookup columns (Named by) have caught up with the answers,
+// looking this often, for at most this long (the auto-run sweep that follows a run worker's answers comes every
+// 15 s); past that it copies them as they are.
+export const AI_VISIBILITY_CATCH_UP_POLL_MS = 200;
+export const AI_VISIBILITY_CATCH_UP_MS = 60_000;

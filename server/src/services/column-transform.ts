@@ -32,7 +32,9 @@ import {
 } from '../lib/transform-ops';
 import { regexPages, SlowPattern, SLOW_PATTERN_FIX, type RegexPages } from '../lib/transform-regex-host';
 import { walkTransform, type PageRow, type TransformWalk, type WalkResult } from './column-transform-pages';
-import { passStartedAs, passTracker, startPass, type PassStart, type Unfinished } from './column-transform-passes';
+import {
+  dropPass, passStartedAs, passTracker, startPass, type PassStart, type Unfinished,
+} from './column-transform-passes';
 import { stoppedOnErrorWords, targetRenamedWords } from './column-transform-pass-words';
 import { settle, stopAt } from './column-transform-end';
 import { inWalTurn, walTurnCheck } from '../lib/wal-turn';
@@ -99,6 +101,7 @@ export async function transformColumn(userId: string, p: TransformParams): Promi
       if (!plan.targetExists) {
         const add = db.transaction(() => {
           walTurnCheck();
+          dropPass(p.sheetId, userId, plan.targetColumn);
           appendColumnsToOrder(p.sheetId, userId, [plan.targetColumn]);
         });
         await inWalTurn(() => add.immediate(), until, true);
@@ -259,7 +262,7 @@ function peekPass(userId: string, p: TransformParams, columns: string[]): Fail |
   if ('error' in name) return null;
   const start = startPass({ sheetId: p.sheetId, userId, targetColumn: name.name,
     generation: generationOf(p.sheetId, userId), targetExists: columns.includes(name.name) },
-  { ...p, targetColumn: name.name }, { cursor: p.cursor, peek: true });
+  { ...p, targetColumn: name.name }, { cursor: p.cursor });
   if ('invalid' in start) return { fail: 'invalid', error: start.invalid };
   return 'unfinished' in start ? start : null;
 }

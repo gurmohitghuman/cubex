@@ -87,7 +87,8 @@ export function chipState(view: SheetAutorun | undefined): ChipState | null {
     return { label: `Auto-run paused: ${why}`, tone: 'amber' }
   }
   const going = on.filter(c => !c.pausedReason).length
-  if (going === 0) return { label: 'Auto-run paused', tone: 'muted' }
+  // Every one paused by hand: the sheet runs nothing on its own until resumed.
+  if (going === 0) return { label: 'Auto-run: manual', tone: 'muted' }
   if (on.length === 1) return { label: 'Auto-run on', tone: 'on' }
   const count = going === on.length ? `${on.length} columns` : `${going} of ${on.length} columns`
   return { label: `Auto-run on (${count})`, tone: 'on' }

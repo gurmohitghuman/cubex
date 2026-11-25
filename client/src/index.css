@@ -277,6 +277,28 @@
   .cube-side-panel { animation: none; }
 }
 
+/* A side panel waiting for another row's content (components/SidePanel.tsx PanelWait): its header's spinner, and its
+   buttons that wait (disabled at once), dimmed. Both show only once the wait passes 300 ms. The usual answer comes
+   sooner (under 60 ms on 10,000 rows) and swaps in with nothing coming and going: a mark shown for a few frames reads
+   as a flicker. */
+@keyframes cubeWaitShow {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes cubeWaitDim {
+  from { opacity: 1; }
+  to { opacity: 0.5; }
+}
+
+.cube-wait-mark {
+  animation: cubeWaitShow 0s linear 300ms both;
+}
+
+.cube-wait-dim:disabled {
+  animation: cubeWaitDim 0s linear 300ms both;
+}
+
 /* Loading spinner */
 @keyframes spin {
   to { transform: rotate(360deg); }

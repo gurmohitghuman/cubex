@@ -59,3 +59,12 @@ export const setAutoRun = obj({
   auto_run: z.array(autoRunColumn), has_webhook: bool,
   daily_limit: obj({ limit_usd: nul(num), used_today_usd: num, remaining_usd: nul(num) }), changed,
 });
+
+// list_prompt_starters (mcp/tools-prompt-starters.ts).
+export const listPromptStarters = obj({
+  starters: z.array(obj({
+    id: str, label: str, hint: str,
+    run: info('run_ai_column\'s arguments: column_name, prompt, and output_columns for a profile'),
+  })),
+  note: str,
+});
