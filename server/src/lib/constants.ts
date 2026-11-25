@@ -106,7 +106,8 @@ export const COLUMN_REPAIR_SLICE_ROWS = 20_000;
 // answers other requests between slices (lib/slices.ts).
 export const HEAVY_SLICE_ROWS = 5_000;
 // A slice of a CSV import, a clean, formula or lookup column's fill or follow, or a column added from an answer also
-// stops once it has taken this long (one row at least; lib/slice-clock.ts). Sized by rows alone, a slice of 5,000
+// stops once it has taken this long (one row at least; lib/slice-clock.ts), and a run start's seed takes as many rows
+// as fit it while such columns read the run's (lib/placeholder-cells.ts). Sized by rows alone, a slice of 5,000
 // took a median 90 to 96 ms on Windows CI (63 to 72 on Linux), so a slow moment on the runner could pass 200 ms.
 export const BULK_SLICE_MS = 40;
 // Stored AI/HTTP results written per slice (a sheet's results deleted, a sort moving them with their rows). An

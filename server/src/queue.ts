@@ -13,6 +13,7 @@ import { DATA_DIR } from './lib/db-path';
 import { parseTargetRows } from './lib/run-targets';
 import type { RecoveredRuns } from './lib/orphan-runs';
 import { clearRunPlaceholders } from './lib/run-placeholders';
+import { dropRunSpans } from './lib/derived-spans';
 import { jobsDbInWal } from './lib/jobs-db';
 import { closeJobInserts, enqueueJob, startJobInserts } from './lib/job-inserts';
 
@@ -157,11 +158,16 @@ export async function enqueueHTTPRerun(runId: string, targetRows: number[]): Pro
 // left alone they would spin with no worker, and Cancel refuses a failed run.
 function failUnresumed(kind: 'ai' | 'http', id: string): void {
   const table = kind === 'ai' ? 'ai_runs' : 'http_runs';
-  const failed = db.prepare(
-    `UPDATE ${table} SET status = 'failed', error_message = 'Could not resume after restart. Re-run to continue.',
-       placeholder_work = 'clearing', updated_at = datetime('now') WHERE id = ? AND status = 'pending'`,
-  ).run(id);
-  if (failed.changes > 0) {
+  const sheetId = db.transaction(() => {
+    const s = db.prepare(
+      `UPDATE ${table} SET status = 'failed', error_message = 'Could not resume after restart. Re-run to continue.',
+         placeholder_work = 'clearing', updated_at = datetime('now') WHERE id = ? AND status = 'pending'
+       RETURNING sheet_id`,
+    ).pluck().get(id) as string | undefined;
+    if (s) dropRunSpans(s, { kind, id });
+    return s;
+  }).immediate();
+  if (sheetId) {
     clearRunPlaceholders(kind, id).catch(err => console.error(`Clearing the cells of ${kind} run ${id} failed:`, err));
   }
 }
