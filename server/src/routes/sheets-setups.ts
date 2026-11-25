@@ -3,8 +3,10 @@
 // /:id/setups/plan shows what a setup of the chosen columns would hold, POST
 // /:id/setups saves it: these only read the sheet, so they're allowed while
 // it's busy (sheets.ts). POST /:id/setups/:setupId/apply prices or starts using
-// a setup here; GET /:id/setup-runs lists the ones working on it. One
-// implementation with /api/v1 and MCP (services/setup-save.ts, setup-apply.ts).
+// a setup here; GET /:id/setup-runs lists the ones working on it (and the
+// column runs: POST /:id/column-runs prices or starts the Run columns dialog's).
+// One implementation with /api/v1 and MCP (services/setup-save.ts,
+// setup-apply.ts, column-run.ts).
 import express from 'express';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { runFailHttpStatus } from '../services/run-shared';
@@ -13,6 +15,10 @@ import { specSummary } from '../services/setup-library';
 import { applySetup } from '../services/setup-apply';
 import { applyInputOf } from '../services/setup-apply-input';
 import { sheetSetupRuns } from '../services/setup-run-store';
+import { runColumns } from '../services/column-run';
+import { columnRunInputOf } from '../services/column-run-input';
+import { sheetRunColumnList } from '../services/run-controls-column';
+import { verifySheetOwnership } from '../lib/sql-helpers';
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -76,6 +82,35 @@ router.post('/:id/setups/:setupId/apply', async (req: AuthRequest, res) => {
   } catch (error) {
     console.error('Apply setup error:', error);
     if (!res.headersSent) res.status(500).json({ error: 'Failed to use the setup' });
+  }
+});
+
+// The Run columns dialog's list: the sheet's run columns, each by its main column, with its kind.
+router.get('/:id/column-runs/columns', (req: AuthRequest, res) => {
+  try {
+    if (!verifySheetOwnership(req.params.id, req.userId!)) return res.status(404).json({ error: 'Sheet not found' });
+    res.json({ columns: sheetRunColumnList(req.params.id, req.userId!) });
+  } catch (error) {
+    console.error('Run columns list error:', error);
+    if (!res.headersSent) res.status(500).json({ error: "Failed to read the sheet's run columns" });
+  }
+});
+
+// { columns, mode, rowIds | where, estimateOnly, maxCostUsd, allowUnpriced }: the Run columns dialog's
+// price, or its start (201): a setup run with no setup, which the header's setup chip follows.
+router.post('/:id/column-runs', async (req: AuthRequest, res) => {
+  try {
+    const input = columnRunInputOf(body(req), 'app');
+    if ('fail' in input) return res.status(400).json({ error: input.message });
+    const out = await runColumns(req.userId!, req.params.id, input, { hasSecretsScope: true });
+    if ('fail' in out) {
+      const over = out.fail === 'over_ceiling' ? { over_ceiling: true, estimate: out.estimate } : {};
+      return res.status(runFailHttpStatus(out)).json({ error: out.message, ...over });
+    }
+    res.status('setup_run' in out.ok ? 201 : 200).json(out.ok);
+  } catch (error) {
+    console.error('Run columns error:', error);
+    if (!res.headersSent) res.status(500).json({ error: 'Failed to run the columns' });
   }
 });
 

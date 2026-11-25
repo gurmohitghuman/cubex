@@ -1,3 +1,4 @@
+// Over 200 lines: the rules for which sequences one pass decodes refer to each other, so they stay together.
 // One pass of the fix_encoding cleaner (fix-encoding.ts), pure: the bytes the
 // characters were read from (fix-encoding-bytes.ts), each valid UTF-8 sequence
 // decoded one by one, a damaged spot (a lost byte, a character no byte reads
@@ -38,9 +39,13 @@
 //   that follows a closing quote too, ending the word unless that mark is a
 //   long dash or a no-break space ("está»¹" stays; "Má»¹" alone stays,
 //   "Hà Nội và Mỹ Tho" and "Nguyá»…n" are repaired). Also two bytes read from ×
-//   that touch no other sequence ("1920" + no-break space + "×" + no-break
-//   space + "1080" stays; Hebrew words come as runs). Garbled text has more
-//   sequences ("Å’uvreâ€¦"), real text has none.
+//   that touch no other sequence and give no Hebrew letter. Garbled text has
+//   more sequences ("Å’uvreâ€¦"), real text has none.
+// - A Hebrew letter read from × (refusedTimes, decodeGroup): in a run, in an
+//   abbreviation (two joined by " or ''), in a list of them, or with a C1
+//   character it decodes on its own; a real × between numbers or words is
+//   refused, even beside other garbled text ("1920" + no-break space + "×" +
+//   no-break space + "1080" stays).
 // - A sequence a round leaves as it is stays so in the rounds after it.
 // - No word mixes scripts (fix-encoding-parts.ts), but a character decoded from
 //   three or four bytes next to another decoded one may sit in a Latin word,
@@ -54,6 +59,7 @@ import { groupsOf, type Group } from './fix-encoding-groups';
 import { inMixedWords, Parts, type Kept } from './fix-encoding-parts';
 
 const UNASSIGNED = /\p{Cn}/u;
+const C1 = /^[\u0080-\u009F]$/;
 const UPPER = /^\p{Lu}$/u;
 const LOWER = /^\p{Ll}$/u;
 const LETTER = /^\p{L}$/u;
@@ -141,16 +147,69 @@ function isAlone(q: Seq, s: string, parts: Parts, inRun: boolean): boolean {
   return (mark && wordEnds) || (follows === APOSTROPHE && UPPER.test(s[q.at]));
 }
 
+// A Hebrew letter read from × and the character after it.
+const hebrewLetter = (q: Seq, s: string) =>
+  q.len === 2 && s[q.at] === TIMES && q.text >= '\u05D0' && q.text <= '\u05EA';
+// What joins the letters of a Hebrew abbreviation: gershayim written as " or '' (or ״), a geresh as '.
+const ABBREVIATION_MARKS = new Set(['"', "'", "''", '\u05F4']);
+// Whether sequences a and b are Hebrew letters joined into one abbreviation ("×©"×" and a long dash is ש"ח).
+const joined = (a: Seq | undefined, b: Seq | undefined, s: string) => !!a && !!b && hebrewLetter(a, s)
+  && hebrewLetter(b, s) && ABBREVIATION_MARKS.has(s.slice(a.at + a.len, b.at));
+
+// Whether a Hebrew letter read from × is part of a Hebrew word or abbreviation: next to another sequence, or
+// joined to another letter by a gershayim or geresh.
+const linkedHebrew = (q: Seq, s: string, g: Group, n: number, runFollows: boolean, runBefore: boolean) =>
+  runFollows || runBefore || joined(g.seqs[n - 1], q, s) || joined(q, g.seqs[n + 1], s);
+
+// A Hebrew letter read from × that touches no other sequence is refused when the nearest character on either
+// side, past spaces, is a digit or a letter that isn't part of another sequence: a real × between numbers or
+// words ("3×£10"). And × with a no-break space, read as נ, which never ends a Hebrew word (ן does), is refused
+// unless a sequence follows right after it, it is joined into an abbreviation, or it follows another character
+// read from × ("כ״נ"): "30" + no-break space + "×" + no-break space + "40" stays beside a garbled word.
+const SPACE = /^[ \u00A0]$/;
+const WORD_NEIGHBOUR = /^[\p{L}\p{N}]$/u;
+function refusedTimes(q: Seq, s: string, g: Group, n: number, runFollows: boolean, runBefore: boolean): boolean {
+  if (!hebrewLetter(q, s)) return false;
+  if (s[q.at + 1] === NO_BREAK_SPACE) {
+    const afterTimes = runBefore && s[g.seqs[n - 1].at] === TIMES;
+    return !runFollows && !afterTimes && !joined(g.seqs[n - 1], q, s) && !joined(q, g.seqs[n + 1], s);
+  }
+  if (linkedHebrew(q, s, g, n, runFollows, runBefore)) return false;
+  // Past spaces, the only sequences a neighbour can be part of are the ones before and after this one.
+  const inSeq = (i: number) => [g.seqs[n - 1], g.seqs[n + 1]].some(o => o && i >= o.at && i < o.at + o.len);
+  let b = q.at - 1;
+  while (b >= 0 && SPACE.test(s[b])) b--;
+  let a = q.at + q.len;
+  while (a < s.length && SPACE.test(s[a])) a++;
+  return (b >= 0 && WORD_NEIGHBOUR.test(s[b]) && !inSeq(b)) || (a < s.length && WORD_NEIGHBOUR.test(s[a]) && !inSeq(a));
+}
+
 // The group with every sequence decoded that may be, except those refused.
 function decodeGroup(s: string, g: Group, refused: Set<number>): void {
   const parts = new Parts(s, g.from);
   const kept: Kept[] = [];
+  // A refused × takes the sequence right before it along: a real × read with the no-break space after it,
+  // after a sequence read with the one before it ("10È" + no-break space + "×" + no-break space + "2").
+  const timesRefused = new Set<number>();
+  let hebrewLetters = 0;
+  g.seqs.forEach((q, n) => {
+    if (hebrewLetter(q, s)) hebrewLetters++;
+    const runBefore = n > 0 && g.seqs[n - 1].at + g.seqs[n - 1].len === q.at;
+    if (!refusedTimes(q, s, g, n, g.seqs[n + 1]?.at === q.at + q.len, runBefore)) return;
+    timesRefused.add(q.at);
+    if (runBefore) timesRefused.add(g.seqs[n - 1].at);
+  });
   g.seqs.forEach((q, n) => {
     parts.takeTo(q.at);
     const runFollows = g.seqs[n + 1]?.at === q.at + q.len;
-    if (refused.has(q.at) || !mayDecode(q, s, parts, runFollows)) return;
     const runBefore = n > 0 && g.seqs[n - 1].at + g.seqs[n - 1].len === q.at;
-    const alone = isAlone(q, s, parts, runFollows || runBefore);
+    if (refused.has(q.at) || timesRefused.has(q.at) || !mayDecode(q, s, parts, runFollows)) return;
+    // A Hebrew letter in a word or abbreviation decodes on its own, and so does one that touches nothing beside
+    // another Hebrew letter of the group ("א, ב, ג") or read from × and a C1 character, which real text never
+    // holds ("(א)" as Latin-1); otherwise it reads as a real × before a sign ("(2) ×©").
+    const hebrew = hebrewLetter(q, s) && (linkedHebrew(q, s, g, n, runFollows, runBefore)
+      || C1.test(s[q.at + 1]) || hebrewLetters > 1);
+    const alone = !hebrew && isAlone(q, s, parts, runFollows || runBefore);
     kept.push({ from: parts.length, to: parts.length + q.text.length, at: q.at, alone });
     parts.decode(q);
   });

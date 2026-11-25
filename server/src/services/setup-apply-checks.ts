@@ -110,9 +110,12 @@ export function keyProblem(
 export function liveSetupClash(userId: string, sheetId: string, makes: string[]): ApplyFail | null {
   const live = db.prepare(`SELECT * FROM setup_runs WHERE sheet_id = ? AND user_id = ?
     AND status IN ('running', 'paused')`).all(sheetId, userId) as SetupRunRow[];
-  const coming = new Set(live.flatMap(r => planOf(r).spec.steps.flatMap(stepColumns)).map(c => c.toLowerCase()));
+  const coming = new Set(live.flatMap(r => {
+    const plan = planOf(r);
+    return plan.columns ? plan.columns.steps.flatMap(s => s.writes) : plan.spec.steps.flatMap(stepColumns);
+  }).map(c => c.toLowerCase()));
   const clash = makes.filter(c => coming.has(c.toLowerCase()));
   if (!clash.length) return null;
-  return { fail: 'conflict', taken: clash, message: `Another setup working on this sheet makes ${list(clash)}. `
+  return { fail: 'conflict', taken: clash, message: `A setup or column run working on this sheet fills ${list(clash)}. `
     + 'Wait for it to end, or give those steps other names.' };
 }

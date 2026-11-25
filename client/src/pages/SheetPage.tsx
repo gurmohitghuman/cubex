@@ -9,6 +9,7 @@ import { SheetGridArea } from '@/components/sheet/SheetGridArea'
 import { SheetSampleGuide } from '@/components/sample/SampleGuide'
 import { SheetAiVisibilityGuide } from '@/components/ai-visibility/AiVisibilityGuide'
 import { SheetHiringBanner } from '@/components/hiring/HiringBanner'
+import { SheetSocialBanner } from '@/components/social/SocialBanner'
 import { SheetTestBanner } from '@/components/sheet-test/SheetTestBanner'
 import { useSheetTest } from '@/hooks/sheet/useSheetTest'
 import { SheetSetupDialogs } from '@/components/setups/SheetSetupDialogs'
@@ -50,7 +51,7 @@ import { useSheetView } from '@/hooks/sheet/useSheetView'
 import { useSheetViews } from '@/hooks/sheet/useSheetViews'
 import { useSheetSearch } from '@/hooks/sheet/useSheetSearch'
 import { SheetViewBar } from '@/components/views/SheetViewBar'
-import { activeViewOf, rowFilterOn, viewNarrows } from '@/lib/views'
+import { activeViewOf, onConditions, rowFilterOn, sheetWhere, viewNarrows } from '@/lib/views'
 import { gridAreaMode } from '@/hooks/sheet/gridAreaMode'
 import { useAutorun } from '@/hooks/sheet/useAutorun'
 import { useTableRouting } from '@/hooks/sheet/useTableRouting'
@@ -283,6 +284,9 @@ export const SheetPage: React.FC = () => {
   useRowWindowRefill(activeSheet, isLoading, sheetData, reloadActiveSheet)
 
   const totalDisplayedRows = sheetData?.data.totalRows || 0
+  // The filter the sheet shows, for Run columns' "only rows in the current filter" (null: none on).
+  const shownFilter = sheetWhere(sheetData)
+  const filterOn = onConditions(shownFilter).length > 0
   // Loader, import empty state, or the grid — rules + rationale in gridAreaMode.
   const gridArea = gridAreaMode(isLoading, totalDisplayedRows, emptyFilter, columnFilters,
     rowFilterOn(sheetData))
@@ -309,6 +313,7 @@ export const SheetPage: React.FC = () => {
         onAddLookup={() => modals.openLookup({ mode: 'lookup-new' })}
         onOpenWebhook={() => modals.setShowWebhookDrawer(true)}
         onRemoveDuplicates={() => modals.openDedupe('now')} autoDedupeOn={!!sheetData?.data.autoDedupe}
+        onRunColumns={() => modals.setShowRunColumns(true)}
         onSaveSetup={() => modals.openSaveSetup(null)}
         onUseSetup={() => modals.setShowUseSetup(true)}
         onSetupVersions={() => { if (activeSheet) modals.openVersions(activeSheet.id) }}
@@ -328,6 +333,8 @@ export const SheetPage: React.FC = () => {
       <SheetAiVisibilityGuide sheetData={sheetData}
         onChanged={() => { if (activeSheet) void silentReloadRef.current(activeSheet.id) }} />
       <SheetHiringBanner sheetData={sheetData}
+        onChanged={() => { if (activeSheet) void silentReloadRef.current(activeSheet.id) }} />
+      <SheetSocialBanner sheetData={sheetData}
         onChanged={() => { if (activeSheet) void silentReloadRef.current(activeSheet.id) }} />
       <SheetTestBanner sheetData={sheetData} activeSheetId={activeSheet?.id ?? null} controls={sheetTest} />
       <SheetGridArea
@@ -379,6 +386,7 @@ export const SheetPage: React.FC = () => {
       <RaiseLimitDialog runId={runControls.raiseLimit.runId} onClose={runControls.raiseLimit.close}
         onResumed={runControls.raiseLimit.resumed} queued={runControls.raiseLimit.queued} />
       <SheetSetupDialogs sheetId={activeSheet?.id} columns={columnOps.columnHeaders} modals={modals}
+        filter={filterOn ? shownFilter : null}
         sheetName={table?.sheets?.find(s => s.id === modals.versionsFor)?.name ?? ''}
         onRestored={id => { if (id === activeSheet?.id) void silentReloadRef.current(id) }} />
       <SheetWebhookOverlays

@@ -9,6 +9,7 @@ import { ensureRunInputKey, sheetRunInputKeys } from '../lib/run-inputs/keys';
 import { orderedUuid } from '../lib/ordered-id';
 import { rowsChanged } from '../lib/rows-changed';
 import type { TestRecord } from './sheet-test-store';
+import { copiedStamps } from './sheet-test-stamps';
 
 type Test = Pick<TestRecord, 'id' | 'user_id' | 'sheet_id' | 'test_sheet_id'>;
 
@@ -64,18 +65,6 @@ function keyMap(t: Test): Map<string, string> {
   return out;
 }
 
-function copiedStamps(raw: string | null, keys: Map<string, string>): string | null {
-  if (!raw) return null;
-  let stamps: Record<string, unknown>;
-  try { stamps = JSON.parse(raw) as Record<string, unknown>; } catch { return null; }
-  const out: Record<string, unknown> = {};
-  for (const [key, fp] of Object.entries(stamps ?? {})) {
-    const mine = keys.get(key);
-    if (mine) out[mine] = fp;
-  }
-  return Object.keys(out).length ? JSON.stringify(out) : null;
-}
-
 // Copies the rows (ids in the sheet, in order) to the end of the copy, up to the test's limit. In the caller's
 // transaction. Returns how many went in.
 export function copyRowsIntoTest(t: Test, liveRowIds: string[]): number {
@@ -86,6 +75,7 @@ export function copyRowsIntoTest(t: Test, liveRowIds: string[]): number {
     AND sheet_id = ? AND user_id = ?`).all(JSON.stringify(wanted), t.sheet_id, t.user_id) as
     Array<{ id: string; data: string; run_inputs: string | null }>).map(r => [r.id, r]));
   const keys = keyMap(t);
+  const lists = new Map<string, number | null>();
   let next = (db.prepare('SELECT MAX(row_index) FROM rows WHERE sheet_id = ? AND user_id = ?').pluck()
     .get(t.test_sheet_id, t.user_id) as number | null ?? -1) + 1;
   const insert = db.prepare(`INSERT INTO rows (id, sheet_id, user_id, row_index, data, run_inputs)
@@ -96,7 +86,8 @@ export function copyRowsIntoTest(t: Test, liveRowIds: string[]): number {
     const row = rows.get(id);
     if (!row) continue;
     const copyId = orderedUuid();
-    insert.run(copyId, t.test_sheet_id, t.user_id, next++, row.data, copiedStamps(row.run_inputs, keys));
+    const stamps = copiedStamps(t.user_id, row.run_inputs, keys, lists);
+    insert.run(copyId, t.test_sheet_id, t.user_id, next++, row.data, stamps);
     link.run(t.id, copyId, id);
     n++;
   }

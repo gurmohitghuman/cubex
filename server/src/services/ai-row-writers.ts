@@ -2,7 +2,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
 import { touchSheet } from '../lib/sql-helpers';
 import { shouldStop } from './ai-runner-status';
-import { markAutorunInputs } from '../lib/autorun-mark';
+import { markAutorunInputs, markDerivedInputs } from '../lib/autorun-mark';
 import type { RowStamp } from '../lib/run-inputs/stamp';
 import { writeRunCells } from '../lib/run-cells-write';
 import { redactError } from '../lib/redact';
@@ -149,8 +149,10 @@ export function writeFailure(ctx: WriteCtx, errorMessage: string, usage?: RowTok
       VALUES (?, ?, ?, ?, ?, '', 'failed', ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(resultId, ctx.runId, ctx.userId, ctx.rowIndex, ctx.inputValues, errorMessage, ...usageColumns(usage));
     const failed = `❌ Error: ${errorMessage}`;
-    writeCells(ctx, ctx.needsDataColumn
+    const wrote = writeCells(ctx, ctx.needsDataColumn
       ? [[ctx.columnName, failed], [dataColName, '❌ Error']] : [[ctx.columnName, failed]]);
+    const written = ctx.needsDataColumn ? [ctx.columnName, dataColName] : [ctx.columnName];
+    if (wrote) markDerivedInputs(ctx.sheetId, ctx.userId, written, { indexes: [ctx.rowIndex] });
     touchSheet(ctx.sheetId, ctx.userId);
   }).immediate();
 }

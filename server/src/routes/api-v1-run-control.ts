@@ -111,8 +111,8 @@ function registerControls(prefix: string, kind: RunKind) {
 registerControls('ai-runs', 'ai');
 registerControls('http-runs', 'http');
 
-// row_ids (optional): validated but NOT resolved here — the rerun-by-id
-// services resolve against the run's own sheet.
+// row_ids (optional): validated but NOT resolved here; the rerun-by-id
+// services resolve them against the run's own sheet.
 function parseRowIds(raw: unknown): { rowIds?: string[] } | { error: string } {
   if (raw === undefined || raw === null) return {};
   if (!Array.isArray(raw) || raw.length === 0 || raw.some(x => typeof x !== 'string')) {

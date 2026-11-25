@@ -4,6 +4,7 @@ import { HTTPAPIConfig, HTTPPreview } from './types'
 import { JsonTree } from '../json-mapping/JsonTree'
 import { PreviewFlatList } from './PreviewFlatList'
 import { PreviewErrorTroubleshoot } from './PreviewErrorTroubleshoot'
+import { EditButtons } from './ConfigureStep'
 
 interface Props {
   sheetId: string
@@ -16,6 +17,8 @@ interface Props {
   onBack: () => void
   onCommit: () => Promise<unknown>
   onStartRun: () => Promise<unknown>
+  // Editing a column: Save, or Save and run on all rows, with the fields picked here.
+  edit?: { saving: boolean; onSave: (run: boolean) => void }
   // Called after AI troubleshoot proposes a corrected config and the user
   // accepts. Parent merges into state and re-runs preview.
   onApplyAIFix: (next: HTTPAPIConfig) => Promise<void> | void
@@ -31,7 +34,7 @@ interface Props {
 // users who prefer it or for huge responses where the tree is unwieldy.
 export const ReviewStep: React.FC<Props> = ({
   sheetId, previewResults, config, updateConfig, selectedFields, setSelectedFields,
-  isCommittingPreview, onBack, onCommit, onStartRun, onApplyAIFix,
+  isCommittingPreview, onBack, onCommit, onStartRun, onApplyAIFix, edit,
 }) => {
   const [view, setView] = useState<'tree' | 'list'>('tree')
   // Bumping `expandSignal` sets the JsonTree to forceOpenState. It opens by
@@ -147,7 +150,11 @@ export const ReviewStep: React.FC<Props> = ({
 
       <div className="flex justify-between pt-3 border-t border-gray-200">
         <button onClick={onBack} className="btn-secondary">Back</button>
-        <div className="flex items-center space-x-2">
+        {edit ? (
+          <div className="flex items-center space-x-2">
+            <EditButtons edit={edit} busy={selectedFields.size === 0} />
+          </div>
+        ) : <div className="flex items-center space-x-2">
           <button
             onClick={onCommit}
             disabled={isCommittingPreview || selectedFields.size === 0}
@@ -165,7 +172,7 @@ export const ReviewStep: React.FC<Props> = ({
           >
             <Play className="h-4 w-4" /><span>Run on all rows</span>
           </button>
-        </div>
+        </div>}
       </div>
     </div>
   )

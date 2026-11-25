@@ -22,6 +22,7 @@ import { autoDedupeView } from '../services/auto-dedupe-setting';
 import { isSampleSheet } from '../services/sample-table';
 import { aiVisibilityForSheet, aiVisibilityView } from '../services/ai-visibility-run';
 import { hiringForSheet, hiringView } from '../services/hiring-store';
+import { socialForSheet, socialView } from '../services/social-store';
 import { testOfSheet, testView } from '../services/sheet-test-store';
 
 const aiVisibilityOfSheet = (sheetId: string, userId: string) => {
@@ -137,6 +138,7 @@ router.get('/:id', async (req: AuthRequest, res) => {
         aiVisibility: aiVisibilityOfSheet(id, req.userId!),
         // A hiring table's sheets show its banner, with Check again (services/hiring-*.ts).
         hiring: (rec => (rec ? hiringView(rec) : null))(hiringForSheet(req.userId!, id)),
+        social: (rec => (rec ? socialView(rec) : null))(socialForSheet(req.userId!, id)),
         // A test of its column changes (services/sheet-test-*.ts): the sheet shows read-only, the copy its banner.
         test: (t => (t ? testView(t) : null))(testOfSheet(id, req.userId!)),
       },

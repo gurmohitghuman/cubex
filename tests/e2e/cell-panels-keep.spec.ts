@@ -118,7 +118,14 @@ test('row to row: the answer never blanks; the old one stays, its actions off, u
     await expect(answer.locator('h2')).toHaveText(`Row ${row + 1} · Work email`)
     await expect(result).toContainText(`company${row + 1}.example`)
   }
-  const moved = await watched(page)
+  // Frames are recorded one an animation frame: row 5's text can be in the page a frame before the recorder has
+  // drawn it. Read them once there is a frame of each row's header and answer after its click.
+  let moved = await watched(page)
+  await expect.poll(async () => {
+    moved = await watched(page)
+    return moved.clicks.every((c, i) => moved.frames.some(f => f.t >= c && f.title === `Row ${i + 2} · Work email`)
+      && moved.frames.some(f => f.t >= c && f.body === `row ${i + 2}`))
+  }, { timeout: 5_000 }).toBe(true)
   const after = (i: number, ok: (f: Frame) => boolean) =>
     Math.round(moved.frames.find(f => f.t >= moved.clicks[i] && ok(f))!.t - moved.clicks[i])
   const header = moved.clicks.map((_, i) => after(i, f => f.title === `Row ${i + 2} · Work email`))

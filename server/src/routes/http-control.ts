@@ -6,6 +6,7 @@ import { pauseRun, resumeRun, cancelRun } from '../services/run-lifecycle';
 import { type HTTPRunRow } from '../services/http-runner';
 import { withPauseWords } from '../services/run-pause-words';
 import { withWaiting } from '../services/run-waiting-status';
+import { httpColumnSetup } from '../services/http-setup-change';
 
 // HTTP run control + run reads — split out of http-jobs.ts (200-line rule;
 // that file keeps the SSE stream). Control is a thin wrapper over
@@ -74,6 +75,20 @@ router.get('/runs', authenticateToken, (req: AuthRequest, res) => {
   } catch (error: any) {
     console.error('Get HTTP runs error:', error);
     res.status(500).json({ error: 'Failed to get HTTP runs' });
+  }
+});
+
+// The edit dialog opens a plain HTTP API column on its newest setup (services/http-setup-change.ts).
+router.get('/sheets/:id/column-setup', authenticateToken, (req: AuthRequest, res) => {
+  try {
+    const column = typeof req.query.column === 'string' ? req.query.column : '';
+    if (!column) return res.status(400).json({ error: 'column is required' });
+    const out = httpColumnSetup(req.params.id, req.userId!, column);
+    if ('fail' in out) return res.status(out.fail === 'not_found' ? 404 : 400).json({ error: out.message });
+    res.json(out.ok);
+  } catch (error: any) {
+    console.error('HTTP column setup error:', error);
+    res.status(500).json({ error: 'Failed to read the column\'s setup' });
   }
 });
 

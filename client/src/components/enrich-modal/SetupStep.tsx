@@ -30,6 +30,8 @@ interface Props {
   onChangeTool: () => void
   onCancel: () => void
   onStarted: OnStarted
+  // An edit's Save landed: the drawer saves auto-run, says so and closes.
+  onSaved?: (statusColumn: string) => void
   // Why no new run can start yet: a run on this column is still going (or loading).
   runBlock?: string | null
 }
@@ -152,7 +154,7 @@ export const SetupStep: React.FC<Props> = (p) => {
       <RunButtons sheetId={p.sheetId} draft={draft} rows={m.rows} counts={m.counts}
         selectedRows={p.selectedRows} rowGeneration={p.rowGeneration} order={m.order} estimate={est}
         problem={problem} fullProblem={m.fullProblem} unpriced={billed} onCancel={p.onCancel}
-        onStarted={p.onStarted} listDest={m.listDestName} reuse={m.reuse}
+        onStarted={p.onStarted} onSaved={p.onSaved} listDest={m.listDestName} reuse={m.reuse}
         onFieldError={(field, message) => { if (field === 'destName') setDestError(message) }} />
     </div>
   )

@@ -1,3 +1,4 @@
+// Over 200 lines: one HTTP run start for both token surfaces, from its arguments to the run (or the saved setup).
 // HTTP run starts for the token surfaces (/api/v1 and MCP): see run-start-token.ts
 // for what a token caller gets and why it lives in one place. On top of that,
 // the saved-key secrets gate, and estimate_only checks the request template.
@@ -21,6 +22,7 @@ import {
 } from './run-start-token';
 import type { ServiceAnswer } from '../mcp/tool-outputs';
 import { runChanged } from '../mcp/changed';
+import { saveHttpSetupOverToken, saveOnlyOf } from './setup-save-token';
 import { parseBooleanOption } from '../lib/web-search-options';
 import { parseRuleField } from '../lib/run-condition';
 import { runIfReply } from './run-rule';
@@ -36,7 +38,7 @@ export interface TokenHttpRunArgs {
   estimate_only?: unknown; idempotency_key?: unknown; batch_size?: unknown; timeout_ms?: unknown;
   run_if?: unknown; curl?: unknown; save_keys?: unknown;
   retries?: unknown; retry_post?: unknown; skip_empty_values?: unknown; status_code_column?: unknown;
-  webhook_id?: unknown;
+  webhook_id?: unknown; save_only?: unknown;
 }
 
 // A replay answers only a token the start would accept for its scopes. Without 'secrets', a cURL command with a
@@ -61,7 +63,10 @@ type HttpRunAnswer = ServiceAnswer<'run_http_enrichment'>;
 export async function tokenStartHttpRun(
   c: TokenCaller, sent: TokenHttpRunArgs,
 ): Promise<TokenRunResult<HttpRunAnswer>> {
-  const first = replayFirst<HttpRunAnswer>(
+  // Read first: with save_only no key replays a run (services/setup-save-token.ts).
+  const save = saveOnlyOf(sent as unknown as Record<string, unknown>);
+  if (typeof save === 'object') return bad(save.error);
+  const first = save ? null : replayFirst<HttpRunAnswer>(
     c, sent.idempotency_key, () => (startNeedsSecrets(c, sent) ? null : httpSentHash(sent)),
   );
   if (first) return first;
@@ -157,6 +162,12 @@ export async function tokenStartHttpRun(
     if ('fail' in est) return { fail: est.fail === 'not_found' ? 'not_found' : 'bad_request', message: est.message };
     const curlPart = curl ? { keys_to_save: [...new Set(toSave)], notes: curl.plan.notes } : {};
     return { ok: { ...est.ok, ...curlPart }, started: false };
+  }
+  if (save) {
+    const savedKeys = curl ? commitCurlKeys(c.userId, curl.plan, curl.prepared.keys) : { ok: [] as string[] };
+    if ('fail' in savedKeys) return savedKeys;
+    return saveHttpSetupOverToken(c, sheetId, config, a.master_column_name as string | undefined, hasSecretsScope,
+      curl ? { saved_keys: savedKeys.ok, notes: curl.plan.notes } : {});
   }
   // Known by the arguments as sent and by the request they became: one hash unless a cURL command was sent.
   const hash = [httpRunHash(sheetId, sent, runIf.ok, extras), httpRunHash(sheetId, a, runIf.ok, extras)];

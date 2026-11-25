@@ -7,6 +7,7 @@ import type { LookupColumnView } from './lookup'
 import type { AutoDedupeView } from './dedupe'
 import type { AiVisibilityView } from './ai-visibility'
 import type { HiringView } from './hiring'
+import type { SocialView } from './social'
 import type { SheetTestView } from './sheet-test'
 
 export interface Table {
@@ -99,6 +100,8 @@ export interface SheetData {
     aiVisibility?: AiVisibilityView | null
     // A hiring table's sheets: they show its banner, with Check again, above the grid.
     hiring?: HiringView | null
+    // A social research table's sheets: they show its guide, with Find posts, above the grid.
+    social?: SocialView | null
     // A test of its column changes: the sheet shows read-only, its copy the test's banner.
     test?: SheetTestView | null
   }

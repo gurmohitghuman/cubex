@@ -104,6 +104,7 @@ export const SheetGridArea: React.FC<Props> = (p) => {
           windowStart={sheetData?.data.windowStart ?? 0} onLoadEarlier={p.loadEarlierData}
           onOpenSearch={grid.openSearch} registerSearch={grid.registerSearch}
           onOpenEnrichment={modals.openEnrichment} onOpenWaterfall={modals.openWaterfall}
+          onEditHTTPColumn={modals.openHttpEdit}
           onSaveSetup={modals.openSaveSetup}
           setShowAddColumnModal={modals.setShowAddColumnModal}
           setupSSEConnection={sse.setupSSEConnection}

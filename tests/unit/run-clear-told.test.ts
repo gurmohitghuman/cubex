@@ -13,6 +13,7 @@ import { undoKit } from './run-undo-kit'
 const { db, uid, ok, done, idle, sheet, cells } = undoKit('run-clear-told')
 const { clearProcessingPlaceholders, seedProcessingPlaceholders, PLACEHOLDER } =
   await import('../../server/src/lib/placeholder-cells')
+const { dropRunSpans } = await import('../../server/src/lib/derived-spans')
 const { startFormulaColumn } = await import('../../server/src/services/formula-column')
 const { derivedFollowTick } = await import('../../server/src/services/derived-follow')
 const { entryFor } = await import('../../server/src/services/autorun-entry')
@@ -32,6 +33,8 @@ async function seededRun(sid: string, columns: string[]) {
   const last = db.prepare('SELECT MAX(row_index) FROM rows WHERE sheet_id = ?').pluck().get(sid) as number
   await seedProcessingPlaceholders({ run: { kind: 'http', id }, sheetId: sid, userId: uid, columns, targets: null,
     lastRow: last, live: () => true })
+  // Moving the run to 'clearing' drops its start's seed spans before the clear writes its own.
+  dropRunSpans(sid, { kind: 'http', id })
   return { kind: 'http' as const, id }
 }
 const held = db.prepare('SELECT COUNT(*) FROM rows WHERE sheet_id = ? AND instr(data, ?) > 0').pluck()

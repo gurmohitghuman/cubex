@@ -6,6 +6,9 @@
 // Route-level JSON body cap (the 32MB global parser is skipped for the prefix
 // so Bearer auth runs before any body parse; see applyServerMiddleware).
 export const API_V1_MAX_JSON_BYTES = 2 * 1024 * 1024;
+// A body (/api/v1 and /mcp) nesting arrays or objects deeper than this is refused with a 400 before any route or
+// tool reads it (lib/json-depth.ts). Nothing they take comes near it.
+export const MAX_JSON_DEPTH = 64;
 
 // Per-TOKEN request budget (keyed after validation — never on an unvalidated
 // credential). Generous for an agent poll loop; a runaway script throttles its

@@ -12,12 +12,10 @@ import type { ToolAnswer } from './tool-outputs';
 export { TEST_ACTIONS };
 export type TestAction = typeof TEST_ACTIONS[number];
 
-export const TEST_WORDS = 'test copies the sheet\'s top rows (rows, default 10, or row_ids; at most 50) and its '
-  + 'setup into a hidden copy (test.test_sheet_id): change and run columns there with the usual tools while the '
-  + 'sheet takes no changes and its webhook deliveries wait. test_add_rows adds rows (how: top or random). '
-  + 'apply_test makes the copy\'s setup the sheet\'s and puts the sample rows\' results back (dry_run, default '
-  + 'true, says what it would do); discard_test drops the copy. Either ends the test. A list enrichment can\'t run '
-  + 'on the copy (its rows would go to another sheet). ';
+export const TEST_WORDS = 'test copies the top rows (or row_ids) and the setup to a hidden copy, test.test_sheet_id, '
+  + 'to change and run columns on (not list enrichments); the sheet takes no changes meanwhile. test_add_rows adds '
+  + 'more. apply_test (a dry run unless dry_run is false) makes the copy\'s setup the sheet\'s, keeping sample '
+  + 'answers; discard_test drops it. ';
 
 export interface TestArgs {
   table_id: string; sheet_id?: string; row_ids?: string[]; rows?: number; how?: 'top' | 'random';

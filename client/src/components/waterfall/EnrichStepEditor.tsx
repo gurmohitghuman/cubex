@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useRef } from 'react'
 import { Select } from '@/components/ui/Select'
 import { Loader2, Search } from 'lucide-react'
 import { enrichAPI, type EnrichToolCard, type EnrichToolDetail } from '@/utils/api'
@@ -28,6 +28,14 @@ export const EnrichStepEditor: React.FC<Props> = ({ choices, toolName, inputs, r
   const [tool, setTool] = useState<EnrichToolDetail | null>(null)
   const [error, setError] = useState<string | null>(null)
   const picking = !choices.toolId
+  // What the step had when Change tool cleared it: picking the same tool again puts it all back (its inputs,
+  // answer field and provider switches), as the Enrichment drawer keeps them; another tool starts over.
+  const before = useRef<typeof choices | null>(null)
+  const pick = (id: string, title: string) => {
+    const was = before.current
+    before.current = null
+    onChange(was && was.toolId === id ? was : { ...choices, toolId: id }, title)
+  }
 
   // As the search is typed (the empty one at once): one read at a time, an older answer never shown.
   const ask = useTypedReads<EnrichToolCard[]>(a => {
@@ -64,7 +72,7 @@ export const EnrichStepEditor: React.FC<Props> = ({ choices, toolName, inputs, r
           {(cards ?? []).map(c => (
             <li key={`${c.id}:${c.preset ?? ''}`}>
               <button type="button" className="w-full text-left px-2 py-1.5 hover:bg-gray-50"
-                onClick={() => onChange({ ...choices, toolId: c.id }, c.title)}>
+                onClick={() => pick(c.id, c.title)}>
                 <span className="text-sm text-gray-900">{c.title}</span>
                 <span className="block text-xs text-gray-500">{toolLine(c)}</span>
               </button>
@@ -92,10 +100,13 @@ export const EnrichStepEditor: React.FC<Props> = ({ choices, toolName, inputs, r
     onChange({ ...choices, inputs: next })
   }
   // Another tool starts over, as in the Enrichment drawer: no inputs, answer field or providers of the old one's.
-  // The step's cost cap stays.
-  const changeTool = () => onChange({
-    ...choices, toolId: '', inputs: {}, valuePath: null, providerOrder: [], skipProviders: [], stopAtFirst: false,
-  })
+  // The step's cost cap stays. What it had is kept in case the same tool is picked again (pick).
+  const changeTool = () => {
+    before.current = choices
+    onChange({
+      ...choices, toolId: '', inputs: {}, valuePath: null, providerOrder: [], skipProviders: [], stopAtFirst: false,
+    })
+  }
   return (
     <div className="space-y-3" data-testid="waterfall-tool">
       <p className="text-sm text-gray-900 flex items-center justify-between gap-2">

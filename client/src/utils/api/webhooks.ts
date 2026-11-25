@@ -20,6 +20,9 @@ export interface WebhookSource {
   createdAt: string
   rotatedAt: string | null
   masked: boolean
+  // Events must send the webhook's token (Authorization: Bearer). The token itself is never read back.
+  tokenRequired: boolean
+  tokenSetAt: string | null
   // Full URL is present only while the reveal window is open (before the first
   // event), null once masked. Includes the secret token in the path.
   url: string | null
@@ -64,6 +67,13 @@ export const webhooksAPI = {
 
   setEnabled: (sheetId: string, enabled: boolean): Promise<{ source: WebhookSource }> =>
     api.patch(`/sheets/${sheetId}/webhook`, { enabled }, noServerToast).then(r => r.data),
+
+  // A token events must send, shown once (this answer); any old one stops.
+  newToken: (sheetId: string): Promise<{ source: WebhookSource; token: string }> =>
+    api.post(`/sheets/${sheetId}/webhook/token`, {}, noServerToast).then(r => r.data),
+
+  removeToken: (sheetId: string): Promise<{ source: WebhookSource }> =>
+    api.delete(`/sheets/${sheetId}/webhook/token`, noServerToast).then(r => r.data),
 
   remove: (sheetId: string): Promise<void> =>
     api.delete(`/sheets/${sheetId}/webhook`, noServerToast).then(() => {}),

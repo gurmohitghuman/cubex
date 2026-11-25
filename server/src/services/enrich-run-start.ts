@@ -19,7 +19,8 @@ import { seedEnrichmentThenEnqueue } from './enrich-seed-run';
 import { getTregToken } from './treg-key';
 import type { RunFail } from './run-shared';
 import { applyListStart, listRowsBeingAdded } from './enrich-list-start';
-import { activeRunOn, prepareEnrichmentStart, seedPlanFor } from './enrich-run-prepare';
+import { activeRunOn, prepareEnrichmentStart, seedPlanFor, type PreparedStart } from './enrich-run-prepare';
+import { saveHttpSetup } from './column-setup-save';
 import { logRunStarted } from '../lib/change-log';
 import { actorTokenId } from '../lib/actor';
 
@@ -29,6 +30,7 @@ export type EnrichStartOutcome = {
   ok: {
     runId: string; statusColumn: string; outputColumns: string[]; destSheetId: string | null; rowsInScope: number;
     notes?: string[];
+    saved?: true; // saveOnly: nothing ran; runId is the setup's record
   };
 } | RunFail;
 
@@ -50,6 +52,7 @@ export async function startEnrichmentRun(
   const { statusColumn, outputNames, config, listPlan, columns, span, upperBound } = prepared.ok;
   const runId = uuidv4();
   const runColumns = [statusColumn, ...outputNames];
+  if (input.saveOnly) return saveEnrichmentSetup(sheetId, userId, input, prepared.ok);
 
   return asRunStart(sheetId, userId, async (): Promise<EnrichStartOutcome> => {
     let capNeeded = -1, raced: string | null = null, destSheetId: string | null = null, destRaced = false;
@@ -121,4 +124,26 @@ export async function startEnrichmentRun(
       },
     };
   });
+}
+
+// Save: the setup the run would store, as the column's (services/column-setup-save.ts). The catalog read in
+// prepare awaited the network: a run started on these columns since is caught inside the write lock.
+function saveEnrichmentSetup(
+  sheetId: string, userId: string, input: EnrichRunInput, prepared: PreparedStart,
+): EnrichStartOutcome {
+  const { statusColumn, outputNames, config } = prepared;
+  const saved = saveHttpSetup(sheetId, userId, 'enrichment', statusColumn, outputNames, {
+    kind: 'http', mode: 'enrichment', config: config as unknown as Record<string, unknown>, allowSecrets: 0,
+    destSheetId: null, extracted: outputNames,
+  }, input.runIf, () => {
+    const current = new Set(getSheetColumns(sheetId, userId, false));
+    const taken = input.continueColumn ? activeRunOn(sheetId, userId, statusColumn)
+      : [statusColumn, ...outputNames].some(c => current.has(c));
+    return taken ? 'Another run just started on these columns. Try again in a moment.' : null;
+  });
+  if ('fail' in saved) return saved;
+  return { ok: {
+    runId: saved.ok.setupId, saved: true, statusColumn, outputColumns: outputNames, destSheetId: null, rowsInScope: 0,
+    ...(prepared.ignoredProviders.length ? { notes: prepared.ignoredProviders } : {}),
+  } };
 }

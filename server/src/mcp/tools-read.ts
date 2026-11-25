@@ -50,8 +50,7 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
         + 'setups of clean, formula and lookup columns (a lookup\'s broken says why it stopped, and kept_changing '
         + 'why rows it looked up may hold older values), active_runs and '
         + 'active_setup_runs (control_run cancel_all stops them all), views (pass view to read_rows or '
-        + 'export_csv), auto_dedupe (set_auto_dedupe\'s setting, or null) and test (a test of its column changes, '
-        + 'manage_sheet\'s test: the sheet takes no changes until it is applied or discarded; work in test_sheet_id).',
+        + 'export_csv), auto_dedupe (set_auto_dedupe\'s setting, or null) and test (manage_sheet\'s test, or null).',
       inputSchema: {
         sheet_id: z.string().describe(SHEET_ID),
         columns: z.array(z.string()).optional()
@@ -94,27 +93,21 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
         'Read a sheet\'s rows as {id, index, data}, in index order, up to ' + `${MCP_MAX_ROWS_PAGE} a call. `
         + 'Pass columns: reading every column of a wide sheet is what makes reads expensive. Row ids stay the '
         + 'same across sorts: use them with update_cells and delete_rows. '
-        + 'PAGES: cursor = the last row\'s index; next_cursor is null at the end. A filtered read (where) that '
-        + 'pages also echoes expected_data_version and expected_row_generation from the page before, so a sheet '
-        + 'that changed answers "restart paging" instead of skipping or repeating rows. '
-        + 'FILTER with where: text, numbers, dates, lists of values, OR groups and run state '
-        + '([{"operator":"has_error"}]: rows where any run failed). return_mode count or ids answers without '
-        + 'cells. include_status reads each run column\'s cell as {status, value, error}, so you never parse '
-        + '❌ ⏭️ ⏳ yourself. '
-        + 'SUM UP without reading rows: group_by and aggregates count, sum and average per value (top values of '
-        + 'a column: group_by:["Industry"]). '
-        + `BY ID: row_ids (1 to ${ROWS_BY_ID_MAX}) returns those rows in that order with updated_at, and missing `
-        + '(ids that are no row here; list_trash has deleted ones). About 40,000 characters a call: read '
-        + 'unread_ids next. Prefer it to re-read rows you know, such as those a run just touched. With '
-        + 'include_status a failed cell\'s error is its run\'s full message when Cubex finds it. Takes columns, '
-        + 'include_status and max_chars_per_cell only. '
-        + 'CHANGED SINCE: updated_since returns rows whose cells changed at or after that UTC second, oldest '
-        + 'change first, with updated_at; page with cursor = next_cursor (text). To keep a copy up to date: when '
-        + 'next_cursor is null, pass as_of as the next updated_since and dedupe by id. Deleted rows don\'t show '
-        + '(list ids with return_mode ids now and then); a sort is no change; filling lists columns still being '
-        + 'filled. Takes columns, include_status, limit and cursor. '
-        + 'LONG CELLS: max_chars_per_cell cuts each cell and lists the cut ones in cut_cells; read those whole '
-        + 'with row_ids and columns.',
+        + 'PAGES: cursor = the last row\'s index; next_cursor is null at the end. Paging a filtered read (where) '
+        + 'echoes expected_data_version and expected_row_generation from the page before; a sheet that changed '
+        + 'answers "restart paging". '
+        + 'where filters by text, numbers, dates, lists of values, OR groups and run state '
+        + '([{"operator":"has_error"}]). return_mode count or ids answers without cells. include_status reads run '
+        + 'cells as {status, value, error}. group_by and aggregates count, sum and average per value without '
+        + 'reading rows. '
+        + `row_ids (1 to ${ROWS_BY_ID_MAX}) returns those rows in that order with updated_at, and missing (list_trash `
+        + 'has deleted ones); past about 40,000 characters read unread_ids next. Prefer it to re-read rows a run '
+        + 'just touched. It takes only columns, include_status and max_chars_per_cell. '
+        + 'updated_since returns rows changed at or after that UTC second, oldest first; page with cursor = '
+        + 'next_cursor (text). To keep a copy up to date: when next_cursor is null, pass as_of as the next '
+        + 'updated_since and dedupe by id; deleted rows don\'t show. It takes only columns, include_status, limit '
+        + 'and cursor. '
+        + 'max_chars_per_cell cuts long cells and lists them in cut_cells; read those whole with row_ids.',
       inputSchema: {
         sheet_id: z.string().describe(SHEET_ID),
         // Digits sent as text are the number cursor (a model often quotes it).
