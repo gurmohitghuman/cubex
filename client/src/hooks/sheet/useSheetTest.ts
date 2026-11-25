@@ -4,6 +4,7 @@ import { tablesAPI, type Sheet, type SheetData, type Table } from '@/utils/api'
 import type { TestEntry } from '@/components/sheet/toolbar/SheetMoreMenu'
 import { sheetTestAPI, type ApplyTestAnswer, type SheetTestView } from '@/utils/api/sheet-test'
 import { SHEET_TEST_MAX_ROWS, SHEET_TEST_ROWS } from '@/lib/constants'
+import { plural } from '@/lib/utils'
 import { sheetsOf } from './useTableRouting'
 
 interface Args {
@@ -42,7 +43,8 @@ export function useSheetTest(a: Args) {
     try {
       const test = await sheetTestAPI.start(activeSheet.id, picked.length ? picked : undefined)
       await open(test.test_sheet_id)
-      toast.success(`Test copy ready with ${test.rows} sample rows. Change and run columns here, then apply.`, { id })
+      toast.success(`Test copy ready with ${plural(test.rows, 'sample row')}. Change and run columns here, then apply.`,
+        { id })
     } catch (e) {
       toast.error(errorOf(e, 'Couldn\'t start the test. Try again.'), { id })
     } finally {
@@ -53,7 +55,7 @@ export function useSheetTest(a: Args) {
   const addRows = useCallback(async (test: SheetTestView, how: 'top' | 'random') => {
     try {
       const out = await sheetTestAPI.addRows(test.test_sheet_id, how)
-      toast.success(out.added ? `Added ${out.added} rows to the test.` : 'No more rows to add.')
+      toast.success(out.added ? `Added ${plural(out.added, 'row')} to the test.` : 'No more rows to add.')
       reload(test.test_sheet_id)
     } catch (e) {
       toast.error(errorOf(e, 'Couldn\'t add rows. Try again.'))

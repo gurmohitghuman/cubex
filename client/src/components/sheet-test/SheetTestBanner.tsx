@@ -6,6 +6,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { SHEET_TEST_MAX_ROWS } from '@/lib/constants'
+import { plural } from '@/lib/utils'
 import type { SheetTestControls } from '@/hooks/sheet/useSheetTest'
 import { ApplyTestDialog } from './ApplyTestDialog'
 
@@ -47,8 +48,8 @@ export const SheetTestBanner: React.FC<{
       <div className={`${box} border-amber-200 bg-amber-50`} data-testid="sheet-test-banner">
         <FlaskConical className="h-4 w-4 text-amber-800" aria-hidden="true" />
         <span className="text-sm text-amber-900">
-          Changes are being tried on {test.rows} sample rows of this sheet. It can't be changed until the test is
-          applied or discarded.
+          Changes are being tried on {plural(test.rows, 'sample row')} of this sheet. It can't be changed until the
+          test is applied or discarded.
         </span>
         <span className="flex-1" />
         <button type="button" className="btn-primary text-xs px-3 py-1"
@@ -63,8 +64,8 @@ export const SheetTestBanner: React.FC<{
     <div className={`${box} border-blue-200 bg-blue-50`} data-testid="sheet-test-banner">
       <FlaskConical className="h-4 w-4 text-blue-900" aria-hidden="true" />
       <span className="text-sm text-blue-950">
-        <span className="font-semibold">Test copy of {name}</span>: {test.rows} sample rows. Change and run columns
-        here; {name} doesn't change until you apply.
+        <span className="font-semibold">Test copy of {name}</span>: {plural(test.rows, 'sample row')}. Change and run
+        columns here; {name} doesn't change until you apply.
       </span>
       <span className="flex-1" />
       <DropdownMenu>
