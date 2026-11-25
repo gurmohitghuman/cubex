@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Zap } from 'lucide-react'
 import type { AutorunControls } from '@/hooks/sheet/useAutorun'
+import type { WaitingRows } from '@/utils/api/autorun'
 import { autorunUsage, chipState, pauseLabel } from './autorun-copy'
 
 const TONE = {
@@ -10,12 +11,20 @@ const TONE = {
 }
 
 // The sheet header's auto-run chip: on while any column has auto-run on, amber
-// when one is paused ("Auto-run paused: daily limit"). It opens a list of the
-// sheet's auto-runs, each with its settings, and pauses or resumes them all.
+// when one is paused ("Auto-run paused: daily limit"), "manual" when every one is paused by hand. It opens a list
+// of the sheet's auto-runs, each with its settings, and pauses or resumes them all; a resume asks what the rows
+// added or changed meanwhile do (services/autorun-resume.ts on the server).
+const RESUME: Array<[WaitingRows, string, string]> = [
+  ['run', 'Run the rows that waited', 'Rows added or changed while paused run now.'],
+  ['empty_only', 'Keep existing results', 'Only waiting rows with an empty cell run.'],
+  ['skip', 'Continue without running them', 'Only rows added or changed from now on run.'],
+]
 export const AutorunChip: React.FC<{ autorun: AutorunControls }> = ({ autorun }) => {
   const [open, setOpen] = useState(false)
+  const [choosing, setChoosing] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   const button = useRef<HTMLButtonElement>(null)
+  useEffect(() => { if (!open) setChoosing(false) }, [open])
   useEffect(() => {
     if (!open) return
     const away = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false) }
@@ -55,12 +64,29 @@ export const AutorunChip: React.FC<{ autorun: AutorunControls }> = ({ autorun })
               </li>
             ))}
           </ul>
-          <div className="px-3 py-2 border-t border-gray-100 flex justify-end">
-            <button type="button" className="btn-secondary text-xs"
-              onClick={() => { setOpen(false); void autorun.pauseAll(anyGoing) }}>
-              {anyGoing ? 'Pause all auto-runs' : 'Resume all auto-runs'}
-            </button>
-          </div>
+          {choosing ? (
+            <div className="px-3 py-2 border-t border-gray-100 space-y-1" data-testid="autorun-resume-choices">
+              <p className="text-xs text-gray-600">Resume all. The rows added or changed while paused:</p>
+              {RESUME.map(([rows, label, hint]) => (
+                <button key={rows} type="button" className="w-full text-left px-2 py-1 hover:bg-gray-50"
+                  onClick={() => { setOpen(false); void autorun.pauseAll(false, rows) }}>
+                  <span className="block text-sm text-gray-900">{label}</span>
+                  <span className="block text-xs text-gray-500">{hint}</span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="px-3 py-2 border-t border-gray-100 flex justify-end">
+              <button type="button" className="btn-secondary text-xs"
+                onClick={() => {
+                  if (!anyGoing) { setChoosing(true); return }
+                  setOpen(false)
+                  void autorun.pauseAll(true)
+                }}>
+                {anyGoing ? 'Pause all auto-runs' : 'Resume all auto-runs'}
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

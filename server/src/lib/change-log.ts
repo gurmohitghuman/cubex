@@ -100,8 +100,12 @@ export function logAutorunSaved(
       daily_cap_usd: input.dailyCapUsd ?? null, daily_row_cap: input.dailyRowCap ?? null,
     } });
 }
-export function logAutorunPaused(sheetId: string, userId: string, paused: boolean, column?: string): void {
+export function logAutorunPaused(
+  sheetId: string, userId: string, paused: boolean, column?: string, waiting?: 'run' | 'empty_only' | 'skip',
+): void {
+  const rows = waiting === 'skip' ? ', without running the rows that waited'
+    : waiting === 'empty_only' ? ', running only the waiting rows with an empty cell' : '';
   logSheetChange(sheetId, userId, 'auto_run',
-    `${paused ? 'Paused' : 'Resumed'} auto-run ${column === undefined ? 'of every column' : `of "${column}"`}`,
-    { column: column ?? null, detail: { paused } });
+    `${paused ? 'Paused' : 'Resumed'} auto-run ${column === undefined ? 'of every column' : `of "${column}"`}${rows}`,
+    { column: column ?? null, detail: { paused, ...(waiting && waiting !== 'run' ? { waiting_rows: waiting } : {}) } });
 }

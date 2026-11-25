@@ -39,6 +39,20 @@ export const CHANGES_RECORDED_AFTER = 'v0.8.12';
 // Newest first.
 export const AGENT_CHANGES: ReleaseChanges[] = [
   {
+    version: 'v0.8.45',
+    changes: [
+      {
+        change: 'changed',
+        tools: ['set_auto_run'],
+        summary: 'set_auto_run takes waiting_rows on a resume (paused false): run (default, as before), empty_only '
+          + 'or skip, for the rows added or changed while auto-run was paused.',
+        details: 'empty_only drops the waiting rows whose cell already holds a value ("keep existing results"); skip '
+          + 'drops every waiting row, so only rows added or changed from now on run. PUT '
+          + '/api/v1/sheets/{id}/enrichment-auto-run takes the same.',
+      },
+    ],
+  },
+  {
     version: 'v0.8.44',
     changes: [
       {
