@@ -39,6 +39,7 @@ import { registerSetupRunTools } from './tools-setup-runs';
 import { registerSetupVersionTools } from './tools-setup-versions';
 import { registerRunWebhookTools } from './tools-run-webhooks';
 import { registerSheetWebhookTools } from './tools-sheet-webhook';
+import { registerPromptStarterTools } from './tools-prompt-starters';
 import { registerSavedKeyTools } from './tools-saved-keys';
 import { registerViewTools } from './tools-views';
 import { MCP_LIST_CACHE_TTL_MS } from '../lib/api-v1-constants';
@@ -119,6 +120,7 @@ export function registerAllTools(server: McpServer, ctx: McpAuthCtx) {
   registerSetupVersionTools(server, ctx);
   registerRunWebhookTools(server, ctx);
   registerSheetWebhookTools(server, ctx);
+  registerPromptStarterTools(server, ctx);
   registerSavedKeyTools(server, ctx);
   registerViewTools(server, ctx);
   registerTransferTool(server, ctx);

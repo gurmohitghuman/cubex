@@ -31,6 +31,7 @@ import transferV1 from './api-v1-transfer';
 import enrichV1 from './api-v1-enrich';
 import waterfallV1 from './api-v1-waterfall';
 import runConditionsV1 from './api-v1-run-conditions';
+import promptStartersV1 from './api-v1-prompt-starters';
 import cleanV1 from './api-v1-clean';
 import formulaV1 from './api-v1-formula';
 import lookupV1 from './api-v1-lookup';
@@ -103,6 +104,8 @@ router.use(runReadsV1);
 router.use(runControlV1);
 router.use(runUndoV1);
 router.use(runConditionsV1);
+// Prompt starters: good first prompts for an AI column, from the sheet's columns (services/prompt-starters-read.ts).
+router.use(promptStartersV1);
 // Enrichments (treg.to): catalog, run starts, fields, auto-run.
 router.use(enrichV1);
 // Waterfall columns: one result per row from ordered steps (services/waterfall-*.ts).

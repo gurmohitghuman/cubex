@@ -58,6 +58,14 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
           + 'after spaces, like " -5", is left as it is.',
       },
       {
+        change: 'added',
+        tools: ['list_prompt_starters'],
+        summary: 'list_prompt_starters gives good first prompts for an AI column on a sheet, the ones the app offers, '
+          + 'each as run_ai_column\'s arguments.',
+        details: 'Qualify, classify, an opener, a lead score and a company profile, written with the sheet\'s own '
+          + 'columns. Fill in the [square brackets] before running one. REST: GET /sheets/:id/prompt-starters.',
+      },
+      {
         change: 'changed',
         tools: ['transfer_rows'],
         summary: 'A transfer_rows retry with its idempotency_key answers its first transfer even while either sheet '

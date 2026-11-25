@@ -197,6 +197,7 @@ A client keeps `tools/list` for up to 5 minutes, and Cubex sends nothing when it
 | `hiring_signals` | A ready-made table of the companies hiring for chosen role titles, checked again when you want: only roles never found before are added, and each company says what's new. A check is paid: estimate first, its default. See [Companies hiring](#companies-hiring). |
 | `create_upload_link`, `create_download_link` | One-time links to move a CSV file of any size into or out of a sheet with `curl`. See [Big CSV files](#big-csv-files). |
 | `run_ai_column` | Start an AI column run. Can estimate the cost first, refuse to start over a cost ceiling, stop at a spend limit, preview a few rows, target specific rows, or fill several typed columns at once. See [Cost ceiling and spend limits](#cost-ceiling-and-spend-limits). |
+| `list_prompt_starters` | Good first prompts for an AI column on a sheet, the ones the app offers: qualify (YES or NO), classify, an opener, a lead score 1 to 10, and a company profile that fills several typed columns. Each is written with the sheet's own columns as `/references` and comes as `run_ai_column`'s arguments (`run`). Fill in the `[square brackets]` before running one. Read-only. |
 | `run_http_enrichment` | Start an HTTP API column run, from a URL or a whole cURL command. Failed requests are retried; it can leave out empty values and add a response code column. |
 | `check_run_condition`, `write_run_condition` | Check an "Only run if" rule on a sheet (free), or write one from plain words with your default AI model. See [Only run if](#only-run-if). |
 | `get_run_status`, `list_runs` | Follow a run, or find recent ones. With `wait_seconds` (up to 25), `get_run_status` answers when the run's status changes (it ends, pauses or fails) or the time is up, so one call covers a stretch of the run; a short wait gives progress on the way. An account has 10 such waits open at most: past that, it answers at once with `waited: false` and `retry_after_seconds`. |
@@ -972,6 +973,8 @@ A saved key's name can be at most 200 characters. Only saving or renaming a key 
 ### Runs
 
 Starting a run needs the `run` scope. A started run answers `202` with its `run_id`. An estimate, a preview, or a retry that replays an earlier start answers `200`.
+
+Not sure what to ask? `GET /sheets/:id/prompt-starters` (`read` scope) gives the prompt starters the app offers, written with the sheet's columns, each as the body below (`run`): fill in the `[square brackets]`, then start it. Same as `list_prompt_starters`.
 
 **AI run:** `POST /sheets/:id/ai-runs`
 
