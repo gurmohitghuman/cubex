@@ -139,20 +139,24 @@ await check('add rows: from the top, at random, never past 50', () => {
   assert.ok('ok' in many && many.ok.rows <= 50)
 })
 
-// The person changes the prompt in the copy and runs it on its first 3 rows; one of them had its Name edited there.
+// The person tries one prompt on row 3, changes it and runs it on the first 3 rows (one had its Name edited there),
+// then runs row 0 again with the same prompt: rows 0 and 1 keep their answers, row 3's was another prompt's.
 let newRun = ''
 await check('a run on the copy with a new setup', () => {
-  newRun = aiRun(copy, P2)
-  const copied = rows(copy)
-  copied[2].data = JSON.stringify({ ...JSON.parse(copied[2].data), Name: 'edited in the test' })
-  for (const r of copied.slice(0, 3)) {
+  const answer = (runId: string, r: { id: string; row_index: number; data: string }) => {
     const data = JSON.stringify({ ...JSON.parse(r.data), Fit: `new ${r.row_index}` })
-    const s = stamp(copy, newRun, data)
+    const s = stamp(copy, runId, data)
     db.prepare(`UPDATE rows SET data = ?, run_inputs = json_set(COALESCE(run_inputs, '{}'), ?, ?) WHERE id = ?`)
       .run(data, s.path, s.fp, r.id)
     db.prepare(`INSERT INTO ai_results (id,run_id,user_id,row_index,output_value,status,cost_usd)
-      VALUES (?,?,?,?,?,'completed',0.01)`).run(uuid(), newRun, uid, r.row_index, `new ${r.row_index}`)
+      VALUES (?,?,?,?,?,'completed',0.01)`).run(uuid(), runId, uid, r.row_index, `new ${r.row_index}`)
   }
+  answer(aiRun(copy, 'Is /name a good fit?'), rows(copy)[3])
+  newRun = aiRun(copy, P2)
+  const copied = rows(copy)
+  copied[2].data = JSON.stringify({ ...JSON.parse(copied[2].data), Name: 'edited in the test' })
+  for (const r of copied.slice(0, 3)) answer(newRun, r)
+  answer(aiRun(copy, P2), rows(copy)[0])
   db.prepare(`UPDATE formula_columns SET formula = '{{Name}}.slice(0, 3)' WHERE sheet_id = ?`).run(copy)
 })
 
