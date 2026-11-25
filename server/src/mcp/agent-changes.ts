@@ -39,7 +39,7 @@ export const CHANGES_RECORDED_AFTER = 'v0.8.12';
 // Newest first.
 export const AGENT_CHANGES: ReleaseChanges[] = [
   {
-    version: 'v0.8.44',
+    version: 'v0.8.45',
     changes: [
       {
         change: 'added',
@@ -66,6 +66,11 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
         details: 'get_setup_call pages results with results_from and limit (next_from says where the next page '
           + 'starts); create_download_link takes setup_call_id to save every item\'s inputs and outputs as a CSV.',
       },
+    ],
+  },
+  {
+    version: 'v0.8.44',
+    changes: [
       {
         change: 'changed',
         tools: ['run_enrichment', 'waterfall_column'],
