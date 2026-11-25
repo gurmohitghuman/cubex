@@ -18,6 +18,7 @@ import { nextRowIndex } from '../sheet-busy';
 import { RUNNING_MARK } from '../run-markers';
 import type { TrashItem } from './store';
 import { rowsMovedUnderPasses } from '../../services/column-transform-pass-moves';
+import { rowsChanged } from '../rows-changed';
 
 export interface ColumnPlan { map: Map<string, string>; added: string[]; dropped: string[] }
 
@@ -133,6 +134,7 @@ export function restoreSlice(
       if (at !== r.row_index) moved.push({ from: r.row_index, to: at });
       bytes += Buffer.byteLength(r.data, 'utf8');
     });
+    rowsChanged(sheetId);
     // An unfinished transform_column pass whose cursor a row crossed can't go on from it.
     rowsMovedUnderPasses(sheetId, userId, moved);
     // Clean, formula and lookup columns work restored rows out again (their

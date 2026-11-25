@@ -4,6 +4,7 @@
 import { z } from 'zod';
 import { COLUMN_DELETE_WAIT_MS, MAX_SHEET_NAME_LENGTH, MAX_TABLE_NAME_LENGTH } from '../lib/constants';
 import { MAX_COLUMN_DESCRIPTION_CHARS, MAX_SHEET_DESCRIPTION_CHARS } from '../lib/constants-columns';
+import { ROW_COUNT_API_WAIT_MS } from '../lib/constants-row-counts';
 import { op, type RouteDoc } from './route-doc';
 import { toolBody } from './tool-schemas';
 
@@ -37,6 +38,9 @@ export const tableRoutes = (): RouteDoc[] => [
   op({
     method: 'get', path: '/tables', operationId: 'listTables', tag: 'tables', scope: 'read',
     summary: 'List the tables with their sheets, ids and row counts.',
+    description: `A sheet whose rows changed is counted again first, waiting up to ${ROW_COUNT_API_WAIT_MS / 1000} `
+      + 'seconds. One still being counted then answers its last count with row_count_updating: true: it may be out '
+      + 'of date.',
   }),
   op({
     method: 'post', path: '/tables', operationId: 'createTable', tag: 'tables', scope: 'write',
