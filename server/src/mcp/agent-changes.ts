@@ -43,6 +43,14 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
     changes: [
       {
         change: 'changed',
+        tools: ['create_download_link'],
+        summary: 'create_download_link takes format: csv (default) or jsonl, one {"id", "data"} object a line as '
+          + 'read_rows answers a row, values keeping their type.',
+        details: 'Use jsonl to feed a script or another tool; CSV stays the one to open in a spreadsheet. REST: GET '
+          + '/sheets/:id/export?format=jsonl.',
+      },
+      {
+        change: 'changed',
         tools: ['export_csv'],
         summary: 'export_csv puts its leading quote on a cell whose first visible character is a formula trigger: '
           + 'after spaces or invisible characters, and for full-width forms like ＝, not only at the start.',

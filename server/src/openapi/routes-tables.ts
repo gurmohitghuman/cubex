@@ -118,12 +118,14 @@ export const tableRoutes = (): RouteDoc[] => [
   }),
   op({
     method: 'get', path: '/sheets/{id}/export', operationId: 'exportSheetCsv', tag: 'tables', scope: 'read',
-    summary: 'Download a sheet as CSV, streamed, any size.',
+    summary: 'Download a sheet as CSV or JSON lines, streamed, any size.',
     query: z.object({
       view: z.string().optional().describe('A saved view, by name or id: export its rows and visible columns.'),
+      format: z.enum(['csv', 'jsonl']).optional()
+        .describe('csv (default), or jsonl: one {"id", "data"} object a line, as read_rows answers a row.'),
     }),
-    produces: ['csv'], conflict: true,
-    responses: { 200: 'The CSV: the rows up to the last one the sheet had when it began (rows added past that '
+    produces: ['csv', 'jsonl'], conflict: true,
+    responses: { 200: 'The file: the rows up to the last one the sheet had when it began (rows added past that '
       + 'while it downloads are not in it). An empty sheet gives an empty body.' },
   }),
   op({
