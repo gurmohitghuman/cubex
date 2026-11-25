@@ -176,6 +176,14 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
         details: 'Work in test.test_sheet_id with the usual tools; meanwhile the sheet answers busy to every change '
           + 'and its webhook deliveries wait (get_sheet\'s test). apply_test is a dry run unless dry_run is false.',
       },
+      {
+        change: 'changed',
+        tools: ['get_usage'],
+        summary: 'get_usage counts runs on a sheet\'s test copy under that sheet, also after the test ends: their '
+          + 'rows have on_test_copy: true, apart from the sheet\'s own column of the same name.',
+        details: 'The whole account\'s usage lists them under the tested sheet too, not as a deleted sheet. REST: GET '
+          + '/usage, whose CSV has an On sample rows column.',
+      },
     ],
   },
   {

@@ -159,6 +159,8 @@ export interface EnrichSpendColumn {
   tableName: string | null
   sheetName: string | null
   column: string | null
+  // Calls on a test copy of the sheet (changes tried on sample rows), counted under the sheet.
+  onTestCopy: boolean
   spentUsd: number
   calls: number
 }

@@ -28,6 +28,7 @@ export const EnrichmentSpendCard: React.FC = () => {
 
   const where = (c: EnrichSpend['columns'][number]) => (c.sheetId
     ? `${c.tableName} › ${c.sheetName} · ${c.column ?? 'Unnamed column'}` : `Deleted sheet · ${c.column ?? ''}`)
+    + (c.onTestCopy ? ' (on sample rows)' : '')
 
   return (
     <div className="card mb-6" data-testid="enrich-spend-card">
