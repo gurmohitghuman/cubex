@@ -13,6 +13,7 @@ import type { WebhookSourceFull } from '../lib/webhook-service';
 import { McpAuthCtx, ok, err, missingScope, registerTool, SHEET_ID, mcpLinkBase } from './tool-helpers';
 import { busyMessage, sheetBusyWith } from '../lib/sheet-busy';
 import { changedOf } from './changed';
+import { GUIDE_POINTER } from './guides/guide';
 
 const ACTIONS = [
   'get', 'create', 'turn_on', 'turn_off', 'rotate', 'add_field', 'remove_field', 'new_token', 'remove_token', 'delete',
@@ -21,17 +22,11 @@ const ACTIONS = [
 export function registerSheetWebhookTools(server: McpServer, ctx: McpAuthCtx): void {
   registerTool(server, 'manage_sheet_webhook', {
     description:
-      'A sheet\'s incoming webhook: a secret URL where each JSON event POSTed becomes a new row. get: its state '
-      + '(webhook null when none): on or off, events_received, last_event_at, last_error and its fields. create: '
+      'A sheet\'s incoming webhook: a secret URL where each JSON event POSTed becomes a new row. create: '
       + 'adds one (one per sheet) and a column marking the rows it adds. The url is shown until the first event '
       + 'arrives, and only to a key with the write scope; after that it is hidden and rotate makes a new one (the '
-      + 'old one stops at once). turn_off: events get 404 and add nothing until turn_on. add_field: json_path '
-      + '(like $.email or $.plan.name) and column, a new column each event fills, as text (default) or as json. '
-      + 'remove_field: field_id; its column and values stay. new_token: senders must then send the answer\'s '
-      + 'token (shown once) as Authorization: Bearer <token>, or get 404; an old one stops. remove_token: no '
-      + 'token needed. delete: the webhook and its kept events go; its '
-      + 'columns and rows stay. manage_table or manage_sheet create with webhook true makes a sheet with one. '
-      + 'Every action but get needs the write scope.',
+      + 'old one stops at once). delete: the webhook and its kept events go; its '
+      + `columns and rows stay. Every action but get needs the write scope. ${GUIDE_POINTER}`,
     inputSchema: z.object({
       action: z.enum(ACTIONS).describe('What to do'),
       sheet_id: z.string().describe(SHEET_ID),

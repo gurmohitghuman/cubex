@@ -42,6 +42,14 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
     version: 'v0.8.45',
     changes: [
       {
+        change: 'added',
+        tools: ['get_tool_guide'],
+        summary: 'get_tool_guide gives a tool\'s full details. The longest tool descriptions are shorter now and end '
+          + 'with "Details: get_tool_guide.": their edge cases, examples and long field notes moved there.',
+        details: 'Read a tool\'s guide before its first paid or destructive call, and after a refusal. Without tool '
+          + 'it lists the tools that have one. No tool or argument changed.',
+      },
+      {
         change: 'changed',
         tools: ['create_download_link'],
         summary: 'create_download_link takes format: csv (default) or jsonl, one {"id", "data"} object a line as '

@@ -12,7 +12,7 @@
 // path. Split from tools-run-manage.ts for the 200-line guardrail.
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/server';
-import { API_V1_DEFAULT_ROWS_PAGE, API_V1_MAX_ROWS_PAGE } from '../lib/api-v1-constants';
+import { ANSWERS_PAGE_MAX, API_V1_DEFAULT_ROWS_PAGE, API_V1_MAX_ROWS_PAGE } from '../lib/api-v1-constants';
 import {
   getAiRunResults, getHttpRunResults, RunResultStatusFilter,
 } from '../services/run-status';
@@ -22,9 +22,7 @@ import { isEnrichmentRun } from '../services/enrich-agent-control';
 import { isWaterfallRun } from '../services/waterfall-agent-control';
 import { answersNeedSecrets } from '../services/run-status-enrich';
 import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean } from './tool-helpers';
-
-// Stored answers can be large (a few KB each), so a page that carries them is short.
-const ANSWERS_PAGE_MAX = 10;
+import { GUIDE_POINTER } from './guides/guide';
 
 export function registerRunResultTools(server: McpServer, ctx: McpAuthCtx) {
   registerTool(server,
@@ -32,17 +30,9 @@ export function registerRunResultTools(server: McpServer, ctx: McpAuthCtx) {
     {
       description:
         'Each row\'s outcome in a run: row id, status, error message and an error_class saying what to DO. Use it '
-        + 'when cells are blank or wrong, instead of rerunning blind. AI classes: "retryable" (a rerun works), '
-        + '"prompt_content" (your wording: a rerun just bills again), "model_output" (try another model), '
-        + '"concurrency" (rerun with a lower concurrency), "configuration" (fix a setting), "unknown". HTTP classes: '
-        + '"retryable" (rate limit, timeout, 5xx), "not_found" (404 or 410; on every row, a wrong URL path), '
-        + '"configuration" (URL, auth, headers, {{name}}, JSONPath, blocked address), "response_format" (not JSON), '
-        + '"unknown". Retry only the transient ones with control_run rerun (mode errored for AI, missing for HTTP). '
-        + 'Rows add cost_usd (an AI row on your own provider key: only OpenRouter\'s fee, and provider_cost_usd); AI '
-        + 'rows paid_with, tokens and searches; enrichment rows found_by; waterfall rows '
-        + 'answered_by and trace (each step reached: outcome, value, cost). include_answers adds each row\'s stored '
-        + `answer (up to ${ANSWERS_PAGE_MAX} rows a page), to find paths for add_enrichment_field; on an HTTP run `
-        + 'that used saved keys it needs the \'secrets\' scope. Pages by cursor.',
+        + 'when cells are blank or wrong, instead of rerunning blind. Rerun only the rows whose error_class says a '
+        + 'rerun can work (control_run rerun). include_answers adds each row\'s stored answer, to find '
+        + `paths for add_enrichment_field. Pages by cursor. ${GUIDE_POINTER}`,
       inputSchema: {
         run_type: z.enum(['ai', 'http', 'enrichment', 'waterfall']).describe('The kind of run'),
         run_id: z.string().describe('The run (list_runs lists them)'),

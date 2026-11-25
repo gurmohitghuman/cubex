@@ -21,13 +21,12 @@ import { appendAutorunNotice } from '../services/enrich-agent-autorun';
 import { appendChanged, appendRowsKeyed, batchUpdateKeyed, patchRowKeyed } from '../services/rows-write-keyed';
 import { McpAuthCtx, ok, err, missingScope, registerTool, SHEET_ID } from './tool-helpers';
 import { changedOf, columnsOf, editedTouch } from './changed';
+import { GUIDE_POINTER } from './guides/guide';
 
 const cellValue = z.union([z.string(), z.number(), z.boolean(), z.null()]);
 const idempotencyKey = z.string().min(1).max(IDEMPOTENT_WRITE_KEY_MAX_CHARS).optional().describe(
   'Optional retry key: the same key with the same arguments within 24 hours returns the first answer '
   + '(replayed: true) and writes nothing; with other arguments it is refused.');
-const RETRY_WORDS = 'idempotency_key makes a retry safe: the same key and arguments within 24 hours answer as '
-  + 'the first call did, with replayed: true, and write nothing; the same key with other arguments is refused.';
 
 export function registerRowTools(server: McpServer, ctx: McpAuthCtx) {
   registerTool(server, 
@@ -37,11 +36,10 @@ export function registerRowTools(server: McpServer, ctx: McpAuthCtx) {
         `Add up to ${API_V1_MAX_APPEND_ROWS} rows at the end of a sheet, each as {column: value}. For a file, use `
         + 'create_upload_link instead (the file never passes through your context); to copy rows from another '
         + 'sheet, transfer_rows. The columns must exist (add_column first). Returns the new rows\' ids and '
-        + 'indexes, in the order given. With auto-dedupe on (set_auto_dedupe), a row whose key the sheet already '
-        + 'had says kept: false (it went to the trash) and auto_dedupe says what was not kept or replaced. When '
+        + 'indexes, in the order given. When '
         + 'auto-run is on, auto_run lists the columns that will fill the new rows on their own: an enrichment '
         + 'spends treg credit (estimated_usd), an HTTP API column sends real requests (sends_requests). Tell the '
-        + `user. ${RETRY_WORDS} A replay leaves out auto_run (the first call set the runs off).`,
+        + `user. ${GUIDE_POINTER}`,
       inputSchema: {
         sheet_id: z.string().describe(SHEET_ID),
         rows: z.array(z.record(z.string(), cellValue)).min(1).max(API_V1_MAX_APPEND_ROWS)
@@ -91,7 +89,7 @@ export function registerRowTools(server: McpServer, ctx: McpAuthCtx) {
         + `(up to ${API_V1_MAX_BATCH_UPDATES}); returns {updated}. `
         + 'Columns must already exist (add_column first). Values: string/number/boolean; null clears a cell. '
         + 'Columns a run is still filling are refused. To fill a column from each row, use formula_column or '
-        + `transform_column (free) rather than writing every cell. ${RETRY_WORDS}`,
+        + `transform_column (free) rather than writing every cell. ${GUIDE_POINTER}`,
       inputSchema: {
         row_id: z.string().optional().describe('One-row form: the row to update'),
         data: z.record(z.string(), cellValue).optional().describe('One-row form: {column: value}'),

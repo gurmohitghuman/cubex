@@ -17,7 +17,8 @@ import { DAILY_LIMIT_NOTE } from '../services/enrich-agent-shared';
 import { runIfSchema } from './run-if-schema';
 import { saveOnlySchema } from './save-only-schema';
 import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean, SHEET_ID } from './tool-helpers';
-import { capToolNote } from '../lib/token-spend';
+import { capRunToolNote } from '../lib/token-spend';
+import { GUIDE_POINTER } from './guides/guide';
 
 const money = () => z.number().positive();
 // Repeated in each step kind of tools/list: kept short.
@@ -84,29 +85,25 @@ const step = z.discriminatedUnion('kind', [
   }).strict(),
 ]);
 
+// Its details are in its guide (mcp/guides/enrich.ts).
 export const WATERFALL_DESCRIPTION =
   'Fill ONE value per row (a work email, phone, domain, LinkedIn URL or any text) by trying ordered steps and '
   + 'stopping at the first answer; for one source, run_enrichment or run_ai_column is simpler. Steps: enrichment '
   + '(a treg.to tool from search_enrichments), ai (a prompt), http (your JSON API), formula (free JavaScript over '
   + '{{input_key}}) or lookup (free: another sheet\'s return_column where match_column matches the input; put it '
   + 'first to skip paid steps). inputs maps each input key ONCE to a column or {"value": fixed}; steps read keys, '
-  + 'never columns (treg tools take first_name, last_name, full_name, domain, company, linkedin_url, email). A '
-  + 'value result_type can\'t read is no answer, and the next step runs. A row with none of a step\'s requires '
-  + 'key sets skips it for free. check: verify (treg\'s email verify, paid) or a formula over {{value}}. '
-  + 'column_name holds the answer, "⏭️ Not found" or "❌ <step>: <why>"; "<column> (Answered by)" names the step. '
+  + 'never columns (treg tools take first_name, last_name, full_name, domain, company, linkedin_url, email). '
   + 'COSTS MONEY: enrichment steps bill the treg balance, ai steps OpenRouter. estimate_only DEFAULTS TO TRUE: '
   + 'cost and answer rate per row and per step, nothing created: tell the user, then call again with '
-  + 'estimate_only false. A treg answer found within the days set in Settings is reused at $0. spend_limit_usd '
+  + 'estimate_only false. spend_limit_usd '
   + `caps the run. ${DAILY_LIMIT_NOTE} `
-  + 'add_to_column runs an existing waterfall column again, keeping its setup unless you pass new parts. dry_run '
-  + 'writes nothing and returns each row\'s trace; a real run then reuses what it bought at $0 for 7 days. action '
-  + '"describe" (read scope) returns a column\'s setup in this shape to edit and send back (without the secrets '
-  + 'scope HTTP keys read "…" and are kept when sent back with the same id and URL). Returns run_id: poll '
+  + 'add_to_column runs an existing waterfall column again, keeping its setup unless you pass new parts. action '
+  + '"describe" (read scope) returns a column\'s setup to edit and send back. Returns run_id: poll '
   + 'get_run_status (run_type waterfall), then get_run_results for the traces.';
 
 export function registerWaterfallTools(server: McpServer, ctx: McpAuthCtx) {
   registerTool(server, 'waterfall_column', {
-    description: WATERFALL_DESCRIPTION + capToolNote(ctx.spend ?? null, true),
+    description: WATERFALL_DESCRIPTION + capRunToolNote(ctx.spend ?? null) + ` ${GUIDE_POINTER}`,
     // Strict at every level: a misspelled argument is refused, never dropped.
     inputSchema: z.object({
       action: z.enum(['run', 'describe']).optional().describe('Default run. describe: read a column\'s setup'),
@@ -135,7 +132,7 @@ export function registerWaterfallTools(server: McpServer, ctx: McpAuthCtx) {
       use_sheet_filter: lenientBoolean().optional().describe('Only the rows the sheet\'s filter shows'),
       target_row_ids: z.array(z.string()).min(1).max(MAX_SELECTED_ROWS).optional().describe('Only these rows'),
       run_if: runIfSchema,
-      save_only: saveOnlySchema('With add_to_column: true it replaces an existing column\'s setup.'),
+      save_only: saveOnlySchema('waterfall_column'),
       spend_limit_usd: money().optional().describe('The run\'s cap in dollars (default rows x the most a row costs)'),
       concurrency: z.number().int().min(1).max(HTTP_MAX_CONCURRENCY).optional()
         .describe(`Rows at once, 1-${HTTP_MAX_CONCURRENCY} (default ${ENRICH_DEFAULT_CONCURRENCY})`),

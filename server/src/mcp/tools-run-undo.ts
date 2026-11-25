@@ -11,6 +11,7 @@ import { journalColumns, journalOf, lastUndoable, undoViewOf, type UndoView } fr
 import { kindOf, type RunTypeArg } from './tools-run-manage';
 import { McpAuthCtx, err, missingScope, ok, registerTool } from './tool-helpers';
 import { changedOf, type Changed } from './changed';
+import { GUIDE_POINTER } from './guides/guide';
 
 // The answer, with a message an agent can pass on as it is.
 function answer(v: UndoView, dryRun: boolean, changed: Changed[] = []) {
@@ -32,15 +33,11 @@ export function registerRunUndoTool(server: McpServer, ctx: McpAuthCtx) {
       + 'status, "Answered by" and step columns), and so does its rows\' out_of_date state. Use it when a run '
       + 'wrote wrong answers; to fill rows again instead, control_run rerun. It SKIPS a cell changed since (by a '
       + 'person, an agent or a newer run); cells in rows or columns deleted since count as gone. Nothing runs '
-      + 'again and nothing is refunded. A restored cell\'s stored answer is never reused, so running it again '
-      + 'bills again. Clean, formula and lookup columns reading a restored cell work it out again (free); no '
-      + 'auto-run starts. Rows a list enrichment added to another sheet stay (delete_rows removes them). A run '
-      + 'still going can\'t be undone (control_run cancel first). Newest first: while a newer run that wrote one '
-      + `of its columns can be undone, an older one is refused. Each run once, for ${UNDO_KEEP_DAYS} days after it `
+      + 'again and nothing is refunded. A run '
+      + 'still going can\'t be undone (control_run cancel first). '
+      + `Each run once, for ${UNDO_KEEP_DAYS} days after it `
       + 'started. Pass run_type and run_id (list_runs, get_sheet\'s column_details), or sheet_id and column for '
-      + 'that column\'s newest run. Returns state and how many cells were restored, skipped and gone; a big undo '
-      + 'answers state undoing and goes on in the background (the sheet is busy meanwhile: call again with '
-      + 'dry_run true to see how far it got).',
+      + `that column's newest run. ${GUIDE_POINTER}`,
     inputSchema: {
       run_type: z.enum(['ai', 'http', 'enrichment', 'waterfall']).optional().describe('With run_id: the run\'s kind'),
       run_id: z.string().optional().describe('The run to undo (list_runs)'),

@@ -17,6 +17,7 @@ import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean, mcpLin
 import { changedOf } from './changed';
 import { getSheetColumns } from '../lib/sql-helpers';
 import { webhookForNewSheet, type SheetWebhookView } from '../services/sheet-webhook';
+import { GUIDE_POINTER } from './guides/guide';
 
 // What a create with webhook true adds to its answer.
 type NewSheetWebhook = { webhook?: SheetWebhookView; webhook_error?: string };
@@ -83,16 +84,11 @@ export function registerStructureTools(server: McpServer, ctx: McpAuthCtx) {
     {
       description:
         'Create, rename, copy, delete or reorder the sheet tabs of a table (a table always keeps at least one sheet). '
-        + 'create auto-names the sheet when name is omitted and can insert after a given tab. copy makes a new sheet '
-        + 'right after sheet_id holding its values: the same rows in the same order under the same column names (or '
-        + 'only the columns you list), as plain columns that nothing fills (no runs, formulas, lookups, rules or '
-        + 'views come along), with a run\'s status words (⏳, ❌, ⏭️, ➕) left empty. Free, no AI; name defaults to '
-        + '"Copy of <sheet>". Use it to keep a sheet as it is now, for example before running its columns again; it '
-        + 'answers once every row is in (rows_copied). delete puts the sheet '
+        + 'copy makes a new sheet right after sheet_id holding its values only, as plain columns that nothing fills '
+        + '(free, no AI). delete puts the sheet '
         + 'in the trash whole (rows, columns, runs, views, webhook), cancels its active runs and stops its webhook; '
         + 'it is kept for the days set in Settings (30 by default; 0 deletes at once), and restore_from_trash brings '
-        + 'it back. Enrichment results its columns bought that were not yet added as rows in another sheet are '
-        + 'dropped (list_results_dropped says how many and for which sheets). Returns the table\'s updated tab list.',
+        + `it back. Returns the table's updated tab list. ${GUIDE_POINTER}`,
       inputSchema: {
         action: z.enum(['create', 'rename', 'copy', 'delete', 'reorder']).describe('What to do'),
         table_id: z.string().describe('The table (list_tables)'),

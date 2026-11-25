@@ -16,7 +16,8 @@ import { DAILY_LIMIT_NOTE } from '../services/enrich-agent-shared';
 import { runIfSchema } from './run-if-schema';
 import { saveOnlySchema } from './save-only-schema';
 import { McpAuthCtx, SHEET_ID, ok, err, missingScope, registerTool, lenientBoolean } from './tool-helpers';
-import { capToolNote } from '../lib/token-spend';
+import { capRunToolNote } from '../lib/token-spend';
+import { GUIDE_POINTER } from './guides/guide';
 
 const input = z.union([
   z.string(), z.object({ column: z.string().describe('A column name') }).strict(),
@@ -24,20 +25,18 @@ const input = z.union([
 ]);
 const money = () => z.number().positive();
 
+// Its details are in its guide (mcp/guides/enrich.ts).
 export const RUN_ENRICHMENT_DESCRIPTION =
   'Run a treg.to enrichment once per row: work emails, phones, person or company data, or lists whose results '
   + 'become rows in another sheet. For several sources in one column use waterfall_column. Find the tool with '
   + 'search_enrichments, then read it with get_enrichment. '
   + 'COSTS MONEY: each row is a paid treg call on the user\'s treg balance (providers on the team\'s own keys '
-  + 'bill the team). Call estimate_only:true first and tell the user the range; it creates nothing. A row whose '
-  + 'exact lookup found something within the days set in Settings reuses it at $0. max_cost_per_row_usd caps '
+  + 'bill the team). Call estimate_only:true first and tell the user the range; it creates nothing. '
+  + 'max_cost_per_row_usd caps '
   + `each row and spend_limit_usd the run (it pauses there). ${DAILY_LIMIT_NOTE} `
-  + 'A row whose providers all answer 429 asks again for free (rate_limit_retries), then fails; lower concurrency '
-  + 'if 429s go on. '
   + 'LIST JOBS (get_enrichment adds_rows:true) need list: run with test:true, wait for get_run_status to say '
   + 'completed, read the fields with get_list_fields, pick them with add_list_rows, then control_run rerun mode '
-  + '"empty"; or pass list.fields. destination_auto_run lists the auto-runs the new rows set off there, and '
-  + 'chained_auto_run this sheet\'s auto-runs that read what the run writes (HTTP ones send real requests). '
+  + '"empty"; or pass list.fields. '
   + 'Returns run_id at once: poll get_run_status (run_type "enrichment").';
 
 export function registerEnrichTools(server: McpServer, ctx: McpAuthCtx) {
@@ -77,7 +76,7 @@ export function registerEnrichTools(server: McpServer, ctx: McpAuthCtx) {
   });
 
   registerTool(server, 'run_enrichment', {
-    description: RUN_ENRICHMENT_DESCRIPTION + capToolNote(ctx.spend ?? null, true),
+    description: RUN_ENRICHMENT_DESCRIPTION + capRunToolNote(ctx.spend ?? null) + ` ${GUIDE_POINTER}`,
     // Strict: an argument it doesn't know (estimateOnly, test_rows) is refused,
     // never dropped, so a misspelled estimate can't start a paid run.
     inputSchema: z.object({
@@ -133,8 +132,7 @@ export function registerEnrichTools(server: McpServer, ctx: McpAuthCtx) {
         value: z.string().optional().describe('What it compares with (not for empty, not_empty)'),
       }).strict()).max(20).optional().describe('Older form of run_if: only rows matching all of these'),
       run_if: runIfSchema,
-      save_only: saveOnlySchema('With add_to_column: true it replaces an existing column\'s setup. '
-        + 'Not for a list job.'),
+      save_only: saveOnlySchema('run_enrichment'),
       list: z.object({
         destination_sheet_id: z.string().optional().describe('A sheet in the same table to add the rows to'),
         new_sheet_name: z.string().max(200).optional().describe('Or a new sheet to make for them'),

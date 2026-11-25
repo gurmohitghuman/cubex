@@ -12,7 +12,8 @@ import {
 import { RULE_POINTER } from './run-if-schema';
 import { MAX_RULE_CHARS } from '../lib/run-condition';
 import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean, SHEET_ID } from './tool-helpers';
-import { capToolNote } from '../lib/token-spend';
+import { capRunToolNote } from '../lib/token-spend';
+import { GUIDE_POINTER } from './guides/guide';
 import { changedOf } from './changed';
 
 const condition = z.object({
@@ -97,14 +98,11 @@ export function registerEnrichManageTools(server: McpServer, ctx: McpAuthCtx) {
     description:
       'Turn auto-run on or off for an enrichment or HTTP API column, or pause and resume it. When on, the column '
       + 'repeats its newest run on new rows and on rows whose inputs get filled, once a row; rows already there '
-      + 'are left alone. Clean and formula columns follow their source columns instead, free and without run_if or '
-      + 'caps (turning a formula column on again lifts a pause). A resume takes waiting_rows for the rows that '
-      + 'waited meanwhile. '
-      + 'An enrichment\'s daily_cap_usd is never above the daily limit. '
+      + 'are left alone. '
       + 'An enrichment auto-run SPENDS the treg balance on every new row; with a webhook on the sheet, anyone with '
       + 'its URL can add rows that spend. An HTTP API auto-run SENDS REAL REQUESTS (leads to a sequencer, messages), '
       + `once per row. ${DAILY_LIMIT_NOTE} Returns every auto-run on the sheet.`
-      + capToolNote(ctx.spend ?? null, true),
+      + capRunToolNote(ctx.spend ?? null) + ` ${GUIDE_POINTER}`,
     inputSchema: z.object({
       sheet_id: z.string().describe(SHEET_ID),
       column: z.string().optional().describe('The column; with paused and no column, every auto-run on the sheet'),
