@@ -35,7 +35,7 @@ test('MCP: discover tools, read and write a sheet end-to-end', async () => {
 
   // Tool discovery: the data-plane + enrichment + structure + model toolset.
   const tools = (await client.listTools()).tools.map(t => t.name).sort()
-  // Keep this list sorted — it's compared with toEqual.
+  // Keep this list sorted: it's compared with toEqual.
   expect(tools).toEqual([
     'add_column', 'add_enrichment_field', 'add_list_rows', 'ai_visibility', 'append_rows', 'apply_setup',
     'check_run_condition',
@@ -44,9 +44,9 @@ test('MCP: discover tools, read and write a sheet end-to-end', async () => {
     'formula_column',
     'get_balances', 'get_enrichment', 'get_list_fields', 'get_run_results', 'get_run_status', 'get_setup_run',
     'get_sheet', 'get_sheet_history', 'get_usage', 'get_version', 'get_workspace', 'hiring_signals', 'import_csv',
-    'list_models', 'list_run_webhooks', 'list_runs', 'list_saved_keys', 'list_setup_versions',
+    'list_models', 'list_prompt_starters', 'list_run_webhooks', 'list_runs', 'list_saved_keys', 'list_setup_versions',
     'list_setups', 'list_tables', 'list_trash', 'lookup_column',
-    'manage_run_webhook', 'manage_setup_version', 'manage_sheet', 'manage_table', 'manage_view',
+    'manage_run_webhook', 'manage_setup_version', 'manage_sheet', 'manage_sheet_webhook', 'manage_table', 'manage_view',
     'read_rows',
     'remove_duplicates',
     'rename_column', 'restore_from_trash', 'restore_setup_version',

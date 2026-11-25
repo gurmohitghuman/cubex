@@ -31,8 +31,10 @@ export function WebhookEndpoint({
   // resolving against this page's origin turns the path into the address the
   // user is actually reaching Cubex on.
   const url = source.url ? new URL(source.url, window.location.origin).href : null
+  // With a token, the curl sends it too (the token itself is shown once, in the Token section).
+  const auth = source.tokenRequired ? `  -H 'Authorization: Bearer <your token>' \\\n` : ''
   const curl = url
-    ? `curl -X POST '${url}' \\\n  -H 'Content-Type: application/json' \\\n  -d '{"example":"value"}'`
+    ? `curl -X POST '${url}' \\\n  -H 'Content-Type: application/json' \\\n${auth}  -d '{"example":"value"}'`
     : ''
 
   return (

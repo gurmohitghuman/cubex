@@ -11,24 +11,15 @@ export const dailyLimitJson = (v: DailyLimitView): DailyLimitJson =>
 export const dailyLimitOf = (userId: string): DailyLimitJson => dailyLimitJson(dailyLimitView(userId));
 
 export const DAILY_LIMIT_NOTE =
-  'daily_limit {limit_usd, used_today_usd, remaining_usd} is the account\'s limit for ALL enrichments per UTC day '
-  + '(limit_usd null: off). A run that reaches it pauses; tell the user, who can raise it in Settings '
-  + '(a token can\'t).';
+  'The account\'s daily_limit caps ALL enrichments per UTC day (limit_usd null: off): a run that reaches it '
+  + 'pauses; tell the user, who can raise it in Settings (a token can\'t).';
 
 // The status column's words, and what the output columns hold next to them.
 export const STATUS_WORDS =
-  'Status cells are Cubex\'s own words, never data: "✅ Found" (outputs filled), "⏭️ Not found", '
-  + '"⏭️ Budget ran out" (the per-row cap stopped the waterfall before a provider found it), any other '
-  + '"⏭️ ..." (skipped, with the reason), "❌ ..." (failed, with the reason), '
-  + '"⏳ Processing..." (still running), "⏭️ Condition not met" (run_if kept the row out: not run, no cost; '
-  + 'it counts as empty in other rules and as not run yet in reruns). '
-  + 'Verified work email: "✅ Valid", "✅ Catch-all", "✅ Risky"; a row it rejected '
-  + '("⏭️ Only a catch-all address (not accepted)"...) still fills Email status and Checked by, never Email. '
-  + 'Jobs that add rows to another sheet: '
-  + '"➕ Adding N rows…", "➕ N results, waiting for fields", "➕ N rows waiting for room in <sheet>", '
-  + '"✅ N rows added" (", M already there" when duplicates were skipped), "✅ Already there", '
-  + '"✅ No rows to add" (its outputs filled, no results), "➕ Removing earlier rows…" (a rerun with no results '
-  + 'replaces the rows the row added before), "❌ Rows not added: <reason>". '
-  + 'Output columns are empty on rows that found nothing; a column added from '
-  + 'stored answers says "⏭️ No data" where the answer had no value. An empty status cell means the row hasn\'t '
-  + 'run (rows missing an input are skipped and stay empty).';
+  'Status cells are Cubex\'s own words, never data: "✅ Found", "⏭️ Not found", "⏭️ Budget ran out" (the '
+  + 'per-row cap), other "⏭️ ..." (skipped) or "❌ ..." (failed) with the reason, "⏳ Processing...", '
+  + '"⏭️ Condition not met" (run_if kept the row out, no cost). Verified email: "✅ Valid", "✅ Catch-all", '
+  + '"✅ Risky"; a rejected row fills Email status, never Email. Row-adding jobs: "➕ ..." while adding, '
+  + 'waiting for fields or room, or removing a rerun\'s earlier rows, "✅ N rows added", "✅ Already there", '
+  + '"✅ No rows to add", "❌ Rows not added: <reason>". An empty status cell means the row hasn\'t run (rows '
+  + 'missing an input stay empty).';

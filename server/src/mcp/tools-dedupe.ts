@@ -54,25 +54,18 @@ export function registerDedupeTool(server: McpServer, ctx: McpAuthCtx): void {
 
   registerTool(server, 'set_auto_dedupe', {
     description:
-      'Keep ONE row per key in a sheet as rows arrive, for FREE (no AI, no credits): auto-dedupe. Pick one key '
-      + 'column, read the same ways as remove_duplicates (match: text by default, or email, domain, phone, '
-      + 'company, person_name). From then on, a row that arrives (a webhook delivery, append_rows, import_csv, '
-      + 'transfer_rows, list rows from an enrichment) or whose key someone types in (update_cells, the app) is '
-      + 'checked against the rows already there; when another row has the same key, one stays: keep oldest '
-      + '(default: the row that was there first stays, the new one is not kept) or newest (the new row replaces '
-      + 'the older ones, enriched cells included). Blank keys, run statuses and cells over 200 characters never '
-      + 'match. Removed rows go to the trash: list_trash with how auto_dedupe and the sheet_id lists them (one '
-      + 'batch a day), and restore_from_trash puts them back (a restore isn\'t checked; a later row with the '
-      + 'same key is, against them too). Rows '
-      + 'already in the sheet stay as they are when it is turned on: get_sheet\'s auto_dedupe.shared_rows says how '
-      + 'many share a key with an older row (counted when its keys are built, null until then), and '
-      + 'remove_duplicates cleans those up once. The key column must be '
-      + 'one rows arrive with: not an AI, HTTP, enrichment, waterfall, clean, formula or lookup column (they fill '
-      + 'later). To match a cleaned value, pick the raw column with a match, such as a website column as domain. '
-      + 'Values runs write are kept in the index but never remove a row. The answers of append_rows, update_cells, '
-      + 'import_csv and transfer_rows say which rows were not kept or were replaced. A big sheet\'s keys take a '
-      + 'moment to build (state building); rows arriving meanwhile are checked once they are. Call again to change '
-      + 'it (fields left out stay), or off: true to turn it off. Refused while a run is active on the sheet.',
+      'Keep ONE row per key in a sheet as rows arrive, for FREE (no AI, no credits). Pick one key column and a '
+      + 'match as in remove_duplicates. A row that arrives (webhook, append_rows, import_csv, transfer_rows, '
+      + 'enrichment list rows) or whose key is typed in is checked against the rows there; on a match, keep '
+      + 'oldest (default: the new row is not kept) or newest (it replaces the older ones, enriched cells '
+      + 'included). Blank keys, run statuses and cells over 200 characters never match. Removed rows go to the '
+      + 'trash (list_trash with how auto_dedupe, one batch a day; restore_from_trash puts them back unchecked). '
+      + 'Rows already in the sheet stay: get_sheet\'s auto_dedupe.shared_rows counts those '
+      + 'sharing a key, and remove_duplicates cleans them once. The key column must be one rows arrive with, not '
+      + 'an AI, HTTP, enrichment, waterfall, clean, formula or lookup column; to match a cleaned value, pick the '
+      + 'raw column with a match (a website column as domain). The answers of the tools that add or edit rows say '
+      + 'which were not kept or were replaced. Call again to change it (fields left out stay). '
+      + 'Refused while a run is active on the sheet.',
     inputSchema: z.object({
       sheet_id: z.string().describe(SHEET_ID),
       column: z.string().optional().describe('The key column (required to turn it on)'),

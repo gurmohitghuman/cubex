@@ -38,7 +38,8 @@ export const rawIdempotencyKey = (req: express.Request): unknown =>
 // that would write is refused there (services/rows-write-keyed.ts). A run start
 // with a key replays its first start, even while that start still sets up its
 // rows; any other keyed start is refused as busy right after (run-start-token.ts
-// busyRefusal).
+// busyRefusal). A row transfer with its key the same: a retry answers its first
+// transfer, and any other is refused as busy in the service (rows-transfer.ts).
 const KEYED_RUN_STARTS = new Set(['/ai-runs', '/http-runs', '/enrichment-runs', '/waterfall-columns']);
 export const V1_SHEET_BUSY_ALLOWED: BusyAllowed[] = [
   '/rows', '/rows/query', '/run-conditions/check', '/run-conditions/generate', '/formula-columns/write',
@@ -46,6 +47,7 @@ export const V1_SHEET_BUSY_ALLOWED: BusyAllowed[] = [
   /^\/setup-versions\/[^/]+\/restore$/,
   req => req.path === '/rows/update' && rawIdempotencyKey(req) !== undefined,
   req => KEYED_RUN_STARTS.has(req.path) && rawIdempotencyKey(req) !== undefined,
+  req => req.path === '/rows/transfer' && rawIdempotencyKey(req) !== undefined,
 ];
 
 // A run start's refusal as JSON. One for a busy sheet says busy: true, as the busy guard's does (lib/sheet-busy.ts).
