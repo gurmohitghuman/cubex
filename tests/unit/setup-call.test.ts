@@ -136,11 +136,16 @@ for (let i = 0; i < 100 && db.prepare('SELECT 1 FROM setup_calls WHERE id = ?').
 check('purged: the call is not found', getSetupCall(uid, call.id) === null
   && !db.prepare('SELECT 1 FROM tables WHERE hidden = 1').get())
 
-// An orphan working table (a restart between the table and the run) goes after an hour.
+// An orphan working table (a restart between the table and the run, or an upload link never used) goes once no
+// upload link can still be filling it: kept at 2 hours (a link used at its 15th minute may take 70 minutes to
+// bring the largest file at the slowest speed allowed), gone at 3.
 const orphan = uuid()
 db.prepare(`INSERT INTO tables (id, user_id, name, hidden, created_at)
   VALUES (?, ?, ?, 1, datetime('now', '-2 hours'))`)
   .run(orphan, uid, 'Setup call orphan')
+check('the sweep keeps a 2-hour-old orphan: an upload may still be arriving', sweepSetupCalls() === 0
+  && !!db.prepare('SELECT 1 FROM tables WHERE id = ? AND trash_id IS NULL').get(orphan))
+db.prepare("UPDATE tables SET created_at = datetime('now', '-3 hours') WHERE id = ?").run(orphan)
 check('the sweep removes an orphan working table', sweepSetupCalls() === 1
   && !db.prepare('SELECT 1 FROM tables WHERE id = ? AND trash_id IS NULL').get(orphan))
 
@@ -165,6 +170,9 @@ const { appendRows } = await import('../../server/src/services/rows-write')
 const noCeiling = prepareFileCall(uid, setupId, { estimateOnly: false }, caller)
 check('a file call without max_cost_usd is refused', 'fail' in noCeiling && noCeiling.message.includes('max_cost_usd'))
 const tablesBefore = hiddenTables()
+const fullFile = prepareFileCall(uid, setupId, { estimateOnly: false, maxCostUsd: 1 }, { ...caller, tokenId: tok })
+check('a full run-start window refuses a file call before its table is made', 'fail' in fullFile
+  && fullFile.fail === 'rate_limited' && hiddenTables() === tablesBefore, fullFile)
 const prepared = prepareFileCall(uid, setupId, { estimateOnly: false, maxCostUsd: 1 }, caller)
 if ('fail' in prepared) throw new Error(JSON.stringify(prepared))
 check('its working table is made, hidden, with the setup\'s inputs', hiddenTables() === tablesBefore + 1

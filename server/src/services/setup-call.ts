@@ -14,6 +14,8 @@ import {
 import { sheetBusyWith } from '../lib/sheet-busy';
 import type { SetupSpec } from '../lib/setups/spec';
 import type { RateDecision } from '../lib/rate-window';
+import { receiveBackstopMs } from '../lib/request-deadline';
+import { FILE_LINK_TTL_MINUTES } from '../lib/api-v1-constants';
 import { startRefusalMessage, takeRunStart } from './run-shared';
 import { withoutChangeLog } from '../lib/change-log';
 import { getSetup } from './setup-library';
@@ -116,7 +118,7 @@ export async function startCall(
 
 // A start takes a slot of the access token's run-start window, as a column run's start does (run-shared.ts); a
 // token at its spend cap is refused first, unless every step is free.
-function startSlot(userId: string, tokenId: string, spec: SetupSpec): CallFail | null {
+export function startSlot(userId: string, tokenId: string, spec: SetupSpec): CallFail | null {
   const paid = spec.steps.some(s => s.kind === 'ai' || s.kind === 'enrichment');
   const refused = takeRunStart(userId, tokenId, paid);
   if (!refused) return null;
@@ -144,16 +146,21 @@ export async function callSetup(
   return startCall(userId, setupId, work, input, caller);
 }
 
-// The sweep: the working tables of calls finished SETUP_CALL_KEEP_HOURS ago, and of calls that never started (a
-// restart between the table and the run, or an upload link never used) SETUP_CALL_ORPHAN_HOURS after they were
-// made.
+// A working table whose call never started (a restart between the table and the run, or an upload link never used)
+// goes once no upload link can still be filling it: past the link's time to be used, the time the largest file may
+// take to arrive at the slowest speed allowed (lib/request-deadline.ts), and SETUP_CALL_ORPHAN_HOURS more for its
+// reading and its start. About 2.5 hours by default.
+const orphanSeconds = (): number =>
+  Math.ceil((FILE_LINK_TTL_MINUTES * 60_000 + receiveBackstopMs()) / 1000) + SETUP_CALL_ORPHAN_HOURS * 3600;
+
+// The sweep: the working tables of calls finished SETUP_CALL_KEEP_HOURS ago, and of calls that never started.
 export function sweepSetupCalls(): number {
   const due = db.prepare(`SELECT c.user_id, c.table_id FROM setup_calls c JOIN setup_runs r ON r.id = c.id
       WHERE r.status IN ('done', 'failed', 'cancelled') AND r.updated_at <= datetime('now', ?)
     UNION ALL
     SELECT t.user_id, t.id FROM tables t WHERE t.hidden = 1 AND t.trash_id IS NULL
       AND t.created_at <= datetime('now', ?) AND NOT EXISTS (SELECT 1 FROM setup_calls c WHERE c.table_id = t.id)`)
-    .all(`-${SETUP_CALL_KEEP_HOURS} hours`, `-${SETUP_CALL_ORPHAN_HOURS} hours`) as
+    .all(`-${SETUP_CALL_KEEP_HOURS} hours`, `-${orphanSeconds()} seconds`) as
     Array<{ user_id: string; table_id: string }>;
   const sheetOf = db.prepare('SELECT id FROM sheets WHERE table_id = ?').pluck();
   for (const d of due) {
