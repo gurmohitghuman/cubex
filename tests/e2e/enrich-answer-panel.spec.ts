@@ -148,3 +148,26 @@ test('after a sort, a row delete and a CSV replace, each row keeps its own steps
   expect((await gone.json()).error).toContain('no stored answer')
   await api.dispose()
 })
+
+// A read that fails with no word from the server (the connection dropped) says what happened and what to do, and
+// its Try again reads the same cell again: the answer comes in.
+test('an answer that couldn\'t load says to try again, and Try again loads it', async ({ page, context }) => {
+  test.setTimeout(90_000)
+  const api = await authedApi()
+  await freshTreg(api)
+  const { tableId, sheetId } = await seedLeadRows(api, [{ Name: 'Ada Lovelace', Website: 'acme.example' }])
+  await waitRun(api, await startRun(api, sheetId, verifiedEmailRun()), ['completed'])
+  await context.addCookies((await api.storageState()).cookies)
+  await page.goto(`${BASE}/table/${tableId}`)
+  await expect(page.locator('.ag-row[row-index="0"]').first()).toBeVisible({ timeout: 15_000 })
+
+  await page.route('**/api/enrich/sheets/*/answer**', route => route.abort('connectionreset'))
+  await clickCell(page, 0, COL)
+  await expect(page.getByTestId('answer-error'))
+    .toHaveText("Couldn't load this answer. Check your connection, then try again.")
+  await page.unroute('**/api/enrich/sheets/*/answer**')
+  await page.getByTestId('answer-retry').click()
+  await expect(page.getByTestId('answer-summary')).toContainText('Found by')
+  await expect(page.getByTestId('answer-error')).toHaveCount(0)
+  await expect(page.getByTestId('answer-retry')).toHaveCount(0)
+})

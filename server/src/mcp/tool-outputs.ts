@@ -22,6 +22,7 @@ export const TOOL_OUTPUTS = {
   add_column: columns.addColumn, set_description: columns.setDescription, rename_column: columns.renameColumn,
   delete_column: columns.deleteColumn, sort_sheet: columns.sortSheet, set_column_order: columns.setColumnOrder,
   manage_table: columns.manageTable, manage_sheet: columns.manageSheet, manage_view: columns.manageView,
+  manage_sheet_webhook: columns.manageSheetWebhook,
   run_ai_column: runs.runAiColumn, run_http_enrichment: runs.runHttpEnrichment,
   check_run_condition: runs.checkRunCondition, write_run_condition: runs.writeRunCondition,
   get_run_status: runs.getRunStatus, control_run: runs.controlRun, undo_run: runs.undoRun,

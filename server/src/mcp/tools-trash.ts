@@ -117,7 +117,8 @@ export function registerTrashTools(server: McpServer, ctx: McpAuthCtx) {
       + 'line has when (at, UTC), by (the app, an access token by name over the API or MCP, or Cubex itself), '
       + 'action, column, summary and detail; a line about rows or a column deleted to the trash has its trash_id '
       + 'and in_trash: true while that item is in the trash (also while a big column\'s cells are still moving in), '
-      + 'false once it is restored or permanently deleted. Read-only. For what was deleted, list_trash.',
+      + 'false once it is restored or permanently deleted (still true after a restore that left cells behind in '
+      + 'it). Read-only. For what was deleted, list_trash.',
     inputSchema: {
       sheet_id: z.string().describe(SHEET_ID),
       column: z.string().optional().describe('Only lines about this column'),

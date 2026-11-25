@@ -2,7 +2,9 @@
 // workerData), as Int32 slots. TURN says whose turn it is to write: a transform_column write on the API thread
 // (lib/wal-turn.ts) or the worker's write that starts the WAL over (wal-checkpoint-worker.ts). Each side takes it
 // from FREE with Atomics.compareExchange before its transaction, never waiting for it, and gives it back once that
-// transaction ended. The other slots are for tests and stay 0 otherwise.
+// transaction ended. Each worker started holds it under its own value (WORKER, then WORKER + 1, ...), so one that
+// ends frees only its own hold, never a newer worker's (one can start while a closing one is still exiting). The
+// other slots are for tests and stay 0 otherwise.
 export const TURN = 0;
 export const FREE = 0;
 export const PAGE = 1;
