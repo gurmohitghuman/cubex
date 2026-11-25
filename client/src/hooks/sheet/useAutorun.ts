@@ -2,6 +2,7 @@ import { useState } from 'react'
 import toast from 'react-hot-toast'
 import { autorunAPI, type Sheet, type SheetData } from '@/utils/api'
 import type { AutorunKind, SheetAutorun } from '@/utils/api/types-autorun'
+import type { WaitingRows } from '@/utils/api/autorun'
 import type { AutorunTarget } from '@/components/autorun/AutorunDialog'
 
 // Auto-run on the open sheet: what the column headers and the header chip show
@@ -46,9 +47,9 @@ export function useAutorun(a: {
     try { await autorunAPI.save(sheetId, { column, enabled: false }); refresh() }
     catch (e: any) { toast.error(e?.response?.data?.error || "Couldn't turn off auto-run.") }
   }
-  const pauseAll = async (paused: boolean) => {
+  const pauseAll = async (paused: boolean, waitingRows?: WaitingRows) => {
     if (!sheetId) return
-    try { await autorunAPI.pause(sheetId, paused); refresh() }
+    try { await autorunAPI.pause(sheetId, paused, undefined, waitingRows); refresh() }
     catch (e: any) { toast.error(e?.response?.data?.error || "Couldn't change auto-run.") }
   }
   return {

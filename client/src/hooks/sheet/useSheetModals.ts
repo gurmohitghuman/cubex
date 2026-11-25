@@ -60,6 +60,7 @@ export const useSheetModals = () => {
   const [saveSetupFor, setSaveSetupFor] = useState<{ column: string | null } | null>(null)
   const openSaveSetup = useCallback((column: string | null) => setSaveSetupFor({ column }), [])
   const [showUseSetup, setShowUseSetup] = useState(false)
+  const [showRunColumns, setShowRunColumns] = useState(false)
   // Setup versions: open on this sheet (the tab menu can open another tab's).
   const [versionsFor, setVersionsFor] = useState<string | null>(null)
   const [confirmTopbarDeleteOpen, setConfirmTopbarDeleteOpen] = useState(false)
@@ -81,6 +82,7 @@ export const useSheetModals = () => {
     openAutoDedupe: () => { setShowWebhookDrawer(false); openDedupe('auto') },
     saveSetupFor, openSaveSetup, closeSaveSetup: () => setSaveSetupFor(null),
     showUseSetup, setShowUseSetup,
+    showRunColumns, setShowRunColumns,
     versionsFor, openVersions: setVersionsFor, closeVersions: () => setVersionsFor(null),
     confirmTopbarDeleteOpen, setConfirmTopbarDeleteOpen,
   }

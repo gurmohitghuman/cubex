@@ -32,6 +32,8 @@ export interface AutorunColumn {
   runIf: string | null
   dailyCapUsd: number | null
   dailyRowCap: number | null
+  // Seconds a row waits after its last change before auto-run takes it (0: at once).
+  startDelayS: number
   usedTodayUsd: number
   rowsToday: number
 }
@@ -58,6 +60,7 @@ export interface AutorunSave {
   runIf?: string
   dailyCapUsd?: number | null
   dailyRowCap?: number | null
+  startDelayS?: number | null
   // An edit's Save (the setup saved, nothing run): an auto-run already on and paused stays paused.
   keepPause?: boolean
 }

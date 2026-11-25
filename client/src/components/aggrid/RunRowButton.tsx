@@ -10,7 +10,7 @@ const UNPRICED = 'Run this row'
 // A run column cell's play button (shown while the cell is hovered or focused,
 // CSS .cube-run-row): icon only, on the cell's right edge, so it never covers
 // the cell's middle or the start of its value, where a click opens the answer.
-// Hovering it, or reaching it from the keyboard, reads what running this row
+// Hovering it, or reaching it from the keyboard (Tab on its focused cell), reads what running this row
 // costs and shows the sentence in a note above it (RunRowNote); its label says
 // the same for screen readers. A click runs the row alone with its column's
 // setup. Its clicks are stopped on the button itself, with the browser's own
@@ -36,11 +36,29 @@ export const RunRowButton: React.FC<Props> = ({ api, main, row }) => {
       const p = props.current
       p.api.runRow(p.main, p.row)
     }
+    // From the keyboard (gridOptions.ts runButtonKey): Tab on the focused cell reaches this button, Shift+Tab on
+    // it goes back to the cell, and Tab on it goes on to the next cell as the grid moves.
+    const cell = el.closest<HTMLElement>('.ag-cell')
+    const tabIn = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab' || e.shiftKey || e.target !== cell) return
+      e.preventDefault()
+      el.focus()
+    }
+    const tabBack = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab' || !e.shiftKey || !cell) return
+      e.preventDefault()
+      e.stopPropagation()
+      cell.focus()
+    }
     el.addEventListener('dblclick', stop)
     el.addEventListener('click', click)
+    el.addEventListener('keydown', tabBack)
+    cell?.addEventListener('keydown', tabIn)
     return () => {
       el.removeEventListener('dblclick', stop)
       el.removeEventListener('click', click)
+      el.removeEventListener('keydown', tabBack)
+      cell?.removeEventListener('keydown', tabIn)
     }
   }, [])
   // Read on every hover (cached a little while): the row's inputs, and so its price, can change.

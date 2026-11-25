@@ -99,7 +99,9 @@ await ok('the estimate: free; the count sent each search\'s own request, every f
   assert.ok((await calls()).every(p => p === '/call/hirebase.jobs.search.count'), (await calls()).join())
   const bodies = await counts()
   assert.equal(bodies.length, 2)
-  assert.deepEqual(bodies[0], { job_titles: ['SDR', '-Senior'], keywords: ['Salesforce', '-clearance'],
+  // The estimate sends both counts at once, so they reach the stand-in in either order: the SDR search's by its titles.
+  const sdr = bodies.find(b => (b.job_titles as string[] | undefined)?.[0] === 'SDR')
+  assert.deepEqual(sdr, { job_titles: ['SDR', '-Senior'], keywords: ['Salesforce', '-clearance'],
     geo_locations: [{ country: 'United States', city: 'Texas' }], experience_levels: ['Senior', 'Executive'],
     job_types: ['Full Time'],
     company_domains: ['northwind-labs.io', 'bluefin-data.io'], days_ago: 14, limit: 0 })

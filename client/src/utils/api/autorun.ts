@@ -2,6 +2,9 @@ import { api } from './client'
 import type { EnrichDailyLimit as DailyLimitView } from './types-settings'
 import type { AutorunRowsEstimate, AutorunSave, AutorunTargetInfo, SheetAutorun } from './types-autorun'
 
+// On a resume, the rows added or changed while auto-run was paused (server services/autorun-resume.ts).
+export type WaitingRows = 'run' | 'empty_only' | 'skip'
+
 export interface AutorunEstimate { autoRuns: AutorunRowsEstimate[]; dailyLimit: DailyLimitView }
 
 // Each caller shows its own error in place, so the generic server-error toast stays off.
@@ -18,9 +21,11 @@ export const autorunAPI = {
   save: (sheetId: string, body: AutorunSave): Promise<SheetAutorun> =>
     api.put(`/autorun/sheets/${sheetId}/columns`, body, noServerToast).then(res => res.data),
 
-  // Pauses or resumes one column's auto-run, or every auto-run on the sheet.
-  pause: (sheetId: string, paused: boolean, column?: string): Promise<SheetAutorun> =>
-    api.post(`/autorun/sheets/${sheetId}/pause`, { paused, ...(column ? { column } : {}) }, noServerToast)
+  // Pauses or resumes one column's auto-run, or every auto-run on the sheet. A resume's waitingRows: what the rows
+  // added or changed while paused do (run, the default; empty_only; skip).
+  pause: (sheetId: string, paused: boolean, column?: string, waitingRows?: WaitingRows): Promise<SheetAutorun> =>
+    api.post(`/autorun/sheets/${sheetId}/pause`,
+      { paused, ...(column ? { column } : {}), ...(waitingRows ? { waitingRows } : {}) }, noServerToast)
       .then(res => res.data),
 
   // What `rows` new rows (a CSV import) would set off. A pure read.

@@ -17,7 +17,8 @@ export type ChangeAction =
   | 'sheet_renamed' | 'sheet_deleted' | 'sheet_restored' | 'sheet_copied'
   | 'rows_deleted' | 'rows_restored' | 'rows_imported' | 'rows_sorted' | 'duplicates_removed'
   | 'rows_moved_in' | 'rows_moved_out' | 'sample_created' | 'ai_visibility_created' | 'hiring_created'
-  | 'setup_version_saved' | 'setup_version_restored' | 'setup_saved';
+  | 'social_created'
+  | 'hiring_filters' | 'setup_version_saved' | 'setup_version_restored' | 'setup_saved';
 
 export interface ChangeExtra { column?: string | null; detail?: Record<string, unknown> }
 
@@ -102,10 +103,14 @@ export function logAutorunSaved(
       daily_cap_usd: input.dailyCapUsd ?? null, daily_row_cap: input.dailyRowCap ?? null,
     } });
 }
-export function logAutorunPaused(sheetId: string, userId: string, paused: boolean, column?: string): void {
+export function logAutorunPaused(
+  sheetId: string, userId: string, paused: boolean, column?: string, waiting?: 'run' | 'empty_only' | 'skip',
+): void {
+  const rows = waiting === 'skip' ? ', without running the rows that waited'
+    : waiting === 'empty_only' ? ', running only the waiting rows with an empty cell' : '';
   logSheetChange(sheetId, userId, 'auto_run',
-    `${paused ? 'Paused' : 'Resumed'} auto-run ${column === undefined ? 'of every column' : `of "${column}"`}`,
-    { column: column ?? null, detail: { paused } });
+    `${paused ? 'Paused' : 'Resumed'} auto-run ${column === undefined ? 'of every column' : `of "${column}"`}${rows}`,
+    { column: column ?? null, detail: { paused, ...(waiting && waiting !== 'run' ? { waiting_rows: waiting } : {}) } });
 }
 
 // Someone saved a column's setup without running it (services/column-setup-save.ts): its next run uses it.

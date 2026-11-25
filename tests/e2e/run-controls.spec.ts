@@ -157,6 +157,31 @@ test('out of date: an edited input marks its row; REST, MCP and the column menu 
   await expect(note).toHaveCount(0)
   await expect(page.getByTestId('answer-panel')).toBeVisible({ timeout: 5_000 })
   expect((await runCount()).length, 'the click ran the row again').toBe(before + 1)
+
+  // From the keyboard: Tab on the focused cell reaches its play button, which shows the price note; Enter runs
+  // the row; Shift+Tab goes back to the cell; Tab on the button goes on to the next cell.
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('answer-panel')).toHaveCount(0)
+  await page.mouse.move(0, 0)
+  await target.evaluate(el => (el as HTMLElement).focus())
+  await page.keyboard.press('Tab')
+  await expect(play).toBeFocused()
+  await expect(note).toHaveText('Run this row (1 request)')
+  await page.keyboard.press('Shift+Tab')
+  await expect(target).toBeFocused()
+  await page.keyboard.press('Tab')
+  await expect(play).toBeFocused()
+  const colIndex = Number(await target.getAttribute('aria-colindex'))
+  await page.keyboard.press('Tab')
+  const focusedColumn = () => page.evaluate(() =>
+    document.activeElement?.closest('.ag-cell')?.getAttribute('aria-colindex'))
+  await expect.poll(focusedColumn).toBe(String(colIndex + 1))
+  // Enter on the button runs the row (the run then redraws the cell).
+  await target.evaluate(el => (el as HTMLElement).focus())
+  await page.keyboard.press('Tab')
+  await expect(play).toBeFocused()
+  await page.keyboard.press('Enter')
+  await expect.poll(async () => (await runCount()).length, { timeout: 20_000 }).toBe(before + 2)
 })
 
 test('the header\'s "N failed, retry" runs the failed rows again in one click', async ({ page, context }) => {

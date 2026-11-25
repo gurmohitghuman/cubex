@@ -2,6 +2,7 @@ import { db } from '../lib/db';
 import { redactSecrets } from '../lib/redact';
 import { getRunStatusAndGen, type HTTPRunRow } from './http-runner-status';
 import { clearRunPlaceholders, hasUnfinishedRow } from '../lib/run-placeholders';
+import { dropRunSpans } from '../lib/derived-spans';
 import { autorunRunEnded, autorunRunFailed } from './autorun-stop';
 
 // Post-loop status transitions for an HTTP run. Split out of http-runner.ts (one
@@ -35,10 +36,14 @@ export async function finalizeHTTPRun(
   }) : false;
 
   if (stuck) {
-    const failed = db.prepare(
-      `UPDATE http_runs SET status = 'failed', error_message = ?, placeholder_work = 'clearing',
-        updated_at = datetime('now') WHERE id = ? AND status = 'running' AND worker_generation = ?`,
-    ).run('Some rows could not be processed. Re-run to retry them.', runId, myGeneration);
+    const failed = db.transaction(() => {
+      const r = db.prepare(
+        `UPDATE http_runs SET status = 'failed', error_message = ?, placeholder_work = 'clearing',
+          updated_at = datetime('now') WHERE id = ? AND status = 'running' AND worker_generation = ?`,
+      ).run('Some rows could not be processed. Re-run to retry them.', runId, myGeneration);
+      if (r.changes > 0) dropRunSpans(run.sheet_id, { kind: 'http', id: runId });
+      return r;
+    }).immediate();
     if (failed.changes > 0) {
       autorunRunFailed(run, 'some rows could not be processed.');
       await clearRunPlaceholders('http', runId);
@@ -70,10 +75,14 @@ export async function failHTTPRun(
   error: unknown,
 ): Promise<void> {
   const reason = redactSecrets(error instanceof Error ? error.message : String(error)).slice(0, 500);
-  const failed = db.prepare(
-    `UPDATE http_runs SET status = 'failed', error_message = ?, placeholder_work = 'clearing',
-      updated_at = datetime('now') WHERE id = ? AND status = 'running' AND worker_generation = ?`,
-  ).run(reason, runId, myGeneration);
+  const failed = db.transaction(() => {
+    const r = db.prepare(
+      `UPDATE http_runs SET status = 'failed', error_message = ?, placeholder_work = 'clearing',
+        updated_at = datetime('now') WHERE id = ? AND status = 'running' AND worker_generation = ?`,
+    ).run(reason, runId, myGeneration);
+    if (r.changes > 0 && failedRun) dropRunSpans(failedRun.sheet_id, { kind: 'http', id: runId });
+    return r;
+  }).immediate();
   // failedRun is set whenever myGeneration left -1, so it's defined when we get here.
   if (failed.changes > 0 && failedRun) {
     autorunRunFailed(failedRun, reason);

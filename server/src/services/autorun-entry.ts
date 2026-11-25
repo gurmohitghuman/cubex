@@ -15,6 +15,7 @@ export interface AutorunEntry {
   watermark_row_index: number; rescan: number; row_generation_seen: number; data_version_seen: number;
   paused_reason: string | null; paused_message: string | null; paused_at: string | null;
   access_token_id: string | null;   // whose spend cap its batches count against (migration 042)
+  start_delay_s: number;            // a row waits this long after its last change (migration 072; 0: at once)
 }
 
 // Why an auto-run stopped. Some clear on their own: the capacity ones once
