@@ -9,6 +9,7 @@ import { SheetGridArea } from '@/components/sheet/SheetGridArea'
 import { SheetSampleGuide } from '@/components/sample/SampleGuide'
 import { SheetAiVisibilityGuide } from '@/components/ai-visibility/AiVisibilityGuide'
 import { SheetHiringBanner } from '@/components/hiring/HiringBanner'
+import { SheetSocialBanner } from '@/components/social/SocialBanner'
 import { SheetSetupDialogs } from '@/components/setups/SheetSetupDialogs'
 import { SetupRunChip } from '@/components/setups/SetupRunChip'
 import { SheetHeader } from '@/components/sheet/SheetHeader'
@@ -325,6 +326,8 @@ export const SheetPage: React.FC = () => {
       <SheetAiVisibilityGuide sheetData={sheetData}
         onChanged={() => { if (activeSheet) void silentReloadRef.current(activeSheet.id) }} />
       <SheetHiringBanner sheetData={sheetData}
+        onChanged={() => { if (activeSheet) void silentReloadRef.current(activeSheet.id) }} />
+      <SheetSocialBanner sheetData={sheetData}
         onChanged={() => { if (activeSheet) void silentReloadRef.current(activeSheet.id) }} />
       <SheetGridArea
         gridArea={gridArea} activeSheet={activeSheet} sheetData={sheetData} totalDisplayedRows={totalDisplayedRows}

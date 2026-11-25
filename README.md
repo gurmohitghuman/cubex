@@ -214,6 +214,15 @@ A company hiring for a role often needs what you sell: one hiring SDRs may want 
 
 Agents use `hiring_signals`; the [MCP guide](docs/mcp.md#companies-hiring) has the details.
 
+### Research social posts
+
+See which posts on a topic did well, why they work, and who made them. On the dashboard or in **New Table**, **Research social posts** asks for a topic, the platforms to search (TikTok, Instagram, YouTube and X, as treg serves them) and what to add to each post. It runs on your treg key, and nothing costs money until you start it.
+
+- The table has a **Searches** sheet (one row per search) and a sheet of posts for each platform: the link, author, caption, views, likes, comments, shares, the day it was posted, and the day Cubex first found it.
+- **Find posts** shows what it costs, then searches each platform. Run it again later: only posts never found before are added.
+- What you ticked is set up on each post and waits for you: **Transcript**, **Why it works** (AI: the hook, what keeps people watching, the payoff), **Creator** (followers and bio) and **Comments** (into a Comments sheet, each tagged by AI as compares, asks, hates or loves). Run one from its column's menu, which shows the cost first.
+- With a minimum of views or a "posted within", each posts sheet opens on a **Top posts** view, so you run the steps on the posts worth it.
+
 ### Clean data
 
 Click **+ Add Column**, choose **Clean data**, and pick the column to clean and how. It's free: nothing is sent anywhere and no AI runs. You see the first rows before and after, and the cleaned values go into a new column, so the original stays as it was.
