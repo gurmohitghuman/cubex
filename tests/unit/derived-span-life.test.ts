@@ -49,10 +49,10 @@ console.error = () => {}
 
 const tick = (sid: string, column: string) => derivedFollowTick(loadEntry(entry(sid, column))!)
 const range = (n: number) => Array.from({ length: n }, (_, i) => i)
-// A second run on rows `targets` of Answer, going: F, once the first clear has ended, works rows out up to its
-// first ⏳ and waits there.
+// A second run on rows `targets` of Answer, clearing: F, once the first clear has ended, works rows out up to its
+// first ⏳ and waits there until that clear finishes.
 async function waitingAt(sid: string, targets: number[]) {
-  const again = await runOn(sid, { going: true, targets })
+  const again = await runOn(sid, { targets })
   await tick(sid, 'F')
   assert.deepEqual(progress(sid, 'F'), [targets[0]], 'F waits at the second run\'s first ⏳')
   return again
@@ -72,7 +72,7 @@ await ok('F deleted while it waits mid-span: its mark goes, the span stays for G
   const out = await deleteSheetColumn(sid, uid, 'F')
   assert.ok('ok' in out, JSON.stringify(out))
   assert.deepEqual([spans(sid), marks(sid), progress(sid, 'G')], [1, 1, [0]], 'G\'s mark and the span stay')
-  answered(sid, again, [5])
+  await clearRunPlaceholders('http', again.id)
   await follow(sid, ['G'])
   assert.deepEqual(cells(sid, 'G'), cells(sid, 'Answer').map(a => `${a}?`))
   assert.deepEqual([spans(sid), marks(sid)], [0, 0], 'the span went with G\'s mark')

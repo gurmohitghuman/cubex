@@ -72,6 +72,11 @@ export const SettingsPane: React.FC<Props> = ({ config, updateConfig }) => (
         label="Leave out empty values"
         hint={'A query parameter or body field whose {{column}} is empty for a row isn\'t sent, instead of being '
           + 'sent empty.'} />
+
+      <p className="text-xs text-gray-500" data-testid="http-repeat-note">
+        Rows of one run that send the same GET request share its answer for 5 minutes, so the API is asked once.
+        Running the column again always asks again.
+      </p>
     </div>
   </div>
 )

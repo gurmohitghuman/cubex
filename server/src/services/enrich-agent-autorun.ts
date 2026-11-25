@@ -9,6 +9,7 @@ import { parseRuleField } from '../lib/run-condition';
 import { strayKey } from '../lib/enrich-agent-args';
 import { verifySheetOwnership } from '../lib/sql-helpers';
 import { saveAutorunSettings, setSheetAutorunPaused } from './autorun-settings';
+import { resumeAutorun, waitingRowsOf, WAITING_ROWS_REFUSAL } from './autorun-resume';
 import { sheetAutorunView, type AutorunColumnView } from './autorun-view';
 import { estimateAutorunRows } from './autorun-estimate';
 import { dailyLimitOf } from './enrich-agent-shared';
@@ -35,7 +36,8 @@ export function sheetAutorunJson(sheetId: string, userId: string) {
 
 export interface AgentAutorunArgs {
   column?: unknown; enabled?: unknown; paused?: unknown; where?: unknown; run_if?: unknown;
-  daily_cap_usd?: unknown; daily_row_cap?: unknown; start_delay_s?: unknown;
+  daily_cap_usd?: unknown; daily_row_cap?: unknown; waiting_rows?: unknown;
+  start_delay_s?: unknown;
 }
 
 const bad = (message: string): RunFail => ({ fail: 'bad_request', message });
@@ -49,7 +51,8 @@ export async function agentSetAutorun(
 ): Promise<{ ok: ReturnType<typeof sheetAutorunJson> } | RunFail> {
   if (!verifySheetOwnership(sheetId, userId)) return { fail: 'not_found', message: 'Sheet not found' };
   const stray = strayKey(a as Record<string, unknown>,
-    ['column', 'enabled', 'paused', 'where', 'run_if', 'daily_cap_usd', 'daily_row_cap', 'start_delay_s'], '');
+    ['column', 'enabled', 'paused', 'where', 'run_if', 'daily_cap_usd', 'daily_row_cap', 'waiting_rows',
+      'start_delay_s'], '');
   if (stray) return bad(`${stray} Nothing was changed.`);
   const column = a.column === undefined || a.column === null ? null : a.column;
   if (column !== null && (typeof column !== 'string' || !column.trim() || column.length > 200)) {
@@ -64,7 +67,12 @@ export async function agentSetAutorun(
     if (column !== null && !sheetAutorunView(sheetId, userId).columns[column]?.enabled) {
       return bad(`Auto-run isn't on for "${column}".`);
     }
-    setSheetAutorunPaused(userId, sheetId, paused, column ?? undefined);
+    // On a resume: what becomes of the rows that waited while it was paused (autorun-resume.ts).
+    const waiting = waitingRowsOf(a.waiting_rows);
+    if (waiting === null) return bad(WAITING_ROWS_REFUSAL('waiting_rows'));
+    if (waiting !== undefined && paused) return bad('waiting_rows goes with paused false (a resume).');
+    if (paused) setSheetAutorunPaused(userId, sheetId, true, column ?? undefined);
+    else await resumeAutorun(userId, sheetId, waiting, column ?? undefined);
     return { ok: sheetAutorunJson(sheetId, userId) };
   }
   if (column === null) return bad('Name the column whose auto-run to turn on or off.');

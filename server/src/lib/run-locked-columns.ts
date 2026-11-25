@@ -84,6 +84,24 @@ export function columnHolder(sheetId: string, userId: string, column: string, op
   return runs.find(r => r.hold === 'going') ?? runs[0] ?? null;
 }
 
+// Columns held by a run currently seeding or clearing its ⏳ cells (placeholder_work IS NOT NULL).
+// Keeping the active-run clause lets SQLite use migration 014's partial index.
+export function placeholderWorkColumns(sheetId: string, userId: string): Set<string> {
+  const cols = new Set<string>();
+  const active = "(status IN ('pending', 'running', 'paused') OR placeholder_work IS NOT NULL)";
+  const aiRuns = db.prepare(`
+    SELECT column_name, output_columns, data_column FROM ai_runs
+    WHERE sheet_id = ? AND user_id = ? AND ${active} AND placeholder_work IS NOT NULL
+  `).all(sheetId, userId) as AiRunWrites[];
+  for (const r of aiRuns) addAiRunColumns(r, cols);
+  const httpRuns = db.prepare(`
+    SELECT config, master_column_name FROM http_runs
+    WHERE sheet_id = ? AND user_id = ? AND ${active} AND placeholder_work IS NOT NULL
+  `).all(sheetId, userId) as HttpRunWrites[];
+  for (const r of httpRuns) addHttpRunColumns(r, cols);
+  return cols;
+}
+
 export type AiRunWrites = { column_name: string; output_columns: string | null; data_column: string | null };
 export type HttpRunWrites = { config: string | null; master_column_name: string | null };
 

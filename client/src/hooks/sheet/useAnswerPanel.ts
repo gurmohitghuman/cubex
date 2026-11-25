@@ -6,6 +6,8 @@ import { diagnostics } from '@/components/answer-panel/answer-copy'
 import type { CellClickInfo } from '@/components/aggrid/types'
 
 const errorOf = (e: any, fallback: string): string => e?.response?.data?.error || fallback
+// When the read fails with no reason from the server (offline, a timeout): what happened, and what to do.
+export const LOAD_FAILED = "Couldn't load this answer. Check your connection, then try again."
 
 type CellTarget = Omit<AnswerTarget, 'sheetId' | 'rowGeneration'>
 // A cell, as the panel tells them apart: a sort since moves another row under the same index.
@@ -56,7 +58,7 @@ export function useAnswerPanel(a: Args) {
         if (seq.current !== id) return
         // The last cell's answer doesn't stay under this cell's error.
         if (moved) setShown(null)
-        setError(errorOf(e, "Couldn't load this answer.")); done()
+        setError(errorOf(e, LOAD_FAILED)); done()
       })
   }
 
@@ -69,6 +71,8 @@ export function useAnswerPanel(a: Args) {
   }
 
   const close = () => { seq.current++; setTarget(null); setShown(null); setLoading(false); setAdding(false) }
+  // "Try again" under a read that failed: the same cell, read again at once.
+  const retry = () => { if (target && !loading) { seq.current++; setError(null); load(target, false) } }
 
   // A grid click opens the panel at once, with no wait. A double click edits the cell, as the grid's own double
   // click does: its second click closes the panel the first one opened. When that second click lands on the panel
@@ -133,6 +137,7 @@ export function useAnswerPanel(a: Args) {
       target, view: shown?.view ?? null, shownCell: shown?.cell ?? null, stale, loading, error, adding, addError,
       added, diagText,
       onClose: close, onDoubleClickThrough: doubleClickThrough, onAddField: addField, onRerun: rerun, onCopy: copy,
+      onRetry: retry,
     },
   }
 }
