@@ -12,6 +12,7 @@
 //   - a start whose columns have nothing to do ends done, one History line, the view a setup run with no
 //     setup; a live column run on Ping refuses another one there, and a setup that makes Ping;
 //   - the hold: a step not started holds its column's auto-run; once it ran or the run ended, it lets go;
+//   - two starts at once on one column: one starts, the other is refused (not a second run after the first);
 //   - a paused run on a chosen column stops the column run with words.
 import http from 'node:http'
 import type { AddressInfo } from 'node:net'
@@ -198,6 +199,20 @@ db.prepare(`UPDATE setup_runs SET status = 'cancelled' WHERE id = ?`).run(liveId
 assert.equal(columnRunHolds(sid, uid, 'Ping'), false)
 assert.ok('ok' in plan({ columns: ['Ping'] }))
 ok('a live column run refuses another on its column and a setup making it; its waiting step holds auto-run')
+
+// --- Two starts at once: each reads its where (a wait) between its checks and its record --------------------
+const busyPing = uuid()
+db.prepare(`INSERT INTO http_runs (id,sheet_id,user_id,config,status,master_column_name,total_rows)
+  VALUES (?,?,?,?,'running','Ping',6)`).run(busyPing, sid, uid, pingConfig({}))
+const byName = [{ column: 'Name', operator: 'contains', value: 'Person' }]
+const twice = await Promise.all([1, 2].map(() =>
+  runColumns(uid, sid, input({ columns: ['Ping'], mode: 'all', where: byName }), { hasSecretsScope: true })))
+assert.deepEqual(twice.map(o => ('fail' in o ? o.fail : 'started')).sort(), ['conflict', 'started'],
+  JSON.stringify(twice))
+assert.equal(count(`SELECT COUNT(*) FROM setup_runs WHERE status IN ('running', 'paused')`), 1)
+db.prepare(`UPDATE setup_runs SET status = 'cancelled' WHERE status IN ('running', 'paused')`).run()
+db.prepare(`UPDATE http_runs SET status = 'completed' WHERE id = ?`).run(busyPing)
+ok('two starts at once on one column: one starts, the other is refused, never a second paid run after it')
 
 // --- A paused run on a chosen column ----------------------------------------------------------
 db.prepare(`INSERT INTO ai_runs (id,sheet_id,user_id,column_name,prompt,model,status,total_rows)
