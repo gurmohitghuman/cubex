@@ -2,7 +2,7 @@
 // pages, filtered pages, reads by id and by time): cells parsed, a column still
 // filling reads "⏳ Processing..." (except in a read by time, which answers what
 // rows hold: services/rows-since.ts), the columns named or picked, with
-// include_status run columns as {status, value, error}, and with
+// include_status run columns as {status, value, error} (a kept-out one with its why), and with
 // max_chars_per_cell each cell's text cut (cutRows).
 import { db } from '../lib/db';
 import { parseRowData } from '../lib/sql-helpers';
@@ -13,6 +13,7 @@ import { pickName, pickValue } from '../lib/row-select/paths';
 import { cutRow, emptyCutCells, type CutCells } from '../lib/row-select/cut-cells';
 import type { RunColumnMap } from '../lib/row-filter/sql';
 import { staleByRow } from './run-status-rows';
+import { skipExplainer } from './skip-why';
 import type { RowQuery } from './row-query-input';
 
 export type PageRow = { id: string; row_index: number; data: string };
@@ -42,8 +43,9 @@ export function shapeRows(
   const rows = page.map(r => ({ id: r.id, index: r.row_index, data: parseRowData(r.data) }));
   if (!opts.stored) overlayFilling(rows, fillingColumns(sheetId, userId));
   const stale = runs ? staleByRow(sheetId, userId, rows.map(r => r.id), runs) : null;
+  const why = runs ? skipExplainer(sheetId, userId) : undefined;
   for (const r of rows) {
-    (r as ShapedRow).data = projectRow(r.data, q, runs, stale?.get(r.id), opts.errors?.get(r.id));
+    (r as ShapedRow).data = projectRow(r.data, q, runs, stale?.get(r.id), opts.errors?.get(r.id), why);
   }
   return rows;
 }
@@ -53,9 +55,9 @@ export function shapeRows(
 // {status, value, error} with include_status.
 function projectRow(
   data: Record<string, string>, q: RowQuery, runs: RunColumns | null, stale?: ReadonlySet<string>,
-  errors?: ReadonlyMap<string, string>,
+  errors?: ReadonlyMap<string, string>, why?: (state: string, data: Record<string, string>) => string[],
 ): Record<string, unknown> {
-  const plain = runs ? rowWithStatus(data, runs, q.columns, stale, errors) : null;
+  const plain = runs ? rowWithStatus(data, runs, q.columns, stale, errors, why) : null;
   if (!q.picks) {
     if (plain) return plain;
     return q.columns ? Object.fromEntries(q.columns.map(c => [c, cellOf(data, c)])) : data;

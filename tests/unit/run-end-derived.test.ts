@@ -1,8 +1,8 @@
 // A run that ends early (cancelled, failed in its worker, or failed to start)
 // clears the ⏳ cells it left (lib/placeholder-cells.ts), each back to the
 // answer it held before the run: clean and formula columns reading them work
-// those rows out again (saved again while the run went, they read the ⏳ as
-// empty), and a formula reading that formula follows it. Exactly the cleared
+// those rows out again (they follow ⏳ as empty as soon as the run starts),
+// and a formula reading that formula follows it. Exactly the cleared
 // rows are told, as a span (lib/derived-spans.ts; none queued), a row holding
 // a real result isn't. A clear in the API process tells the follow-ups as it
 // ends; a worker's (a failed run) has no one to tell, so the auto-run sweep
@@ -119,8 +119,8 @@ function insertRun(kind: Kind, sid: string, status: string, placeholderWork: str
 }
 const runColumns = (kind: Kind) => (kind === 'ai' ? ['Answer'] : ['Status', 'Answer'])
 
-// A run going: ⏳ on every row, row 0's real result written as a worker writes it (its follow-ups catch up),
-// then F and Low saved again: they read the ⏳ in rows 1 and 2 as empty (F2 follows F).
+// A run going: ⏳ on every row (seeding tells F and Low by span), row 0's real result written as a worker
+// writes it; F, Low and F2 catch up (row 0 has New A, rows 1 and 2 read ⏳ as empty without needing a re-save).
 async function runGoing(kind: Kind, sid: string): Promise<string> {
   const id = insertRun(kind, sid, 'running', null)
   await seedProcessingPlaceholders({ run: { kind, id }, sheetId: sid, userId: uid, columns: runColumns(kind),
@@ -132,15 +132,6 @@ async function runGoing(kind: Kind, sid: string): Promise<string> {
     markAutorunInputs(sid, uid, result.map(([c]) => c), { indexes: [0] })
   }).immediate()
   await tick(sid, 'F'); await tick(sid, 'Low'); await tick(sid, 'F2')
-  assert.deepEqual(cells(sid, 'F'), ['has New A', 'has Old B', 'has Old C'], 'seeding queues nothing')
-  assert.deepEqual(cells(sid, 'F2'), ['HAS NEW A', 'HAS OLD B', 'HAS OLD C'])
-  const f = await startFormulaColumn(uid, sid, { column: 'F', formula: FORMULA })
-  assert.ok('ok' in f, JSON.stringify(f))
-  await waitForDerivedFill(formulaKind, f.ok.id, 30_000)
-  const c = await startCleanColumn(uid, sid, { source: 'Answer', cleaner: 'lowercase', column: 'Low' })
-  assert.ok('ok' in c, JSON.stringify(c))
-  await idle(sid)
-  await tick(sid, 'F2')
   assert.deepEqual(cells(sid, 'F'), ['has New A', 'empty', 'empty'])
   assert.deepEqual(cells(sid, 'Low'), ['new a', '', ''])
   assert.deepEqual(cells(sid, 'F2'), ['HAS NEW A', 'EMPTY', 'EMPTY'])

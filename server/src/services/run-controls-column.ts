@@ -32,3 +32,10 @@ export function runColumnOf(sheetId: string, userId: string, column: string): Ru
   const kind = main === undefined ? undefined : KIND_OF[kinds.types[main] ?? ''];
   return main !== undefined && kind ? { kind, main } : null;
 }
+
+// The sheet's run columns in the sheet's order, each by its main column (the Run columns dialog's list).
+export function sheetRunColumnList(sheetId: string, userId: string): Array<{ column: string; kind: RunKind }> {
+  const mains = sheetRunMains(sheetId, userId);
+  return getSheetColumns(sheetId, userId, false).filter(c => mains.has(c))
+    .map(c => ({ column: c, kind: mains.get(c)! }));
+}

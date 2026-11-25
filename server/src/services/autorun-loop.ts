@@ -3,7 +3,8 @@
 // rows, rows whose inputs were just written), at most AUTORUN_MAX_ROWS at a
 // time, within today's caps. A column is skipped while its sheet is busy or
 // yielding to the user (lib/sheet-yield.ts), while a run on it is active or
-// clearing, while another run holds a column it reads, and while it is paused. Pauses that can clear on their own are
+// clearing, while another run holds a column it reads, while a column run's
+// step on it waits, and while it is paused. Pauses that can clear on their own are
 // cleared here: caps when today allows a row again (midnight UTC or a raise),
 // treg's stops after AUTORUN_RETRY_MS, a missing column once it is back, a
 // missing key once one is saved, a loop of list auto-runs once it is broken,
@@ -36,6 +37,7 @@ import { readOpenRouterBalance } from './openrouter-balance';
 import { rowCostOf, spendCapRefusal } from './token-spend';
 import { heldRequestInput } from '../lib/http-held-inputs';
 import { heldRuleRefusal } from '../lib/run-held-reads';
+import { columnRunHolds } from './column-run-hold';
 
 interface Setup { config: HTTPAPIConfig; newest: NonNullable<ReturnType<typeof newestRunOf>>; columns: string[] }
 
@@ -129,6 +131,8 @@ export async function autorunTick(id: string): Promise<void> {
   if (autoDedupeChecking(e.sheet_id)) return;
   if (generationMoved(e) || !hasWork(e)) return;
   if (columnRunActive(e.sheet_id, e.user_id, e.status_column)) return;
+  // A column run's step on this column hasn't started: its rows wait for it (column-run-hold.ts).
+  if (columnRunHolds(e.sheet_id, e.user_id, e.status_column)) return;
   // Every time: a run started by hand can point a list column somewhere that adds rows back.
   const loop = autorunLoopProblem(e);
   if (loop) { pauseEntry(e.id, 'loop', loop); return; }

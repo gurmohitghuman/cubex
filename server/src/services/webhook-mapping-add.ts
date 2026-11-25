@@ -18,7 +18,8 @@ import { busyMessage, sheetBusyWith } from '../lib/sheet-busy';
 export interface WebhookMappingInput { jsonPath: string; columnName: string; valueMode: 'scalar' | 'json' }
 
 // error: what the route answers (400 invalid, 409 busy).
-export type WebhookMappingAdd = { ok: true } | { fail: 'invalid' | 'busy'; error: string };
+// column: the new column's name as saved (spacing normalized).
+export type WebhookMappingAdd = { ok: true; column: string } | { fail: 'invalid' | 'busy'; error: string };
 
 // The caller has verified the sheet is the user's and found its webhook source.
 export function addWebhookMapping(
@@ -59,5 +60,5 @@ export function addWebhookMapping(
     logSheetChange(sheetId, userId, 'webhook', `The webhook fills "${columnName}" from ${input.jsonPath}`,
       { column: columnName });
   }).immediate();
-  return { ok: true };
+  return { ok: true, column: columnName };
 }

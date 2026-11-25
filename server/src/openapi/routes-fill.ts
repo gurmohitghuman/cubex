@@ -182,6 +182,19 @@ export const fillRoutes = (): RouteDoc[] => [
     summary: 'A hiring table, its sheets and its last checks.',
   }),
   op({
+    method: 'patch', path: '/hiring/{id}', operationId: 'updateHiring', tag: 'hiring', scope: 'write',
+    summary: "Change which companies get a row on Companies: min_roles, leave_out_companies or both.",
+    description: 'From the next check: its summary reads all of Roles, so a company kept off before gets its row '
+      + 'then if it passes now, and a row already on Companies stays. The search and its cost stay the same. Only '
+      + 'these two change after create; 409 while a check is going.',
+    body: z.object({
+      min_roles: hiringFilterFields.min_roles.unwrap().nullable().optional()
+        .describe('Companies with fewer matching roles get no new row on Companies. null: every company (1).'),
+      leave_out_companies: hiringFilterFields.leave_out_companies.unwrap().nullable().optional()
+        .describe('These companies, by website, get no new row on Companies. null or []: none left out.'),
+    }),
+  }),
+  op({
     method: 'post', path: '/hiring/{id}/check', operationId: 'checkHiring', tag: 'hiring', scope: 'run',
     summary: 'Search every row of Searches again, add only roles never found before, and sum up Companies.',
     description: 'An estimate unless estimate_only is false. A check never spends more than its estimate.',

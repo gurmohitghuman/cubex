@@ -119,6 +119,8 @@ export const ENRICH_SPEND_WINDOWS = [7, 30, 90] as const;
 export const AUTORUN_DEFAULT_DAILY_CAP_USD = 5;
 export const AUTORUN_HTTP_DEFAULT_DAILY_ROWS = 500;
 export const AUTORUN_HTTP_MAX_DAILY_ROWS = 1_000_000;
+// The longest a row may wait after its last change before auto-run runs it (server constants-enrich.ts).
+export const AUTORUN_MAX_START_DELAY_S = 600;
 export const AUTORUN_IMPORT_COUNT_BYTES = 8 * 1024 * 1024;
 
 // Lookup columns (server lib/constants-lookup.ts): "all matches" (at most LOOKUP_LIST_MAX,
@@ -229,3 +231,5 @@ export const TOAST_TOP_PX = 64;
 // A drawer or dialog closed while it still opens closes once its open transition has ended (200 ms once started,
 // hooks/useCloseAfterOpen.ts). A close never waits longer than this.
 export const CLOSE_AFTER_OPEN_MAX_MS = 1_000;
+// The most columns one Run columns start takes (mirrors server MAX_COLUMN_RUN_COLUMNS, lib/constants-setups.ts).
+export const MAX_COLUMN_RUN_COLUMNS = 20;

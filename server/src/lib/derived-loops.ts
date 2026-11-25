@@ -17,7 +17,8 @@ function inputsOf(raw: string): string[] {
   }
 }
 
-function derivedGraph(sheetId: string, userId: string): Graph {
+// Also read by a column run's order (services/column-run-plan.ts).
+export function derivedGraph(sheetId: string, userId: string): Graph {
   const graph: Graph = new Map();
   const clean = db.prepare(`SELECT column_name AS c, source_column AS s FROM clean_columns
     WHERE sheet_id = ? AND user_id = ?`).all(sheetId, userId) as Array<{ c: string; s: string }>;

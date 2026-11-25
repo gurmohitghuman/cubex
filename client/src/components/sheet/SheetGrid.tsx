@@ -26,6 +26,7 @@ import { opensAnswer, opensTrace } from '@/components/answer-panel/answer-click'
 import { useWaterfallColumn } from '@/hooks/sheet/useWaterfallColumn'
 import { WaterfallRerunConfirm } from '@/components/waterfall/WaterfallRerunConfirm'
 import { CellPanels, type CellPanelsHandle } from './CellPanels'
+import { CONDITION_NOT_MET } from '@/utils/api/skip-why'
 import { useGridRunControls } from '@/hooks/sheet/useGridRunControls'
 import { RunControlConfirm } from './RunControlConfirm'
 import { UndoRunConfirm } from './UndoRunConfirm'
@@ -150,6 +151,10 @@ export const SheetGrid: React.FC<SheetGridProps> = (props) => {
   const handleCellClick = (rowIndex: number, columnName: string, value?: unknown, info?: CellClickInfo) => {
     const cell = { column: columnName, row: rowIndex, displayRow: info?.displayRow ?? rowIndex + 1 }
     const click = { clicks: info?.clicks ?? 1, edit: info?.edit }
+    // A run column's row its "Only run if" kept out: why (free), before an answer or a trace.
+    if (columnTypes[columnName] && typeof value === 'string' && value.trim() === CONDITION_NOT_MET) {
+      panels.current?.why(cell, click); return
+    }
     if (opensTrace(columnTypes[columnName], value)) { panels.current?.trace(cell, click); return }
     if (opensAnswer(columnTypes[columnName], value)) { panels.current?.answer(cell, click); return }
     onCellClick(rowIndex, columnName, value)

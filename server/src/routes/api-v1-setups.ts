@@ -1,8 +1,9 @@
 // /api/v1 setups: the library (list, read, rename or describe, delete, export,
-// import) and saving one from a sheet. Thin wrappers over the services the app
-// and the MCP tools use (services/setup-library.ts, setup-save.ts,
-// setup-files.ts), so the surfaces can't drift. Saving and its plan only
-// read the sheet: allowed while it's busy (api-v1.ts).
+// import) and saving one from a sheet, using one, and column runs (chosen run
+// columns on chosen rows, kept as setup runs). Thin wrappers over the services
+// the app and the MCP tools use (services/setup-library.ts, setup-save.ts,
+// setup-files.ts, column-run.ts), so the surfaces can't drift. Saving and its
+// plan only read the sheet: allowed while it's busy (api-v1.ts).
 import express from 'express';
 import { requireScope, TokenAuthRequest } from '../middleware/access-token-auth';
 import { runFailHttpStatus, type RunFail } from '../services/run-shared';
@@ -13,6 +14,8 @@ import { applySetup } from '../services/setup-apply';
 import { applyInputOf } from '../services/setup-apply-input';
 import { getSetupRun, sheetSetupRuns } from '../services/setup-run-store';
 import { controlSetupRun, type SetupRunAction } from '../services/setup-run-control';
+import { runColumns } from '../services/column-run';
+import { columnRunInputOf } from '../services/column-run-input';
 
 const router = express.Router();
 
@@ -87,6 +90,21 @@ router.post('/sheets/:id/setups/:setupId/apply', requireScope('run'),
       const over = out.fail === 'over_ceiling' ? { over_ceiling: true, estimate: out.estimate } : {};
       return res.status(runFailHttpStatus(out))
         .json({ error: out.message, missing: out.missing, taken: out.taken, ...over });
+    }
+    return res.status('setup_run' in out.ok ? 201 : 200).json(out.ok);
+  }));
+
+// Run chosen columns on chosen rows (services/column-run.ts): an estimate unless estimate_only is false;
+// started, a setup run (201) followed and controlled as below.
+router.post('/sheets/:id/column-runs', requireScope('run'), guarded('POST /v1/sheets/:id/column-runs',
+  async (req, res) => {
+    const input = columnRunInputOf(body(req), 'v1');
+    if ('fail' in input) return reply(res, input);
+    const out = await runColumns(req.userId!, req.params.id, input,
+      { hasSecretsScope: !!req.tokenScopes?.has('secrets') });
+    if ('fail' in out) {
+      const over = out.fail === 'over_ceiling' ? { over_ceiling: true, estimate: out.estimate } : {};
+      return res.status(runFailHttpStatus(out)).json({ error: out.message, ...over });
     }
     return res.status('setup_run' in out.ok ? 201 : 200).json(out.ok);
   }));
