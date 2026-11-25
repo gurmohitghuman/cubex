@@ -29,6 +29,15 @@ export const hookRoutes = (): RouteDoc[] => [
     scope: 'write', summary: 'Make a new URL, in the answer. The old one stops at once.',
   }),
   op({
+    method: 'post', path: '/sheets/{id}/webhook/token', operationId: 'newSheetWebhookToken', tag: 'webhook',
+    scope: 'write', summary: 'Make senders send a token (Authorization: Bearer <token>). Any old token stops.',
+    description: 'The token is in the answer, the only time it is shown. An event without it gets 404.',
+  }),
+  op({
+    method: 'delete', path: '/sheets/{id}/webhook/token', operationId: 'removeSheetWebhookToken', tag: 'webhook',
+    scope: 'write', summary: 'Senders no longer need a token: anyone with the URL can add rows again.',
+  }),
+  op({
     method: 'delete', path: '/sheets/{id}/webhook', operationId: 'deleteSheetWebhook', tag: 'webhook',
     scope: 'write', summary: 'Delete the webhook and its kept events. Its columns and rows stay.',
   }),

@@ -60,9 +60,11 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
         change: 'added',
         tools: ['manage_sheet_webhook'],
         summary: 'manage_sheet_webhook sets up a sheet\'s incoming webhook, where each JSON event POSTed becomes a '
-          + 'row: get, create, turn_on, turn_off, rotate, add_field, remove_field and delete.',
-        details: 'get needs read; every other action needs write. The url is shown only to a key with write, and '
-          + 'only until the first event arrives; after that, rotate makes a new one and the old one stops at once.',
+          + 'row: get, create, turn_on, turn_off, rotate, add_field, remove_field, new_token, remove_token and '
+          + 'delete.',
+        details: 'get needs read, the rest write. The url shows only to a write key, until the first event; then '
+          + 'rotate makes a new one. new_token answers a token, shown once, that senders must send as '
+          + 'Authorization: Bearer <token>.',
       },
       {
         change: 'changed',

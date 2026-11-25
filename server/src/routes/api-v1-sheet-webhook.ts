@@ -6,8 +6,9 @@
 import express from 'express';
 import { requireScope, TokenAuthRequest } from '../middleware/access-token-auth';
 import {
-  addSheetWebhookField, createSheetWebhook, deleteSheetWebhook, getSheetWebhook, removeSheetWebhookField,
-  rotateSheetWebhook, setSheetWebhookEnabled, sheetWebhookView, type SheetWebhookFail, type SheetWebhookOutcome,
+  addSheetWebhookField, createSheetWebhook, deleteSheetWebhook, getSheetWebhook, newSheetWebhookToken,
+  removeSheetWebhookField, removeSheetWebhookToken, rotateSheetWebhook, setSheetWebhookEnabled, sheetWebhookView,
+  type SheetWebhookFail, type SheetWebhookOutcome,
 } from '../services/sheet-webhook';
 import type { WebhookSourceFull } from '../lib/webhook-service';
 import { linkBase } from '../lib/file-links';
@@ -57,6 +58,20 @@ router.patch('/sheets/:id/webhook', requireScope('write'), guarded('PATCH /v1/sh
 router.post('/sheets/:id/webhook/rotate', requireScope('write'),
   guarded('POST /v1/sheets/:id/webhook/rotate', (req, res) =>
     reply(req, res, rotateSheetWebhook(req.userId!, req.params.id))));
+
+// POST token: a new token senders must send as Authorization: Bearer <token>; { webhook, token }, the only time
+// the token is shown. Any old one stops at once.
+router.post('/sheets/:id/webhook/token', requireScope('write'),
+  guarded('POST /v1/sheets/:id/webhook/token', (req, res) => {
+    const out = newSheetWebhookToken(req.userId!, req.params.id);
+    if ('fail' in out) return reply(req, res, out);
+    res.json({ webhook: sheetWebhookView(out.ok.source, linkBase(req)), token: out.ok.token });
+  }));
+
+// DELETE token: senders no longer need one.
+router.delete('/sheets/:id/webhook/token', requireScope('write'),
+  guarded('DELETE /v1/sheets/:id/webhook/token', (req, res) =>
+    reply(req, res, removeSheetWebhookToken(req.userId!, req.params.id))));
 
 // DELETE: remove the webhook and its kept events. Its columns and rows stay.
 router.delete('/sheets/:id/webhook', requireScope('write'), guarded('DELETE /v1/sheets/:id/webhook', (req, res) => {
