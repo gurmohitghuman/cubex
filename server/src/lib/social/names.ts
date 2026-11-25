@@ -1,6 +1,7 @@
 // A social research table's names and words (pure): its sheets, their columns,
 // and what each one holds, for the sheet and column descriptions agents and
 // people read (services/social-create.ts).
+import { SOCIAL_STANDS_OUT_TIMES } from '../constants';
 
 export const SOCIAL_SHEETS = { searches: 'Searches', comments: 'Comments' } as const;
 export const postsSheetName = (label: string) => `${label} posts`;
@@ -22,6 +23,9 @@ export const STEP_COLUMNS = {
   hook: 'Hook', tension: 'Tension', payoff: 'Payoff', why: 'Why it works',
   creator: 'Creator', bio: 'Bio',
   commentsFound: 'Comments found',
+  // The creator's usual views: their recent posts (its status column, and the list it fills), the median of
+  // their views, and how many times that this post got (lib/social/usual.ts).
+  recentPosts: 'Recent posts', recentViews: 'Recent views', usualViews: 'Usual views', timesUsual: 'Times usual',
 } as const;
 
 export const COMMENT_COLUMNS = {
@@ -29,7 +33,7 @@ export const COMMENT_COLUMNS = {
   reaction: 'Reaction', // the AI tag's base name: "Reaction (Output)"
 } as const;
 
-export const STEPS = ['transcript', 'breakdown', 'creator', 'comments'] as const;
+export const STEPS = ['transcript', 'breakdown', 'creator', 'usual', 'comments'] as const;
 export type SocialStep = typeof STEPS[number];
 
 export const SHEET_WORDS = {
@@ -53,6 +57,11 @@ export const COLUMN_WORDS = {
   [STEP_COLUMNS.payoff]: 'What they get at the end.',
   [STEP_COLUMNS.why]: 'Why it works, in a sentence or two.',
   [STEP_COLUMNS.bio]: 'The creator\'s bio.',
+  [STEP_COLUMNS.recentViews]: 'The creator\'s recent posts and their views, as the platform gave them.',
+  [STEP_COLUMNS.usualViews]: 'The creator\'s usual views: the middle of their recent posts\' views, leaving out '
+    + 'this post.',
+  [STEP_COLUMNS.timesUsual]: `How many times the creator's usual views this post got. ${SOCIAL_STANDS_OUT_TIMES} or `
+    + 'more stands out.',
 } as const;
 
 // "Social: morning routine" (cut to fit; a number after it when the name is taken).

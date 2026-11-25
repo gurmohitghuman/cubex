@@ -4,6 +4,7 @@ import toast from 'react-hot-toast'
 import { Loader2, Megaphone } from 'lucide-react'
 import { Modal } from '@/components/Modal'
 import { socialAPI, type SocialPlatform, type SocialPlatformOption, type SocialStep } from '@/utils/api/social'
+import { SOCIAL_STANDS_OUT_TIMES as STANDS_OUT_TIMES } from '@/lib/constants'
 
 // "Research social posts": a new table of the posts on a topic, on the platforms
 // you tick, with the steps you tick set up on each post and not run. Making it
@@ -18,6 +19,8 @@ const STEP_WORDS: Record<SocialStep, StepWords> = {
     + 'price.', price: () => null },
   creator: { label: 'Creator', hint: 'Followers and bio (TikTok and X searches give the followers already).',
     price: o => o.steps.creator },
+  usual: { label: 'Creator\'s usual views', hint: 'From their recent posts: how many times its creator\'s usual views '
+    + `each post got. ${STANDS_OUT_TIMES} times or more stands out. One call a creator.`, price: o => o.steps.usual },
   comments: { label: 'Comments', hint: 'Into a Comments sheet, each tagged by AI: compares, asks, hates, loves.',
     price: o => o.steps.comments },
 }

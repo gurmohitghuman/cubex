@@ -20,7 +20,8 @@ export const socialRoutes = (): RouteDoc[] => [
       platforms: z.array(z.enum(PLATFORMS)).describe('The platforms to search.'),
       steps: z.array(z.enum(STEPS)).optional()
         .describe('Columns set up on each Posts sheet, not run: transcript, breakdown (AI: hook, tension, payoff, '
-          + 'why it works), creator (followers, bio), comments (into a Comments sheet, with an AI reaction tag).'),
+          + 'why it works), creator (followers, bio), usual (the creator\'s recent posts, their usual views and how '
+          + 'many times that each post got), comments (into a Comments sheet, with an AI reaction tag).'),
       min_views: z.number().int().min(0).optional().describe('Top posts: at least this many views.'),
       min_comments: z.number().int().min(0).optional().describe('Top posts: at least this many comments.'),
       posted_within_days: z.number().int().min(1).max(SOCIAL_MAX_DAYS).optional()

@@ -1,9 +1,9 @@
 // A social research table's runs as their starts take them, built against
 // treg's catalog before the table is made (services/social-create.ts): each
 // platform's search (a list into its Posts sheet, kept, First seen set by each
-// Find posts), and the steps chosen on its Posts sheet: the transcript and the
-// creator (one answer a row) and comments (a list into Comments, kept). None
-// of them runs here. A platform whose search Cubex can't add rows from now
+// Find posts), and the steps chosen on its Posts sheet: the transcript, the
+// creator and their recent posts (one answer a row) and comments (a list into
+// Comments, kept). None of them runs here. A platform whose search Cubex can't add rows from now
 // (addsRows) is refused with the platforms that can.
 import type { EnrichRunConfig } from '../lib/enrich-run-config';
 import type { EnrichRunInput, InputBinding } from '../lib/enrich-run-input';
@@ -19,7 +19,7 @@ import type { RunFail } from './run-shared';
 export interface BuiltRun { input: EnrichRunInput; config: EnrichRunConfig }
 export interface PlatformRuns {
   platform: Platform; search: BuiltRun; transcript: BuiltRun | null; creator: BuiltRun | null;
-  comments: BuiltRun | null;
+  usual: BuiltRun | null; comments: BuiltRun | null;
 }
 
 const ALL = { mode: 'all' as const, status: 'any' as const, test: null, rowIndexes: null };
@@ -48,8 +48,9 @@ function listInput(spec: ListSpec, columnName: string, inputs: Record<string, In
 }
 
 function stepInput(tool: StepTool, columnName: string, runIf: string): EnrichRunInput {
+  const values = Object.fromEntries(Object.entries(tool.values ?? {}).map(([k, value]) => [k, { value }]));
   return {
-    ...base(tool.toolId, columnName, bind(tool.inputs), runIf),
+    ...base(tool.toolId, columnName, { ...bind(tool.inputs), ...values }, runIf),
     outputs: tool.outputs.map(o => ({ key: o.key, path: o.path, columnName: o.columnName,
       ...(o.fromAnswer ? { fromAnswer: true } : {}) })),
   };
@@ -84,7 +85,8 @@ export async function buildSocialRuns(input: SocialInput, postColumns: Record<Pl
     const cols = postColumns[platform];
     const has = (step: string) => input.steps.includes(step as SocialInput['steps'][number]);
     const postIsSet = `{{${P.post}}} is not empty`;
-    let transcript: BuiltRun | null = null, creator: BuiltRun | null = null, comments: BuiltRun | null = null;
+    let transcript: BuiltRun | null = null, creator: BuiltRun | null = null, usual: BuiltRun | null = null;
+    let comments: BuiltRun | null = null;
     if (has('transcript')) {
       const t = await built(stepInput(spec.transcript, S.transcript, postIsSet), cols, `${spec.label} transcripts`);
       if ('fail' in t) return t;
@@ -97,6 +99,13 @@ export async function buildSocialRuns(input: SocialInput, postColumns: Record<Pl
       if ('fail' in c) return c;
       creator = c;
     }
+    if (has('usual')) {
+      const who = Object.values(spec.usual.inputs)[0];
+      const u = await built(stepInput(spec.usual, S.recentPosts, `{{${who}}} is not empty`), cols,
+        `${spec.label} creators' recent posts`);
+      if ('fail' in u) return u;
+      usual = u;
+    }
     if (has('comments')) {
       const c = await built(listInput(spec.comments, S.commentsFound, bind(spec.comments.inputs),
         input.perSearch, [{ from: P.post, to: C.post }, { from: '', to: C.platform, value: spec.label }], postIsSet),
@@ -104,7 +113,7 @@ export async function buildSocialRuns(input: SocialInput, postColumns: Record<Pl
       if ('fail' in c) return c;
       comments = c;
     }
-    out.push({ platform, search, transcript, creator, comments });
+    out.push({ platform, search, transcript, creator, usual, comments });
   }
   return { ok: out };
 }

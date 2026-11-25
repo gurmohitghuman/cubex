@@ -2,12 +2,16 @@ import React, { useCallback, useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Megaphone } from 'lucide-react'
 import type { SheetData } from '@/utils/api/types'
-import type { SocialView } from '@/utils/api/social'
+import type { SocialStep, SocialView } from '@/utils/api/social'
+import { SOCIAL_STANDS_OUT_TIMES as STANDS_OUT_TIMES } from '@/lib/constants'
 import { FindPostsDialog } from './FindPostsDialog'
 
 // Above the grid of a social research table's sheets: the topic, its sheets, Find posts (the cost first), and what
 // to do next. A new table opens on what finding its posts costs.
 const LABELS: Record<string, string> = { tiktok: 'TikTok', instagram: 'Instagram', youtube: 'YouTube', x: 'X' }
+// The column each step runs from (server lib/social/names.ts).
+const STEP_COLUMN: Record<SocialStep, string> = { transcript: 'Transcript', breakdown: 'Breakdown (Status)',
+  creator: 'Creator', usual: 'Recent posts', comments: 'Comments found' }
 
 export const SocialBanner: React.FC<{ v: SocialView; sheetId: string; onChanged: () => void }> =
   ({ v, sheetId, onChanged }) => {
@@ -48,8 +52,10 @@ export const SocialBanner: React.FC<{ v: SocialView; sheetId: string; onChanged:
         </div>
         <p className="text-xs text-gray-600 mt-2" data-testid="social-next">
           {v.steps.length > 0
-            ? 'Next: on a posts sheet, open a step\'s column menu (Transcript, Breakdown, Creator, Comments found) '
+            ? `Next: on a posts sheet, open a step's column menu (${v.steps.map(s => STEP_COLUMN[s]).join(', ')}) `
               + 'and run it. It shows the cost first.'
+              + (v.steps.includes('usual') ? ` Then the ${STANDS_OUT_TIMES}x over usual view shows the posts that `
+                + 'stand out.' : '')
             : 'Find posts adds the posts to each platform\'s sheet. Run it again later to find what\'s new.'}
         </p>
         {finding && <FindPostsDialog v={v} onClose={close} onStarted={onChanged} />}

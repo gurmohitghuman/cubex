@@ -27,6 +27,8 @@ test('Research social posts: the dialog, the table opens on the estimate, posts 
   await dialog.getByRole('checkbox', { name: 'TikTok' }).check()
   await dialog.getByRole('checkbox', { name: 'Transcript' }).check()
   await expect(dialog).toContainText(/Transcript · up to \$[\d.]+ a post/)
+  await dialog.getByRole('checkbox', { name: 'Creator\'s usual views' }).check()
+  await expect(dialog).toContainText(/Creator's usual views · up to \$[\d.]+ a post/)
   await make.click()
 
   const confirm = page.getByTestId('social-find-confirm')
@@ -38,7 +40,8 @@ test('Research social posts: the dialog, the table opens on the estimate, posts 
   const banner = page.getByTestId('social-banner')
   await expect(banner).toContainText('Social research: morning routine')
   await expect(banner).toContainText('Top posts: posted in the last 30 days')
-  await expect(banner.getByTestId('social-next')).toContainText('open a step\'s column menu')
+  await expect(banner.getByTestId('social-next')).toContainText('open a step\'s column menu (Transcript, Recent posts)')
+  await expect(banner.getByTestId('social-next')).toContainText('the 3x over usual view shows the posts that stand out')
   const sheetId = new URL(page.url()).pathname.split('/').pop()!
   await expect.poll(() => column(api, sheetId, 'Author'), { timeout: 30_000 })
     .toEqual(['sunny_side_studio', 'mila_mornings', 'calm_kettle'])
