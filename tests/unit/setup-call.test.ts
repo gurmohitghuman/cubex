@@ -1,9 +1,12 @@
+// Over 200 lines: one call's life, from its items to its removal and its spend, on one setup; then pages and files.
 // A saved setup called on items without a sheet (services/setup-call.ts), on a migrated throwaway DB, with a free
 // chain of two clean columns: the items checked (count, unknown inputs, cell types); an estimate starts nothing
 // and leaves no working table; a call runs on a hidden working table that no list or count shows, finishes with
 // each item's status and outputs in the order sent (Cubex's words in a cell never an output), and its id is the
-// setup run's; a start takes a run-start slot; the sweep removes the working table once the results have been kept
-// long enough (and an orphan one), and the call is then not found.
+// setup run's; a start takes a run-start slot; Settings' spend card shows what a call spent as "a call without a
+// sheet", before and after its working table goes; the sweep stops a call paused longer than the keep time (its
+// results then kept as a finished call's) and removes the working table once the results have been kept long
+// enough (and an orphan one), and the call is then not found.
 import { v4 as uuid } from 'uuid'
 import dbMod from '../../server/src/lib/db'
 import migMod from '../../server/src/db/migrate'
@@ -13,11 +16,14 @@ import readMod from '../../server/src/services/workspace-read'
 import overviewMod from '../../server/src/services/workspace-overview'
 import trashMod from '../../server/src/services/trash-read'
 import runSharedMod from '../../server/src/services/run-shared'
+import spendMod from '../../server/src/services/enrich-spend'
 import type { SetupSpec } from '../../server/src/lib/setups/spec'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { insertSetup } = libMod as typeof import('../../server/src/services/setup-library')
-const { callSetup, getSetupCall, sweepSetupCalls } = callMod as typeof import('../../server/src/services/setup-call')
+const { callSetup, getSetupCall, sweepSetupCalls, STALE_PAUSE } =
+  callMod as typeof import('../../server/src/services/setup-call')
+const { enrichSpend } = spendMod as typeof import('../../server/src/services/enrich-spend')
 const { listTablesWithSheets } = readMod as typeof import('../../server/src/services/workspace-read')
 const { workspaceOverview } = overviewMod as typeof import('../../server/src/services/workspace-overview')
 const { listTrash } = trashMod as typeof import('../../server/src/services/trash-read')
@@ -62,11 +68,17 @@ const missing = await callSetup(uid, uuid(), [{ Name: 'x' }], { estimateOnly: fa
 check('a setup that isn\'t there: not found', 'fail' in missing && missing.fail === 'not_found', missing)
 check('nothing refused left a working table', hiddenTables() === 0, hiddenTables())
 
-// An estimate: priced, nothing started, no working table left.
+// An estimate: priced, a pure read (no working table made, nothing written: setup-call-estimate.test.ts prices
+// paid steps).
+const counts = () => ['tables', 'sheets', 'rows', 'setup_runs', 'ai_runs', 'http_runs', 'setup_calls', 'call_sheets']
+  .map(t => db.prepare(`SELECT COUNT(*) FROM ${t}`).pluck().get() as number).join()
+  + ` ${db.prepare('SELECT total_changes()').pluck().get()}`
+const beforeEstimate = counts()
 const est = await callSetup(uid, setupId, [{ Name: ' A ' }, { Name: 'B' }], { estimateOnly: true }, caller)
 check('an estimate prices the items and makes the setup\'s columns',
   'ok' in est && 'estimate' in est.ok && est.ok.items === 2 && est.ok.makes.join() === 'Trimmed,Lower', est)
-check('an estimate leaves no working table', hiddenTables() === 0, hiddenTables())
+check('an estimate makes no table, sheet, row or run and writes nothing', counts() === beforeEstimate,
+  { before: beforeEstimate, after: counts() })
 
 // A call.
 const items = [{ Name: '  Ada LOVELACE ' }, {}, { Name: 'Grace' }, { Name: 42 }]
@@ -116,6 +128,24 @@ check('kept until 24 hours after it finished', view.keep_until !== null
 check('auto-run is never turned on in a working table',
   (db.prepare('SELECT COUNT(*) FROM autorun_columns WHERE enabled = 1').pluck().get() as number) === 0)
 
+// What a call's enrichments spent shows in Settings as one line for calls, not under the working table's name;
+// a deleted sheet's spend stays "Deleted sheet".
+const ledger = db.prepare(`INSERT INTO enrichment_calls (id, user_id, sheet_id, status_column, tool_id, attempt,
+  cost_micro) VALUES (?, ?, ?, ?, 'treg.people.email.find', 't1', ?)`)
+ledger.run(uuid(), uid, sheetOfCall, 'Email', 20_000)
+ledger.run(uuid(), uid, sheetOfCall, 'Status', 10_000)
+ledger.run(uuid(), uid, uuid(), 'Gone', 5_000)
+const spendLines = async () => (await enrichSpend(uid, 30)).columns
+const callSpend = async () => {
+  const lines = await spendLines()
+  const call = lines.filter(c => c.call)
+  return call.length === 1 && call[0].calls === 2 && Math.abs(call[0].spentUsd - 0.03) < 1e-9
+    && call[0].sheetId === null && call[0].tableName === null && call[0].column === null
+    && lines.some(c => !c.call && c.sheetId === null && c.column === 'Gone')
+}
+check('Settings\' spend: a call\'s spend is one line for calls, a deleted sheet\'s stays apart', await callSpend(),
+  await spendLines())
+
 // A start takes a slot of the token's run-start window (an estimate doesn't): a full window refuses it before
 // any working table is made.
 const tok = uuid()
@@ -126,15 +156,43 @@ check('a full run-start window refuses a start', 'fail' in limited && limited.fa
 const pricedOk = await callSetup(uid, setupId, [{ Name: 'x' }], { estimateOnly: true }, { ...caller, tokenId: tok })
 check('an estimate still answers with the window full', 'ok' in pricedOk && 'estimate' in pricedOk.ok, pricedOk)
 
+// A call paused (by hand, or at a limit) and never resumed: stopped once it has been paused longer than the keep
+// time, its results then kept that long again, as any finished call's.
+const second = await callSetup(uid, setupId, [{ Name: ' Paused ' }], { estimateOnly: false }, caller)
+if (!('ok' in second) || !('setup_call' in second.ok)) throw new Error(JSON.stringify(second))
+const pausedId = second.ok.setup_call.id
+for (let i = 0; i < 200 && getSetupCall(uid, pausedId)!.status === 'running'; i++) {
+  await setupSweep()
+  await sleep(50)
+}
+const pausedFor = (hours: number) => db.prepare(`UPDATE setup_runs SET status = 'paused', error_message = NULL,
+  updated_at = datetime('now', ?) WHERE id = ?`).run(`-${hours} hours`, pausedId)
+pausedFor(23)
+check('the sweep keeps a call paused for less than the keep time', await sweepSetupCalls() === 0
+  && getSetupCall(uid, pausedId)!.status === 'paused' && hiddenTables() === 2)
+pausedFor(25)
+const stopped = (await sweepSetupCalls(), getSetupCall(uid, pausedId)!)
+check('the sweep stops a call paused for longer, and keeps its results', stopped.status === 'cancelled'
+  && stopped.error_message === STALE_PAUSE && stopped.results?.[0].outputs.Lower === 'paused' && hiddenTables() === 2
+  && stopped.keep_until !== null && Date.parse(stopped.keep_until) - Date.now() > 23 * 3_600_000, stopped)
+
 // The sweep: nothing yet; once the keep time has passed, the working table goes and the call is not found.
-check('the sweep keeps a fresh call', sweepSetupCalls() === 0 && hiddenTables() === 1)
-db.prepare("UPDATE setup_runs SET updated_at = datetime('now', '-25 hours') WHERE id = ?").run(call.id)
-check('the sweep removes it after the keep time', sweepSetupCalls() === 1 && hiddenTables() === 0)
+check('the sweep keeps a fresh call', await sweepSetupCalls() === 0 && hiddenTables() === 2)
+db.prepare("UPDATE setup_runs SET updated_at = datetime('now', '-25 hours') WHERE id IN (?, ?)").run(call.id, pausedId)
+check('the sweep removes them after the keep time', await sweepSetupCalls() === 2 && hiddenTables() === 0)
 check('the trash never lists it', listTrash(uid).items.length === 0 && listTrash(uid).total_bytes === 0,
   listTrash(uid))
 for (let i = 0; i < 100 && db.prepare('SELECT 1 FROM setup_calls WHERE id = ?').get(call.id); i++) await sleep(50)
 check('purged: the call is not found', getSetupCall(uid, call.id) === null
   && !db.prepare('SELECT 1 FROM tables WHERE hidden = 1').get())
+check('Settings\' spend still names a removed call\'s spend as a call\'s', await callSpend(), await spendLines())
+db.prepare("UPDATE call_sheets SET created_at = datetime('now', '-91 days')").run()
+await sweepSetupCalls()
+check('a removed call\'s sheet is kept while a spend window reaches its spend',
+  !!db.prepare('SELECT 1 FROM call_sheets WHERE sheet_id = ?').get(sheetOfCall))
+db.prepare("UPDATE enrichment_calls SET created_at = datetime('now', '-91 days') WHERE sheet_id = ?").run(sheetOfCall)
+await sweepSetupCalls()
+check('and dropped once none can', !db.prepare('SELECT 1 FROM call_sheets WHERE sheet_id = ?').get(sheetOfCall))
 
 // An orphan working table (a restart between the table and the run, or an upload link never used) goes once no
 // upload link can still be filling it: kept at 2 hours (a link used at its 15th minute may take 70 minutes to
@@ -143,10 +201,10 @@ const orphan = uuid()
 db.prepare(`INSERT INTO tables (id, user_id, name, hidden, created_at)
   VALUES (?, ?, ?, 1, datetime('now', '-2 hours'))`)
   .run(orphan, uid, 'Setup call orphan')
-check('the sweep keeps a 2-hour-old orphan: an upload may still be arriving', sweepSetupCalls() === 0
+check('the sweep keeps a 2-hour-old orphan: an upload may still be arriving', await sweepSetupCalls() === 0
   && !!db.prepare('SELECT 1 FROM tables WHERE id = ? AND trash_id IS NULL').get(orphan))
 db.prepare("UPDATE tables SET created_at = datetime('now', '-3 hours') WHERE id = ?").run(orphan)
-check('the sweep removes an orphan working table', sweepSetupCalls() === 1
+check('the sweep removes an orphan working table', await sweepSetupCalls() === 1
   && !db.prepare('SELECT 1 FROM tables WHERE id = ? AND trash_id IS NULL').get(orphan))
 
 // Pages: a finished call's results a page at a time, and the next page's start.

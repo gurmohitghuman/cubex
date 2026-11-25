@@ -24,7 +24,8 @@ export type CreateTableOutcome =
 // add-first-column creates row 0 and the empty-state UI handles the rest. Only
 // the add-sheet route seeds a starter grid; seeding here would change
 // import/onboarding semantics app-wide. hidden: a setup call's working table
-// (services/setup-call.ts), hidden from the first moment, never listed.
+// (services/setup-call.ts), hidden from the first moment, never listed; its
+// sheet is kept in call_sheets (migration 075) for Settings' spend card.
 export function createTable(userId: string, rawName: unknown, opts: { hidden?: boolean } = {}): CreateTableOutcome {
   const validationErr = validateTableName(rawName);
   if (validationErr) return { fail: 'bad_request', message: validationErr };
@@ -44,6 +45,7 @@ export function createTable(userId: string, rawName: unknown, opts: { hidden?: b
     db.prepare('INSERT INTO sheets (id, table_id, user_id, name, position) VALUES (?, ?, ?, ?, 0)')
       .run(sheetId, tableId, userId, 'Sheet1');
     createDefaultView(sheetId, userId);
+    if (opts.hidden) db.prepare('INSERT INTO call_sheets (sheet_id, user_id) VALUES (?, ?)').run(sheetId, userId);
   }).immediate();
   if (fail) return fail;
   return { ok: { id: tableId, name, sheetId } };

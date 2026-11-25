@@ -12,13 +12,16 @@
 // whose estimate could pass it, or that has a step with no price (unless
 // allowUnpriced), is refused ('over_ceiling') and creates nothing; the ceiling
 // is kept in the record's plan for its steps' limits (setup-ceiling.ts).
+// fitSetup is the half before the price, shared with a setup call's estimate
+// on its items, which has no sheet (setup-call-estimate.ts).
 import { db } from '../lib/db';
 import { MAX_SETUP_TEST_ROWS } from '../lib/constants-setups';
 import { getSheetColumns, verifySheetOwnership } from '../lib/sql-helpers';
 import { sheetBusyWith, busyMessage } from '../lib/sheet-busy';
 import { planApply, type ApplyChoices } from '../lib/setups/apply-plan';
-import { mainColumn } from '../lib/setups/spec';
-import { getSetup } from './setup-library';
+import { mainColumn, type SetupSpec } from '../lib/setups/spec';
+import type { SheetColumnStep, StepMode } from '../lib/setups/again';
+import { getSetup, type SetupDetail } from './setup-library';
 import { savedKeyNames } from './saved-keys';
 import { sheetCandidates } from './setup-steps';
 import { estimateSetup, type SetupEstimate } from './setup-estimate';
@@ -49,7 +52,7 @@ export interface ApplyInput extends ApplyChoices {
 }
 // makes: every column its steps make or carry on; carries_on: the main columns
 // of the steps that carry a column of the sheet on.
-type PricedEstimate = SetupEstimate & ReturnType<typeof ceilingView>;
+export type PricedEstimate = SetupEstimate & ReturnType<typeof ceilingView>;
 export type ApplyOutcome =
   | { ok: { estimate: PricedEstimate; inputs: Record<string, string>; makes: string[]; carries_on: string[] } }
   | { ok: { setup_run: SetupRunView } }
@@ -57,34 +60,53 @@ export type ApplyOutcome =
 
 const bad = (message: string): ApplyFail => ({ fail: 'bad_request', message });
 
-export async function applySetup(
-  userId: string, sheetId: string, setupId: string, input: ApplyInput, caller: { hasSecretsScope: boolean },
-): Promise<ApplyOutcome> {
-  const setup = getSetup(userId, setupId);
-  if (!setup) return { fail: 'not_found', message: 'Setup not found' };
-  if (!verifySheetOwnership(sheetId, userId)) return { fail: 'not_found', message: 'Sheet not found' };
+// Where a setup is fitted: a sheet (its columns and the columns it has filled), or a setup call's items, without a
+// sheet (sheetId null; columns: the setup's inputs; nothing filled yet).
+export interface FitAt { sheetId: string | null; columns: string[]; existing: SheetColumnStep[] }
+export interface Fitted {
+  spec: SetupSpec; layers: number[]; modes: StepMode[]; makes: string[]; inputs: Record<string, string>;
+}
+
+// The setup fitted to where it's used and checked against what the account has: all an estimate and a start
+// check before the price.
+export async function fitSetup(
+  userId: string, setup: SetupDetail, at: FitAt, input: ApplyInput, caller: { hasSecretsScope: boolean },
+): Promise<{ ok: Fitted } | ApplyFail> {
   if (setup.spec.steps.length === 0) return bad('This setup is damaged: it has no steps. Save it again.');
   const hookProblem = webhookIdProblem(userId, input.webhookId);
   if (hookProblem) return bad(hookProblem);
-  const first = input.firstRows ?? null;
-  if (first !== null && !(Number.isSafeInteger(first) && first >= 1 && first <= MAX_SETUP_TEST_ROWS)) {
-    return bad(`firstRows must be a whole number from 1 to ${MAX_SETUP_TEST_ROWS}.`);
-  }
-  const columns = getSheetColumns(sheetId, userId, false);
-  const existing = sheetCandidates(sheetId, userId);
-  const plan = planApply(setup.spec, columns, input, existing, new Set(savedKeyNames(userId)));
+  const plan = planApply(setup.spec, at.columns, input, at.existing, new Set(savedKeyNames(userId)));
   if ('problem' in plan) {
     return { fail: plan.taken ? 'conflict' : 'bad_request', message: plan.problem, missing: plan.missing,
       taken: plan.taken };
   }
   const { modes, layers, makes } = plan.ok;
   // Models are picked by the setup's own column names, before any rename.
-  const spec = await withModels(plan.ok.spec, setup.spec, input.models ?? {}, modes, existing, sheetId, userId);
+  const spec = await withModels(plan.ok.spec, setup.spec, input.models ?? {}, modes, at.existing, at.sheetId, userId);
   if ('fail' in spec) return spec;
   const providerProblem = await enrichmentProvidersProblem(spec, modes);
   if (providerProblem) return providerProblem;
-  const problem = keyProblem(userId, spec, columns, caller.hasSecretsScope) ?? liveSetupClash(userId, sheetId, makes);
+  const problem = keyProblem(userId, spec, at.columns, caller.hasSecretsScope)
+    ?? (at.sheetId === null ? null : liveSetupClash(userId, at.sheetId, makes));
   if (problem) return problem;
+  return { ok: { spec, layers, modes, makes, inputs: plan.ok.inputs } };
+}
+
+export async function applySetup(
+  userId: string, sheetId: string, setupId: string, input: ApplyInput, caller: { hasSecretsScope: boolean },
+): Promise<ApplyOutcome> {
+  const setup = getSetup(userId, setupId);
+  if (!setup) return { fail: 'not_found', message: 'Setup not found' };
+  if (!verifySheetOwnership(sheetId, userId)) return { fail: 'not_found', message: 'Sheet not found' };
+  const first = input.firstRows ?? null;
+  if (first !== null && !(Number.isSafeInteger(first) && first >= 1 && first <= MAX_SETUP_TEST_ROWS)) {
+    return bad(`firstRows must be a whole number from 1 to ${MAX_SETUP_TEST_ROWS}.`);
+  }
+  const columns = getSheetColumns(sheetId, userId, false);
+  const existing = sheetCandidates(sheetId, userId);
+  const fitted = await fitSetup(userId, setup, { sheetId, columns, existing }, input, caller);
+  if ('fail' in fitted) return fitted;
+  const { spec, layers, modes, makes } = fitted.ok;
 
   const rowIds = first === null ? null : db.prepare(`SELECT id FROM rows WHERE sheet_id = ? AND user_id = ?
     ORDER BY row_index LIMIT ?`).pluck().all(sheetId, userId, first) as string[];
@@ -99,12 +121,12 @@ export async function applySetup(
   if (input.estimateOnly || ceiling.maxCostUsd !== null) {
     const indexes = rowIds ? db.prepare(`SELECT row_index FROM rows WHERE sheet_id = ? AND user_id = ?
       ORDER BY row_index LIMIT ?`).pluck().all(sheetId, userId, first) as number[] : null;
-    const est = await estimateSetup(userId, sheetId, layered, columns, rows, indexes, existing);
+    const est = await estimateSetup(userId, { sheetId }, layered, columns, rows, indexes, existing);
     priced = { ...est, ...ceilingView(setupCeilingFigures(est), ceiling) };
   }
   if (input.estimateOnly) {
     const carries = spec.steps.filter((_, i) => modes[i] === 'again').map(mainColumn);
-    return { ok: { estimate: priced!, inputs: plan.ok.inputs, makes, carries_on: carries } };
+    return { ok: { estimate: priced!, inputs: fitted.ok.inputs, makes, carries_on: carries } };
   }
   const over = priced && ceilingProblem(setupCeilingFigures(priced), ceiling);
   if (over) return { fail: 'over_ceiling', message: over, estimate: priced! };
@@ -113,7 +135,7 @@ export async function applySetup(
   if (capped) return { fail: 'forbidden', message: capped };
   const busy = sheetBusyWith(sheetId);
   if (busy) return { fail: 'conflict', message: busyMessage(busy) };
-  const choices = { inputs: plan.ok.inputs, names: input.names ?? {}, models: input.models ?? {} };
+  const choices = { inputs: fitted.ok.inputs, names: input.names ?? {}, models: input.models ?? {} };
   const kept = priced && ceiling.maxCostUsd !== null ? { ceiling: setupCeilingOf(priced, ceiling) } : {};
   const id = insertSetupRun({
     userId, sheetId, setupId: setup.id, setupName: setup.name, plan: { ...layered, choices, ...kept },
