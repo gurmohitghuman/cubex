@@ -83,7 +83,7 @@ const PARAMS: Record<string, z.ZodType> = {
   'enrichments.toolId': id('The enrichment tool id, such as treg.people.email.find.'),
   'ai-visibility.id': id("The AI visibility table's id, or its Questions sheet id."),
   'hiring.id': id("The hiring table's id, or its Companies sheet id."),
-  'social-research.id': id("The social research table's id."),
+  'social-research.id': id("The social research table's id, or the id of one of its sheets."),
   'run-webhooks.id': id('The run webhook id.'),
   'trash.id': z.number().int().min(1).describe('The trash id.'),
 };

@@ -1,6 +1,6 @@
 // A social research table's record (social_research, migration 071): reading
-// it, and the view the app, /api/v1 and MCP show. A sheet of it in the trash
-// reads as gone (null), as every other reader of a sheet does.
+// it, and the view the app, /api/v1 and MCP show. A table in the trash reads
+// as gone, as every other reader of a table does.
 import { db } from '../lib/db';
 import type { Platform } from '../lib/social/platforms';
 import type { SocialStep } from '../lib/social/names';
@@ -18,8 +18,13 @@ export interface SocialView {
   created_at: string;
 }
 
+// A table's record by its id, or by the id of one of its sheets (what list_tables shows, so an agent that
+// didn't keep the id finds it again); not one in the trash.
 export const loadSocial = (userId: string, id: string): SocialRecord | undefined =>
-  db.prepare('SELECT * FROM social_research WHERE id = ? AND user_id = ?').get(id, userId) as SocialRecord | undefined;
+  db.prepare(`SELECT r.* FROM social_research r JOIN tables t ON t.id = r.table_id AND t.user_id = r.user_id
+    WHERE r.user_id = ? AND t.trash_id IS NULL AND (r.id = ? OR r.searches_sheet_id = ? OR r.comments_sheet_id = ?
+      OR EXISTS (SELECT 1 FROM json_each(r.posts_sheets) WHERE value = ?)) ORDER BY r.created_at LIMIT 1`)
+    .get(userId, id, id, id, id) as SocialRecord | undefined;
 
 // The record a table was made with, by the table (a table holds at most one).
 export const socialOfTable = (userId: string, tableId: string): SocialRecord | undefined =>

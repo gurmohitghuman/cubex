@@ -18,7 +18,7 @@ export function registerSocialTool(server: McpServer, ctx: McpAuthCtx): void {
       + 'max_cost_usd = high_usd. Run the steps with run_columns or each column\'s run. get: the table.',
     inputSchema: z.object({
       action: z.enum(['create', 'find_posts', 'get']).describe('find_posts is paid'),
-      id: z.string().optional().describe('find_posts, get: from create'),
+      id: z.string().optional().describe('find_posts, get: from create, or one of its sheet ids'),
       topic: z.string().optional().describe('create: what to research'),
       searches: z.array(z.string()).max(SOCIAL_MAX_SEARCHES).optional()
         .describe('create: words to search (default: the topic)'),
