@@ -83,12 +83,14 @@ test('ai_key: an AI step refused for the key; the line says so, and Resume asks 
   expect(paused.pause_reason).toBe('ai_key')
   await openSheet(page, context, api, tableId)
   await expectLine(page, runId, COLUMN, 'OpenRouter refused the AI step:')
-  const before = (await listed(api, 'http', sheetId, runId))!.updated_at
+  // Each Resume moves the run's worker_generation on. Not updated_at: it counts whole seconds, and the pause,
+  // Resume and the pause again can all fall in one.
+  const before = (await listed(api, 'http', sheetId, runId))!.worker_generation as number
   await resumeLine(page, runId)
   // The key is still fake: the run goes again, OpenRouter refuses again, and the line comes back.
   await expect.poll(async () => {
     const r = (await listed(api, 'http', sheetId, runId))!
-    return r.status === 'paused' && r.pause_reason === 'ai_key' && r.updated_at !== before
+    return r.status === 'paused' && r.pause_reason === 'ai_key' && r.worker_generation > before
   }, { timeout: 60_000 }).toBe(true)
   await expectLine(page, runId, COLUMN, 'OpenRouter refused the AI step:')
   expect((await api.post(`/api/http/jobs/${runId}/control`, { data: { action: 'cancel' } })).ok()).toBeTruthy()

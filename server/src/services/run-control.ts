@@ -1,6 +1,7 @@
 import { db } from '../lib/db';
 import { failedCell } from '../lib/enrich-cells';
 import { clearRunPlaceholders } from '../lib/run-placeholders';
+import { dropRunSpans } from '../lib/derived-spans';
 import { destsGone } from './enrich-list-source';
 
 // Abort any in-flight AI/HTTP runs whose owning sheet is about to be deleted.
@@ -46,12 +47,13 @@ export function abortRunsForTable(tableId: string): void {
 export function abortListRunsInto(sheetIds: string[]): string[] {
   if (sheetIds.length === 0) return [];
   const ids = JSON.stringify(sheetIds);
-  const runs = db.prepare(`SELECT id FROM http_runs WHERE dest_sheet_id IN (SELECT value FROM json_each(?))
-    AND status IN ('pending','running','paused')`).pluck().all(ids) as string[];
+  const runs = db.prepare(`SELECT id, sheet_id FROM http_runs WHERE dest_sheet_id IN (SELECT value FROM json_each(?))
+    AND status IN ('pending','running','paused')`).all(ids) as Array<{ id: string; sheet_id: string }>;
   db.prepare(`UPDATE http_runs SET status = 'cancelled', placeholder_work = 'clearing', updated_at = datetime('now')
-    WHERE id IN (SELECT value FROM json_each(?))`).run(JSON.stringify(runs));
+    WHERE id IN (SELECT value FROM json_each(?))`).run(JSON.stringify(runs.map(r => r.id)));
+  for (const r of runs) dropRunSpans(r.sheet_id, { kind: 'http', id: r.id });
   destsGone(sheetIds, failedCell('Rows not added: the sheet for them was deleted.'));
-  return runs;
+  return runs.map(r => r.id);
 }
 
 export function clearListRunCells(runIds: string[]): void {

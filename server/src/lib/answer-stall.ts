@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from 'express';
 import type { Socket } from 'node:net';
-import { envInt } from './env-int';
+import { envInt, envMs } from './env-int';
 
 // A deadline on an answer its client stopped reading, for the whole app (index.ts mounts it before anything
 // answers). Only answer data waiting to go out is timed: while some of the answer is still in Node's buffers, it
@@ -20,7 +20,7 @@ import { envInt } from './env-int';
 
 // 60 s: rides out a phone switching networks or a short dead zone, and is what proxies commonly allow between
 // two writes to a client, so behind one nothing changes.
-export const RESPONSE_STALL_TIMEOUT_MS = envInt('RESPONSE_STALL_TIMEOUT_MS', 60_000);
+export const RESPONSE_STALL_TIMEOUT_MS = envMs('RESPONSE_STALL_TIMEOUT_MS', 60_000);
 // At most setTimeout's longest wait (about 24.8 days; longer would fire at once).
 const MAX_WAIT_MS = 2_147_483_647;
 const STALL_WAIT_MS = Math.min(MAX_WAIT_MS, Math.max(1, RESPONSE_STALL_TIMEOUT_MS));
