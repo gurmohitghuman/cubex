@@ -1,12 +1,60 @@
-// /api/v1 routes: "run finished" webhooks (run-webhooks-routes.ts, mounted by
-// api-v1.ts at /run-webhooks).
+// /api/v1 routes: a sheet's incoming webhook (api-v1-sheet-webhook.ts) and "run finished" webhooks
+// (run-webhooks-routes.ts, mounted by api-v1.ts at /run-webhooks).
 import { z } from 'zod';
 import { op, type RouteDoc } from './route-doc';
 
 const url = z.string().describe('A public http(s) address. Private and local addresses are refused.');
 const everyRun = z.boolean().describe('true: told when any run finishes. false: only runs that name it.');
 
+const writeForUrl = 'The url is in the answer only for a key with write, and only until the first event arrives.';
+
 export const hookRoutes = (): RouteDoc[] => [
+  op({
+    method: 'get', path: '/sheets/{id}/webhook', operationId: 'getSheetWebhook', tag: 'webhook', scope: 'read',
+    summary: "A sheet's incoming webhook: on or off, events received, the last error and its fields. null if none.",
+    description: writeForUrl,
+  }),
+  op({
+    method: 'post', path: '/sheets/{id}/webhook', operationId: 'createSheetWebhook', tag: 'webhook', scope: 'write',
+    summary: 'Give a sheet its incoming webhook (one per sheet) and a column that marks the rows it adds.',
+    description: writeForUrl, responses: { 201: 'The webhook, with its url.' },
+  }),
+  op({
+    method: 'patch', path: '/sheets/{id}/webhook', operationId: 'setSheetWebhookEnabled', tag: 'webhook',
+    scope: 'write', summary: 'Turn the webhook on or off. While off, events get 404 and add nothing.',
+    body: z.object({ enabled: z.boolean().describe('true: on. false: off.') }),
+  }),
+  op({
+    method: 'post', path: '/sheets/{id}/webhook/rotate', operationId: 'rotateSheetWebhook', tag: 'webhook',
+    scope: 'write', summary: 'Make a new URL, in the answer. The old one stops at once.',
+  }),
+  op({
+    method: 'post', path: '/sheets/{id}/webhook/token', operationId: 'newSheetWebhookToken', tag: 'webhook',
+    scope: 'write', summary: 'Make senders send a token (Authorization: Bearer <token>). Any old token stops.',
+    description: 'The token is in the answer, the only time it is shown. An event without it gets 404.',
+  }),
+  op({
+    method: 'delete', path: '/sheets/{id}/webhook/token', operationId: 'removeSheetWebhookToken', tag: 'webhook',
+    scope: 'write', summary: 'Senders no longer need a token: anyone with the URL can add rows again.',
+  }),
+  op({
+    method: 'delete', path: '/sheets/{id}/webhook', operationId: 'deleteSheetWebhook', tag: 'webhook',
+    scope: 'write', summary: 'Delete the webhook and its kept events. Its columns and rows stay.',
+  }),
+  op({
+    method: 'post', path: '/sheets/{id}/webhook/fields', operationId: 'addSheetWebhookField', tag: 'webhook',
+    scope: 'write', summary: 'Fill a new column from each event: the value at json_path, as text or JSON.',
+    body: z.object({
+      json_path: z.string().describe('Where the value is in each event, like $.email or $.plan.name.'),
+      column: z.string().describe("The new column's name."),
+      as: z.enum(['text', 'json']).optional().describe('text (default), or the value as JSON.'),
+    }),
+    responses: { 201: 'The webhook with its fields.' },
+  }),
+  op({
+    method: 'delete', path: '/sheets/{id}/webhook/fields/{fieldId}', operationId: 'removeSheetWebhookField',
+    tag: 'webhook', scope: 'write', summary: 'Stop filling a field. Its column and values stay.',
+  }),
   op({
     method: 'get', path: '/run-webhooks', operationId: 'listRunWebhooks', tag: 'hooks', scope: 'read',
     summary: 'List the run webhooks with their last delivery. Never the secret.',

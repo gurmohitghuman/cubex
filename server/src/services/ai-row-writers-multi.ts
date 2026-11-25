@@ -12,7 +12,7 @@ import { db } from '../lib/db';
 import { touchSheet } from '../lib/sql-helpers';
 import { shouldStop } from './ai-runner-status';
 import { recordDroppedCall, STOP_SENTINEL, usageColumns, type RowTokenUsage } from './ai-row-writers';
-import { markAutorunInputs } from '../lib/autorun-mark';
+import { markAutorunInputs, markDerivedInputs } from '../lib/autorun-mark';
 import type { RowStamp } from '../lib/run-inputs/stamp';
 import { writeRunCells } from '../lib/run-cells-write';
 
@@ -95,7 +95,10 @@ export function writeMultiFailure(
 
     const pairs: Array<[string, string]> = outputColumns.map(col => [col, '']);
     pairs.push([ctx.statusColumn, `❌ Error: ${errorMessage}`]);
-    writeCells(ctx, pairs);
+    const wrote = writeCells(ctx, pairs);
+    if (wrote) {
+      markDerivedInputs(ctx.sheetId, ctx.userId, [...outputColumns, ctx.statusColumn], { indexes: [ctx.rowIndex] });
+    }
     touchSheet(ctx.sheetId, ctx.userId);
   }).immediate();
 }

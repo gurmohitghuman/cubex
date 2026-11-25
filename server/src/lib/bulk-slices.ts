@@ -1,8 +1,8 @@
-// Background bulk writers (an undo, moves into and out of the trash, emptying it, a run's clear, dedupe) write
-// in slices whose WAL is copied back on the checkpoint worker's thread (lib/wal-checkpointer.ts), as
-// transform_column's pages are (services/column-transform-pages.ts). A checkpoint ends in disk syncs: run here
-// after every slice, on a slow disk they held the server up to 670 ms each (undoing 200,000 rows with three
-// formulas reading them, every sync 300 ms slower).
+// Bulk writers (each caller of asBulkWriter, below: undo, the trash, a run's clear, sorts, imports, dedupe, formulas,
+// answer fields, auto-run, list results, hiring summaries, sheet copies, run rewrites, pruning) write in slices whose
+// WAL is copied back on the checkpoint worker's thread, as transform_column's pages are. A checkpoint ends in disk
+// syncs: run here after every slice, on a slow disk they held the server up to 670 ms each (undoing 200,000 rows with
+// three formulas reading them, every sync 300 ms slower).
 // - Before each slice, walRoom with the bulk bounds (lib/constants-wal.ts): past WAL_BULK_CHECKPOINT_FRAMES
 //   uncopied it asks the worker and goes on (not on Windows, where a slice never overlaps a checkpoint: it asks only
 //   at the pause, and waits for one running, lib/wal-turn.ts); at WAL_BULK_PAUSE_FRAMES in the WAL it awaits, the
@@ -22,7 +22,7 @@
 //   WAL_BULK_ROOM_SHARE of journal_size_limit, about 14,600 frames at 64 MB) instead of DB_AUTO_CHECKPOINT_FRAMES.
 //   The WAL holds up to about 14,000 frames during a job, and at 2,000 any other commit there (an autosave, the
 //   job's own) would copy them back inside it. The job alone stays under the room (its pause is fitted to it). A
-//   writer outside the runner (an import) past it copies the WAL back in its own commit, as with no job (with
+//   writer outside the runner (API row writes) past it copies the WAL back in its own commit, as with no job (with
 //   SQLite's own checkpoint off the WAL grew while both went on), but copies nothing while the worker copies: the
 //   WAL holds the room and what such writers commit in one copy, on a slow disk past journal_size_limit.
 // - No deadline by default: a background job waits for the worker as long as it takes. A writer with one passes

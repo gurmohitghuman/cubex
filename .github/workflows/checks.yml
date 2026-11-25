@@ -99,6 +99,15 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Test databases on drive D (Windows)
+        # The checkout is on D:, the default TEMP on C:, the slower disk on GitHub's Windows runners
+        # (actions/runner-images#8755). The unit runner makes every test's folder under TEMP (scripts/unit-tests.mjs).
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          printf 'TEMP=%s\nTMP=%s\n' "$RUNNER_TEMP" "$RUNNER_TEMP" >> "$GITHUB_ENV"
+          echo "Test databases under $RUNNER_TEMP"
+
       - name: Unit tests
         # Pure helpers plus the SQL-vs-schema check (tests/unit/sql-schema.test.ts).
         # No server, no network; each test gets its own temp DB_PATH (scripts/unit-tests.mjs).

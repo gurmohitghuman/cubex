@@ -11,38 +11,58 @@
 //     fix_encoding cleaner, lib/clean/fix-encoding.ts). Names, descriptions and
 //     labels still drop them (stripControlAndC1Chars).
 //
-// (2) On EXPORT to CSV: prefix any cell whose first character is a formula
-//     trigger (=, +, -, @, \t, \r), or whose first character after leading C1
-//     characters is one, with a single quote, then standard CSV-escape it
-//     (wrap in quotes, double up internal quotes). Excel / Sheets / Numbers
-//     parse a leading quote as "this cell is text, do not evaluate it" and the
-//     quote itself is hidden.
+// (2) On EXPORT to CSV: prefix any cell whose first visible character is a
+//     formula trigger (=, +, -, @, \t, \r, or a full-width or look-alike
+//     form of one) with a single quote, then standard CSV-escape it (wrap in
+//     quotes, double up internal quotes). "Visible": past leading C1 characters,
+//     spaces and invisible characters, which spreadsheet apps skip before they
+//     decide a cell is a formula. Excel / Sheets / Numbers parse a leading quote
+//     as "this cell is text, do not evaluate it" and the quote itself is hidden.
 //
 // We deliberately do NOT prefix on input. Mutating user data on the way in
 // silently corrupts legitimate values (a user typing "=A1+B1" expects to
 // see "=A1+B1" back). The injection threat lives at the spreadsheet-app
 // boundary, so the defense lives there too.
 
-const FORMULA_TRIGGERS = new Set(['=', '+', '-', '@', '\t', '\r']);
+// The ASCII triggers, and the full-width and look-alike forms some apps and locales read as them (OWASP's
+// CSV injection guide lists ＝ ＋ － ＠; LibreOffice was reported to take ﹦ and the minus sign −). Numbers
+// evaluates ＝1+1 (checked 2026-11-24, tests/unit/csv-guard-visible.test.ts says which).
+const FORMULA_TRIGGERS = new Set([
+  '=', '+', '-', '@', '\t', '\r',
+  '\uFF1D', '\uFF0B', '\uFF0D', '\uFF20', // ＝ ＋ － ＠ (full-width)
+  '\uFE66', '\uFE62', '\uFE63', '\u2212', // ﹦ ﹢ ﹣ (small forms) and − (minus sign)
+]);
 const PLAIN_NUMBER = /^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$/;
 
 const isC1 = (code: number): boolean => code >= 0x80 && code <= 0x9F;
 
-// Where a value's formula check starts: past any leading C1 characters. An app
-// that drops them as it opens the file would otherwise read U+0085 +
-// "=HYPERLINK(...)" as a formula, so the guard looks where such an app will.
-function afterLeadingC1(value: string, from = 0): number {
+// What an app skips before it decides a cell is a formula: C1 characters (an app may drop them as it opens
+// the file), spaces of every width and line breaks, and the invisible characters. Numbers 2026 evaluates
+// " =1+1", NBSP, zero-width space, ideographic space, a line feed and U+0085 before "=1+1" (checked 2026-11-24);
+// Excel, LibreOffice and Google Sheets were reported to skip leading whitespace too. A BOM is skipped as well,
+// though Numbers kept it as text: another app may drop it. Tab and CR are triggers of their own.
+function skippedBeforeFormula(code: number): boolean {
+  if (code < 0x80) return code === 0x20 || code === 0x0A;
+  return isC1(code) || code === 0xA0 || code === 0x1680 || code === 0x180E
+    || (code >= 0x2000 && code <= 0x200D) // en/em/thin... spaces, zero-width space, ZWNJ, ZWJ
+    || code === 0x2028 || code === 0x2029 || code === 0x202F || code === 0x205F || code === 0x2060
+    || code === 0x3000 || code === 0xFEFF;
+}
+
+// Where a value's formula check starts: past what an app skips there (above), so the guard looks where the
+// app will. "\u00A0=HYPERLINK(...)" is a formula to Numbers.
+function afterSkipped(value: string, from = 0): number {
   let i = from;
-  while (i < value.length && isC1(value.charCodeAt(i))) i++;
+  while (i < value.length && skippedBeforeFormula(value.charCodeAt(i))) i++;
   return i;
 }
 
 // Whether the export guard quotes this value. A value the import would take a
-// quote off ("'=x", a quote then C1 characters then a trigger) gets one more,
-// so it comes back whole.
+// quote off ("'=x", a quote then skipped characters then a trigger) gets one
+// more, so it comes back whole.
 function needsFormulaGuard(str: string): boolean {
   if (stripFormulaGuard(str) !== str) return true;
-  const at = afterLeadingC1(str);
+  const at = afterSkipped(str);
   if (at >= str.length || !FORMULA_TRIGGERS.has(str[at])) return false;
   // A plain number ("-5", "+44", "-3.14") can't be a formula, so it's left as
   // is: prefixing it turned numbers into text after an export/re-import.
@@ -50,7 +70,7 @@ function needsFormulaGuard(str: string): boolean {
 }
 
 // On CSV IMPORT: undo the guard above. A leading quote before a formula trigger
-// (or before C1 characters and then a trigger) is what our export (and a
+// (or before skipped characters and then a trigger) is what our export (and a
 // spreadsheet's "text" marker) adds, so dropping it gives back the value that
 // was exported; the next export guards it again. More quotes before that are a
 // guarded value that started with one ("''=x" was "'=x"): one quote comes off.
@@ -58,7 +78,7 @@ export function stripFormulaGuard(value: unknown): unknown {
   if (typeof value !== 'string' || value[0] !== "'") return value;
   let i = 1;
   while (value[i] === "'") i++;
-  const at = afterLeadingC1(value, i);
+  const at = afterSkipped(value, i);
   return at < value.length && FORMULA_TRIGGERS.has(value[at]) ? value.slice(1) : value;
 }
 
@@ -135,8 +155,8 @@ export function clampCellChars(s: string, max: number): string {
 export function escapeCsvCell(value: string | null | undefined): string {
   if (value === null || value === undefined) return '""';
   const str = String(value);
-  // Prefix with single quote if the first char (after any C1 characters) is a
-  // formula trigger. The CSV representation will be `"'=A1"` etc.; spreadsheet
+  // Prefix with single quote if the first visible char (past C1, spaces and
+  // invisible characters) is a formula trigger. The CSV representation will be `"'=A1"` etc.; spreadsheet
   // apps render that as the literal text "=A1" (the quote is hidden).
   const safe = needsFormulaGuard(str) ? `'${str}` : str;
   // RFC-4180 quote-wrap with embedded-quote doubling.

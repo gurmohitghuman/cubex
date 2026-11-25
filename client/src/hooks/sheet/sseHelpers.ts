@@ -59,7 +59,12 @@ export const refetchRunsThrottled = (lastRef: React.MutableRefObject<number>, re
 // A run that paused itself (an enrichment's spend or daily limit, the treg
 // balance or key, treg unreachable) says why; a pause the user clicked doesn't.
 // An enrichment's pause goes to `onEnrichPaused`, which offers its fix (the
-// drawer's Run step) or stays quiet when the drawer already shows it.
+// drawer's Run step) or stays quiet when the drawer already shows it. On a phone
+// another run's toast would lie over the paused-runs notice right below the
+// header, which says the same with the run's Resume (PausedRunsNotice.tsx), so
+// only the notice says it there.
+const PHONE = '(max-width: 639px)'
+const onPhone = (): boolean => typeof window !== 'undefined' && !!window.matchMedia?.(PHONE).matches
 export const notePausedRun = (
   data: any, runId: string, refetch: () => void, onEnrichPaused?: (runId: string, reason: string) => void,
 ) => {
@@ -68,7 +73,7 @@ export const notePausedRun = (
   if (!raw) return
   const reason = raw.length > 300 ? `${raw.slice(0, 300)}…` : raw
   if (data.enrichment && onEnrichPaused) onEnrichPaused(runId, reason)
-  else toast.error(`Paused: ${reason}`)
+  else if (!onPhone()) toast.error(`Paused: ${reason}`)
 }
 
 // Refs/setters/callbacks handleTerminalStatus needs. Bundled so the hook passes
