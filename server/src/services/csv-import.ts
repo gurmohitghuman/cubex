@@ -170,7 +170,8 @@ export async function importCsv(
           if (next >= job.end_row) { added = batch.length; break; }
           if (added > 0 && sliceClock() - began >= BULK_SLICE_MS) break;
           added++;
-          const data: Record<string, string> = {};
+          // Null-prototype: a column named "__proto__" is a key like any other (lib/csv-import-parse.ts).
+          const data: Record<string, string> = Object.create(null);
           const id = orderedUuid();
           for (const [k, v] of Object.entries(row)) {
             const stripped = stripControlChars(String(v));

@@ -49,6 +49,37 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
         details: 'Use jsonl to feed a script or another tool; CSV stays the one to open in a spreadsheet. REST: GET '
           + '/sheets/:id/export?format=jsonl.',
       },
+      {
+        change: 'changed',
+        tools: ['export_csv'],
+        summary: 'export_csv puts its leading quote on a cell whose first visible character is a formula trigger: '
+          + 'after spaces or invisible characters, and for full-width forms like ＝, not only at the start.',
+        details: 'Spreadsheet apps hide the quote and show the text; import_csv takes it off again. A plain number '
+          + 'after spaces, like " -5", is left as it is.',
+      },
+      {
+        change: 'changed',
+        tools: ['transfer_rows'],
+        summary: 'A transfer_rows retry with its idempotency_key answers its first transfer even while either sheet '
+          + 'is busy, and doesn\'t count toward the 10 transfers a minute.',
+        details: 'A new key, or the same key with other arguments, is still refused as busy while a sheet is.',
+      },
+      {
+        change: 'added',
+        tools: ['manage_sheet_webhook'],
+        summary: 'manage_sheet_webhook sets up a sheet\'s incoming webhook, where each JSON event POSTed becomes a '
+          + 'row: get, create, turn_on, turn_off, rotate, add_field, remove_field, new_token, remove_token and '
+          + 'delete.',
+        details: 'get needs read, the rest write. The url shows only to a write key, until the first event; then '
+          + 'rotate makes a new one. new_token answers a token, shown once, that senders must send as '
+          + 'Authorization: Bearer <token>.',
+      },
+      {
+        change: 'changed',
+        tools: ['manage_table', 'manage_sheet'],
+        summary: 'manage_table and manage_sheet create take webhook: true to give the new sheet an incoming webhook '
+          + 'in the same call. The answer\'s webhook has its url.',
+      },
     ],
   },
   {

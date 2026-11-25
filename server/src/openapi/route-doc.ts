@@ -21,6 +21,7 @@ export const TAGS = {
   hiring: ['Hiring signals', 'Tables of the companies hiring for chosen roles, with what is new at each check.'],
   setups: ['Setups', 'Saved chains of filled columns, used again on other sheets.'],
   versions: ['Setup versions', "A sheet's column setup kept by name, compared and restored."],
+  webhook: ['Sheet webhooks', 'A secret URL per sheet: each JSON event POSTed to it becomes a new row.'],
   hooks: ['Run webhooks', 'URLs Cubex tells, with a signed POST, when a run finishes.'],
   trash: ['Trash and history', "Deleted rows, sheets, tables and columns, putting them back, and a sheet's history."],
 } as const;
@@ -74,6 +75,7 @@ const PARAMS: Record<string, z.ZodType> = {
   'sheets.viewId': name('The view id, or its name.'),
   'sheets.setupId': id('The setup id.'),
   'sheets.versionId': id('The setup version id.'),
+  'sheets.fieldId': id("The webhook field's id (the webhook's fields list it)."),
   'rows.rowId': id('The stable row id.'),
   'ai-runs.id': id('The AI run id.'),
   'http-runs.id': id('The HTTP run id. Enrichment and waterfall runs are HTTP runs.'),

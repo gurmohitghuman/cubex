@@ -35,6 +35,11 @@ await ok('the matcher: the engine refusal in its message or metadata, nothing el
   assert.match(webEngineRefusalWords(sdkError(403, { code: 403, message: ENGINE.message }))!, /engine "exa"/)
   assert.ok(webEngineRefusalWords(sdkError(403, { code: 403, message: 'Forbidden',
     metadata: { engine: 'exa', allowed_engines: ['native'] } })))
+  // Its tool named in full; and words that only hold "search" inside another word.
+  assert.ok(webEngineRefusalWords(sdkError(403, { code: 403, message: 'Forbidden',
+    metadata: { engine: 'exa', tool: 'openrouter:web_fetch' } })))
+  assert.ok(webEngineRefusalWords(sdkError(403, { code: 403,
+    message: 'Web fetch engine "exa" is not allowed (see the research settings of your server tools)' })))
   const not = [
     sdkError(403, { code: 403, message: MODERATION.message, metadata: MODERATION.metadata }),
     // No message: the SDK's own message is then the whole body, the user's flagged words included.
@@ -47,6 +52,10 @@ await ok('the matcher: the engine refusal in its message or metadata, nothing el
     sdkError(400, { code: 400, message: ENGINE.message }),
     { status: 403, message: '403 status code (no body)' },
     new Error(ENGINE.message), null,
+    // The web search engine refused, not the fetch one: in the words, or in the field naming it.
+    sdkError(403, { code: 403, message: 'Web search engine "exa" is not allowed by this workspace\'s server tools '
+      + 'settings' }),
+    sdkError(403, { code: 403, message: 'Forbidden', metadata: { engine: 'exa', tool: 'openrouter:web_search' } }),
   ]
   for (const e of not) assert.equal(webEngineRefusalWords(e), null, JSON.stringify(e))
   const refusal = sdkError(403, { code: 403, message: ENGINE.message })

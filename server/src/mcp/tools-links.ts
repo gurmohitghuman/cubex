@@ -13,7 +13,7 @@ import { tooManyMessage } from '../lib/rate-window';
 import { MAX_CSV_UPLOAD_BYTES } from '../lib/constants';
 import { FILE_LINK_TTL_MINUTES } from '../lib/api-v1-constants';
 import { GARBLED_HELP, importWindow } from './tools-import';
-import { SHEET_ID, McpAuthCtx, ok, err, missingScope, registerTool } from './tool-helpers';
+import { SHEET_ID, McpAuthCtx, ok, err, missingScope, registerTool, mcpLinkBase } from './tool-helpers';
 import { VIEW_HELP, whereLike } from './where-schema';
 import { applyView } from '../services/view-read';
 import type { WhereItem } from '../lib/row-filter/where';
@@ -29,7 +29,7 @@ const NO_WRITE = "This action requires the 'write' scope, which this Cubex acces
   + 'themselves: open the sheet in Cubex and click Import.';
 
 export function registerLinkTools(server: McpServer, ctx: McpAuthCtx) {
-  const base = ctx.linkBase ?? `http://localhost:${process.env.PORT || 3002}`;
+  const base = mcpLinkBase(ctx);
   const canWrite = ctx.scopes.has('write');
 
   registerTool(server,

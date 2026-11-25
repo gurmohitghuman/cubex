@@ -7,6 +7,9 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { spawnSync } from 'node:child_process'
+import { createRequire } from 'node:module'
+const require = createRequire(import.meta.url)
 
 // A folder laid out like an install, named before the module loads.
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'cubex-home-'))
@@ -78,6 +81,37 @@ await test('a pin made while Cubex runs is seen at once, and serverInfo reads th
   fs.writeFileSync(installEnv, 'CUBEX_FORMAT=2\nCUBEX_REF=v0.8.12\n')
   assert.equal(runningVersion().pinned, 'v0.8.12')
   assert.deepEqual(runningBuild(), { build: 'v0.8.12 abc1234', version: 'v0.8.12' })
+})
+
+// The same with the module's cache in play: CUBEX_TEST_HOME skips it, so above a cached pin would pass too. A child
+// process without it runs a copy of the module placed in a folder laid out like an install (app/server/src/lib, as
+// the module finds its app folder three levels up): .cubex-version is read once there, install.env at every use.
+await test('the module\'s own cache: a pin made while Cubex runs is still seen at once', () => {
+  const install = fs.mkdtempSync(path.join(os.tmpdir(), 'cubex-install-'))
+  const lib = path.join(install, 'app', 'server', 'src', 'lib')
+  fs.mkdirSync(lib, { recursive: true })
+  fs.copyFileSync(path.resolve('server/src/lib/cubex-version.ts'), path.join(lib, 'cubex-version.ts'))
+  fs.writeFileSync(path.join(install, 'app', '.cubex-version'), 'v0.8.12 abc1234\n')
+  fs.writeFileSync(path.join(install, '.cubex-home'), 'This folder is a Cubex install.\n')
+  const env = path.join(install, 'install.env')
+  fs.writeFileSync(env, 'CUBEX_FORMAT=2\nCUBEX_REF=stable\n')
+  const script = path.join(install, 'pin.ts')
+  fs.writeFileSync(script, [
+    `const fs = require('node:fs')`,
+    `const { runningVersion } = require(${JSON.stringify(path.join(lib, 'cubex-version.ts'))})`,
+    `const first = runningVersion().pinned`,
+    `fs.writeFileSync(${JSON.stringify(env)}, 'CUBEX_FORMAT=2\\nCUBEX_REF=v0.8.12\\n')`,
+    `fs.writeFileSync(${JSON.stringify(path.join(install, 'app', '.cubex-version'))}, 'v9.9.9 later\\n')`,
+    `const v = runningVersion()`,
+    `console.log(JSON.stringify({ first, pinned: v.pinned, build: v.build }))`,
+  ].join('\n'))
+  const childEnv = { ...process.env }
+  delete childEnv.CUBEX_TEST_HOME
+  const out = spawnSync(process.execPath, [require.resolve('tsx/cli'), script], { encoding: 'utf8', env: childEnv })
+  fs.rmSync(install, { recursive: true, force: true })
+  assert.equal(out.status, 0, out.stderr)
+  assert.deepEqual(JSON.parse(out.stdout.trim().split('\n').pop()!),
+    { first: null, pinned: 'v0.8.12', build: 'v0.8.12 abc1234' })
 })
 
 fs.rmSync(home, { recursive: true, force: true })
