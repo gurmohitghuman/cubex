@@ -15,6 +15,7 @@ import { insertTrashItem, trashKeeps } from '../lib/trash/store';
 import { logSheetChange } from '../lib/change-log';
 import { trashedLookupMessage } from '../lib/trash/lookups';
 import { clearRunPlaceholders } from '../lib/run-placeholders';
+import { dropRunSpans } from '../lib/derived-spans';
 import { abortListRunsInto, clearListRunCells } from './run-control';
 import { resultsNotAdded, type ResultsNotAdded } from './enrich-list-guard';
 import { kickTrashPurge } from './trash-purge';
@@ -37,11 +38,15 @@ function retireSheets(sheetIds: string[], userId: string): Retired {
   const runs: Retired['runs'] = [];
   for (const kind of ['ai', 'http'] as const) {
     const table = kind === 'ai' ? 'ai_runs' : 'http_runs';
-    const active = db.prepare(`SELECT id FROM ${table} WHERE sheet_id IN (SELECT value FROM json_each(?))
-      AND user_id = ? AND status IN ('pending', 'running', 'paused')`).pluck().all(ids, userId) as string[];
+    const active = db.prepare(`SELECT id, sheet_id FROM ${table} WHERE sheet_id IN (SELECT value FROM json_each(?))
+      AND user_id = ? AND status IN ('pending', 'running', 'paused')`)
+      .all(ids, userId) as Array<{ id: string; sheet_id: string }>;
     db.prepare(`UPDATE ${table} SET status = 'cancelled', placeholder_work = 'clearing', updated_at = datetime('now')
-      WHERE id IN (SELECT value FROM json_each(?))`).run(JSON.stringify(active));
-    for (const id of active) runs.push([kind, id]);
+      WHERE id IN (SELECT value FROM json_each(?))`).run(JSON.stringify(active.map(r => r.id)));
+    for (const r of active) {
+      dropRunSpans(r.sheet_id, { kind, id: r.id });
+      runs.push([kind, r.id]);
+    }
   }
   // List results on their way into these sheets: their source rows say they
   // weren't added (destsGone), and the journal rows go, as with the sheet.

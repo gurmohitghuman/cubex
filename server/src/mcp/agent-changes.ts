@@ -42,6 +42,21 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
     version: 'v0.8.45',
     changes: [
       {
+        change: 'changed',
+        tools: ['export_csv'],
+        summary: 'export_csv puts its leading quote on a cell whose first visible character is a formula trigger: '
+          + 'after spaces or invisible characters, and for full-width forms like ＝, not only at the start.',
+        details: 'Spreadsheet apps hide the quote and show the text; import_csv takes it off again. A plain number '
+          + 'after spaces, like " -5", is left as it is.',
+      },
+      {
+        change: 'changed',
+        tools: ['transfer_rows'],
+        summary: 'A transfer_rows retry with its idempotency_key answers its first transfer even while either sheet '
+          + 'is busy, and doesn\'t count toward the 10 transfers a minute.',
+        details: 'A new key, or the same key with other arguments, is still refused as busy while a sheet is.',
+      },
+      {
         change: 'added',
         tools: ['manage_sheet_webhook'],
         summary: 'manage_sheet_webhook sets up a sheet\'s incoming webhook, where each JSON event POSTed becomes a '

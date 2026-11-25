@@ -12,6 +12,7 @@ import {
   TokenAuthRequest,
 } from '../middleware/access-token-auth';
 import { API_V1_MAX_JSON_BYTES } from '../lib/api-v1-constants';
+import { jsonTooDeep, TOO_DEEP } from '../lib/json-depth';
 import { apiV1Limiter } from '../lib/limits';
 import { versionInfo } from '../services/version-info';
 import { changesSince } from '../services/version-changes';
@@ -59,6 +60,11 @@ router.use((err: any, _req: express.Request, res: express.Response, next: expres
   if (!err) return next();
   if (err.type === 'entity.too.large') return res.status(413).json({ error: 'Request body too large' });
   return res.status(400).json({ error: 'Invalid JSON body' });
+});
+// A body nested deeper than any route takes is refused before a route reads it (lib/json-depth.ts).
+router.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (jsonTooDeep(req.body)) return res.status(400).json({ error: TOO_DEEP });
+  return next();
 });
 // What a call changes is done by its token (lib/actor.ts), set after the body
 // parser, whose stream events would otherwise drop it.

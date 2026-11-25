@@ -6,9 +6,11 @@
 // and a round after a pass's first works out again only the group the chain is
 // in. Of real text, Japanese text with units garbled once costs most: in the
 // first pass nothing between its sequences ends a word, so each round reads the
-// whole cell (about four readings, under twice CELL_MS). Made-up units can cost
-// as much: one repeated unit used to set off a round per unit, until a round
-// could only leave more sequences as they are.
+// whole cell (about four readings, under twice CELL_MS). Made-up chains and
+// units can cost as much: one repeated unit used to set off a round per unit,
+// until a round could only leave more sequences as they are; the chain took
+// 106 to 124 ms against CELL_MS on a busy machine. Hebrew text with
+// abbreviations of single letters costs no more than other garbled text.
 // The best of a few tries counts, so a busy machine doesn't decide it.
 import assert from 'node:assert/strict'
 import passMod from '../../server/src/lib/clean/fix-encoding-pass'
@@ -65,7 +67,7 @@ await group('a made-up chain of sequences at the head of the long cell, as it is
     const ms = best(() => { out = fixEncoding(cell) })
     console.log(`      ${name}: fixEncoding ${ms.toFixed(1)} ms`)
     assert.equal(out, cell, `${name}: left as it came`)
-    assert.ok(ms < CELL_MS, `${name}: fixEncoding took ${ms.toFixed(1)} ms`)
+    assert.ok(ms < 2 * CELL_MS, `${name}: fixEncoding took ${ms.toFixed(1)} ms`)
   }
 })
 
@@ -76,6 +78,16 @@ await group('a long cell of Japanese text with units, garbled once (nothing betw
   console.log(`      fixEncoding ${ms.toFixed(1)} ms`)
   assert.equal(out, cell, 'left as it came: "10kΩ" and "100μF" mix scripts, and their C1 characters stay')
   assert.ok(ms < 2 * CELL_MS, `fixEncoding took ${ms.toFixed(1)} ms`)
+})
+
+await group('a long cell of Hebrew text with abbreviations, garbled once', () => {
+  const words = 'מחיר 100 ש"ח לק"ג, א, ב, ג (א) בע"מ שלום '
+  const cell = fill(cp1252(words))
+  let out = ''
+  const ms = best(() => { out = fixEncoding(cell) })
+  console.log(`      fixEncoding ${ms.toFixed(1)} ms`)
+  assert.ok(out.startsWith(words.repeat(3)), out.slice(0, 80))
+  assert.ok(ms < CELL_MS, `fixEncoding took ${ms.toFixed(1)} ms`)
 })
 
 await group('a long cell of one made-up unit repeated (each round left the next unit free to decode)', () => {

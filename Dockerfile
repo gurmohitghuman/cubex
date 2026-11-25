@@ -30,6 +30,13 @@ RUN npm ci --include=dev --legacy-peer-deps
 
 COPY . .
 
+# The build this image is, for Settings → Version (scripts/docker-version.mjs): "v0.8.44 6071123" built from a
+# release tag, "main 6071123" from another commit, read from the context's .git. CUBEX_VERSION (a build argument)
+# is written as it is; Coolify's SOURCE_COMMIT gives the commit when there is no .git. Empty: not recorded.
+ARG CUBEX_VERSION=
+ARG SOURCE_COMMIT=
+RUN CUBEX_VERSION="$CUBEX_VERSION" SOURCE_COMMIT="$SOURCE_COMMIT" node scripts/docker-version.mjs > .cubex-version
+
 # Build server (tsc → server/dist) and client (vite → client/dist).
 RUN npm run build
 
@@ -58,6 +65,7 @@ COPY --from=builder --chown=node:node /app/server/dist ./server/dist
 COPY --from=builder --chown=node:node /app/server/src/package.json ./server/src/package.json
 COPY --from=builder --chown=node:node /app/client/dist ./client/dist
 COPY --from=builder --chown=node:node /app/sidequest.jobs.cjs ./sidequest.jobs.cjs
+COPY --from=builder --chown=node:node /app/.cubex-version ./.cubex-version
 
 # Writable runtime directory, owned by the unprivileged user: /app/server/data
 # holds cubex.db, jobs.db, the secrets generated on first boot, and uploads/

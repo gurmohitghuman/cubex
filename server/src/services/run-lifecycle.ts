@@ -8,6 +8,7 @@
 import { db } from '../lib/db';
 import { touchSheet } from '../lib/sql-helpers';
 import { clearRunPlaceholders, type RunKind } from '../lib/run-placeholders';
+import { dropRunSpans } from '../lib/derived-spans';
 import { parseTargetRows } from '../lib/run-targets';
 import { httpRunSecretRefsRequiringScope, httpConfigHasKeyShapedToken } from '../lib/http-secrets-scan';
 import { type AIRunRow } from './ai-runner';
@@ -212,10 +213,14 @@ export async function cancelRun(kind: RunKind, runId: string, userId: string): P
   // The flip also marks the run's cells for clearing (migration 004), so a
   // restart mid-clear finishes it. A run cancelled while still starting stops
   // seeding at its next slice (services/run-seed.ts).
-  const result = db.prepare(
-    `UPDATE ${TABLE[kind]} SET status = 'cancelled', placeholder_work = 'clearing', updated_at = datetime('now')
-     WHERE id = ? AND user_id = ? AND status IN ('pending','running','paused')`,
-  ).run(runId, userId);
+  const result = db.transaction(() => {
+    const r = db.prepare(
+      `UPDATE ${TABLE[kind]} SET status = 'cancelled', placeholder_work = 'clearing', updated_at = datetime('now')
+       WHERE id = ? AND user_id = ? AND status IN ('pending','running','paused')`,
+    ).run(runId, userId);
+    if (r.changes > 0) dropRunSpans(run.sheet_id, { kind, id: runId });
+    return r;
+  }).immediate();
   if (result.changes === 0) return { fail: 'not_active', message: `Run is not active (status: ${run.status})` };
   // Stopping an auto-run run pauses that column's auto-run, so its rows aren't picked up again.
   if (kind === 'http') autorunStoppedByUser(run);
