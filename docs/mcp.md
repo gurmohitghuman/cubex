@@ -717,13 +717,13 @@ A setup is a named copy of how a chain of filled columns is filled: AI, HTTP API
  "cadence": "weekly", "weekday": 1, "at_time": "09:00", "time_zone": "Europe/Berlin", "max_cost_usd": 5}
 ```
 
-- `columns`: the run columns to run (any column a run fills names it), or leave it out for every run column the sheet has. A table's schedule runs, on each of its sheets, the named columns that sheet has.
+- `columns`: the run columns to run (any column a run fills names it), or leave it out for every run column the sheet has. A sheet's schedule refuses a name that isn't one of its run columns. A table's schedule runs, on each of its sheets, the named columns that sheet has.
 - `rows`: `empty`, `errored`, `out_of_date` or `all`, as `run_columns`' modes. Each column's "Only run if" rule still applies.
-- `cadence`: `daily`, `weekdays` (Monday to Friday), `weekly` (with `weekday`, 0 for Sunday to 6 for Saturday), `monthly` (with `month_day`, 1 to 28), each at `at_time` (HH:MM, 24-hour) in `time_zone` (an IANA name, default `UTC`); or `hours` (with `every_hours`, 1 to 168, counted from the last firing). A time a clock change skips fires at the first minute after it; one that happens twice fires the first time.
-- `max_cost_usd`: a ceiling per firing, as on `run_columns`. A firing that could cost more doesn't start.
-- A firing runs as the token that made the schedule, so its spend cap, the daily enrichment limit, the sheet's History and run webhooks apply as for any column run. `get_setup_run` follows each firing (`last_run_ids`).
+- `cadence`: `daily`, `weekdays` (Monday to Friday), `weekly` (with `weekday`, 0 for Sunday to 6 for Saturday), `monthly` (with `month_day`, 1 to 28), each at `at_time` (HH:MM, 24-hour) in `time_zone` (an IANA name, default `UTC`); or `hours` (with `every_hours`, 1 to 168, counted from when it was made, its time changed or it was resumed, and kept to those times). A time a clock change skips fires at the first minute after it; one that happens twice fires the first time.
+- `max_cost_usd`: a ceiling per firing, as on `run_columns`. A firing that could cost more doesn't start. A table's sheets share it: each sheet's column run gets what its own estimate needs out of what is left, in the table's sheet order, and a sheet that doesn't fit is named in `last_error`.
+- A firing runs as the token that made the schedule, or last changed or resumed it (as a run you resume becomes yours), so its spend cap, the daily enrichment limit, the sheet's History and run webhooks apply as for any column run. `get_setup_run` follows each firing (`last_run_ids`).
 - A firing missed while Cubex was stopped runs once at the next start, not once per missed time. A firing that can't start (over the ceiling, the sheet busy or in the trash, a column gone, the token revoked) leaves the reason in `last_error`, and the schedule goes on to its next time.
-- `pause` and `resume` (from now, so a paused schedule doesn't fire at once), `change`, `delete`, and `fire_now` (once, now; the next time stays as it was). `list` takes `sheet_id` or `table_id`. A sheet or table can have up to 20 schedules (`RUN_SCHEDULES_PER_SHEET`).
+- `pause` and `resume` (from now, so a paused schedule doesn't fire at once), `change`, `delete`, and `fire_now` (once, now, as you; the next time stays as it was). `list` takes `sheet_id` or `table_id`. A sheet or table can have up to 20 schedules (`RUN_SCHEDULES_PER_SHEET`).
 - `list` needs the `read` scope; everything else needs `run`.
 
 ## Setup versions

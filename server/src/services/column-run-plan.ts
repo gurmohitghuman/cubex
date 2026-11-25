@@ -77,6 +77,16 @@ function liveColumns(sheetId: string, userId: string): Set<string> {
   }).map(c => c.toLowerCase()));
 }
 
+// A live setup or column run already filling one of these columns: refused, or null. Asked again right before
+// a start's record is written (column-run.ts), since the start waits on its where and estimate after planning.
+export function liveColumnClash(sheetId: string, userId: string, mains: string[]): RunFail | null {
+  const busy = liveColumns(sheetId, userId);
+  const clash = mains.filter(c => busy.has(c.toLowerCase()));
+  if (!clash.length) return null;
+  return { fail: 'conflict', message: `A setup or column run working on this sheet fills ${quoted(clash)}. `
+    + 'Wait for it to end (get_setup_run), or stop it, then run these columns.' };
+}
+
 export function planColumnRun(
   userId: string, sheetId: string, input: Pick<ColumnRunInput, 'columns' | 'rowIds' | 'where'>,
   caller: { hasSecretsScope: boolean },
@@ -135,12 +145,8 @@ export function planColumnRun(
         + `(${gone.slice(0, 3).join(', ')}${gone.length > 3 ? ', …' : ''}). read_rows gives each row's id.` };
     }
   }
-  const busy = liveColumns(sheetId, userId);
-  const clash = chosen.filter(c => busy.has(c.main.toLowerCase())).map(c => c.main);
-  if (clash.length) {
-    return { fail: 'conflict', message: `A setup or column run working on this sheet fills ${quoted(clash)}. `
-      + 'Wait for it to end (get_setup_run), or stop it, then run these columns.' };
-  }
+  const clash = liveColumnClash(sheetId, userId, chosen.map(c => c.main));
+  if (clash) return clash;
   // In the order they run: by layer, then as asked.
   const byLayer = chosen.map((_, i) => i).sort((a, b) => layers[a] - layers[b] || a - b);
   const at = new Map(byLayer.map((i, k) => [i, k]));

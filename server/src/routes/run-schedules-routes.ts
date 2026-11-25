@@ -57,11 +57,11 @@ export function runScheduleRoutes(base: string, allow: (scope: Scope) => express
       return res.status(400).json({ error: 'paused must be true or false.' });
     }
     if (Object.keys(fields).length) {
-      const changed = changeSchedule(req.userId!, req.params.id, fields);
+      const changed = changeSchedule(req.userId!, req.params.id, fields, { hasSecretsScope: secrets(req) });
       if ('fail' in changed || paused === undefined) return reply(res, changed);
     }
     return paused === undefined ? reply(res, { fail: 'bad_request', message: 'Nothing to change.' })
-      : reply(res, pauseSchedule(req.userId!, req.params.id, paused));
+      : reply(res, pauseSchedule(req.userId!, req.params.id, paused, { hasSecretsScope: secrets(req) }));
   }));
 
   router.delete(`${base}/:id`, allow('run'), guarded(`DELETE ${base}/:id`, (req, res) =>
@@ -69,6 +69,7 @@ export function runScheduleRoutes(base: string, allow: (scope: Scope) => express
 
   // Fire it once now; its next time stays as it was.
   router.post(`${base}/:id/fire`, allow('run'), guarded(`POST ${base}/:id/fire`,
-    async (req, res) => reply(res, await fireScheduleNow(req.userId!, req.params.id))));
+    async (req, res) => reply(res, await fireScheduleNow(req.userId!, req.params.id,
+      { hasSecretsScope: secrets(req) }))));
   return router;
 }

@@ -1,8 +1,11 @@
+// Over 200 lines: one schedule record's checks, owner and changes, read together.
 // Run schedules (migration 069): one implementation for the app, /api/v1 and MCP's manage_run_schedule. A schedule
 // reruns a sheet's run columns (or a table's, each sheet's) on a cadence (lib/run-schedule-time.ts); the sweep
 // (run-schedule-fire.ts) fires it as an ordinary column run, as the token or user that made it. Creating one, and
 // changing its time, works out next_at from now; resuming one does too, so a paused schedule doesn't fire at once
-// for the time it was paused. At most RUN_SCHEDULES_PER_TARGET on one sheet or table.
+// for the time it was paused. At most RUN_SCHEDULES_PER_TARGET on one sheet or table. A schedule fires as whoever
+// made it, or last changed or resumed it (as a run you resume becomes yours): its firings count toward that token's
+// spend cap, and read saved keys only when that caller could.
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
 import { RUN_SCHEDULES_PER_TARGET } from '../lib/constants-setups';
@@ -11,6 +14,7 @@ import { verifySheetOwnership } from '../lib/sql-helpers';
 import { verifyTableOwnership } from '../lib/sheet-crud-helpers';
 import { MAX_COLUMN_RUN_COLUMNS } from '../lib/constants-setups';
 import { currentActor } from '../lib/actor';
+import { runColumnOf } from './run-controls-column';
 import type { RunFail } from './run-shared';
 
 export const SCHEDULE_ROWS = ['empty', 'errored', 'out_of_date', 'all'] as const;
@@ -56,6 +60,8 @@ export interface ScheduleFields {
   allow_unpriced?: unknown;
 }
 const bad = (message: string): RunFail => ({ fail: 'bad_request', message });
+const FIELDS = new Set(['sheet_id', 'table_id', 'columns', 'rows', 'cadence', 'at_time', 'time_zone', 'weekday',
+  'month_day', 'every_hours', 'max_cost_usd', 'allow_unpriced']);
 const numOrNull = (v: unknown) => (v === undefined || v === null ? null : v);
 
 // A schedule's settings from what was sent over an existing one (null when creating), checked.
@@ -63,6 +69,9 @@ function settingsOf(f: ScheduleFields, was: ScheduleRow | null):
   Omit<ScheduleRow, 'id' | 'user_id' | 'sheet_id' | 'table_id' | 'paused' | 'next_at' | 'last_fired_at'
     | 'last_run_ids' | 'last_error' | 'access_token_id' | 'token_name' | 'via' | 'created_at' | 'updated_at'
     | 'allow_secrets'> | RunFail {
+  // A misspelled field would be dropped without a word (a max_cost_usd typo: a firing with no ceiling).
+  const stray = Object.keys(f).find(k => !FIELDS.has(k) && (f as Record<string, unknown>)[k] !== undefined);
+  if (stray) return bad(`Unknown field ${stray}.`);
   const pick = <K extends keyof ScheduleFields>(k: K, old: unknown) => (f[k] === undefined ? old : f[k]);
   const columns = pick('columns', was?.columns ? JSON.parse(was.columns) : null);
   if (columns !== null && !(Array.isArray(columns) && columns.length >= 1 && columns.length <= MAX_COLUMN_RUN_COLUMNS
@@ -104,6 +113,23 @@ const timeOf = (s: Pick<ScheduleRow, 'cadence' | 'at_time' | 'time_zone' | 'week
   monthDay: s.month_day, everyHours: s.every_hours });
 export const nextAtOf = (s: Parameters<typeof timeOf>[0], after: number) => sqlTime(nextFireAt(timeOf(s), after));
 
+// A sheet's schedule names run columns the sheet has, checked when they are set (a table's takes, on each sheet,
+// the ones that sheet has). One deleted later is a firing's last_error.
+function columnsProblem(userId: string, sheetId: string | null, columns: string | null): RunFail | null {
+  if (!sheetId || !columns) return null;
+  const gone = (JSON.parse(columns) as string[]).filter(c => !runColumnOf(sheetId, userId, c));
+  if (!gone.length) return null;
+  return bad(`${gone.map(c => `"${c}"`).join(', ')} ${gone.length === 1 ? 'isn\'t' : 'aren\'t'} an AI, HTTP API, `
+    + 'enrichment or waterfall column of this sheet. Name its run columns, or leave columns out for all of them.');
+}
+
+// Who the schedule fires as from now: the caller (columns: run-schedule-fire.ts reads them).
+function ownerNow(caller: { hasSecretsScope: boolean }) {
+  const actor = currentActor();
+  return { access_token_id: actor.tokenId, token_name: actor.tokenName,
+    via: actor.via === 'cubex' ? 'app' : actor.via, allow_secrets: caller.hasSecretsScope ? 1 : 0 };
+}
+
 export const loadSchedule = (userId: string, id: string) =>
   db.prepare('SELECT * FROM run_schedules WHERE id = ? AND user_id = ?').get(id, userId) as ScheduleRow | undefined;
 
@@ -116,6 +142,8 @@ export function createSchedule(userId: string, f: ScheduleFields, caller: { hasS
   if (tableId && !verifyTableOwnership(tableId, userId)) return { fail: 'not_found', message: 'Table not found' };
   const s = settingsOf(f, null);
   if ('fail' in s) return s;
+  const gone = columnsProblem(userId, sheetId, s.columns);
+  if (gone) return gone;
   const by = sheetId ? 'sheet_id' : 'table_id';
   const count = db.prepare(`SELECT COUNT(*) FROM run_schedules WHERE user_id = ? AND ${by} = ?`)
     .pluck().get(userId, sheetId ?? tableId) as number;
@@ -123,40 +151,54 @@ export function createSchedule(userId: string, f: ScheduleFields, caller: { hasS
     return { fail: 'conflict', message: `A ${sheetId ? 'sheet' : 'table'} can have at most ${RUN_SCHEDULES_PER_TARGET} `
       + 'schedules. Delete one first.' };
   }
-  const actor = currentActor();
+  const owner = ownerNow(caller);
   const id = uuidv4();
   db.prepare(`INSERT INTO run_schedules (id, user_id, sheet_id, table_id, columns, rows, cadence, at_time, time_zone,
       weekday, month_day, every_hours, max_cost_usd, allow_unpriced, allow_secrets, next_at, access_token_id,
       token_name, via) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(id, userId, sheetId, tableId, s.columns,
     s.rows, s.cadence, s.at_time, s.time_zone, s.weekday, s.month_day, s.every_hours, s.max_cost_usd, s.allow_unpriced,
-    caller.hasSecretsScope ? 1 : 0, nextAtOf(s, Date.now()), actor.tokenId, actor.tokenName,
-    actor.via === 'cubex' ? 'app' : actor.via);
+    owner.allow_secrets, nextAtOf(s, Date.now()), owner.access_token_id, owner.token_name, owner.via);
   return { ok: scheduleView(loadSchedule(userId, id)!) };
 }
 
 // A change: what was sent over what it has; its next firing worked out again from now when its time changed.
-export function changeSchedule(userId: string, id: string, f: ScheduleFields): { ok: ScheduleView } | RunFail {
+// It fires as the caller from then on.
+export function changeSchedule(userId: string, id: string, f: ScheduleFields, caller: { hasSecretsScope: boolean })
+  : { ok: ScheduleView } | RunFail {
   const was = loadSchedule(userId, id);
   if (!was) return { fail: 'not_found', message: 'Schedule not found' };
   if (f.sheet_id !== undefined || f.table_id !== undefined) return bad('A schedule\'s sheet or table can\'t change.');
   const s = settingsOf(f, was);
   if ('fail' in s) return s;
+  const gone = f.columns === undefined ? null : columnsProblem(userId, was.sheet_id, s.columns);
+  if (gone) return gone;
+  const o = ownerNow(caller);
   const timeChanged = (['cadence', 'at_time', 'time_zone', 'weekday', 'month_day', 'every_hours'] as const)
     .some(k => s[k] !== was[k]);
   db.prepare(`UPDATE run_schedules SET columns = ?, rows = ?, cadence = ?, at_time = ?, time_zone = ?, weekday = ?,
-      month_day = ?, every_hours = ?, max_cost_usd = ?, allow_unpriced = ?, next_at = ?, updated_at = datetime('now')
+      month_day = ?, every_hours = ?, max_cost_usd = ?, allow_unpriced = ?, next_at = ?, access_token_id = ?,
+      token_name = ?, via = ?, allow_secrets = ?, updated_at = datetime('now')
     WHERE id = ? AND user_id = ?`).run(s.columns, s.rows, s.cadence, s.at_time, s.time_zone, s.weekday, s.month_day,
-    s.every_hours, s.max_cost_usd, s.allow_unpriced, timeChanged ? nextAtOf(s, Date.now()) : was.next_at, id, userId);
+    s.every_hours, s.max_cost_usd, s.allow_unpriced, timeChanged ? nextAtOf(s, Date.now()) : was.next_at,
+    o.access_token_id, o.token_name, o.via, o.allow_secrets, id, userId);
   return { ok: scheduleView(loadSchedule(userId, id)!) };
 }
 
-// Pause, or resume from now (a paused schedule doesn't fire at once for the time it was paused).
-export function pauseSchedule(userId: string, id: string, paused: boolean): { ok: ScheduleView } | RunFail {
+// Pause, or resume from now (a paused schedule doesn't fire at once for the time it was paused); resumed, it
+// fires as the caller.
+export function pauseSchedule(userId: string, id: string, paused: boolean, caller: { hasSecretsScope: boolean })
+  : { ok: ScheduleView } | RunFail {
   const was = loadSchedule(userId, id);
   if (!was) return { fail: 'not_found', message: 'Schedule not found' };
-  db.prepare(`UPDATE run_schedules SET paused = ?, next_at = ?, updated_at = datetime('now')
-    WHERE id = ? AND user_id = ?`)
-    .run(paused ? 1 : 0, paused || was.paused === 0 ? was.next_at : nextAtOf(was, Date.now()), id, userId);
+  if (paused || was.paused === 0) {
+    db.prepare(`UPDATE run_schedules SET paused = ?, updated_at = datetime('now') WHERE id = ? AND user_id = ?`)
+      .run(paused ? 1 : 0, id, userId);
+  } else {
+    const o = ownerNow(caller);
+    db.prepare(`UPDATE run_schedules SET paused = 0, next_at = ?, access_token_id = ?, token_name = ?, via = ?,
+        allow_secrets = ?, updated_at = datetime('now') WHERE id = ? AND user_id = ?`)
+      .run(nextAtOf(was, Date.now()), o.access_token_id, o.token_name, o.via, o.allow_secrets, id, userId);
+  }
   return { ok: scheduleView(loadSchedule(userId, id)!) };
 }
 

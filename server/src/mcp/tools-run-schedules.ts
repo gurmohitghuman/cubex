@@ -13,8 +13,9 @@ export function registerRunScheduleTools(server: McpServer, ctx: McpAuthCtx): vo
     description:
       'Rerun a sheet\'s run columns (or a table\'s, sheet by sheet) on a schedule. Each firing is a column run '
       + '(as run_columns, as this token: COSTS MONEY each time) on the rows picked; max_cost_usd refuses a firing '
-      + 'that could cost more. A firing missed while Cubex was stopped runs once. last_error says why one didn\'t '
-      + 'start. list needs read; the rest run.',
+      + 'that could cost more (a table\'s sheets share it). change and resume make the schedule this token\'s; '
+      + 'fire_now runs as this token. A firing missed while Cubex was stopped runs once. last_error says why one '
+      + 'didn\'t start. list needs read; the rest run.',
     inputSchema: z.object({
       action: z.enum(['list', 'create', 'change', 'pause', 'resume', 'delete', 'fire_now']).describe('What to do'),
       schedule_id: z.string().optional().describe('The schedule (not for list or create)'),
@@ -43,9 +44,11 @@ export function registerRunScheduleTools(server: McpServer, ctx: McpAuthCtx): vo
       return 'fail' in out ? err(out.message) : ok({ schedule: out.ok });
     }
     if (!schedule_id) return err('Pass schedule_id (manage_run_schedule list shows them).');
-    const out = action === 'change' ? changeSchedule(ctx.userId, schedule_id, f)
-      : action === 'pause' || action === 'resume' ? pauseSchedule(ctx.userId, schedule_id, action === 'pause')
-      : action === 'fire_now' ? await fireScheduleNow(ctx.userId, schedule_id)
+    const caller = { hasSecretsScope: ctx.scopes.has('secrets') };
+    const out = action === 'change' ? changeSchedule(ctx.userId, schedule_id, f, caller)
+      : action === 'pause' || action === 'resume'
+        ? pauseSchedule(ctx.userId, schedule_id, action === 'pause', caller)
+      : action === 'fire_now' ? await fireScheduleNow(ctx.userId, schedule_id, caller)
       : deleteSchedule(ctx.userId, schedule_id);
     if ('fail' in out) return err(out.message);
     return ok('deleted' in out.ok ? out.ok : { schedule: out.ok });

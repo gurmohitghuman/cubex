@@ -75,7 +75,6 @@ const YIELDS: Entry[] = [
   { file: 'server/src/services/rerun-targets.ts', count: 2,
     why: `${READS}: every row, or the chosen ones a page at a time` },
   { file: 'server/src/services/run-condition-rows.ts', count: 1, why: READS },
-  { file: 'server/src/services/column-run-rows.ts', count: 1, why: `the rows a column run's where matches, ${READS}` },
   { file: 'server/src/services/sheet-sort.ts', count: 1, why: `${READS} (its writes: sort-plan, sort-results)` },
   { file: 'server/src/services/trash-actions.ts', count: 1, why: READS },
   { file: 'server/src/services/usage-csv.ts', count: 1, why: READS },
