@@ -24,6 +24,7 @@ const guarded = (route: string, fn: Handler): Handler => async (req, res) => {
   }
 };
 const q = (v: unknown) => (typeof v === 'string' && v ? v : undefined);
+const caller = (req: TokenAuthRequest) => ({ hasSecretsScope: !!req.tokenScopes?.has('secrets') });
 
 // ?sheet_id= (with its table's) or ?table_id=: those only.
 router.get('/run-schedules', requireScope('read'), guarded('GET /v1/run-schedules', (req, res) =>
@@ -37,7 +38,7 @@ router.get('/run-schedules/:id', requireScope('read'), guarded('GET /v1/run-sche
 }));
 
 router.post('/run-schedules', requireScope('run'), guarded('POST /v1/run-schedules', (req, res) =>
-  reply(res, createSchedule(req.userId!, body(req), { hasSecretsScope: !!req.tokenScopes?.has('secrets') }), true)));
+  reply(res, createSchedule(req.userId!, body(req), caller(req)), true)));
 
 // The fields to change, and paused: true or false to pause or resume.
 router.patch('/run-schedules/:id', requireScope('run'), guarded('PATCH /v1/run-schedules/:id', (req, res) => {
@@ -46,11 +47,11 @@ router.patch('/run-schedules/:id', requireScope('run'), guarded('PATCH /v1/run-s
     return res.status(400).json({ error: 'paused must be true or false.' });
   }
   if (Object.keys(fields).length) {
-    const changed = changeSchedule(req.userId!, req.params.id, fields);
+    const changed = changeSchedule(req.userId!, req.params.id, fields, caller(req));
     if ('fail' in changed || paused === undefined) return reply(res, changed);
   }
   return paused === undefined ? reply(res, { fail: 'bad_request', message: 'Nothing to change.' })
-    : reply(res, pauseSchedule(req.userId!, req.params.id, paused));
+    : reply(res, pauseSchedule(req.userId!, req.params.id, paused, caller(req)));
 }));
 
 router.delete('/run-schedules/:id', requireScope('run'), guarded('DELETE /v1/run-schedules/:id', (req, res) =>
@@ -58,6 +59,6 @@ router.delete('/run-schedules/:id', requireScope('run'), guarded('DELETE /v1/run
 
 // Fire it once now; its next time stays as it was.
 router.post('/run-schedules/:id/fire', requireScope('run'), guarded('POST /v1/run-schedules/:id/fire',
-  async (req, res) => reply(res, await fireScheduleNow(req.userId!, req.params.id))));
+  async (req, res) => reply(res, await fireScheduleNow(req.userId!, req.params.id, caller(req)))));
 
 export default router;

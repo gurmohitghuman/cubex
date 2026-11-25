@@ -71,7 +71,8 @@ export function scheduleTimeProblem(t: ScheduleTime): string | null {
   return null;
 }
 
-// The first firing after `after` (ms). Every N hours goes on from `after` (the last firing, or when it was made).
+// The first firing after `after` (ms). Every N hours goes on from `after` (when it was made, changed or resumed;
+// after a firing, run-schedule-fire.ts keeps it to its own times).
 export function nextFireAt(t: ScheduleTime, after: number): number {
   if (t.cadence === 'hours') return after + t.everyHours! * 3_600_000;
   const [, hh, mm] = HHMM.exec(t.atTime!)!;
