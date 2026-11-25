@@ -2,7 +2,9 @@ import fs from 'fs';
 import { Readable } from 'stream';
 import csv from 'csv-parser';
 import { sanitizeColumnName } from './sql-helpers';
-import { stripFormulaGuard } from './csv-safety';
+import { stripControlAndC1Chars, stripFormulaGuard } from './csv-safety';
+import { stripInvisibleNameChars } from './name-safety';
+import { cutChars } from './row-select/cut-cells';
 
 // Parsing half of CSV import (the validation + cap checks live in
 // csv-import-validate.ts). ZERO mutation — nothing here touches the sheet.
@@ -15,6 +17,15 @@ import { stripFormulaGuard } from './csv-safety';
 // any extra keys a long row carries) and the row count.
 export interface CsvSummary { headers: string[]; columns: string[]; rowCount: number }
 export interface ScannedCsv { summary: CsvSummary; rows: () => AsyncIterable<Record<string, unknown>> }
+
+// A header as a refusal quotes it: the message goes into the API answer and the server log (which `cubex logs`
+// prints), so no control character (ESC, C1, a line break, a direction control) gets there, and a long one is cut.
+const SHOWN_HEADER_CHARS = 80;
+function shownHeader(raw: string): string {
+  const clean = stripInvisibleNameChars(stripControlAndC1Chars(String(raw))).replace(/\s+/g, ' ').trim();
+  // cutChars never ends on the first half of a surrogate pair (an emoji cut in two).
+  return clean.length > SHOWN_HEADER_CHARS ? `${cutChars(clean, SHOWN_HEADER_CHARS)}…` : clean;
+}
 
 // Thrown when two raw CSV headers collapse to the same sanitized name. The route
 // catches this and returns it as a clean 400 (not a 500). Distinct class so we
@@ -38,7 +49,8 @@ class KeySanitizer {
     const sanitizedToRaw = new Map<string, string>();
     for (const raw of rawHeaders) {
       if (seenRaw.has(raw)) {
-        throw new CsvHeaderCollisionError(`The CSV has two columns named "${raw}". Rename one in the CSV and re-upload.`);
+        throw new CsvHeaderCollisionError(
+          `The CSV has two columns named "${shownHeader(raw)}". Rename one in the CSV and re-upload.`);
       }
       seenRaw.add(raw);
       const k = this.key(raw);
@@ -57,10 +69,12 @@ class KeySanitizer {
 
   // Two distinct raw keys can sanitize to the SAME name (`Name` + `Name\`); a
   // blind rebuild would overwrite one column's cell with the other's. Reject.
-  row(raw: Record<string, unknown>): Record<string, unknown> {
-    const out: Record<string, unknown> = {};
+  // A null-prototype row, so a column named "__proto__" is an own key like any other (as parseCellMap's rows are).
+  row(raw: Record<string, unknown>, names: Map<string, string>): Record<string, unknown> {
+    const out: Record<string, unknown> = Object.create(null);
     const sanitizedToRaw = new Map<string, string>();
-    for (const [rawKey, v] of Object.entries(raw)) {
+    for (const [stood, v] of Object.entries(raw)) {
+      const rawKey = names.get(stood) ?? stood;
       const k = this.key(rawKey);
       const prevRaw = sanitizedToRaw.get(k);
       if (prevRaw !== undefined && prevRaw !== rawKey) throw collision(prevRaw, rawKey, k);
@@ -72,7 +86,8 @@ class KeySanitizer {
 }
 
 const collision = (a: string, b: string, k: string) => new CsvHeaderCollisionError(
-  `CSV columns "${a}" and "${b}" resolve to the same name "${k}". Rename one in the CSV and re-upload.`,
+  `CSV columns "${shownHeader(a)}" and "${shownHeader(b)}" resolve to the same name "${shownHeader(k)}". Rename `
+  + 'one in the CSV and re-upload.',
 );
 
 // Excel in many locales saves "CSV" with semicolons (the comma being the decimal
@@ -100,14 +115,31 @@ function fileHead(filePath: string): string {
   } finally { fs.closeSync(fd); }
 }
 
+// csv-parser drops the columns it can't use as plain object keys (it gives null for "__proto__", "constructor" and
+// "prototype", so the file failed to import). They go through it under a name of their own (a NUL and the column's
+// place: a NUL can't survive in a column name, sanitizeColumnName strips it) and are named back here.
+const OBJECT_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
 // Sanitized rows, one at a time. The sanitizer comes from the header line.
-async function* sanitizedRows(source: Readable, separator: string, onHeaders: (s: KeySanitizer) => void): AsyncGenerator<Record<string, unknown>> {
+async function* sanitizedRows(
+  source: Readable, separator: string, onHeaders: (s: KeySanitizer) => void,
+): AsyncGenerator<Record<string, unknown>> {
   let sanitizer: KeySanitizer | null = null;
-  const parser = source.pipe(csv({ separator }));
+  const names = new Map<string, string>();
+  const mapHeaders = ({ header, index }: { header: string; index: number }) => {
+    if (!OBJECT_KEYS.has(header)) return header;
+    const stood = `\u0000${index}`;
+    names.set(stood, header);
+    return stood;
+  };
+  const parser = source.pipe(csv({ separator, mapHeaders }));
   parser.on('headers', (h: string[]) => {
-    try { sanitizer = new KeySanitizer(h); onHeaders(sanitizer); } catch (err) { parser.destroy(err as Error); }
+    try {
+      sanitizer = new KeySanitizer(h.map(x => names.get(x) ?? x));
+      onHeaders(sanitizer);
+    } catch (err) { parser.destroy(err as Error); }
   });
-  for await (const raw of parser) yield sanitizer!.row(raw as Record<string, unknown>);
+  for await (const raw of parser) yield sanitizer!.row(raw as Record<string, unknown>, names);
   if (!sanitizer) onHeaders(new KeySanitizer([])); // an empty file has no header line
 }
 

@@ -17,6 +17,7 @@ import type { AuthInfo } from '@modelcontextprotocol/server';
 import { authenticateAccessToken, TokenAuthRequest } from '../middleware/access-token-auth';
 import { apiV1Limiter } from '../lib/limits';
 import { API_V1_MAX_JSON_BYTES, MCP_FORBIDDEN_ORIGIN_CODE } from '../lib/api-v1-constants';
+import { jsonTooDeep, TOO_DEEP } from '../lib/json-depth';
 import { authInfoFor, serveMcp } from '../mcp/http-entry';
 import {
   errorBody, FORBIDDEN_ORIGIN, INTERNAL_ERROR, METHOD_NOT_ALLOWED, NOT_JSON, NOT_UTF8_JSON, PARSE_ERROR, requestIdOf,
@@ -32,12 +33,13 @@ const router = express.Router();
 
 // MCP spec: servers MUST validate Origin (DNS-rebinding defense). Non-browser
 // MCP clients (Claude Code/Desktop, Cursor, SDKs) send no Origin header → allowed.
+// An Origin header that is there but empty is no origin Cubex knows → refused.
 // Cubex's own UI never calls /mcp, so a browser-originated request is allowed only
 // from PUBLIC_URL's origin when that is set. A DNS-rebound page's Origin is the
 // attacker's hostname and gets a hard 403 before auth or body parsing.
 router.use((req, res, next) => {
   const origin = req.headers.origin;
-  if (!origin) return next();
+  if (origin === undefined) return next();
   // Normalize both sides to URL.origin (scheme://host:port) so a harmless
   // trailing slash / path in PUBLIC_URL can't break legitimate clients.
   try {
@@ -53,6 +55,14 @@ router.use((req, res, next) => {
 
 router.use(authenticateAccessToken);
 router.use(apiV1Limiter); // per-token, keyed AFTER validation; before body parse
+// The JSON parser reads only charsets named utf-*: a UTF-8 body labelled `utf8`, or `us-ascii` (a subset of
+// UTF-8), is relabelled utf-8 first, not refused with a 415 that asks for what it already is.
+const UTF8_LABEL = /;\s*charset\s*=\s*(?:utf8|us-ascii|"utf8"|"us-ascii")\s*(?=;|$)/i;
+router.use((req, _res, next) => {
+  const type = req.headers['content-type'];
+  if (type && UTF8_LABEL.test(type)) req.headers['content-type'] = type.replace(UTF8_LABEL, '; charset=utf-8');
+  next();
+});
 router.use(express.json({ limit: API_V1_MAX_JSON_BYTES }));
 // express.json failures (malformed JSON, oversized body) must answer in
 // JSON-RPC shape, not bubble to the global 500 handler. No id: the body was
@@ -69,6 +79,11 @@ router.use((err: any, _req: express.Request, res: express.Response, next: expres
   }
   const status = err.type === 'entity.too.large' ? 413 : 400;
   return res.status(status).json(errorBody(ProtocolErrorCode.ParseError, status === 413 ? TOO_LARGE : PARSE_ERROR));
+});
+// A body nested deeper than any tool takes: an invalid request (-32600) before a tool reads it (lib/json-depth.ts).
+router.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (jsonTooDeep(req.body)) return res.status(400).json(errorBody(ProtocolErrorCode.InvalidRequest, TOO_DEEP));
+  return next();
 });
 
 // A POST that isn't JSON: express.json left it unread, so it is refused here

@@ -51,6 +51,9 @@ export const hiringAPI = {
   estimate: (id: string): Promise<{ plan: HiringPlan; estimate: HiringEstimate }> =>
     api.post(`/hiring/${id}/check`, { estimateOnly: true, timeZone: timeZone() }, noServerToast)
       .then(res => res.data),
+  // Its filters on Companies, from the next check (either or both; refusals come back as 400 or 409).
+  setFilters: (id: string, f: { minRoles: number; leaveOutCompanies: string }): Promise<HiringView> =>
+    api.patch(`/hiring/${id}`, f, noServerToast).then(res => res.data.hiring),
   // maxCostUsd: the most the estimate showed. Over it now (searches or prices changed): 409 with over_ceiling.
   check: (id: string, maxCostUsd: number): Promise<{ check: HiringCheck; hiring: HiringView }> =>
     api.post(`/hiring/${id}/check`, { timeZone: timeZone(), maxCostUsd }, noServerToast).then(res => res.data),

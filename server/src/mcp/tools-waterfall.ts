@@ -24,10 +24,10 @@ const money = () => z.number().positive();
 const common = {
   id: z.string().max(20).optional().describe('Its id from describe: keeps its column'),
   label: z.string().max(WATERFALL_LABEL_MAX_CHARS).optional()
-    .describe('Its name in "Answered by" (default the tool, "AI" or the API host)'),
+    .describe('Its name in "Answered by"'),
   on: lenientBoolean().optional().describe('false keeps the step but skips it'),
   requires: z.array(z.array(z.string()).min(1)).max(WATERFALL_MAX_ALTERNATIVES).optional()
-    .describe('Input key sets, any one enough: [["full_name","domain"],["linkedin_url"]]'),
+    .describe('Input key sets; any one set is enough'),
   check: z.union([
     z.object({
       kind: z.literal('verify').describe('treg email verify'), accept: z.enum(['safest', 'balanced', 'wide']).optional()
@@ -85,41 +85,24 @@ const step = z.discriminatedUnion('kind', [
 ]);
 
 export const WATERFALL_DESCRIPTION =
-  'Fill ONE value per row (a work email, phone, company domain, LinkedIn URL or any text) by trying ordered steps '
-  + 'and stopping at the first answer. For one source only, run_enrichment or run_ai_column is simpler. Steps: '
-  + 'enrichment (a treg.to tool from search_enrichments), ai (a prompt), http (your JSON API), formula (free '
-  + 'JavaScript over {{input_key}}, sandboxed) or lookup (free: return_column of the first row of another sheet '
-  + 'whose match_column equals or contains the input; put it first to skip paid steps for rows you already have; '
-  + 'a rename there follows, a deleted sheet or column pauses the run). '
-  + 'inputs maps each input key ONCE to a column ({"full_name": "Name", "domain": "Website"}) or {"value": fixed}; '
-  + 'steps read keys, never columns (treg tools take them by name: first_name, last_name, full_name, domain, '
-  + 'company, linkedin_url, email). result_type decides what counts as an answer: a value it can\'t read (not an '
-  + 'email, "not found") is none, and the next step runs. A step\'s requires lists sets of input keys; a row with '
-  + 'none of them skips it for free. A step\'s check tests the value before it counts: verify (treg\'s email '
-  + 'verify, paid; get_enrichment treg.people.email.verify lists its providers) or a formula over {{value}} and the '
-  + 'inputs. A step that errors doesn\'t stop the waterfall; the row shows ❌ only when no step answered. '
-  + 'Cells: column_name holds the answer (or "⏭️ Not found", or "❌ <step>: <why>"); "<column> (Answered by)" names '
-  + 'the step (answered_by_column); each step gets "<column> (<label>)", hidden in views unless hide_step_columns '
-  + 'is false. '
+  'Fill ONE value per row (a work email, phone, domain, LinkedIn URL or any text) by trying ordered steps and '
+  + 'stopping at the first answer; for one source, run_enrichment or run_ai_column is simpler. Steps: enrichment '
+  + '(a treg.to tool from search_enrichments), ai (a prompt), http (your JSON API), formula (free JavaScript over '
+  + '{{input_key}}) or lookup (free: another sheet\'s return_column where match_column matches the input; put it '
+  + 'first to skip paid steps). inputs maps each input key ONCE to a column or {"value": fixed}; steps read keys, '
+  + 'never columns (treg tools take first_name, last_name, full_name, domain, company, linkedin_url, email). A '
+  + 'value result_type can\'t read is no answer, and the next step runs. A row with none of a step\'s requires '
+  + 'key sets skips it for free. check: verify (treg\'s email verify, paid) or a formula over {{value}}. '
+  + 'column_name holds the answer, "⏭️ Not found" or "❌ <step>: <why>"; "<column> (Answered by)" names the step. '
   + 'COSTS MONEY: enrichment steps bill the treg balance, ai steps OpenRouter. estimate_only DEFAULTS TO TRUE: '
-  + 'per_row {average_usd, max_usd}, totals and per step its reach, cost and answer rate (unknown counts as never '
-  + 'answering, so it errs high), and nothing is created: tell the user, then call again with estimate_only '
-  + 'false. A treg answer found in the days set in Settings is reused at $0 (fresh true calls again). '
-  + `spend_limit_usd caps the run. ${DAILY_LIMIT_NOTE} `
-  + 'TEMPLATES: "work_email" (treg\'s finder, then a first.last@domain guess that counts only when verify says '
-  + 'valid) or "mobile_phone" give result_type and steps; you still map inputs, and steps you pass replace its '
-  + 'own. '
-  + 'ROWS: all by default; add_to_column runs an existing waterfall column again (its own setup unless you pass '
-  + 'new parts) on rows not_enriched (default), no_result, failed, out_of_date, empty_or_out_of_date or any; '
-  + `test true: the first ${ENRICH_TEST_ROWS}; also use_sheet_filter, target_row_ids, run_if. `
-  + `DRY RUN: dry_run runs ${WATERFALL_DRY_ROWS} rows (or target_row_ids, up to ${WATERFALL_DRY_MAX_ROWS}) for real, `
-  + `writes nothing, waits up to ${WATERFALL_DRY_WAIT_SECONDS} s and returns each row\'s inputs and steps reached `
-  + '(outcome, value, cost); a real run replays what it bought at $0 for 7 days. test_step tests one step. '
-  + 'auto_run keeps it filling new rows. action "describe" (read scope) returns a column\'s setup in this same '
-  + 'shape, step ids included, to change and send back with add_to_column (without the secrets scope HTTP keys '
-  + 'read "…": sent back with the same id and URL they keep their stored values). '
-  + 'Returns run_id: poll get_run_status (run_type waterfall), then get_run_results for each row\'s answered_by '
-  + 'and trace. Status cells use Cubex\'s own words (get_run_status lists them).';
+  + 'cost and answer rate per row and per step, nothing created: tell the user, then call again with '
+  + 'estimate_only false. A treg answer found within the days set in Settings is reused at $0. spend_limit_usd '
+  + `caps the run. ${DAILY_LIMIT_NOTE} `
+  + 'add_to_column runs an existing waterfall column again, keeping its setup unless you pass new parts. dry_run '
+  + 'writes nothing and returns each row\'s trace; a real run then reuses what it bought at $0 for 7 days. action '
+  + '"describe" (read scope) returns a column\'s setup in this shape to edit and send back (without the secrets '
+  + 'scope HTTP keys read "…" and are kept when sent back with the same id and URL). Returns run_id: poll '
+  + 'get_run_status (run_type waterfall), then get_run_results for the traces.';
 
 export function registerWaterfallTools(server: McpServer, ctx: McpAuthCtx) {
   registerTool(server, 'waterfall_column', {
@@ -162,7 +145,8 @@ export function registerWaterfallTools(server: McpServer, ctx: McpAuthCtx) {
       fresh: lenientBoolean().optional().describe('true: call every step again instead of reusing answers'),
       estimate_only: lenientBoolean().optional().describe('Default TRUE: price it, create nothing'),
       dry_run: lenientBoolean().optional()
-        .describe(`true: ${WATERFALL_DRY_ROWS} rows (or target_row_ids) for real, nothing written; returns each trace`),
+        .describe(`true: ${WATERFALL_DRY_ROWS} rows (or up to ${WATERFALL_DRY_MAX_ROWS} target_row_ids) for real, `
+          + `nothing written; waits up to ${WATERFALL_DRY_WAIT_SECONDS} s and returns each trace`),
       test_step: z.string().max(200).optional().describe('With dry_run: run only this step (its label or id)'),
       idempotency_key: z.string().min(1).max(200).optional()
         .describe('A retry with the same key returns the first run'),

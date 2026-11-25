@@ -1,5 +1,6 @@
 import React, { ReactNode, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
+import { Loader2 } from 'lucide-react'
 
 interface SidePanelProps {
   isOpen: boolean
@@ -12,6 +13,9 @@ interface SidePanelProps {
   onDoubleClickThrough?: () => void
   /** Width. Defaults to max-w-md, as Drawer's. */
   panelClassName?: string
+  // Slides in when it opens (the default). Off when it takes the place of another side panel already on screen
+  // (components/sheet/CellPanels.tsx): there is nothing to slide in from.
+  slideIn?: boolean
   children: ReactNode
 }
 
@@ -28,7 +32,7 @@ const escapeTaken = () => !!document.querySelector('[aria-modal="true"], .ag-pop
 // the page unless a field, a dialog or the grid's editor takes the Escape. Drawn on <body>, as dialogs are, so no
 // ancestor's transform can move it. Compose with DrawerHeader and DrawerBody.
 export const SidePanel: React.FC<SidePanelProps> = ({
-  isOpen, onClose, label, openKey, onDoubleClickThrough, panelClassName, children,
+  isOpen, onClose, label, openKey, onDoubleClickThrough, panelClassName, slideIn = true, children,
 }) => {
   const ref = useRef<HTMLElement>(null)
   const latest = useRef({ onClose, onDoubleClickThrough })
@@ -65,8 +69,8 @@ export const SidePanel: React.FC<SidePanelProps> = ({
   if (!isOpen) return null
   return createPortal(
     <section ref={ref} role="dialog" aria-modal="false" aria-label={label} tabIndex={-1} data-testid="side-panel"
-      className={`cube-side-panel fixed inset-y-0 right-0 z-40 w-screen ${panelClassName || 'max-w-md'} bg-white `
-        + 'border-l border-gray-200 shadow-xl flex flex-col outline-none'}
+      className={`${slideIn ? 'cube-side-panel ' : ''}fixed inset-y-0 right-0 z-40 w-screen `
+        + `${panelClassName || 'max-w-md'} bg-white border-l border-gray-200 shadow-xl flex flex-col outline-none`}
       onMouseDownCapture={e => {
         const through = latest.current.onDoubleClickThrough
         if (!clicked.current && e.detail >= 2 && through) {
@@ -80,3 +84,11 @@ export const SidePanel: React.FC<SidePanelProps> = ({
     document.body,
   )
 }
+
+// A side panel's header mark while another row's content is on its way: small and quiet, and only once the wait is
+// long enough to see (.cube-wait-mark in index.css).
+export const PanelWait: React.FC<{ label: string }> = ({ label }) => (
+  <span className="cube-wait-mark flex" role="status" aria-label={label} title={label} data-testid="panel-wait">
+    <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+  </span>
+)

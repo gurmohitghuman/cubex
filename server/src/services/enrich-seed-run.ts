@@ -20,6 +20,9 @@ import type { EnrichRunConfig } from '../lib/enrich-run-config';
 import type { WaterfallRunConfig } from '../lib/waterfall/config';
 import { enqueueHTTPRun } from '../queue';
 import { journalSeed, type RunRef } from '../lib/run-undo/journal';
+import { derivedReaderIds } from '../lib/autorun-mark';
+import { dropRunSpans, kickSpanReaders, tellDerivedSpan } from '../lib/derived-spans';
+import { inputText } from './derived-write';
 import type { CompiledFilter } from '../lib/row-filter/sql';
 
 // The out-of-date flag, selected next to a row's data when the run's rows depend on it.
@@ -87,30 +90,45 @@ async function seed(job: SeedJob, live: () => boolean): Promise<Seeded | null> {
   const notMetCell: Array<[string, string]> = [[job.columns[0], CONDITION_NOT_MET]];
   await eachRowIdSlice(rowIds, ids => {
     if (!live()) { stopped = true; return false; }
-    const take: number[] = [], keptOut: number[] = [];
+    const take: number[] = [], keptOut: number[] = [], takeHeard: number[] = [], keptOutHeard: number[] = [];
     const found = read.all(...(stale?.params ?? []), ids, job.sheetId, job.userId, ...job.rowFilter.params) as
       Array<{ id: number; data: string; stale: number }>;
     for (const r of found) {
       const data = parseRowData(r.data);
       const v = job.test !== null ? 'run' : seedVerdict(data, job.plan, r.stale === 1);
-      if (v === 'run') take.push(r.id);
-      else if (v === 'missing') missing++;
+      if (v === 'run') {
+        take.push(r.id);
+        if (job.columns.some(c => inputText(data[c]) !== '')) takeHeard.push(r.id);
+      } else if (v === 'missing') missing++;
       else if (v === 'condition') {
         notMet++;
         // A row kept out already keeps its mark: no write.
         const was = data[job.columns[0]];
-        if (takesConditionMark(was) && !isConditionNotMet(was)) keptOut.push(r.id);
+        if (takesConditionMark(was) && !isConditionNotMet(was)) {
+          keptOut.push(r.id);
+          if (inputText(was) !== '') keptOutHeard.push(r.id);
+        }
       }
     }
     // What the cells held goes into the run's undo journal first (lib/run-undo/journal.ts).
     oneTransaction(() => {
       if (take.length) {
+        const readers = takeHeard.length ? derivedReaderIds(job.sheetId, job.userId, job.columns) : [];
         journalSeed(run, job.sheetId, job.userId, { rowids: JSON.stringify(take) }, running);
         set.run(...paths, JSON.stringify(take), job.sheetId, job.userId);
+        if (readers.length) {
+          takeHeard.sort((a, b) => a - b);
+          tellDerivedSpan(job.sheetId, job.userId, readers, takeHeard, run);
+        }
       }
       if (keptOut.length) {
+        const readers = keptOutHeard.length ? derivedReaderIds(job.sheetId, job.userId, [job.columns[0]]) : [];
         journalSeed(run, job.sheetId, job.userId, { rowids: JSON.stringify(keptOut) }, notMetCell);
         mark.run(markPath, JSON.stringify(keptOut), job.sheetId, job.userId);
+        if (readers.length) {
+          keptOutHeard.sort((a, b) => a - b);
+          tellDerivedSpan(job.sheetId, job.userId, readers, keptOutHeard);
+        }
       }
     });
     seeded += take.length;
@@ -142,12 +160,16 @@ export function seedEnrichmentThenEnqueue(job: SeedJob): void {
         return r.changes > 0;
       }).immediate();
       if (ready && done.seeded > 0) await enqueueHTTPRun(job.runId);
+      if (ready) kickSpanReaders(job.sheetId);
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
-      db.prepare(`UPDATE http_runs SET status = 'failed', error_message = ?, placeholder_work = 'clearing',
-          updated_at = datetime('now')
-        WHERE id = ? AND status = 'pending'`)
-        .run(redactSecrets(`The run could not start: ${reason}`).slice(0, 500), job.runId);
+      db.transaction(() => {
+        const r = db.prepare(`UPDATE http_runs SET status = 'failed', error_message = ?, placeholder_work = 'clearing',
+            updated_at = datetime('now')
+          WHERE id = ? AND status = 'pending'`)
+          .run(redactSecrets(`The run could not start: ${reason}`).slice(0, 500), job.runId);
+        if (r.changes > 0) dropRunSpans(job.sheetId, { kind: 'http', id: job.runId });
+      }).immediate();
       await clearRunPlaceholders('http', job.runId);
       console.error(`Starting enrichment run ${job.runId} failed:`, redactSecrets(reason));
     }
