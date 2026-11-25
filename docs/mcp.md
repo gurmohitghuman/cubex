@@ -224,6 +224,7 @@ A client keeps `tools/list` for up to 5 minutes, and Cubex sends nothing when it
 | `waterfall_column` | One value per row (a work email, a phone, a domain, any text) from steps tried in turn until one answers: treg tools, AI prompts, your own APIs, free formulas and lookups in your other sheets, with the step that answered in its own column. An estimate unless `estimate_only: false`. See [Waterfalls](#waterfalls). |
 | `set_auto_run` | Turn auto-run on or off for an enrichment, HTTP API, clean, formula or lookup column, or pause and resume it. |
 | `list_saved_keys` | The saved API keys by name, never their values: when each was saved and last changed, and where it's used, each HTTP API, enrichment or waterfall column whose request names it (with its sheet, and whether auto-run is on) and each saved setup that names it. Up to 20 keys a call with 10 places and 10 setups each, and whole counts (`keys_count`, `used_in_count`, `setups_count`). When more keys are left, the answer has `next_after`: pass it as `after` for the next ones. `name` gives one key (any case) with up to 50 places and 50 setups. Sheets in the trash and setup versions are left out. Needs only the `read` scope. |
+| `manage_sheet_webhook` | A sheet's incoming webhook: a secret URL where each JSON event POSTed becomes a row. `get` (with `read`), `create`, `turn_on`, `turn_off`, `rotate`, `add_field`, `remove_field` and `delete` (with `write`). The URL is shown only to a key with `write`, and only until the first event arrives; `rotate` makes a new one. `manage_table` and `manage_sheet` create take `webhook: true` to make a sheet with one. See [Webhooks](webhooks.md). |
 | `list_run_webhooks`, `manage_run_webhook` | The account's run webhooks (URLs told when a run finishes), and one webhook's last 50 deliveries. Pass a webhook's id as `webhook_id` when you start a run to hear when it ends. See [Run webhooks](run-webhooks.md). `manage_run_webhook` adds, changes and deletes them, makes a new signing secret or sends a test notice (`run` scope). |
 | `list_trash`, `restore_from_trash` | What was deleted and can still come back: batches of rows, columns, sheets and tables. Look inside a batch or a column and search it, then restore whole items or rows you pick. See [The trash](#the-trash). |
 | `get_sheet_history` | A sheet's change log: columns added, renamed, deleted and restored, runs, auto-run, views, its webhook, rows deleted (auto-dedupe's included), restored and imported, with when and who (the app or an access token by name). See [The trash](#the-trash). |
@@ -885,10 +886,10 @@ Import the file into Postman, Insomnia or Swagger UI, or generate a client from 
 | Endpoint | Body or query |
 |---|---|
 | `GET /tables` | Tables with their sheets. |
-| `POST /tables` · `PATCH /tables/:id` | `{"name": "Leads"}` |
+| `POST /tables` · `PATCH /tables/:id` | `{"name": "Leads"}`. On create, `"webhook": true` also gives the first sheet an [incoming webhook](#sheet-webhooks), its `url` in the answer's `webhook`. |
 | `POST /tables/sample` | No body. A table of 25 made-up leads (every website and email at `.example`), with a clean and a formula column filled, the duplicate it holds found by a dry run, and the AI column "Good fit (Output)" set up but not run: `ai_column` has its prompt and the first 5 `target_row_ids`. `write` scope. |
 | `DELETE /tables/:id` | Puts the table, its sheets and their rows in the trash. Stops its runs first. |
-| `POST /tables/:tableId/sheets` | `{"name": "Q3", "after_sheet_id": "..."}` (both optional) |
+| `POST /tables/:tableId/sheets` | `{"name": "Q3", "after_sheet_id": "..."}` (both optional). `"webhook": true` also gives the new sheet an [incoming webhook](#sheet-webhooks). |
 | `PATCH /tables/:tableId/sheets/:sheetId` | `{"name": "Q3 leads"}` to rename, `{"description": "…"}` to describe (`""` removes it), or both. |
 | `DELETE /tables/:tableId/sheets/:sheetId` | Puts the sheet in the trash, whole. A table always keeps one sheet. |
 | `PATCH /tables/:tableId/sheets/order` | `{"ordered_sheet_ids": ["...", "..."]}` |
@@ -1070,6 +1071,20 @@ Both reruns also take `webhook_id`, a [run webhook](run-webhooks.md) to tell whe
 An enrichment is an HTTP run: `GET /http-runs/:id` adds `cost_usd`, `daily_limit` and `enrichment` (the tool, its limits, `pause_reason`, and a list job's progress), and `GET /http-runs/:id/results` adds each row's `cost_usd` and `found_by` (and `reused_answer_from` on a row filled from an earlier found answer), plus its stored `answer` with `?answers=true` (10 rows a page).
 
 A waterfall is an HTTP run too: `GET /http-runs/:id` adds `cost_usd` (treg and AI) and `waterfall` (`result_type`, `spent`, `run_limit_usd`, `pause_reason` and per step its counts and cost), and `GET /http-runs/:id/results` adds each row's `answered_by`, `cost_usd` and `trace`, as `get_run_status` and `get_run_results` do (see [Waterfalls](#waterfalls)).
+
+### Sheet webhooks
+
+A sheet's incoming webhook: a secret URL where each JSON event POSTed becomes a new row ([Webhooks](webhooks.md)). Agents use `manage_sheet_webhook`, the same actions as below. Reading needs `read`; every change needs `write`, and so does seeing the URL: a `read` key gets `url: null`. The URL is shown until the first event arrives (`url_hidden` then says `true`); after that, rotate for a new one.
+
+| Endpoint | Body or query |
+|---|---|
+| `GET /sheets/:id/webhook` | `{"webhook": ...}`, or `{"webhook": null}` when the sheet has none: `enabled`, `url`, `url_hidden`, `column` (marks the rows it added), `events_received`, `last_event_at`, `last_error`, `fields`. |
+| `POST /sheets/:id/webhook` | No body. Gives the sheet its webhook (one per sheet; `409` if it has one). Answers `201` with its `url`. |
+| `PATCH /sheets/:id/webhook` | `{"enabled": false}` to turn it off (events get `404` and add nothing), `true` to turn it on. |
+| `POST /sheets/:id/webhook/rotate` | A new `url`; the old one stops at once. |
+| `POST /sheets/:id/webhook/fields` | `{"json_path": "$.email", "column": "Email", "as": "text"}`: each event's value at `json_path` fills a new column, as `text` (default) or `json`. |
+| `DELETE /sheets/:id/webhook/fields/:fieldId` | Stops filling that field. Its column and values stay. |
+| `DELETE /sheets/:id/webhook` | Deletes the webhook and its kept events. Its columns and rows stay. |
 
 ### Run webhooks
 

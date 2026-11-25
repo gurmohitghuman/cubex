@@ -56,6 +56,20 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
           + 'is busy, and doesn\'t count toward the 10 transfers a minute.',
         details: 'A new key, or the same key with other arguments, is still refused as busy while a sheet is.',
       },
+      {
+        change: 'added',
+        tools: ['manage_sheet_webhook'],
+        summary: 'manage_sheet_webhook sets up a sheet\'s incoming webhook, where each JSON event POSTed becomes a '
+          + 'row: get, create, turn_on, turn_off, rotate, add_field, remove_field and delete.',
+        details: 'get needs read; every other action needs write. The url is shown only to a key with write, and '
+          + 'only until the first event arrives; after that, rotate makes a new one and the old one stops at once.',
+      },
+      {
+        change: 'changed',
+        tools: ['manage_table', 'manage_sheet'],
+        summary: 'manage_table and manage_sheet create take webhook: true to give the new sheet an incoming webhook '
+          + 'in the same call. The answer\'s webhook has its url.',
+      },
     ],
   },
   {

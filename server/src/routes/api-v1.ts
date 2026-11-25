@@ -45,6 +45,7 @@ import hiringV1 from './api-v1-hiring';
 import { refuseChangesWhileBusy } from '../lib/sheet-busy';
 import { V1_SHEET_BUSY_ALLOWED } from './api-v1-shared';
 import { runWebhookRoutes } from './run-webhooks-routes';
+import sheetWebhookV1 from './api-v1-sheet-webhook';
 import { actAs } from '../lib/actor';
 import { tokenSpendFor } from '../services/token-spend';
 import { openApiDocument } from '../openapi/document';
@@ -108,6 +109,8 @@ router.use(enrichV1);
 router.use(waterfallV1);
 // "Run finished" webhooks: signed notices when a run ends (services/run-hooks.ts).
 router.use(runWebhookRoutes('/run-webhooks', requireScope));
+// A sheet's incoming webhook: events POSTed to its URL become rows (services/sheet-webhook.ts).
+router.use(sheetWebhookV1);
 router.use(usageV1);
 router.use(trashV1);
 // Saved API keys by name and where they're used, never a value (services/saved-key-uses.ts).
