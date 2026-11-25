@@ -13,11 +13,10 @@ const cell = z.union([z.string(), z.number(), z.boolean(), z.null()]);
 export function registerEnrichCallTools(server: McpServer, ctx: McpAuthCtx): void {
   registerTool(server, 'call_enrichment', {
     description:
-      `Run one enrichment tool (search_enrichments) on 1-${ENRICH_CALL_MAX_ITEMS} items without a sheet; each item `
-      + 'is keyed by the tool\'s input names. COSTS MONEY. estimate_only defaults to true. A start is refused, '
-      + 'not run halfway, when it could cost more than max_cost_usd, today\'s daily limit, the treg balance or '
-      + 'the token\'s cap. Returns a run_id: get_run_status, then get_run_results with status_filter all (row_index '
-      + 'is the item).'
+      `Run one enrichment tool (search_enrichments) on 1-${ENRICH_CALL_MAX_ITEMS} items without a sheet, each keyed `
+      + 'by its input names. COSTS MONEY; estimate_only defaults to true. Refused before it starts, never halfway, '
+      + 'when it could pass max_cost_usd, today\'s daily limit, the treg balance or the token\'s cap. Returns a '
+      + 'run_id: get_run_status, then get_run_results with status_filter all (row_index is the item).'
       + capToolNote(ctx.spend ?? null, true),
     inputSchema: z.object({
       tool_id: z.string().max(200).describe('The tool (search_enrichments)'),

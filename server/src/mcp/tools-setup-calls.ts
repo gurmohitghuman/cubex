@@ -47,13 +47,13 @@ export function registerSetupCallTools(server: McpServer, ctx: McpAuthCtx): void
 
   registerTool(server, 'get_setup_call', {
     description:
-      'A setup call (call_setup): its status and steps, and once finished, results: each item\'s status, error '
-      + `and outputs by column, ${SETUP_CALL_MAX_ITEMS} at a time (next_from starts the next page). wait_seconds `
-      + `waits for it to finish. Kept ${SETUP_CALL_KEEP_HOURS} hours after it finishes. Read-only.`,
+      'A setup call (call_setup): its status and steps; once finished, each item\'s status, error and outputs, '
+      + `${SETUP_CALL_MAX_ITEMS} at a time (next_from starts the next page). wait_seconds waits for the finish. `
+      + `Kept ${SETUP_CALL_KEEP_HOURS} hours after it finishes. Read-only.`,
     inputSchema: z.object({
       setup_call_id: z.string().describe('The call (call_setup returned it)'),
       wait_seconds: z.number().int().min(0).max(25).optional()
-        .describe('Wait up to this many seconds for it to finish'),
+        .describe('Seconds to wait for it to finish'),
       results_from: z.number().int().min(0).optional().describe('First item of the page (next_from)'),
       limit: z.number().int().min(1).max(SETUP_CALL_MAX_ITEMS).optional()
         .describe(`Items in the page (default ${SETUP_CALL_MAX_ITEMS})`),
