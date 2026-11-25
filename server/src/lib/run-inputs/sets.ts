@@ -4,11 +4,8 @@
 // made the first time a run with it stamps a row, and kept in step with
 // renames of the columns it names; it goes with its key (ON DELETE CASCADE).
 import { db } from '../db';
+import { RUN_INPUT_SETS_READ } from '../constants';
 import type { RunInputList } from './columns';
-
-// How many of a column's lists a reader checks, newest first. A row made from
-// an older one never reads out of date (as a row no run stamped).
-export const RUN_INPUT_SETS_READ = 16;
 
 // A stamp's text: the list's id, then the fingerprint (lib/run-inputs/fingerprint.ts,
 // base 36, never holding ':'). A stamp written before migration 066 has no id.
