@@ -1,4 +1,5 @@
-// Over 200 lines: one service for every change the app, the API and MCP make to a sheet's webhook.
+// Over 200 lines: one service for every action on a sheet's webhook, which the app, REST and MCP all call.
+//
 // A sheet's incoming webhook (docs/webhooks.md): one service for the app's Webhook drawer
 // (routes/sheets-webhooks.ts, cookie session), /api/v1/sheets/:id/webhook (routes/api-v1-sheet-webhook.ts)
 // and the manage_sheet_webhook tool (mcp/tools-sheet-webhook.ts), so the three can't drift: each checks the
@@ -154,7 +155,7 @@ export function newSheetWebhookToken(
   if ('fail' in found) return found;
   const { token, tokenHash } = generateWebhookAuthToken();
   db.prepare(`UPDATE webhook_sources SET auth_token_hash = ?, auth_token_set_at = datetime('now'),
-    updated_at = datetime('now') WHERE id = ?`).run(tokenHash, found.ok.id);
+    updated_at = datetime('now') WHERE id = ? AND user_id = ?`).run(tokenHash, found.ok.id, userId);
   logSheetChange(sheetId, userId, 'webhook', found.ok.auth_token_hash
     ? 'Made a new webhook token (the old one stopped working)' : 'Made the webhook need a token');
   return { ok: { source: reread(found.ok), token } };
@@ -166,7 +167,7 @@ export function removeSheetWebhookToken(userId: string, sheetId: string): SheetW
   if ('fail' in found) return found;
   if (!found.ok.auth_token_hash) return { ok: found.ok };
   db.prepare(`UPDATE webhook_sources SET auth_token_hash = NULL, auth_token_set_at = NULL,
-    updated_at = datetime('now') WHERE id = ?`).run(found.ok.id);
+    updated_at = datetime('now') WHERE id = ? AND user_id = ?`).run(found.ok.id, userId);
   logSheetChange(sheetId, userId, 'webhook', 'Removed the webhook token (anyone with the URL can add rows)');
   return { ok: reread(found.ok) };
 }

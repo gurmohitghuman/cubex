@@ -104,4 +104,4 @@ curl -X POST 'http://localhost:3002/api/webhooks/<url token>' \
   -d '{"email":"ana@example.com"}'
 ```
 
-An event without it, or with a wrong one, gets the same `404` as a wrong URL and adds nothing. In Zapier, Make or n8n, add the `Authorization` header with the value `Bearer ` and the token. **New token** replaces it (the old one stops at once); **Remove token** lets anyone with the URL add rows again. Cubex keeps only a hash of the token, so a lost one can't be shown again: make a new one.
+An event without it, or with a wrong one, gets the same `404` as a wrong URL and adds nothing. In the service that sends the events, add the `Authorization` header with the value `Bearer ` and the token. **New token** replaces it (the old one stops at once); **Remove token** lets anyone with the URL add rows again. Cubex keeps only a hash of the token, so a lost one can't be shown again: make a new one.

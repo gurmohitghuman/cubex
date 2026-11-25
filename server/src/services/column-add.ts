@@ -11,6 +11,7 @@ import {
 import { logSheetChange } from '../lib/change-log';
 import { orderedUuid } from '../lib/ordered-id';
 import { restoringColumnNames } from '../lib/trash/store';
+import { rowsChanged } from '../lib/rows-changed';
 
 export type ColumnAddOutcome =
   | { ok: true; name: string }
@@ -57,6 +58,7 @@ export function addSheetColumn(
     if (!hasRow && opts.seedEmptyRow !== false) {
       db.prepare("INSERT INTO rows (id, sheet_id, user_id, row_index, data) VALUES (?, ?, ?, 0, '{}')")
         .run(orderedUuid(), sheetId, userId);
+      rowsChanged(sheetId);
     }
     appendColumnsToOrder(sheetId, userId, [columnName]);
     if (opts.bumpDataVersion) {

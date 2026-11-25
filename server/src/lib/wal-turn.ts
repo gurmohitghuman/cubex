@@ -20,7 +20,9 @@
 // connection (this one can't while in a transaction): holding the write lock, nothing adds frames and copied ones
 // only grow, so a frame still uncopied then means the commit adds to the WAL. Every frame copied: the transaction
 // ends unwritten and asks too. Past `until` a page asks no more and answers 'late', writing nothing; a write that
-// must be made (`anyway`) still takes its turn, then writes, and may start the WAL over here.
+// must be made (`anyway`) still takes its turn, and finding every frame copied, first waits for a checkpoint's answer,
+// the event loop free: the one running, else one it asks for, once. Then it writes, and may start the WAL over here
+// only if that checkpoint couldn't (a slow disk's checkpoint outlasting a call left settle's write doing it).
 // Other writers (autosave, webhooks, run workers) don't take turns: one that comes while the worker starts the WAL
 // over waits for the lock about one header sync, as long as starting it over itself would take. If the worker
 // can't run, can't write, or failed, the write goes on and starts the WAL over here (lib/wal-checkpointer.ts).
@@ -77,6 +79,7 @@ const wait = (ms: number) => new Promise<void>(res => setTimeout(res, ms));
 // it does.
 export async function inWalTurn<T>(write: () => T, until: number, anyway = false): Promise<T | 'late'> {
   let last: Checkpointed | null | undefined;
+  let askedLate = false;
   for (;;) {
     const late = Date.now() >= until;
     if (late && !anyway) return 'late';
@@ -96,7 +99,8 @@ export async function inWalTurn<T>(write: () => T, until: number, anyway = false
       await (late ? answer : byDeadline(answer, until));
       continue;
     }
-    const ask = !late && checkpointsOnWorker() && worthAsking(last);
+    // Past `until`, once, and not after a checkpoint given up on.
+    const ask = checkpointsOnWorker() && worthAsking(last) && (!late || (!askedLate && !gaveUpOnRunning()));
     try {
       if (!(ask && allCopied(walState()))) {
         beforeWrite?.(late);
@@ -110,6 +114,17 @@ export async function inWalTurn<T>(write: () => T, until: number, anyway = false
     } finally {
       checking = false;
       Atomics.compareExchange(walShared, TURN, PAGE, FREE);
+    }
+    if (late) {
+      // A running checkpoint's answer (its start-over may have been skipped: then asked once more), else its own.
+      const running = gaveUpOnRunning() ? null : checkpointAnswer();
+      if (running) stats.checkpointWaits++;
+      else { stats.asks++; askedLate = true; }
+      const t0 = Date.now();
+      const r = await answerWithin(running ?? checkpointInBackground(), Infinity);
+      if (running) stats.checkpointWaitMs += Date.now() - t0;
+      if (r !== 'late' && r !== 'stuck') last = r;
+      continue;
     }
     stats.asks++;
     // Asked again: a moment later, so a turn or lock held elsewhere can end.

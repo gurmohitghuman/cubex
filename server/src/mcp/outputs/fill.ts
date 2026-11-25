@@ -53,9 +53,18 @@ export const addListRows = obj({ source_rows_released: num, auto_run: opt(autoRu
 const autoRunColumn = obj({
   column: str, kind: str, enabled: bool, sends_requests: bool, paused_reason: nul(str), paused_message: nul(str),
   where: z.array(info('A where item')), run_if: nul(str), daily_cap_usd: nul(num), daily_row_cap: nul(num),
-  used_today_usd: num, rows_today: num,
+  start_delay_s: num, used_today_usd: num, rows_today: num,
 });
 export const setAutoRun = obj({
   auto_run: z.array(autoRunColumn), has_webhook: bool,
   daily_limit: obj({ limit_usd: nul(num), used_today_usd: num, remaining_usd: nul(num) }), changed,
+});
+
+// list_prompt_starters (mcp/tools-prompt-starters.ts).
+export const listPromptStarters = obj({
+  starters: z.array(obj({
+    id: str, label: str, hint: str,
+    run: info('run_ai_column\'s arguments: column_name, prompt, and output_columns for a profile'),
+  })),
+  note: str,
 });

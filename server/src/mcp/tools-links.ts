@@ -79,20 +79,23 @@ export function registerLinkTools(server: McpServer, ctx: McpAuthCtx) {
     {
       description:
         'Save a sheet, or the columns and rows you pick (as in export_csv), as a CSV file of any size without its '
-        + 'contents passing through your context. Returns a one-time link; download it with the curl command in '
-        + 'the result to save it anywhere on your machine, or give the link to the user to open in a browser. '
+        + 'contents passing through your context. format jsonl saves JSON lines instead: one {"id", "data"} object '
+        + 'a row, as read_rows answers it, with its values\' types and no formula quote. Returns a one-time link; '
+        + 'download it with the curl command in the result to save it anywhere on your machine, or give the link '
+        + 'to the user to open in a browser. '
         + `The link works once and expires in ${FILE_LINK_TTL_MINUTES} minutes. Until then anyone who has it can `
         + 'download the data, so give it only to the user. The file holds the rows up to the last one the sheet '
-        + 'had when the download begins. Values are escaped against spreadsheet formula injection.',
+        + 'had when the download begins. CSV values are escaped against spreadsheet formula injection.',
       inputSchema: {
         sheet_id: z.string().describe(SHEET_ID),
         columns: z.array(z.string()).min(1).optional()
           .describe('Only these columns, in this order. Omit for every column.'),
         where: whereLike('Only the rows it passes.').optional(),
         view: z.string().min(1).optional().describe(VIEW_HELP),
+        format: z.enum(['csv', 'jsonl']).optional().describe('csv (default) or jsonl: one JSON object a row'),
       },
     },
-    async ({ sheet_id, columns, where, view }) => {
+    async ({ sheet_id, columns, where, view, format }) => {
       const denied = missingScope(ctx, 'read');
       if (denied) return denied;
       // A view is read now: the link saves what it shows at this moment.
@@ -104,15 +107,18 @@ export function registerLinkTools(server: McpServer, ctx: McpAuthCtx) {
       if ('fail' in plan) return err(plan.fail === 'not_found' ? 'Sheet not found' : plan.error);
       const link = createFileLink({
         userId: ctx.userId, tokenId: ctx.tokenId, sheetId: sheet_id, kind: 'download',
-        options: { columns: selection.columns, where: selection.where, saved: selection.saved },
+        options: {
+          columns: selection.columns, where: selection.where, saved: selection.saved, format: format ?? 'csv',
+        },
       });
       const url = fileLinkUrl(base, 'download', link.token);
+      const file = format === 'jsonl' ? '<file.jsonl>' : '<file.csv>';
       return ok({
         download_url: url,
-        curl: `curl -sS -f -o <file.csv> '${url}'`,
+        curl: `curl -sS -f -o ${file} '${url}'`,
         columns: plan.columns,
         expires_at: link.expiresAt,
-        note: 'Replace <file.csv> with where to save it. The link works once. If curl fails with 409, the sheet '
+        note: `Replace ${file} with where to save it. The link works once. If curl fails with 409, the sheet `
           + 'was busy and the link still works, so try again shortly; with 404, the link is used up or expired.',
       });
     },

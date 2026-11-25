@@ -1,18 +1,27 @@
-// Out of date, as SQL over a `rows` row (pure). A run column's inputs (the
-// columns its newest run reads, lib/run-inputs/columns.ts) under its key in
-// rows.run_inputs (lib/run-inputs/keys.ts): the row's result is out of date
-// when the fingerprint its run wrote differs from the one its cells make now.
-// A row no run has fingerprinted (filled before migration 039, kept out by a
-// rule, restored from the trash) never is. Callers AND it with the cell's run
-// state: only a row holding a result (done, or done without one such as
-// "⏭️ Not found") can be out of date.
+// Out of date, as SQL over a `rows` row (pure). A run column's key in
+// rows.run_inputs (lib/run-inputs/keys.ts) holds the stamp its run wrote with
+// the row's result: the list it read (lib/run-inputs/sets.ts) and the
+// fingerprint of those cells then. The result is out of date when those same
+// cells make another fingerprint now; what the column's setup reads since
+// doesn't count (a setup change never marks rows out of date). A row no run has
+// fingerprinted (filled before migration 039, kept out by a rule, restored from
+// the trash), or made from a list too old to read, never is. Callers AND it
+// with the cell's run state: only a row holding a result (done, or done
+// without one such as "⏭️ Not found") can be out of date.
 import { jsonPath } from '../json-path';
 import { NO_INPUTS_FINGERPRINT } from './fingerprint';
 import type { RunInputList } from './columns';
 
+// One input list as a reader checks it: id null for stamps written before
+// migration 066 (no list named), checked against `inputs` as they were then.
+export interface RunInputSet {
+  id: number | null;
+  inputs: Readonly<RunInputList>; // the columns in the run's order (null: a gone column, read empty)
+}
+
 export interface RunInputs {
-  key: number;                  // run_input_keys.id of the column's main column
-  inputs: Readonly<RunInputList>; // what its newest run reads, in its order (null: a gone column, read empty)
+  key: number;                    // run_input_keys.id of the column's main column
+  sets: readonly RunInputSet[];   // the lists its stamps name, newest first
 }
 
 // A key's place in rows.run_inputs.
@@ -36,12 +45,28 @@ function currentFingerprint(inputs: Readonly<RunInputList>): { sql: string; para
   return { sql: `cubex_run_fp(${args.sql})`, params: args.params };
 }
 
-// True when the row's stored fingerprint differs from its cells now. A row
-// without one reads NULL, never true. Over the rows table's own column names.
+// True when the row's stamp differs from the one its own list's cells make
+// now; NULL (never true) for a row without one or with a list not in `sets`.
+// The stamp's list is the text up to ':' ('' before migration 066), so each
+// row computes one fingerprint. The stamp is read once, in a scalar subquery
+// (1M rows counted: about +10% over
+// one fingerprint against one list, +26% with 16 lists spread evenly; reading
+// it three times cost +21% and +49%). Over the rows table's own column names.
 export function staleSql(r: RunInputs): { sql: string; params: unknown[] } {
-  const now = currentFingerprint(r.inputs);
+  if (r.sets.length === 0) return { sql: 'NULL', params: [] };
+  const whens: string[] = [];
+  const params: unknown[] = [];
+  for (const set of r.sets) {
+    const now = currentFingerprint(set.inputs);
+    // A literal (an integer id this code made), as a bound value it compares slower.
+    if (set.id !== null && !Number.isSafeInteger(set.id)) continue;
+    const prefix = set.id === null ? "''" : `'${set.id}:'`;
+    whens.push(`WHEN ${prefix} THEN s <> ${prefix} || ${now.sql}`);
+    params.push(...now.params);
+  }
   return {
-    sql: `(run_inputs IS NOT NULL AND json_extract(run_inputs, ?) <> ${now.sql})`,
-    params: [runInputPath(r.key), ...now.params],
+    sql: `(run_inputs IS NOT NULL AND (SELECT CASE substr(s, 1, instr(s, ':')) ${whens.join(' ')} END
+      FROM (SELECT json_extract(run_inputs, ?) AS s)))`,
+    params: [...params, runInputPath(r.key)],
   };
 }

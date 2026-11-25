@@ -1,3 +1,4 @@
+// Over 200 lines: one feature over REST and MCP, its cases sharing the keys and helpers set up here.
 import { test, expect, request as pwRequest, type APIRequestContext } from '@playwright/test'
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { authedApi, seedSheet, BASE, makeAccessToken } from './helpers'

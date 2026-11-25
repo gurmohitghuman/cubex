@@ -12,6 +12,7 @@ import {
   TokenAuthRequest,
 } from '../middleware/access-token-auth';
 import { API_V1_MAX_JSON_BYTES } from '../lib/api-v1-constants';
+import { jsonTooDeep, TOO_DEEP } from '../lib/json-depth';
 import { apiV1Limiter } from '../lib/limits';
 import { versionInfo } from '../services/version-info';
 import { changesSince } from '../services/version-changes';
@@ -30,6 +31,7 @@ import transferV1 from './api-v1-transfer';
 import enrichV1 from './api-v1-enrich';
 import waterfallV1 from './api-v1-waterfall';
 import runConditionsV1 from './api-v1-run-conditions';
+import promptStartersV1 from './api-v1-prompt-starters';
 import cleanV1 from './api-v1-clean';
 import formulaV1 from './api-v1-formula';
 import lookupV1 from './api-v1-lookup';
@@ -59,6 +61,11 @@ router.use((err: any, _req: express.Request, res: express.Response, next: expres
   if (!err) return next();
   if (err.type === 'entity.too.large') return res.status(413).json({ error: 'Request body too large' });
   return res.status(400).json({ error: 'Invalid JSON body' });
+});
+// A body nested deeper than any route takes is refused before a route reads it (lib/json-depth.ts).
+router.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (jsonTooDeep(req.body)) return res.status(400).json({ error: TOO_DEEP });
+  return next();
 });
 // What a call changes is done by its token (lib/actor.ts), set after the body
 // parser, whose stream events would otherwise drop it.
@@ -97,6 +104,8 @@ router.use(runReadsV1);
 router.use(runControlV1);
 router.use(runUndoV1);
 router.use(runConditionsV1);
+// Prompt starters: good first prompts for an AI column, from the sheet's columns (services/prompt-starters-read.ts).
+router.use(promptStartersV1);
 // Enrichments (treg.to): catalog, run starts, fields, auto-run.
 router.use(enrichV1);
 // Waterfall columns: one result per row from ordered steps (services/waterfall-*.ts).

@@ -112,5 +112,17 @@ await test('notes Docker update line fetches moved tags with --force', () => {
   }
 })
 
+await test('a changes file that lists no release: the check goes on, not a silent stop of the script', () => {
+  git('checkout', '-q', gone)
+  write('server/src/mcp/agent-changes.ts', 'export const AGENT_CHANGES = []\n')
+  const none = commit('a changes file with no release in it')
+  const listed = spawnSync('bash', ['-c', 'source scripts/release.sh && agent_changes_versions "$1"; echo "went on"',
+    'versions', 'no releases here'], { cwd: repo, encoding: 'utf8' })
+  assert.equal(listed.status, 0, listed.stderr)
+  assert.equal(listed.stdout.trim(), 'went on')
+  const r = cut(none)
+  assert.equal(r.status, 0, r.stderr)
+})
+
 fs.rmSync(repo, { recursive: true, force: true })
 console.log('release-tool-list-check: all passed')

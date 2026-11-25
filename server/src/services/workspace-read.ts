@@ -14,28 +14,30 @@ import { listViews, type ViewInfo } from './view-store';
 import { sheetColumnDetails } from './column-details';
 import type { ColumnDetail } from '../lib/column-details';
 import { autoDedupeView, type AutoDedupeView } from './auto-dedupe-setting';
+import { apiSheetCounts, liveSheets } from './table-row-counts';
 
-export interface SheetSummary { id: string; name: string; position: number; row_count: number }
+// row_count_updating: only when the sheet was still being counted after a change (services/table-row-counts.ts):
+// row_count is then its last count, which may be out of date.
+export interface SheetSummary {
+  id: string; name: string; position: number; row_count: number; row_count_updating?: true;
+}
 export interface TableSummary {
   id: string; name: string; created_at: string; updated_at: string; sheets: SheetSummary[];
 }
 
-export function listTablesWithSheets(userId: string): TableSummary[] {
+export async function listTablesWithSheets(userId: string): Promise<TableSummary[]> {
   const tables = db.prepare(
     `SELECT id, name, created_at, updated_at FROM tables WHERE user_id = ? AND trash_id IS NULL
      ORDER BY created_at DESC`,
   ).all(userId) as Array<{ id: string; name: string; created_at: string; updated_at: string }>;
-
-  const sheets = db.prepare(`
-    SELECT s.id, s.table_id, s.name, s.position,
-           (SELECT COUNT(*) FROM rows r WHERE r.sheet_id = s.id AND r.user_id = s.user_id) AS row_count
-    FROM sheets s WHERE s.user_id = ? AND s.trash_id IS NULL ORDER BY s.table_id, s.position ASC
-  `).all(userId) as Array<SheetSummary & { table_id: string }>;
-
+  const sheets = liveSheets(userId);
+  const counts = await apiSheetCounts(userId, sheets);
   const byTable = new Map<string, SheetSummary[]>();
   for (const s of sheets) {
     if (!byTable.has(s.table_id)) byTable.set(s.table_id, []);
-    byTable.get(s.table_id)!.push({ id: s.id, name: s.name, position: s.position, row_count: s.row_count });
+    const c = counts.get(s.id)!;
+    const updating = c.updating ? { row_count_updating: true as const } : {};
+    byTable.get(s.table_id)!.push({ id: s.id, name: s.name, position: s.position, row_count: c.rows, ...updating });
   }
   return tables.map(t => ({ ...t, sheets: byTable.get(t.id) ?? [] }));
 }
@@ -74,8 +76,10 @@ export interface SheetMeta {
 export function getSheetMeta(
   sheetId: string, userId: string, named: ReadonlySet<string> = new Set(),
 ): SheetMeta | null {
-  const sheet = db.prepare(`SELECT id, table_id, name, description, data_version, row_generation, default_ai_model
-    FROM sheets WHERE id = ? AND user_id = ?`).get(sheetId, userId) as {
+  // A sheet in the trash, or of a table in the trash, is not found (callers add the restore_from_trash hint).
+  const sheet = db.prepare(`SELECT s.id, s.table_id, s.name, s.description, s.data_version, s.row_generation,
+      s.default_ai_model FROM sheets s JOIN tables t ON t.id = s.table_id
+    WHERE s.id = ? AND s.user_id = ? AND s.trash_id IS NULL AND t.trash_id IS NULL`).get(sheetId, userId) as {
     id: string; table_id: string; name: string; description: string | null; data_version: number;
     row_generation: number; default_ai_model: string | null;
   } | undefined;
