@@ -1,7 +1,8 @@
 // Downloads pipelined on one connection (lib/csv-write.ts responseTurn, lib/csv-export.ts streamSheetCsv): Node
 // answers them in order, so the second one's sheet is held only once its response owns the socket. A client that
 // sends two requests at once and reads nothing keeps the first export waiting on its writes: its sheet is held,
-// the second's is not. Once it reads, both arrive whole and in order, and neither sheet is held after.
+// the second's is not. Once it reads, both arrive whole and in order, and neither sheet is held after. The second
+// reads its sheet when its turn comes: a column renamed while it waited comes out under its new name.
 import assert from 'node:assert/strict'
 import net from 'node:net'
 import type { AddressInfo } from 'node:net'
@@ -11,10 +12,12 @@ import dbMod from '../../server/src/lib/db'
 import migMod from '../../server/src/db/migrate'
 import exportMod from '../../server/src/lib/csv-export'
 import busyMod from '../../server/src/lib/sheet-busy'
+import renameMod from '../../server/src/services/column-rename'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { streamSheetCsv } = exportMod as typeof import('../../server/src/lib/csv-export')
 const { sheetHeld } = busyMod as typeof import('../../server/src/lib/sheet-busy')
+const { renameSheetColumn } = renameMod as typeof import('../../server/src/services/column-rename')
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 runMigrations()
@@ -76,6 +79,27 @@ await check('two downloads on one connection, nothing read: the first sheet held
   assert.ok(text.indexOf('Big39999') < text.indexOf('Small0'), 'in order')
   assert.ok(text.includes('Small999'), 'the second whole')
   assert.deepEqual([sheetHeld(big), sheetHeld(small)], [false, false])
+  sock.destroy()
+})
+
+await check('... and the second answers for its sheet as it is at its turn: a column renamed meanwhile', async () => {
+  const sock = net.connect(port, '127.0.0.1')
+  await new Promise(r => sock.once('connect', r))
+  sock.pause()
+  sock.write(`GET /x/${big} HTTP/1.1\r\nHost: x\r\n\r\n`
+    + `GET /x/${small} HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n`)
+  await sleep(1_000)
+  const renamed = await renameSheetColumn(small, uid, 'Note', 'Memo')
+  assert.ok('ok' in renamed, JSON.stringify(renamed))
+  const chunks: Buffer[] = []
+  sock.on('data', c => chunks.push(c))
+  const ended = new Promise(r => sock.once('end', r))
+  sock.resume()
+  await ended
+  const text = Buffer.concat(chunks).toString()
+  const second = text.slice(text.lastIndexOf('HTTP/1.1 200'))
+  assert.ok(second.includes('"Name","Memo"\r\n'), second.slice(0, 300))
+  assert.ok(second.includes(`"Small999","${'x'.repeat(400)}"`), 'its values under the new name')
   sock.destroy()
 })
 

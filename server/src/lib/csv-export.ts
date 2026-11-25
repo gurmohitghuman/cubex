@@ -148,11 +148,12 @@ export const exportContentType = (format: ExportFormat): string =>
 export async function streamSheetCsv(
   sheetId: string, userId: string, res: Response, selection: ExportSelection = {}, format: ExportFormat = 'csv',
 ): Promise<'ok' | 'gone' | 'not_found' | 'empty' | { busy: string } | { invalid: string }> {
+  // Its turn on the connection first (responseTurn): the sheet is held only while this export can send, and the
+  // plan is the sheet as it is then (a column renamed while an earlier download had the connection).
+  if (!await responseTurn(res)) return 'gone';
   const plan = planSheetExport(sheetId, userId, selection);
   if ('fail' in plan) return plan.fail === 'not_found' ? 'not_found' : { invalid: plan.error };
   if (!db.prepare('SELECT 1 FROM rows WHERE sheet_id = ? AND user_id = ? LIMIT 1').get(sheetId, userId)) return 'empty';
-  // Its turn on the connection first (responseTurn): the sheet is held only while this export can send.
-  if (!await responseTurn(res)) return 'gone';
   return withSheetRead(sheetId, async () => {
     res.setHeader('Content-Type', exportContentType(format));
     res.setHeader('Content-Disposition', contentDispositionFilename(plan.sheetName, format));
