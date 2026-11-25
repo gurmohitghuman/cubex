@@ -81,6 +81,13 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
         details: 'A new key, or the same key with other arguments, is still refused as busy while a sheet is.',
       },
       {
+        change: 'server',
+        summary: 'read_rows with include_status gives a condition_not_met cell a why: each part of the column\'s "Only '
+          + 'run if" the row fails now, with what the cell holds. Free, no AI.',
+        details: 'check_run_condition\'s sample rows that fail carry the same why. A row that passes the rule now '
+          + '(its cells changed since) says so: rerun it to fill it.',
+      },
+      {
         change: 'changed',
         tools: ['hiring_signals'],
         summary: 'hiring_signals takes action "update" (write scope, free): change min_roles, leave_out_companies or '
