@@ -73,6 +73,14 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
         details: 'A new key, or the same key with other arguments, is still refused as busy while a sheet is.',
       },
       {
+        change: 'changed',
+        tools: ['hiring_signals'],
+        summary: 'hiring_signals takes action "update" (write scope, free): change min_roles, leave_out_companies or '
+          + 'both after create. They apply from the next check.',
+        details: 'A company kept off before gets its row at the next check if it passes now; a row already on '
+          + 'Companies stays. null resets one (every company, none left out). PATCH /api/v1/hiring/{id} does the same.',
+      },
+      {
         change: 'added',
         tools: ['manage_sheet_webhook'],
         summary: 'manage_sheet_webhook sets up a sheet\'s incoming webhook, where each JSON event POSTed becomes a '
