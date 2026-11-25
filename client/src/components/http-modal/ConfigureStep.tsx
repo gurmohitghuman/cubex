@@ -33,6 +33,8 @@ interface Props {
   previewError: string | null
   onPreview: () => void | Promise<void>
   onCancel: () => void
+  // Editing a column (its menu's Edit): Save, or Save and run on all rows, with the mapping as it stands.
+  edit?: { saving: boolean; onSave: (run: boolean) => void }
   onShowTemplateModal: () => void
   // Just filled from a pasted cURL command: open the sections that got content.
   openFilled?: boolean
@@ -52,7 +54,8 @@ export const ConfigureStep: React.FC<Props> = (p) => {
   const filled = (n: number) => !!p.openFilled && n > 0
   return (
     <div className="p-4 space-y-3">
-      <MasterColumnField masterColumnName={p.masterColumnName} setMasterColumnName={p.setMasterColumnName} errors={p.errors} />
+      <MasterColumnField masterColumnName={p.masterColumnName} setMasterColumnName={p.setMasterColumnName}
+        errors={p.errors} locked={!!p.edit} />
 
       <AccordionSection title="Method & Endpoint" summary={endpointSummary} defaultOpen>
         <MethodEndpointFields {...p} />
@@ -99,8 +102,9 @@ export const ConfigureStep: React.FC<Props> = (p) => {
         </button>
         <div className="flex space-x-3">
           <button onClick={p.onCancel} className="btn-secondary">Cancel</button>
-          <button onClick={p.onPreview} disabled={p.isGeneratingPreview}
-            className="btn-primary flex items-center space-x-2">
+          {p.edit && <EditButtons edit={p.edit} busy={p.isGeneratingPreview} />}
+          <button onClick={p.onPreview} disabled={p.isGeneratingPreview || !!p.edit?.saving}
+            className={`${p.edit ? 'btn-secondary' : 'btn-primary'} flex items-center space-x-2`}>
             {p.isGeneratingPreview ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
             <span>{p.isGeneratingPreview ? `Processing ${p.config.previewSize} rows…` : `Try on ${p.config.previewSize} rows`}</span>
           </button>
@@ -111,3 +115,25 @@ export const ConfigureStep: React.FC<Props> = (p) => {
     </div>
   )
 }
+
+// An edit's two buttons: the setup saved (nothing runs, nothing is billed), or saved and run on every row.
+type EditProp = { saving: boolean; onSave: (run: boolean) => void }
+export function EditButtons({ edit, busy }: { edit: EditProp; busy: boolean }) {
+  return (
+    <>
+      <button onClick={() => edit.onSave(false)} disabled={busy || edit.saving} className="btn-secondary"
+        data-testid="http-save-setup" title="Save the new setup. Nothing runs and nothing is billed.">
+        {edit.saving ? 'Saving…' : 'Save'}
+      </button>
+      <button onClick={() => edit.onSave(true)} disabled={busy || edit.saving} className="btn-primary"
+        data-testid="http-save-and-run" title="Save the new setup, then run it on every row">
+        Save and run on all rows
+      </button>
+    </>
+  )
+}
+
+// An edit's drawer while the column's setup loads: on screen at once, the form when the setup is in.
+export const EditLoading = () => (
+  <p className="p-4 text-sm text-gray-500" data-testid="http-edit-loading">Loading this column's setup…</p>
+)

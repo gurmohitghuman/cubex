@@ -23,6 +23,7 @@ import { registerTransformTool } from './tools-transform';
 import { registerEnrichTools } from './tools-enrich';
 import { registerAiVisibilityTool } from './tools-ai-visibility';
 import { registerHiringTool } from './tools-hiring';
+import { registerSocialTool } from './tools-social';
 import { registerWaterfallTools } from './tools-waterfall';
 import { registerEnrichManageTools } from './tools-enrich-manage';
 import { registerBalanceTools } from './tools-balances';
@@ -108,6 +109,7 @@ export function registerAllTools(server: McpServer, ctx: McpAuthCtx) {
   registerEnrichManageTools(server, ctx);
   registerAiVisibilityTool(server, ctx);
   registerHiringTool(server, ctx);
+  registerSocialTool(server, ctx);
   registerBalanceTools(server, ctx);
   registerUsageTools(server, ctx);
   registerVersionTool(server, ctx);

@@ -17,6 +17,7 @@ export type ChangeAction =
   | 'sheet_renamed' | 'sheet_deleted' | 'sheet_restored' | 'sheet_copied'
   | 'rows_deleted' | 'rows_restored' | 'rows_imported' | 'rows_sorted' | 'duplicates_removed'
   | 'rows_moved_in' | 'rows_moved_out' | 'sample_created' | 'ai_visibility_created' | 'hiring_created'
+  | 'social_created'
   | 'hiring_filters' | 'setup_version_saved' | 'setup_version_restored' | 'setup_saved';
 
 export interface ChangeExtra { column?: string | null; detail?: Record<string, unknown> }

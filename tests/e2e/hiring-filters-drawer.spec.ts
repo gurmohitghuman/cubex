@@ -28,7 +28,7 @@ test('the drawer runs a filter table\'s search column again, its templates as th
     .locator('.ag-header-cell-text').first().click()
   await page.getByText('Edit enrichment').click()
   const drawer = page.getByTestId('enrich-drawer')
-  await expect(drawer.getByTestId('enrich-run-all')).toHaveText(/^Run (all 1|on 1 row)$/, { timeout: 15_000 })
+  await expect(drawer.getByTestId('enrich-run-all')).toHaveText(/^Save and run on 1 row$/, { timeout: 15_000 })
   await drawer.getByTestId('enrich-run-all').click()
   await page.getByRole('dialog').filter({ hasText: 'Run the enrichment' }).getByRole('button', { name: 'Run' }).click()
   await expect(drawer.getByTestId('enrich-run-headline')).toContainText('Ran', { timeout: 30_000 })

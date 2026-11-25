@@ -26,7 +26,10 @@ const forgetUsage = (runId: string) => db.prepare('DELETE FROM run_usage WHERE r
 // setup_only 3: a setup someone saved without running it (services/column-setup-save.ts).
 export const SETUP_SAVED = 3;
 
-export function writeAiSetup(sheetId: string, userId: string, column: string, f: AiFill, setupOnly: 1 | 3 = 1): string {
+// setupOnly 2: set up by a template (a social research table's AI steps), never run; 1: restored; 3: saved.
+export function writeAiSetup(
+  sheetId: string, userId: string, column: string, f: AiFill, setupOnly: 1 | 2 | 3 = 1,
+): string {
   const id = uuidv4();
   const structured = !!f.outputColumns?.length;
   db.prepare(`INSERT INTO ai_runs (id, sheet_id, user_id, column_name, prompt, system_prompt, model, temperature,

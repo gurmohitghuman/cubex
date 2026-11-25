@@ -3,7 +3,8 @@
 // rerun an agent starts (a wrong default once re-billed a whole sheet).
 // row_ids or a where narrow the rows the mode picks from. MCP leaves
 // estimate_only on unless it's false (a column run can start several paid
-// runs); the app and REST say which they want.
+// runs); the app and REST say which they want. The app's inFilter: only the
+// rows of the filter the sheet shows (read on the server, services/column-run.ts).
 import { MAX_COLUMN_RUN_COLUMNS, MAX_COLUMN_RUN_ROW_IDS } from '../lib/constants-setups';
 import { CAMEL, ceilingArgsOf } from '../lib/cost-ceiling';
 import type { WhereItem } from '../lib/row-filter/where';
@@ -17,6 +18,7 @@ export interface ColumnRunInput {
   mode: ColumnRunMode;
   rowIds: string[] | null;
   where: WhereItem[] | null;
+  inFilter?: boolean;
   estimateOnly: boolean;
   maxCostUsd: number | null;
   allowUnpriced: boolean;
@@ -24,7 +26,7 @@ export interface ColumnRunInput {
 }
 
 const KEYS = {
-  app: ['columns', 'mode', 'rowIds', 'where', 'estimateOnly', 'maxCostUsd', 'allowUnpriced', 'webhookId'],
+  app: ['columns', 'mode', 'rowIds', 'where', 'inFilter', 'estimateOnly', 'maxCostUsd', 'allowUnpriced', 'webhookId'],
   v1: ['columns', 'mode', 'row_ids', 'where', 'estimate_only', 'max_cost_usd', 'allow_unpriced', 'webhook_id'],
 };
 
@@ -53,6 +55,9 @@ export function columnRunInputOf(b: Record<string, unknown>, from: 'app' | 'v1' 
   const where = b.where ?? null;
   if (where !== null && !Array.isArray(where)) return bad('where must be a list of conditions.');
   if (rowIds && where?.length) return bad('Send row_ids or where, not both.');
+  const inFilter = from === 'app' ? b.inFilter ?? false : false;
+  if (typeof inFilter !== 'boolean') return bad('inFilter must be true or false.');
+  if (inFilter && (rowIds || where?.length)) return bad('Send inFilter alone, without rowIds or where.');
   const estimate = field('estimateOnly', 'estimate_only');
   if (estimate !== undefined && typeof estimate !== 'boolean') return bad('estimate_only must be true or false.');
   const hook = field('webhookId', 'webhook_id') ?? null;
@@ -62,7 +67,7 @@ export function columnRunInputOf(b: Record<string, unknown>, from: 'app' | 'v1' 
   if ('error' in ceiling) return bad(ceiling.error);
   return {
     columns: [...new Set(columns)], mode: mode as ColumnRunMode, rowIds: rowIds ? [...new Set(rowIds)] : null,
-    where: where?.length ? where as WhereItem[] : null,
+    where: where?.length ? where as WhereItem[] : null, ...(inFilter ? { inFilter } : {}),
     estimateOnly: from === 'mcp' ? estimate !== false : estimate === true,
     webhookId: hook, ...ceiling,
   };

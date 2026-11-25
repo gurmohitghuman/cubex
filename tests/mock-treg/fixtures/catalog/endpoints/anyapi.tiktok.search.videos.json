@@ -1,0 +1,486 @@
+{
+ "endpoint": {
+  "id": "anyapi.tiktok.search.videos",
+  "provider": "anyapi",
+  "provider_display": "AnyAPI",
+  "name": "TikTok Keyword Search",
+  "summary": "Search TikTok by keyword and get matching videos (caption, views, likes, comments, shares) as normalized JSON.",
+  "method": "POST",
+  "path": "/v1/run/tiktok.search_keyword",
+  "scope": "any_account",
+  "tier": "core",
+  "kind": "data",
+  "domain": "search",
+  "call_template": "treg call anyapi.tiktok.search.videos",
+  "cost": {
+   "type": "per_call",
+   "value": 0.0012,
+   "currency": "USD",
+   "unit": "call",
+   "reported_charge": {
+    "path": "costUsd",
+    "unit": "usd"
+   },
+   "source": "observed",
+   "source_url": "https://api.getanyapi.com/v1/apis/tiktok.search_keyword",
+   "checked": "2026-09-11",
+   "confidence": "verified",
+   "note": "3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A not-found or empty answer is billed too, at its own `costUsd`.",
+   "usd": 0.0012
+  },
+  "async": null,
+  "platform_eligible": true,
+  "platform_blocked": null,
+  "miss": null,
+  "status": null,
+  "status_note": null,
+  "superseded_by": null,
+  "verified": "2026-09-19",
+  "added": "2026-09-19",
+  "docs_url": "https://getanyapi.com/api/tiktok/search-keyword",
+  "has_example": true,
+  "input": {
+   "body": {
+    "cursor": {
+     "type": "string",
+     "required": false,
+     "note": "Pagination cursor from a previous response."
+    },
+    "datePosted": {
+     "type": [
+      "integer",
+      "string"
+     ],
+     "required": false,
+     "note": "Time frame filter. Use a canonical JSON integer that is nonnegative; common values are 0 for any time, 1 for the past 24 hours, 7 for the past week, and 30 for the past month. Legacy numeric strings remain accepted.",
+     "default": 0,
+     "min": 0,
+     "example": 0
+    },
+    "query": {
+     "type": "string",
+     "required": true,
+     "note": "The keyword to search TikTok for.",
+     "example": "sample"
+    },
+    "sortBy": {
+     "type": [
+      "integer",
+      "string"
+     ],
+     "required": false,
+     "note": "Sort order. Use the canonical JSON integer 0 for relevance, 1 for most liked, or 2 for newest first; legacy numeric strings remain accepted.",
+     "default": 0,
+     "example": 0
+    }
+   },
+   "bodyType": "json",
+   "queryArrayEncoding": "comma",
+   "queryParams": {
+    "fields": {
+     "type": "string",
+     "required": false,
+     "note": "Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, not the charge."
+    },
+    "max_items": {
+     "type": "integer",
+     "required": false,
+     "min": 0,
+     "note": "Caps the result rows returned; `_truncated` says how many were withheld. Not the charge."
+    },
+    "summary": {
+     "type": "boolean",
+     "required": false,
+     "note": "`true` returns only an outline: keys, item counts, per-field sizes."
+    },
+    "jq": {
+     "type": "string",
+     "required": false,
+     "note": "jq expression over the result envelope; its output replaces `output`. A failed expression returns the full result with `jqError`."
+    }
+   }
+  },
+  "capability": "tiktok.search.videos",
+  "capability_description": "Search videos by keyword",
+  "platform": "tiktok",
+  "platform_label": "TikTok",
+  "observed": {
+   "samples": 164360,
+   "decided": 163546,
+   "ok_rate": 0.9987,
+   "p50_ms": 2967,
+   "p95_ms": 4985,
+   "last_ok_days": 0,
+   "hit_rate": 0.9162,
+   "hit_samples": 163246
+  },
+  "wallet": {
+   "payable": true,
+   "protocols": [
+    "mpp"
+   ],
+   "minimum_payment_micro": 10000,
+   "fee_bps": 0,
+   "note": "pay per call with a wallet, no account. A payment is at least $0.01; the call is charged only its real price, and the rest stays as this wallet's credit for its next calls (credit is not paid back as money)."
+  },
+  "reviews": {
+   "teams": 50,
+   "samples": [
+    {
+     "usefulness": "useful",
+     "reason": "Retrieved TikTok escalator and battery videos",
+     "client": "cli",
+     "month": "2026-11"
+    },
+    {
+     "usefulness": "partly",
+     "reason": "Only 10 rows, and the serving source could not page (no nextCursor). Field set is good (followers, duration, saves, sound) and the jq filter kept it small.",
+     "client": "mcp",
+     "month": "2026-11"
+    },
+    {
+     "usefulness": "useful",
+     "reason": "20 on-topic rows with views, likes, saves and shares; the jq filter kept the response small. The past-30-days filter let through at least one older video, and regions are mixed.",
+     "client": "mcp",
+     "month": "2026-11"
+    }
+   ],
+   "share": {
+    "useful": 0.66,
+    "partly": 0.33,
+    "not_useful": 0.01
+   }
+  }
+ },
+ "provider": {
+  "service": "anyapi",
+  "display_name": "AnyAPI",
+  "limits": "no published per-key request-rate limit on /v1/run - AnyAPI does not advertise a quota it does not enforce. Spend is bounded instead by the wallet balance, the key's own spend cap, and the per-request `max_cost_usd` ceiling the caller sets. The unauthenticated /agent/signup trial route is limited to 3 per IP per hour.",
+  "pricing_url": "https://getanyapi.com/catalog",
+  "docs": "https://getanyapi.com/docs"
+ },
+ "siblings": [
+  {
+   "id": "crawl4ai.tiktok.search.videos",
+   "provider": "crawl4ai",
+   "provider_display": "Crawl4AI",
+   "name": "TikTok videos for a search",
+   "scope": "any_account",
+   "kind": "data",
+   "cost": {
+    "type": "per_success",
+    "value": 0.5,
+    "currency": "credit",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.0005
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-10-11",
+   "params": [
+    "limit",
+    "query"
+   ],
+   "observed": {
+    "samples": 23311,
+    "decided": 23297,
+    "ok_rate": 0.7063,
+    "p50_ms": 15951,
+    "p95_ms": 91741,
+    "last_ok_days": 0,
+    "hit_rate": 0.983,
+    "hit_samples": 16455
+   },
+   "reviews": {
+    "teams": 10,
+    "share": {
+     "useful": 0.7,
+     "partly": 0.2,
+     "not_useful": 0.1
+    }
+   }
+  },
+  {
+   "id": "justoneapi.tiktok.search.videos",
+   "provider": "justoneapi",
+   "provider_display": "Just One API",
+   "name": "Search TikTok posts by keyword",
+   "scope": "any_account",
+   "kind": "data",
+   "cost": {
+    "type": "per_success",
+    "value": 0.1,
+    "currency": "CNY",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.01476
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "keyword",
+    "offset",
+    "sortType",
+    "publishTime",
+    "region"
+   ],
+   "observed": {
+    "samples": 834,
+    "decided": 780,
+    "ok_rate": 1.0,
+    "p50_ms": 6143,
+    "p95_ms": 12453,
+    "last_ok_days": 0,
+    "hit_rate": 0.0474,
+    "hit_samples": 780
+   },
+   "reviews": {
+    "teams": 0
+   }
+  },
+  {
+   "id": "scrapecreators.tiktok.search.videos",
+   "provider": "scrapecreators",
+   "provider_display": "ScrapeCreators",
+   "name": "Search TikTok videos by keyword",
+   "scope": "any_account",
+   "kind": "data",
+   "cost": {
+    "type": "per_call",
+    "value": 1,
+    "currency": "credit",
+    "per": 1,
+    "unit": "call",
+    "reported_charge": {
+     "path": "credits_charged",
+     "unit": "credit"
+    },
+    "usd": 0.00188
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "query",
+    "date_posted",
+    "sort_by",
+    "region",
+    "cursor",
+    "trim"
+   ],
+   "observed": {
+    "samples": 90611,
+    "decided": 90443,
+    "ok_rate": 0.9991,
+    "p50_ms": 3951,
+    "p95_ms": 5701,
+    "last_ok_days": 0,
+    "hit_rate": 0.9735,
+    "hit_samples": 90063
+   },
+   "reviews": {
+    "teams": 25,
+    "share": {
+     "useful": 0.67,
+     "partly": 0.32,
+     "not_useful": 0.01
+    }
+   }
+  },
+  {
+   "id": "tikhub.tiktok.search.videos",
+   "provider": "tikhub",
+   "provider_display": "TikHub",
+   "name": "Search TikTok videos by keyword",
+   "scope": "any_account",
+   "kind": "data",
+   "cost": {
+    "type": "per_call",
+    "value": 0.001,
+    "currency": "USD",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.001
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "keyword",
+    "count",
+    "offset",
+    "sort_type",
+    "publish_time",
+    "region"
+   ],
+   "observed": {
+    "samples": 489559,
+    "decided": 480167,
+    "ok_rate": 0.9972,
+    "p50_ms": 3622,
+    "p95_ms": 5290,
+    "last_ok_days": 0,
+    "hit_rate": 0.9836,
+    "hit_samples": 476715
+   },
+   "reviews": {
+    "teams": 50,
+    "share": {
+     "useful": 0.75,
+     "partly": 0.2,
+     "not_useful": 0.05
+    }
+   }
+  },
+  {
+   "id": "treg.tiktok.search.videos",
+   "provider": "treg",
+   "provider_display": "treg",
+   "name": "tiktok.search.videos \u2014 routed: best of 4 providers, own keys first",
+   "scope": "",
+   "kind": "routed",
+   "cost": {
+    "type": "per_success",
+    "value": 0.001,
+    "currency": "USD",
+    "per": 1,
+    "unit": "call",
+    "varies": true,
+    "usd": 0.001
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": null,
+   "params": [
+    "q",
+    "limit"
+   ],
+   "observed": {
+    "samples": 87407,
+    "decided": 87392,
+    "ok_rate": 0.9999,
+    "p50_ms": null,
+    "p95_ms": null,
+    "last_ok_days": 0,
+    "hit_rate": null,
+    "hit_samples": 0
+   }
+  }
+ ],
+ "related_capabilities": [
+  {
+   "endpoint_id": "treg.tiktok.comment.replies",
+   "capability": "tiktok.comment.replies",
+   "does": "List replies to a comment"
+  },
+  {
+   "endpoint_id": "treg.tiktok.search.users",
+   "capability": "tiktok.search.users",
+   "does": "Search users by keyword"
+  },
+  {
+   "endpoint_id": "treg.tiktok.user.profile",
+   "capability": "tiktok.user.profile",
+   "does": "Get a user's public profile"
+  },
+  {
+   "endpoint_id": "treg.tiktok.user.videos",
+   "capability": "tiktok.user.videos",
+   "does": "List a user's recent videos"
+  },
+  {
+   "endpoint_id": "treg.tiktok.video.comments",
+   "capability": "tiktok.video.comments",
+   "does": "List a video's comments"
+  }
+ ],
+ "call_template": "treg call anyapi.tiktok.search.videos",
+ "example_response": {
+  "output": {
+   "found": true,
+   "data": {
+    "videos": [
+     {
+      "id": "730000000000",
+      "url": "https://www.tiktok.com/@sunny_side_studio/video/730000000000",
+      "author": "sunny_side_studio",
+      "authorName": "Sunny Side Studio",
+      "authorFollowers": 120000,
+      "caption": "My 5am routine, part 1",
+      "views": 900000,
+      "likes": 50000,
+      "comments": 1200,
+      "shares": 800,
+      "saves": 300,
+      "createdUtc": 1795000000,
+      "durationSeconds": 42,
+      "hashtags": [
+       "morning"
+      ]
+     },
+     {
+      "id": "730000000001",
+      "url": "https://www.tiktok.com/@mila_mornings/video/730000000001",
+      "author": "mila_mornings",
+      "authorName": "Mila Mornings",
+      "authorFollowers": 48000,
+      "caption": "My 5am routine, part 2",
+      "views": 450000,
+      "likes": 25000,
+      "comments": 600,
+      "shares": 400,
+      "saves": 300,
+      "createdUtc": 1794740800,
+      "durationSeconds": 42,
+      "hashtags": [
+       "morning"
+      ]
+     },
+     {
+      "id": "730000000002",
+      "url": "https://www.tiktok.com/@calm_kettle/video/730000000002",
+      "author": "calm_kettle",
+      "authorName": "Calm Kettle",
+      "authorFollowers": 9100,
+      "caption": "My 5am routine, part 3",
+      "views": 300000,
+      "likes": 16666,
+      "comments": 400,
+      "shares": 266,
+      "saves": 300,
+      "createdUtc": 1794481600,
+      "durationSeconds": 42,
+      "hashtags": [
+       "morning"
+      ]
+     }
+    ],
+    "nextCursor": ""
+   }
+  },
+  "provider": "anyapi",
+  "costUsd": 0.001,
+  "items": 3,
+  "replayed": false,
+  "source": {
+   "id": "sample",
+   "name": "Sample",
+   "kind": "api",
+   "artworkKey": "sample"
+  },
+  "resultId": "sample-result"
+ },
+ "hints": []
+}

@@ -95,6 +95,8 @@ export interface SheetGridProps {
   onOpenEnrichment?: (target: EnrichOpenTarget) => void
   // Opens the Waterfall drawer on a column's setup or a run (Waterfall Actions).
   onOpenWaterfall?: (target: WaterfallOpenTarget) => void
+  // Opens the HTTP API dialog on an HTTP API column's setup (its Edit).
+  onEditHTTPColumn?: (column: string) => void
   // Save as setup, from a filled column's menu.
   onSaveSetup?: (column: string) => void
   // The view showing: its hidden columns, and "Hide column" in the column menu.
@@ -176,6 +178,7 @@ export const SheetGrid: React.FC<SheetGridProps> = (props) => {
     onRunHTTPForRows: actions.handleRunHTTPForRows,
     onRunFirstRows: (kind, column, columnName) => runDialogs.askFirstRows({ kind, column, columnName }),
     onEditAIColumn: actions.handleEditAIColumn,
+    onEditHTTPColumn: props.onEditHTTPColumn,
     canEditAIColumn: (column) => !structuredAIColumns?.has(column),
     onStopRunForColumn: actions.handleStopRunForColumn,
     onEnrichAction: enrich.onEnrichAction,

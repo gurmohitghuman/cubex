@@ -38,6 +38,8 @@ export interface RunMenuActions {
   // AI: column is the base name, columnName the header clicked.
   onRunFirstRows?: (kind: 'ai' | 'http', column: string, columnName?: string) => void
   onEditAIColumn?: (baseName: string) => void
+  // An HTTP API column's Edit: the HTTP dialog on its setup (Save, Save and run on all rows).
+  onEditHTTPColumn?: (column: string) => void
   // False for a column of a structured (multi-column) run: the edit dialog only
   // knows single-column runs, so "Edit / Update Instructions" is hidden there.
   canEditAIColumn?: (columnName: string) => boolean

@@ -195,6 +195,7 @@ A client keeps `tools/list` for up to 5 minutes, and Cubex sends nothing when it
 | `import_csv` | Load CSV text into a sheet (append or replace). For a file, use `create_upload_link`. |
 | `ai_visibility` | A ready-made table that asks AI engines a list of buyer questions and says whether each answer names a brand, plus the sites they cite, and weeks later checks again, keeping the old answers to compare. Asking is paid: estimate first, its default. See [AI visibility](#ai-visibility). |
 | `hiring_signals` | A ready-made table of the companies hiring for chosen role titles, checked again when you want: only roles never found before are added, and each company says what's new. A check is paid: estimate first, its default. See [Companies hiring](#companies-hiring). |
+| `social_research` | A ready-made table of social posts on a topic (TikTok, Instagram, YouTube, X): a Posts sheet per platform, with transcripts, an AI breakdown of why each post works, creators, how many times its creator's usual views each post got, and comments set up and not run. Finding posts is paid: estimate first, its default; finding again adds only new posts. See [Social research](#social-research). |
 | `create_upload_link`, `create_download_link` | One-time links to move a CSV file of any size into or out of a sheet with `curl`. See [Big CSV files](#big-csv-files). |
 | `run_ai_column` | Start an AI column run. Can estimate the cost first, refuse to start over a cost ceiling, stop at a spend limit, preview a few rows, target specific rows, or fill several typed columns at once. See [Cost ceiling and spend limits](#cost-ceiling-and-spend-limits). |
 | `list_prompt_starters` | Good first prompts for an AI column on a sheet, the ones the app offers: qualify (YES or NO), classify, an opener, a lead score 1 to 10, and a company profile that fills several typed columns. Each is written with the sheet's own columns as `/references` and comes as `run_ai_column`'s arguments (`run`). Fill in the `[square brackets]` before running one. Read-only. |
@@ -875,6 +876,23 @@ The engine columns are ordinary enrichment columns (the column menu, `control_ru
 
 The Searches column is an ordinary enrichment column. A restart in the middle of a check waits for its search, then sums up; it never searches on its own.
 
+## Social research
+
+`social_research` makes a table of social posts on a topic, so you can see what works and who made it. Nothing that costs money runs until you ask.
+
+1. `action: "create"` (free, `write` scope): `{"topic": "morning routine", "platforms": ["tiktok", "instagram"], "steps": ["transcript", "breakdown"], "min_views": 10000, "posted_within_days": 30}`. It makes "Social: <topic>" with:
+   - **Searches**: one row per search (`searches`, or the topic), and a "<Platform> posts found" column per platform, set up and not run.
+   - **<Platform> posts**, one sheet per platform: Post, Author, Caption, Views, Likes, Comments, Shares, Posted, Followers (where the search gives them), Search and First seen. Posted is a free formula over what the platform gave (a Unix time, or YouTube's "3 days ago" counted back from First seen).
+   - The `steps` you pick, on each Posts sheet, set up and not run: `transcript` (Transcript text), `breakdown` (an AI column: Hook, Tension, Payoff, Why it works), `creator` (Followers and Bio, for Instagram and YouTube; TikTok's and X's searches give the followers already), `usual` (see below) and `comments` (a Comments sheet: Post, Platform, Author, Comment, Likes, Replies, and an AI Reaction tag: compares, asks, hates, loves or other).
+   - With `min_views`, `min_comments` or `posted_within_days`, a **Top posts** view on each Posts sheet, made the sheet's view. treg's searches rank by relevance, not date, so these filters run in Cubex.
+   `posts_per_search` (default 30, at most 50) caps the posts each search adds per platform.
+2. `action: "find_posts"` with the `id` create returned, or the id of any of the table's sheets (`run` scope). `estimate_only` defaults to `true` and returns each platform's cost and the total (`high_usd`). With `estimate_only: false` and `max_cost_usd` set to that `high_usd`, each platform's search runs on every row of Searches: only posts that platform's sheet never had are added, with First seen this day (`time_zone` sets the day; UTC by default), and the Top posts view's "posted since" moves to this day. A search that could now cost more than `max_cost_usd` is refused with the new estimate, and nothing runs. Follow the runs with `get_run_status` (run type `enrichment`). Call it again later to check for new posts.
+3. The steps: each is an ordinary column. `get_sheet` with `column_details: true` gives its `run_id`; `control_run` `rerun` with `mode: "empty"` runs it on the rows not run yet (or `row_ids` from `read_rows` with the Top posts `view`). The AI steps have no model yet: they run on the sheet's default model (`set_default_model`) or the account's.
+
+**The creator's usual views** (`usual`): the Recent posts column asks for the creator's latest posts (one page, up to 30) and keeps them as one list in Recent views; two free formulas follow it. Usual views is the middle of those posts' views (the median), leaving out this post and posts with no views (an X repost shows 0), once at least 3 have views. Times usual is this post's views divided by that, to one decimal. The **3x over usual** view keeps the posts with Times usual of 3 or more. Run Recent posts on the Top posts view's rows: posts by the same creator reuse one answer (stored answers are reused for 30 days by default, Settings), so each creator is paid for once. The tools: anyapi's TikTok profile videos, Instagram user reels and X user posts (by the Author's handle), and crawl4ai's YouTube channel videos (by the Channel id).
+
+Each platform's search asks one provider, so every post has the same fields: TikTok's, Instagram's and X's searches are anyapi's own, and YouTube's is treg's routed search held to tikhub, whose rows the sheet's columns read. A platform whose search Cubex can't add rows from isn't offered. Posting to your own accounts stays out: a sheet never runs tools that change things.
+
 ## Big CSV files
 
 Everything an assistant sends or receives passes through its context, so a CSV pasted into chat is expensive: a 4 MB lead list is about a million tokens, and a file of a few hundred MB can't go through chat at all. For files, the assistant asks Cubex for a one-time link and moves the file with `curl`. Only a short summary goes through the chat.
@@ -1174,6 +1192,9 @@ URLs Cubex tells, with a signed POST, when a run finishes. Agents use `list_run_
 | `GET /hiring/:id` | Same as `hiring_signals` get. `:id` is the record's id or its Companies sheet id. `read` scope. |
 | `PATCH /hiring/:id` | Same as `hiring_signals` update: `{"min_roles": 2, "leave_out_companies": ["ramp.com"]}`, either or both. `write` scope. |
 | `POST /hiring/:id/check` | `{}` for the estimate (the default), `{"estimate_only": false, "max_cost_usd": <the estimate's high_usd>}` to start the check; `time_zone` (optional) for the check's day. A most now higher than `max_cost_usd`: `409` with `over_ceiling: true` and the new `estimate`. `run` scope. |
+| `POST /social-research` | `social_research` create's arguments: `{"topic": "morning routine", "platforms": ["tiktok"], "steps": ["transcript"]}`. `201`. `write` scope. |
+| `GET /social-research/:id` | Same as `social_research` get. `read` scope. |
+| `POST /social-research/:id/find-posts` | `{}` for the estimate (the default), `{"estimate_only": false, "max_cost_usd": <the estimate's high_usd>}` to search; `time_zone` (optional) for First seen's day. A most now higher than `max_cost_usd`: `409` with `over_ceiling: true` and the new `estimate`. `run` scope. |
 
 ### Trash and history
 

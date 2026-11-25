@@ -29,6 +29,8 @@ interface SheetModalsProps {
   showImportModal: boolean
   showAddColumnModal: boolean
   showHTTPAPIColumnModal: boolean
+  // The HTTP API column the dialog edits (null: a new column).
+  httpEditColumn: string | null
   showEnrichmentDrawer: boolean
   enrichOpen: EnrichOpenRequest | null
   enrichWatch: string | null
@@ -166,6 +168,7 @@ export const SheetModals: React.FC<SheetModalsProps> = (props) => {
       <SheetRunDrawers
         activeSheet={activeSheet} sheetData={sheetData} selectedRowIndices={selectedRowIndices}
         showAddColumnModal={showAddColumnModal} showHTTPAPIColumnModal={showHTTPAPIColumnModal}
+        httpEditColumn={props.httpEditColumn}
         showEnrichmentDrawer={showEnrichmentDrawer} enrichOpen={enrichOpen} clearEnrichOpen={clearEnrichOpen}
         enrichWatch={enrichWatch} stopEnrichWatch={stopEnrichWatch}
         setShowAddColumnModal={setShowAddColumnModal} setShowHTTPAPIColumnModal={setShowHTTPAPIColumnModal}

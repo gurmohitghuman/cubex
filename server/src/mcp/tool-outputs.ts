@@ -35,6 +35,7 @@ export const TOOL_OUTPUTS = {
   search_enrichments: enrich.searchEnrichments, get_enrichment: enrich.getEnrichment,
   run_enrichment: enrich.runEnrichment, waterfall_column: enrich.waterfallColumn,
   ai_visibility: enrich.aiVisibility, hiring_signals: enrich.hiringSignals, get_balances: enrich.getBalances,
+  social_research: enrich.socialResearch,
   get_usage: enrich.getUsage,
   list_setups: setups.listSetups, save_setup: setups.saveSetup, delete_setup: setups.deleteSetup,
   manage_run_schedule: setups.manageRunSchedule,

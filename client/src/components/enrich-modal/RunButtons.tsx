@@ -5,7 +5,7 @@ import { plural } from '@/lib/utils'
 import { formatCost } from '@/components/ai-modal/format'
 import { spent } from '@/lib/enrich-format'
 import { ENRICH_TEST_ROWS } from '@/lib/constants'
-import type { EnrichEstimate, EnrichReuseCount } from '@/utils/api'
+import { enrichAPI, type EnrichEstimate, type EnrichReuseCount } from '@/utils/api'
 import { type OnStarted, effectiveMode, type EnrichDraft, type RowCounts } from './draft'
 import { canTest, continuing, quotedLimit, rowsPhrase, runRequest, runStatusOf } from './run-request'
 import { useRunStart } from './useRunStart'
@@ -33,6 +33,8 @@ interface Props {
   onStarted: OnStarted
   // The start refused one field (a new sheet's name): shown at that field.
   onFieldError?: (field: string, message: string) => void
+  // An edit's Save landed (the column's status column): shown only when editing a column.
+  onSaved?: (statusColumn: string) => void
   // A list job's destination sheet, for the confirm's "May add up to N rows".
   listDest?: string | null
   // Rows that reuse an earlier found answer at no cost.
@@ -91,7 +93,23 @@ export const RunButtons: React.FC<Props> = (p) => {
   const known = p.rows === null || p.rows === 0 ? null : p.rows
   const testRows = Math.min(ENRICH_TEST_ROWS, known ?? ENRICH_TEST_ROWS)
   const count = known !== null ? ` ${known.toLocaleString()}` : ''
-  const fullLabel = more ? `Run on ${known === null ? 'these rows' : plural(known, 'row')}` : `Run all${count}`
+  const fullLabel = more ? `Save and run on ${known === null ? 'these rows' : plural(known, 'row')}` : `Run all${count}`
+  // Save (an edit's, not a list job's): every check the run makes, then the setup becomes the column's.
+  const savable = more && !p.draft.list && !!p.onSaved
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const save = async () => {
+    const body = runRequest(p.draft, choice(false))
+    if (!body || saving) return
+    setSaving(true)
+    setSaveError(null)
+    try {
+      const out = await enrichAPI.startRun(p.sheetId, { ...body, saveOnly: true })
+      p.onSaved?.(out.statusColumn)
+    } catch (e: any) {
+      setSaveError(e?.response?.data?.error || 'Couldn\'t save the setup. Try again.')
+    } finally { setSaving(false) }
+  }
   const reason = more
     ? 'Runs add to the column you already made.'
     : 'Try it on a few rows first, then run the rest.'
@@ -100,7 +118,13 @@ export const RunButtons: React.FC<Props> = (p) => {
     <div className="flex flex-col items-end gap-1 pt-4 border-t border-gray-200">
       <div className="flex flex-wrap justify-end gap-2">
         <button type="button" onClick={p.onCancel} className="btn-secondary">Cancel</button>
-        <button type="button" disabled={!!fullBlocked || starting} onClick={() => setConfirming(true)}
+        {savable && (
+          <button type="button" disabled={saving || starting} onClick={save} className="btn-secondary"
+            data-testid="enrich-save-setup" title="Save the new setup. Nothing runs and nothing is billed.">
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        )}
+        <button type="button" disabled={!!fullBlocked || starting || saving} onClick={() => setConfirming(true)}
           className={testable ? 'btn-secondary' : 'btn-primary'} data-testid="enrich-run-all">
           {fullLabel}
         </button>
@@ -111,8 +135,8 @@ export const RunButtons: React.FC<Props> = (p) => {
           </button>
         )}
       </div>
-      <p className={`text-xs ${error ? 'text-red-600' : 'text-gray-500'}`} data-testid="enrich-run-reason">
-        {error ?? blocked ?? p.fullProblem ?? reason}
+      <p className={`text-xs ${error || saveError ? 'text-red-600' : 'text-gray-500'}`} data-testid="enrich-run-reason">
+        {saveError ?? error ?? blocked ?? p.fullProblem ?? reason}
       </p>
       <ConfirmDialog isOpen={confirming} title="Run the enrichment"
         message={confirmMessage(p, chain ?? CHAIN_LOADING)}

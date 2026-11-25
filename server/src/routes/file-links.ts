@@ -11,7 +11,7 @@ import express from 'express';
 import { contentDispositionFilename } from '../lib/csv-safety';
 import { exportContentType, planSheetExport } from '../lib/csv-export';
 import type { WhereItem } from '../lib/row-filter/where';
-import { responseWriter, writeSheetCsv, writeSheetJsonl } from '../lib/csv-write';
+import { responseTurn, responseWriter, writeSheetCsv, writeSheetJsonl } from '../lib/csv-write';
 import { findFileLink, linkOptions, releaseFileLink, useFileLink } from '../lib/file-links';
 import { busyMessage, sheetBusyWith, withSheetRead } from '../lib/sheet-busy';
 import { redactError } from '../lib/redact';
@@ -113,6 +113,9 @@ router.get('/download/:token', async (req, res) => {
   const { token } = req.params;
   if (!FILE_LINK_TOKEN_PATTERN.test(token)) return notFound(res);
   try {
+    // Its turn on the connection first (lib/csv-write.ts responseTurn): a client gone meanwhile leaves the link
+    // unused, and the link and its sheet are read as they are then (not expired, the columns as they are now).
+    if (!await responseTurn(res)) return;
     const link = findFileLink(token, 'download');
     if (!link) return notFound(res);
     // format: 'jsonl' for JSON lines (create_download_link format); a link from before has none: CSV.

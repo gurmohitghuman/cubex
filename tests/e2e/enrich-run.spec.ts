@@ -51,7 +51,7 @@ test('Run on 5 rows, check them, then the rest', async ({ page, context }) => {
   await expect(page.getByText('Edit enrichment', { exact: true })).toBeVisible()
   await expect(drawer(page).getByTestId('enrich-rows-status'))
     .toContainText('Rows not enriched yet (7)', { timeout: 15_000 })
-  await expect(drawer(page).getByTestId('enrich-run-all')).toHaveText('Run on 7 rows', { timeout: 15_000 })
+  await expect(drawer(page).getByTestId('enrich-run-all')).toHaveText('Save and run on 7 rows', { timeout: 15_000 })
   await drawer(page).getByTestId('enrich-run-all').click()
   const dialog = page.getByRole('dialog').filter({ hasText: 'Run the enrichment' })
   await expect(dialog).toContainText('on 7 rows not enriched yet')
