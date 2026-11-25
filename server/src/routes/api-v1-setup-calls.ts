@@ -4,8 +4,9 @@
 import express from 'express';
 import { requireScope, TokenAuthRequest } from '../middleware/access-token-auth';
 import { runFailHttpStatus } from '../services/run-shared';
+import { setRateLimitedHeaders } from '../lib/rate-window';
 import fs from 'fs';
-import { CALL_NOT_FOUND, callSetup, getSetupCall } from '../services/setup-call';
+import { CALL_NOT_FOUND, callSetup, getSetupCall, type CallFail } from '../services/setup-call';
 import { callInputOf } from '../services/setup-call-input';
 import { dropFileCall, prepareFileCall, startFileCall } from '../services/setup-call-file';
 import { scanCsvFile, CsvHeaderCollisionError } from '../lib/csv-import-parse';
@@ -30,18 +31,26 @@ const guarded = (route: string, fn: Handler): Handler => async (req, res) => {
   }
 };
 
+// A call refused: 429 with Retry-After when the token's run starts are used up, 409 with the estimate it was
+// checked against over the ceiling (over_ceiling: true).
+function sendFail(res: express.Response, out: CallFail) {
+  const kind = out.fail;
+  if (kind === 'rate_limited') {
+    if (out.rate) setRateLimitedHeaders(res, out.rate);
+    return res.status(429).json({ error: out.message, retry_after_seconds: out.rate?.retryAfterSec });
+  }
+  const over = kind === 'over_ceiling' ? { over_ceiling: true, estimate: out.estimate } : {};
+  return res.status(runFailHttpStatus({ fail: kind, message: out.message })).json({ error: out.message, ...over });
+}
+
 // { items, models, estimate_only, webhook_id, max_cost_usd, allow_unpriced }: a price (200), or the call (201).
 router.post('/setups/:setupId/calls', requireScope('run'), guarded('POST /v1/setups/:id/calls', async (req, res) => {
   const b = body(req);
   const input = callInputOf(b, 'v1');
   if ('fail' in input) return res.status(runFailHttpStatus(input)).json({ error: input.message });
   const out = await callSetup(req.userId!, req.params.setupId, b.items, input,
-    { hasSecretsScope: !!req.tokenScopes?.has('secrets') });
-  if ('fail' in out) {
-    // Over the ceiling: 409 with the estimate it was checked against (over_ceiling: true).
-    const over = out.fail === 'over_ceiling' ? { over_ceiling: true, estimate: out.estimate } : {};
-    return res.status(runFailHttpStatus(out)).json({ error: out.message, ...over });
-  }
+    { hasSecretsScope: !!req.tokenScopes?.has('secrets'), tokenId: req.accessTokenId });
+  if ('fail' in out) return sendFail(res, out);
   return res.status('setup_call' in out.ok ? 201 : 200).json(out.ok);
 }));
 
@@ -70,8 +79,8 @@ router.post('/setups/:setupId/calls/file', requireScope('run'), csvUploadMiddlew
           : 'CSV could not be parsed. Check the file is valid UTF-8 CSV.' });
       }
       const prepared = prepareFileCall(req.userId!, req.params.setupId, input,
-        { hasSecretsScope: !!req.tokenScopes?.has('secrets') });
-      if ('fail' in prepared) return res.status(runFailHttpStatus(prepared)).json({ error: prepared.message });
+        { hasSecretsScope: !!req.tokenScopes?.has('secrets'), tokenId: req.accessTokenId });
+      if ('fail' in prepared) return sendFail(res, prepared);
       const imported = await importCsv(prepared.sheetId, req.userId!, scanned, false,
         { bumpDataVersion: true, seedEmptyRow: false });
       if ('fail' in imported) {
@@ -80,10 +89,7 @@ router.post('/setups/:setupId/calls/file', requireScope('run'), csvUploadMiddlew
         return res.status(400).json({ error });
       }
       const out = await startFileCall(req.userId!, prepared.sheetId, prepared.call);
-      if ('fail' in out) {
-        const over = out.fail === 'over_ceiling' ? { over_ceiling: true, estimate: out.estimate } : {};
-        return res.status(runFailHttpStatus(out)).json({ error: out.message, ...over });
-      }
+      if ('fail' in out) return sendFail(res, out);
       return res.status(201).json(out.ok);
     } finally { remove(); }
   }));

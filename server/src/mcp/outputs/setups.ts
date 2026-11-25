@@ -42,7 +42,8 @@ const setupCall = obj({
   keep_until: nul(str), webhook_id: nul(str),
   max_cost_usd: opt(num),
   steps: z.array(obj({ column: str, kind: str, layer: num, state: str, run_id: nul(str), note: nul(str) })),
-  results: opt(z.array(obj({ item: num, outputs: info('Column: value, null when empty') }))), next_from: opt(nul(num)),
+  results: opt(z.array(obj({ item: num, status: str, error: nul(str), outputs: info('Column: value, or null') }))),
+  next_from: opt(nul(num)),
 });
 // estimate_only (its default): estimate, makes and items. Started: setup_call.
 export const callSetup = obj({

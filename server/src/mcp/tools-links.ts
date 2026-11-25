@@ -82,7 +82,8 @@ export function registerLinkTools(server: McpServer, ctx: McpAuthCtx) {
       if (setup_id) {
         const input = callInputOf({ ...call, estimate_only: false }, 'mcp');
         if ('fail' in input) return err(input.message);
-        const prepared = prepareFileCall(ctx.userId, setup_id, input, { hasSecretsScope: ctx.scopes.has('secrets') });
+        const prepared = prepareFileCall(ctx.userId, setup_id, input,
+          { hasSecretsScope: ctx.scopes.has('secrets'), tokenId: ctx.tokenId });
         if ('fail' in prepared) return err(prepared.message);
         target = prepared.sheetId;
         options.call = prepared.call;
