@@ -58,7 +58,7 @@ Senders often send the same event twice. Turn on [auto-dedupe](../README.md#auto
 
 ### While a sheet is being tested
 
-While you try column changes on sample rows (Data menu, **Test changes on sample rows**), the sheet doesn't change, so its webhook keeps each event and adds them all, in the order they came, once you apply or discard the test. The sender gets the same `202` as always. A sheet keeps up to 10,000 such events (100 MB); past that, events are refused with `409` until the test ends, so the sender tries them again later.
+While you try column changes on sample rows (**⋯** in the sheet toolbar, **Test changes on sample rows**), the sheet doesn't change, so its webhook keeps each event and adds them all, in the order they came, once you apply or discard the test. The sender gets the same `202` as always. A sheet keeps up to 10,000 such events (100 MB); past that, events are refused with `409` until the test ends, so the sender tries them again later.
 
 ### Adding a delivery again
 
