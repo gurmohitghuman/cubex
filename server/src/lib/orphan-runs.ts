@@ -1,4 +1,5 @@
 import { db } from './db';
+import { dropRunSpans } from './derived-spans';
 
 // Recovered run IDs from a boot reset, split by kind. The caller re-enqueues
 // these AFTER the queue is up (resetOrphanedRuns runs before Sidequest starts).
@@ -39,16 +40,24 @@ export function resetOrphanedRuns(): RecoveredRuns {
   // queued, and resuming it would process only the rows seeded so far
   // (services/run-seed.ts). Fail it instead; resumeRunCleanups clears its cells
   // once the server is up.
-  for (const table of ['ai_runs', 'http_runs']) {
-    const failed = db.prepare(
-      `UPDATE ${table}
-         SET status = 'failed',
-             error_message = 'Cubex restarted while this run was starting. Start it again.',
-             placeholder_work = 'clearing',
-             updated_at = datetime('now')
-       WHERE placeholder_work = 'seeding'`,
-    ).run();
-    if (failed.changes > 0) console.log(`⚠️  ${failed.changes} run(s) in ${table} were starting when Cubex stopped; marked failed`);
+  for (const kind of ['ai', 'http'] as const) {
+    const table = kind === 'ai' ? 'ai_runs' : 'http_runs';
+    const failed = db.transaction(() => {
+      const rows = db.prepare(
+        `UPDATE ${table}
+           SET status = 'failed',
+               error_message = 'Cubex restarted while this run was starting. Start it again.',
+               placeholder_work = 'clearing',
+               updated_at = datetime('now')
+         WHERE placeholder_work = 'seeding'
+         RETURNING id, sheet_id`,
+      ).all() as Array<{ id: string; sheet_id: string }>;
+      for (const r of rows) dropRunSpans(r.sheet_id, { kind, id: r.id });
+      return rows;
+    }).immediate();
+    if (failed.length > 0) {
+      console.log(`⚠️  ${failed.length} run(s) in ${table} were starting when Cubex stopped; marked failed`);
+    }
   }
 
   // No worker survives a restart, so neither do the holds enrichment batches

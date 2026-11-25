@@ -14,6 +14,7 @@ import { scriptAt, wordCharAt, wordCharBefore } from './fix-encoding-chars';
 const OTHER_SCRIPT = /[^\p{sc=Latn}\p{sc=Zyyy}\p{sc=Zinh}]/u;
 const LATIN = /\p{sc=Latn}/u;
 const UPPER = /^\p{Lu}$/u;
+const hebrewLetter = (t: string) => t >= '\u05D0' && t <= '\u05EA';
 
 // The characters of a group (fix-encoding-pass.ts) so far, from `start`, in
 // pieces: a stretch of the value taken as it came is one piece, a character
@@ -94,7 +95,9 @@ export class Parts {
 
   // Per offset of the joined text: a lead left behind (1: a character from
   // U+00C2 to U+00F4 taken as it came, the only ones read from bytes C2-F4) or
-  // decoded from three or four bytes in a run (2: next to another decoded character).
+  // decoded in a run (2: next to another decoded character) from three or four
+  // bytes, or a Hebrew letter next to another (Hebrew words come as runs of
+  // them; a Greek or Cyrillic letter glued to a Latin word doesn't run).
   marks(): Uint8Array {
     const out = new Uint8Array(this.length);
     for (const st of this.stretches) {
@@ -106,8 +109,11 @@ export class Parts {
     this.units.forEach((unit, u) => {
       const prev = this.units[u - 1];
       const next = this.units[u + 1];
-      const run = (prev && prev.at + prev.len === unit.at) || (next && unit.at + unit.len === next.at);
-      if (run && unit.len >= 3) out.fill(2, unit.out, unit.out + unit.text.length);
+      const prevRun = prev && prev.at + prev.len === unit.at;
+      const nextRun = next && unit.at + unit.len === next.at;
+      const hebrewRun = hebrewLetter(unit.text) && ((prevRun && hebrewLetter(prev.text))
+        || (nextRun && hebrewLetter(next.text)));
+      if (((prevRun || nextRun) && unit.len >= 3) || hebrewRun) out.fill(2, unit.out, unit.out + unit.text.length);
     });
     return out;
   }

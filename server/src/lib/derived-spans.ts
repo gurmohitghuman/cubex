@@ -1,18 +1,18 @@
-// Rows a stopped run's ⏳ clear told the clean, formula and lookup columns reading its columns
-// (lib/placeholder-cells.ts), as spans (migration 060): one record per slice of the clear, its told rowids in
-// storage order, and a mark per reader saying how far it got. Queuing each told row for each reader cost a page
-// write per row and reader, so with 20 readers a clear of 200,000 rows held the run's columns for minutes; a span
-// costs the same with 0 or 20 readers. Readers start on a span once its run's clear has ended (the clear and the
-// readers would otherwise take turns slice by slice, and the clear would again last as long as they do), then
-// work its rows out in storage order (services/derived-follow.ts). Marks live as the queue does: a reader turned
-// off keeps them, a deleted reader (the cascade), a CSV replace and a sheet's purge drop them
-// (lib/autorun-mark.ts), and a span goes with its last mark (a trigger).
+// Rows a run's ⏳ start or a stopped run's ⏳ clear told the clean, formula and lookup columns reading its columns
+// (lib/placeholder-cells.ts, lib/placeholder-rule-seed.ts, services/enrich-seed-run.ts), as spans (migration 060):
+// one record per slice that told rows, its told rowids in storage order, and a mark per reader saying how far it got.
+// Queuing each told row for each reader cost a page write per row and reader, so with 20 readers a 200,000-row run
+// start or clear held the run's columns for minutes; a span costs the same with 0 or 20 readers. Readers start on a
+// span once its run's seeding or clear has ended (so they don't take turns slice by slice with the job), then work
+// its rows out in storage order (services/derived-follow.ts). Marks live as the queue does: a reader turned off keeps
+// them, a deleted reader (the cascade), a CSV replace and a sheet's purge drop them (lib/autorun-mark.ts), and a span
+// goes with its last mark (a trigger).
 import { db } from './db';
 import { followQueued } from './autorun-kick';
 import type { RunRef } from './run-undo/journal';
 
-// Inside the clear slice's transaction: `rowids` (ascending) were told to `readers` (lib/autorun-mark.ts
-// derivedReaderIds, read in that transaction). The clear kicks them when it ends (kickSpanReaders).
+// Inside the seed or clear slice's transaction: `rowids` (ascending) were told to `readers` (lib/autorun-mark.ts
+// derivedReaderIds, read in that transaction). The start or clear kicks them when it ends (kickSpanReaders).
 export function tellDerivedSpan(
   sheetId: string, userId: string, readers: string[], rowids: number[], run?: RunRef,
 ): void {
@@ -24,9 +24,17 @@ export function tellDerivedSpan(
   for (const reader of readers) mark.run(reader, id);
 }
 
-// A clear on the sheet has ended: every reader with spans there looks again, those waiting for this clear and
-// those waiting at a row another run held (services/derived-follow.ts). API process only (followQueued); a run
-// worker's clear leaves them to the auto-run sweep.
+// Drop leftover spans for `run` (its start's seed spans) once it stops and moves to placeholder_work = 'clearing':
+// its clear writes fresh spans for every cell it puts back, and any row its worker already wrote is queued in
+// autorun_pending. Call inside the transaction that sets placeholder_work = 'clearing', before any clear span exists.
+export function dropRunSpans(sheetId: string, run: RunRef): void {
+  db.prepare('DELETE FROM derived_spans WHERE sheet_id = ? AND run_kind = ? AND run_id = ?')
+    .run(sheetId, run.kind, run.id);
+}
+
+// A run's start or clear on the sheet has ended: every reader with spans there looks again, those waiting for this
+// job and those waiting at a row another run was seeding or clearing (services/derived-follow.ts). API process only
+// (followQueued); a run worker's clear leaves them to the auto-run sweep.
 export function kickSpanReaders(sheetId: string): void {
   const readers = db.prepare(`SELECT DISTINCT autorun_id FROM derived_span_marks
     WHERE span_id IN (SELECT id FROM derived_spans WHERE sheet_id = ?)`).pluck().all(sheetId) as string[];
@@ -39,18 +47,19 @@ export const hasSpanWork = (entryId: string): boolean =>
 
 export interface SpanMark { spanId: number; done: number; rowids: number[] }
 
-const clearing = (kind: string, id: string): boolean => !!db.prepare(
+const holdingPlaceholders = (kind: string, id: string): boolean => !!db.prepare(
   `SELECT 1 FROM ${kind === 'ai' ? 'ai_runs' : 'http_runs'} WHERE id = ? AND placeholder_work IS NOT NULL`,
 ).get(id);
 
-// The entry's oldest span, unless its run's clear is still going (the readers wait for it). Call inside a slice.
+// The entry's oldest span, unless its run is still seeding or clearing placeholders (the readers wait for it).
+// Call inside a slice.
 export function nextSpan(entryId: string): SpanMark | null {
   const m = db.prepare(`SELECT m.span_id AS spanId, m.done AS done, s.rowids AS rowids, s.run_kind AS kind,
       s.run_id AS run
     FROM derived_span_marks m JOIN derived_spans s ON s.id = m.span_id
     WHERE m.autorun_id = ? ORDER BY m.span_id LIMIT 1`).get(entryId) as
     { spanId: number; done: number; rowids: string; kind: string | null; run: string | null } | undefined;
-  if (!m || (m.kind && m.run && clearing(m.kind, m.run))) return null;
+  if (!m || (m.kind && m.run && holdingPlaceholders(m.kind, m.run))) return null;
   return { spanId: m.spanId, done: m.done, rowids: JSON.parse(m.rowids) as number[] };
 }
 
