@@ -173,8 +173,9 @@ test('out of date: an edited input marks its row; REST, MCP and the column menu 
   await expect(play).toBeFocused()
   const colIndex = Number(await target.getAttribute('aria-colindex'))
   await page.keyboard.press('Tab')
-  await expect.poll(() => page.evaluate(() => document.activeElement?.closest('.ag-cell')?.getAttribute('aria-colindex')))
-    .toBe(String(colIndex + 1))
+  const focusedColumn = () => page.evaluate(() =>
+    document.activeElement?.closest('.ag-cell')?.getAttribute('aria-colindex'))
+  await expect.poll(focusedColumn).toBe(String(colIndex + 1))
   // Enter on the button runs the row (the run then redraws the cell).
   await target.evaluate(el => (el as HTMLElement).focus())
   await page.keyboard.press('Tab')
