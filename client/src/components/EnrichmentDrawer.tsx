@@ -106,9 +106,10 @@ export const EnrichmentDrawer: React.FC<Props> = (p) => {
       if (saved) { update({ autoRunWas: autoRun }); p.onRunChanged() }
     })
   }
-  // Save (an edit's): the setup and its auto-run choice become the column's; nothing runs.
+  // Save (an edit's): the setup and its auto-run choice become the column's; nothing runs (a paused auto-run
+  // stays paused).
   const onSaved = (statusColumn: string) => {
-    void saveDraftAutorun(sheetId, statusColumn, draft, 'The setup was saved').then(saved => {
+    void saveDraftAutorun(sheetId, statusColumn, draft, 'The setup was saved', true).then(saved => {
       if (saved) p.onRunChanged()
     })
     toast.success('Setup saved. Nothing ran.')
