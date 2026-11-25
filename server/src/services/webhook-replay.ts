@@ -35,7 +35,9 @@ export function replayDelivery(userId: string, sheetId: string, deliveryId: stri
   const result = appendWebhookDelivery(source, mappings, payload, d.payload, { replayOf: d.id });
   if (!result.ok) return { fail: result.code === 404 ? 'not_found' : 'conflict', message: result.reason };
   // No key, and a replay never waits for a test: neither happens.
-  if (result.status === 'repeat' || result.status === 'held') return { fail: 'conflict', message: 'Nothing was added.' };
+  if (result.status === 'repeat' || result.status === 'held') {
+    return { fail: 'conflict', message: 'Nothing was added.' };
+  }
   const what = result.status === 'duplicate' ? ": auto-dedupe didn't keep it"
     : result.replaced > 0 ? `: it replaced ${countOf(result.replaced, 'row')} with the same key (auto-dedupe)` : '';
   logSheetChange(sheetId, userId, 'webhook', `Added a webhook delivery from ${d.received_at} UTC again${what}`,
