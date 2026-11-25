@@ -1,9 +1,9 @@
 // Two uses of one setup on a sheet at once (services/setup-apply.ts): each prices the setup (an await, with a cost
 // ceiling) between its check for another live setup making the same columns and writing its record, so both
 // used to pass the check and both start, the second making the same columns again after the first. The check is
-// made again right before the record is written: one starts, the other is refused with the usual words. An export
-// holds the sheet meanwhile, so the first setup's step waits and its record stays live. Then, the first done, the
-// same setup starts again.
+// made again right before the record is written: one starts, the other is refused with the usual answer, naming
+// the column. An export holds the sheet meanwhile, so the first setup's step waits and its record stays live.
+// Then, the first done, the same setup starts again.
 import assert from 'node:assert/strict'
 import { v4 as uuid } from 'uuid'
 
@@ -43,8 +43,9 @@ const held = withSheetRead(sid, () => new Promise<void>(r => { release = r }))
 const twice = await Promise.all([1, 2].map(() => applySetup(uid, sid, made.ok.id, input, { hasSecretsScope: true })))
 const outcomes = twice.map(o => ('fail' in o ? o.fail : 'started')).sort()
 assert.deepEqual(outcomes, ['conflict', 'started'], JSON.stringify(twice))
-const refused = twice.find(o => 'fail' in o) as { message: string }
-assert.match(refused.message, /^Another setup working on this sheet makes "?Trimmed"?/, refused.message)
+// The usual refusal, naming the column (its words changed on main with column runs, so not matched here).
+const refused = twice.find(o => 'fail' in o) as { fail: string; taken?: string[] }
+assert.deepEqual(refused.taken, ['Trimmed'], JSON.stringify(refused))
 assert.equal(live(), 1)
 console.log('ok   two uses at once: one starts, the other is refused, never a second record making the same column')
 
