@@ -18,7 +18,8 @@ test('a deeply nested argument is refused with a 400 over REST and MCP', async (
   const { sheetId } = await seedSheet(api, 2)
   const starts: Array<[string, Record<string, unknown>]> = [
     [`/api/v1/sheets/${sheetId}/ai-runs`, { prompt: 'Hi {{val}}', column_name: 'A', temperature: deep(3000) }],
-    [`/api/v1/sheets/${sheetId}/http-runs`, { url: 'https://example.com', method: deep(3000), master_column_name: 'H' }],
+    [`/api/v1/sheets/${sheetId}/http-runs`, { url: 'https://example.com', method: deep(3000),
+      master_column_name: 'H' }],
     [`/api/v1/sheets/${sheetId}/enrichment-runs`, { tool_id: 'treg.people.email.find', column_name: 'E',
       inputs: deep(3000) }],
     [`/api/v1/sheets/${sheetId}/waterfall-columns`, { column: 'W', steps: deep(3000) }],
