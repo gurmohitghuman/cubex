@@ -133,7 +133,7 @@ test('the Run confirm and an agent start name the auto-runs a run sets off', asy
   await page.goto(`${BASE}/table/${tableId}`)
   await expect(page.locator('.ag-row[row-index="0"]').first()).toBeVisible({ timeout: 15_000 })
   await openEdit(page)
-  await expect(page.getByTestId('enrich-run-all')).toHaveText('Run on 2 rows', { timeout: 15_000 })
+  await expect(page.getByTestId('enrich-run-all')).toHaveText('Save and run on 2 rows', { timeout: 15_000 })
   await page.getByTestId('enrich-run-all').click()
   const dialog = page.getByRole('dialog').filter({ hasText: 'Run the enrichment' })
   await expect(dialog).toContainText(/Also runs: Verify \(about \$[\d.]+ to \$[\d.]+\)\./, { timeout: 15_000 })

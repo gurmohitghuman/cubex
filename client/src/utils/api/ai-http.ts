@@ -33,6 +33,8 @@ type AIRunParams = {
   maxPagesPerRow?: number
   // "Only run if" rule (empty/absent: every row).
   runIf?: string
+  // Save: the setup becomes the column's and nothing runs (the answer says saved).
+  saveOnly?: boolean
   // Several typed columns from one answer per row (absent: one column).
   outputColumns?: OutputColumnDraft[]
 }
@@ -46,7 +48,7 @@ export const aiAPI = {
 
   // reusedRows: how many previewed rows the server promoted into this run
   // instead of re-billing them (credit reuse — 0 when no valid draft matched).
-  startRun: (params: AIRunParams): Promise<{ runId: string; message: string; reusedRows?: number }> =>
+  startRun: (params: AIRunParams): Promise<{ runId?: string; message: string; reusedRows?: number; saved?: boolean }> =>
     api.post('/ai/run', params, noServerToast).then(res => res.data),
 
   // Persisted modal draft (config + last complete preview). Written by the
