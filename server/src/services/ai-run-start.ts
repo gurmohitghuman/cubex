@@ -33,6 +33,7 @@ import { planIfSearching } from './web-search-catalog';
 import { logRunStarted } from '../lib/change-log';
 import { actorTokenId } from '../lib/actor';
 import { runInsertExtras } from '../lib/web-fetch-options';
+import { SAVE_ONLY_STRUCTURED, saveAiSetup } from './column-setup-save';
 
 export type { AiRunStartParams, AiRunStartOutcome };
 
@@ -46,6 +47,7 @@ export async function startAiRun(userId: string, p: AiRunStartParams): Promise<A
   // + a status column from ONE call/row). Delegated whole so this file stays the
   // single-column flow.
   if (p.outputColumns && p.outputColumns.length > 0) {
+    if (p.saveOnly) return { fail: 'bad_request', message: SAVE_ONLY_STRUCTURED };
     const { startAiMultiRun } = await import('./ai-run-start-multi');
     return startAiMultiRun(userId, p, models);
   }
@@ -79,7 +81,10 @@ export async function startAiRun(userId: string, p: AiRunStartParams): Promise<A
   // runs get placeholders, promotion, and dispatch scoped to exactly the
   // caller's rows; total_rows means "rows this run is responsible for".
   const span = sheetRowSpan(p.sheetId, userId);
-  if (span.count === 0) return { fail: 'bad_request', message: 'No data available to process' };
+  if (span.count === 0 && !p.saveOnly) return { fail: 'bad_request', message: 'No data available to process' };
+  if (p.saveOnly && p.targetRowIndexes !== undefined) {
+    return { fail: 'bad_request', message: 'A setup saved without running takes no rows.' };
+  }
   const isSubset = p.targetRowIndexes !== undefined;
   let targets: number[] | null = null;
   if (p.targetRowIndexes !== undefined) {
@@ -117,8 +122,25 @@ export async function startAiRun(userId: string, p: AiRunStartParams): Promise<A
   const rule = startRunRule(p.sheetId, userId, p.runIf);
   if ('fail' in rule) return rule;
 
-  const runId = uuidv4();
   const columns = needsDataColumn ? [outputCol, dataCol] : [outputCol];
+  // Save: the setup a run would store, and nothing else (services/column-setup-save.ts).
+  if (p.saveOnly) {
+    const saved = saveAiSetup(p.sheetId, userId, outputCol, columns, {
+      kind: 'ai', prompt: p.prompt, systemPrompt: p.systemPrompt || null, model: resolvedModel,
+      temperature: p.safeTemperature, maxChars: p.safeMaxChars, concurrency: resolvedConcurrency,
+      webSearch: !!p.useOpenRouterWebSearch, webFetch: !!p.useWebFetch, outputColumns: null, dataColumn: null,
+      searchEngine: plan?.engine ?? null, searchMode: plan?.mode ?? null, maxSearchesPerRow: plan?.maxPerRow ?? null,
+      searchEngineUsed: plan?.used ?? null, runIf: rule.ok?.rule ?? null,
+      ...(p.useWebFetch && p.fetchLimits ? { fetchLimits: p.fetchLimits } : {}),
+    });
+    if ('fail' in saved) return saved;
+    return { ok: {
+      runId: saved.ok.setupId, saved: true, reusedRows: 0, targetCount: 0, outputColumn: outputCol,
+      dataColumn: needsDataColumn ? dataCol : null, webSearch: plan, runIf: rule.ok?.rule ?? null,
+    } };
+  }
+
+  const runId = uuidv4();
 
   const insertRun = db.prepare(`
     INSERT INTO ai_runs (

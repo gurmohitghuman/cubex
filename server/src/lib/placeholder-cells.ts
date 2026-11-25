@@ -2,12 +2,14 @@ import { db } from './db';
 import { oneTransaction } from './slices';
 import { jsonPath } from './sql-rows';
 import { eachRowIdSlice, sheetRowIds } from './row-order';
-import { PLACEHOLDER } from './run-markers';
+import { CELL_HAS_VALUE_SQL, PLACEHOLDER } from './run-markers';
 import { journalSeed, type RunRef } from './run-undo/journal';
 import { clearBackFor, KEPT_EMPTY_SQL, KEPT_VALUE_SQL } from './run-undo/clear-back';
 import { derivedReaderCount, derivedReaderIds } from './autorun-mark';
 import { kickSpanReaders, tellDerivedSpan } from './derived-spans';
 import { HEAVY_SLICE_ROWS, PLACEHOLDER_CLEAR_BACK_ROWS } from './constants';
+import { sliceClock } from './slice-clock';
+import { FIRST_TIMED_PAGE, pageByTime } from '../services/derived-write';
 
 // The '⏳ Processing...' placeholder an AI or HTTP run writes into its cells:
 // seeded on every target row at run start, replaced by each processed row, and
@@ -124,7 +126,13 @@ export async function clearProcessingPlaceholders(
 // its write: once it returns false (the run was cancelled while starting)
 // nothing more is written, so the cancel's clear, which starts after that,
 // sees every placeholder. Returns false when it stopped early. What the cells
-// held is kept in the run's undo journal first (lib/run-undo/journal.ts).
+// held is kept in the run's undo journal first (lib/run-undo/journal.ts), and
+// rows where any seeded cell held a non-empty value are told to clean, formula
+// and lookup readers by span (lib/derived-spans.ts, quiet; kicked once seeding
+// finishes). Telling reads the slice's cells once more (a third or more of the
+// slice's time), so while columns read these a slice takes as many rows as fit
+// BULK_SLICE_MS at the last such slice's pace (pageByTime), up to
+// HEAVY_SLICE_ROWS; without readers a slice is HEAVY_SLICE_ROWS rows.
 export async function seedProcessingPlaceholders(args: {
   run: RunRef; sheetId: string; userId: string; columns: string[];
   targets: number[] | null; lastRow: number; skip?: Set<number>; live: () => boolean;
@@ -132,24 +140,38 @@ export async function seedProcessingPlaceholders(args: {
   const { run, sheetId, userId, columns, targets, lastRow, live } = args;
   if (columns.length === 0) return true;
   const paths = columns.map(jsonPath);
+  const where = ' WHERE rowid IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ?' +
+    ' AND row_index NOT IN (SELECT value FROM json_each(?))';
   const set = db.prepare(
     'UPDATE rows SET data = json_set(data' + paths.map(() => `, ?, '${PLACEHOLDER}'`).join('') + ')' +
-    ", updated_at = datetime('now')" +
-    ' WHERE rowid IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ?' +
-    ' AND row_index NOT IN (SELECT value FROM json_each(?))',
+    ", updated_at = datetime('now')" + where,
   );
+  const tell = db.prepare(
+    'SELECT rowid FROM rows' + where + ' AND (' + paths.map(() => CELL_HAS_VALUE_SQL).join(' OR ') + ') ORDER BY rowid',
+  ).pluck();
   const skip = JSON.stringify([...(args.skip ?? [])]);
   const rowIds = await sheetRowIds(sheetId, userId, targets ? { targets } : { upTo: lastRow });
   let stopped = false;
   const cells = columns.map((c): [string, string] => [c, PLACEHOLDER]);
-  await eachRowIdSlice(rowIds, ids => {
+  let toldPage = FIRST_TIMED_PAGE;
+  await eachRowIdSlice(rowIds, (json, window) => {
     if (!live()) { stopped = true; return false; }
+    const began = sliceClock();
+    let took = window.length, told = false;
     // The write lock first: a read before a write in a deferred transaction
     // fails at once (SQLITE_BUSY) when a run worker committed in between.
     oneTransaction(() => {
+      const readers = derivedReaderIds(sheetId, userId, columns);
+      told = readers.length > 0;
+      if (told) took = Math.min(took, toldPage);
+      const ids = took === window.length ? json : JSON.stringify(Array.from(window.subarray(0, took)));
+      const heard = told ? tell.all(ids, sheetId, userId, skip, ...paths) as number[] : [];
       journalSeed(run, sheetId, userId, { rowids: ids }, cells, skip);
       set.run(...paths, ids, sheetId, userId, skip);
+      tellDerivedSpan(sheetId, userId, readers, heard, run);
     });
+    if (told) toldPage = pageByTime(took, sliceClock() - began);
+    return took;
   });
   return !stopped;
 }

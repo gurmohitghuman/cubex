@@ -10,6 +10,7 @@ import { redactSecrets } from '../lib/redact';
 import { jsonPath } from '../lib/sql-rows';
 import { PLACEHOLDER } from '../lib/placeholder-cells';
 import { clearRunPlaceholders } from '../lib/run-placeholders';
+import { dropRunSpans } from '../lib/derived-spans';
 import { parseTargetRows } from '../lib/run-targets';
 import { loadEntry, pauseEntry } from './autorun-entry';
 import { UNCAPPED_BILLED_NOTE } from '../lib/enrich-estimate';
@@ -79,6 +80,7 @@ export async function stopAutorunRun(
       WHERE id = ? AND status = 'running' AND worker_generation = ?`)
       .run(reason, message.slice(0, 500), run.id, generation);
     if (r.changes === 0) return false;
+    dropRunSpans(run.sheet_id, { kind: 'http', id: run.id });
     requeueUnfinished(entryId, run.sheet_id, run.user_id, run.master_column_name, targets);
     pauseEntry(entryId, stop.reason, stop.message);
     bumpDataVersion(run.sheet_id, run.user_id);

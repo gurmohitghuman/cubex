@@ -69,6 +69,8 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           background: '#252626',
           color: '#FFFFFF',
           borderRadius: '8px',
+          // A long word with no spaces (a saved key's 200-character name, a URL) breaks inside the box.
+          overflowWrap: 'anywhere',
         },
       }}
     />, document.body)}

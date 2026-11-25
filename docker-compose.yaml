@@ -9,7 +9,11 @@
 #     only through its domain.
 services:
   cubex:
-    build: .
+    build:
+      context: .
+      # The build Settings → Version shows: read from git when empty (scripts/docker-version.mjs).
+      args:
+        - CUBEX_VERSION=${CUBEX_VERSION:-}
     environment:
       # Coolify: give this service a domain, routed to container port 3002.
       - SERVICE_URL_CUBEX_3002

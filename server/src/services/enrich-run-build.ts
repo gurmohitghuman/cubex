@@ -21,6 +21,7 @@ import type { EnrichTool } from '../lib/enrich-tool';
 import { getTool } from './enrich-catalog';
 import { listRowPrices, planListRun, type ListPlan } from './enrich-list-build';
 import type { RunFail } from './run-shared';
+import { jsonTemplateColumns } from '../lib/enrich-template';
 
 const EMAIL_KEYS = new Set(['email', 'email_status', 'found_by', 'checked_by']);
 const bad = (message: string): RunFail => ({ fail: 'bad_request', message });
@@ -71,7 +72,12 @@ function inputTemplatesFor(
         return bad(`Rename the column "${b.column}" first: names with { or } can't be inputs.`);
       }
       templates[name] = `{{${b.column}}}`;
-    } else templates[name] = b.value;
+    } else {
+      // A JSON template (a Find jobs table's own, saved again from the drawer) reads only columns the sheet has.
+      const gone = jsonTemplateColumns(b.value).find(c => !have.has(c));
+      if (gone) return bad(`The column "${gone}" isn't in this sheet anymore.`);
+      templates[name] = b.value;
+    }
   }
   return { templates };
 }

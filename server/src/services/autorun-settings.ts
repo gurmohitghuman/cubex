@@ -9,7 +9,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
 import {
   AUTORUN_DEFAULT_DAILY_CAP_USD, AUTORUN_HTTP_DEFAULT_DAILY_ROWS, AUTORUN_HTTP_MAX_DAILY_ROWS,
-  ENRICH_DAILY_LIMIT_MAX_USD,
+  AUTORUN_MAX_START_DELAY_S, ENRICH_DAILY_LIMIT_MAX_USD,
 } from '../lib/constants';
 import { getSheetColumns, verifySheetOwnership } from '../lib/sql-helpers';
 import { isEnrichmentConfig, type EnrichCondition } from '../lib/enrich-run-config';
@@ -44,6 +44,11 @@ export interface AutorunSettingsInput {
   runIf?: string | null;
   dailyCapUsd: number | null;           // enrichment columns
   dailyRowCap: number | null;           // HTTP API columns
+  // Seconds a row waits after its last change before auto-run takes it (0-AUTORUN_MAX_START_DELAY_S); undefined
+  // keeps it (0 on a first turn-on), null is 0.
+  startDelayS?: number | null;
+  // An edit's Save (the setup saved, nothing run): an auto-run already on and paused stays paused.
+  keepPause?: boolean;
 }
 
 const bad = (message: string): RunFail => ({ fail: 'bad_request', message });
@@ -95,7 +100,7 @@ async function applyAutorunSettings(
   const lookup = clean || formula ? undefined : lookupColumnFor(sheetId, userId, input.column);
   if (clean || formula || lookup) {
     const extra = (input.where?.length ?? 0) > 0 || !!input.runIf
-      || (input.dailyCapUsd ?? null) !== null || (input.dailyRowCap ?? null) !== null;
+      || (input.dailyCapUsd ?? null) !== null || (input.dailyRowCap ?? null) !== null || !!input.startDelayS;
     const what = clean ? 'a clean' : formula ? 'a formula' : 'a lookup';
     if (extra && input.enabled) return bad(`The auto-run of ${what} column has no rule or cap: it's free.`);
     if (clean) return setCleanColumnAutorun(userId, sheetId, clean, input.enabled);
@@ -156,10 +161,15 @@ async function applyAutorunSettings(
     || (isWaterfallConfig(config) && waterfallUnpriced(config));
   const caps = capsFor(userId, capKind, input, prior, unpriced);
   if ('fail' in caps) return caps;
+  const delay = input.startDelayS === undefined ? prior?.start_delay_s ?? 0 : input.startDelayS ?? 0;
+  if (!Number.isSafeInteger(delay) || delay < 0 || delay > AUTORUN_MAX_START_DELAY_S) {
+    return bad(`The start delay must be a whole number of seconds from 0 to ${AUTORUN_MAX_START_DELAY_S}.`);
+  }
 
   const watched = JSON.stringify(watchedColumns(reads, where, runIf));
   // A first turn-on (or after it was off) starts from the rows there now.
   const fresh = !prior || !prior.enabled;
+  const keepPause = !fresh && input.keepPause === true;
   if (prior && fresh) await autorunDropPending(sheetId, userId, prior.id);
   db.transaction(() => {
     const top = db.prepare('SELECT IFNULL(MAX(row_index), -1) FROM rows WHERE sheet_id = ? AND user_id = ?')
@@ -169,26 +179,32 @@ async function applyAutorunSettings(
     if (prior && fresh) db.prepare('DELETE FROM autorun_pending WHERE autorun_id = ?').run(prior.id);
     db.prepare(`INSERT INTO autorun_columns (id, user_id, sheet_id, status_column, kind, enabled, input_columns,
         where_json, run_if, daily_cap_micro, daily_row_cap, watermark_row_index, rescan, row_generation_seen,
-        access_token_id)
-      VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+        access_token_id, start_delay_s)
+      VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
       ON CONFLICT(sheet_id, status_column) DO UPDATE SET enabled = 1, kind = excluded.kind,
         input_columns = excluded.input_columns, where_json = excluded.where_json, run_if = excluded.run_if,
         daily_cap_micro = excluded.daily_cap_micro, daily_row_cap = excluded.daily_row_cap,
-        access_token_id = excluded.access_token_id,
+        access_token_id = excluded.access_token_id, start_delay_s = excluded.start_delay_s,
         watermark_row_index = CASE WHEN ? THEN excluded.watermark_row_index ELSE watermark_row_index END,
         row_generation_seen = CASE WHEN ? THEN excluded.row_generation_seen ELSE row_generation_seen END,
-        rescan = 1, paused_reason = NULL, paused_message = NULL, paused_at = NULL, updated_at = datetime('now')`)
+        rescan = 1, paused_reason = CASE WHEN ? THEN paused_reason END,
+        paused_message = CASE WHEN ? THEN paused_message END, paused_at = CASE WHEN ? THEN paused_at END,
+        updated_at = datetime('now')`)
       .run(uuidv4(), userId, sheetId, input.column, kind, watched, JSON.stringify(where), runIf, caps.capMicro,
         // Its batches are done for whoever saved it last (a token's spend cap counts them).
-        caps.rowCap, top, gen, actorTokenId(), fresh ? 1 : 0, fresh ? 1 : 0);
+        caps.rowCap, top, gen, actorTokenId(), delay, fresh ? 1 : 0, fresh ? 1 : 0,
+        ...Array<number>(3).fill(keepPause ? 1 : 0));
   }).immediate();
   return { ok: { column: input.column } };
 }
 
 // The sheet header's "Pause all" / "Resume all", or one column's Pause (the
-// dialog). A pause keeps its place: rows added meanwhile run on resume. An
-// access token that resumes it makes its batches its own (its spend cap counts them).
-export function setSheetAutorunPaused(userId: string, sheetId: string, paused: boolean, column?: string): boolean {
+// dialog). A pause keeps its place: rows added meanwhile run on resume, unless the resume dropped them first
+// (autorun-resume.ts; `waiting` says which, for History). An access token that resumes it makes its batches its own
+// (its spend cap counts them).
+export function setSheetAutorunPaused(
+  userId: string, sheetId: string, paused: boolean, column?: string, waiting?: 'run' | 'empty_only' | 'skip',
+): boolean {
   if (!verifySheetOwnership(sheetId, userId)) return false;
   const one = column === undefined ? '' : ' AND status_column = ?';
   const params = column === undefined ? [sheetId, userId] : [sheetId, userId, column];
@@ -201,6 +217,6 @@ export function setSheetAutorunPaused(userId: string, sheetId: string, paused: b
         access_token_id = COALESCE(?, access_token_id), rescan = 1, updated_at = datetime('now')
       WHERE sheet_id = ? AND user_id = ? AND enabled = 1${one}`).run(actorTokenId(), ...params);
   }
-  logAutorunPaused(sheetId, userId, paused, column);
+  logAutorunPaused(sheetId, userId, paused, column, paused ? undefined : waiting);
   return true;
 }

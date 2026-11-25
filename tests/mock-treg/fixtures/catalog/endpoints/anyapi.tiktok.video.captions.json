@@ -1,0 +1,235 @@
+{
+ "endpoint": {
+  "id": "anyapi.tiktok.video.captions",
+  "provider": "anyapi",
+  "provider_display": "AnyAPI",
+  "name": "TikTok Video Transcript",
+  "summary": "Fetch the spoken-word transcript of a TikTok video by URL.",
+  "method": "POST",
+  "path": "/v1/run/tiktok.video_transcript",
+  "scope": "any_account",
+  "tier": "core",
+  "kind": "data",
+  "domain": "video",
+  "call_template": "treg call anyapi.tiktok.video.captions",
+  "cost": {
+   "type": "per_call",
+   "value": 0.002,
+   "currency": "USD",
+   "unit": "call",
+   "reported_charge": {
+    "path": "costUsd",
+    "unit": "usd"
+   },
+   "source": "observed",
+   "source_url": "https://api.getanyapi.com/v1/apis/tiktok.video_transcript",
+   "checked": "2026-09-11",
+   "confidence": "verified",
+   "note": "2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A not-found or empty answer is billed too, at its own `costUsd`.",
+   "usd": 0.002
+  },
+  "async": null,
+  "platform_eligible": true,
+  "platform_blocked": null,
+  "miss": null,
+  "status": null,
+  "status_note": null,
+  "superseded_by": null,
+  "verified": "2026-09-19",
+  "added": "2026-09-19",
+  "docs_url": "https://getanyapi.com/api/tiktok/video-transcript",
+  "has_example": true,
+  "input": {
+   "body": {
+    "url": {
+     "type": "string",
+     "required": true,
+     "note": "Full TikTok video URL.",
+     "example": "https://www.example.com/sample"
+    }
+   },
+   "bodyType": "json",
+   "queryArrayEncoding": "comma",
+   "queryParams": {
+    "fields": {
+     "type": "string",
+     "required": false,
+     "note": "Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, not the charge."
+    },
+    "max_items": {
+     "type": "integer",
+     "required": false,
+     "min": 0,
+     "note": "Caps the result rows returned; `_truncated` says how many were withheld. Not the charge."
+    },
+    "summary": {
+     "type": "boolean",
+     "required": false,
+     "note": "`true` returns only an outline: keys, item counts, per-field sizes."
+    },
+    "jq": {
+     "type": "string",
+     "required": false,
+     "note": "jq expression over the result envelope; its output replaces `output`. A failed expression returns the full result with `jqError`."
+    }
+   }
+  },
+  "capability": "tiktok.video.captions",
+  "capability_description": "Get a video's captions or transcript",
+  "platform": "tiktok",
+  "platform_label": "TikTok",
+  "observed": {
+   "samples": 41699,
+   "decided": 41651,
+   "ok_rate": 0.9991,
+   "p50_ms": 1675,
+   "p95_ms": 3173,
+   "last_ok_days": 0,
+   "hit_rate": null,
+   "hit_samples": 0
+  },
+  "wallet": {
+   "payable": true,
+   "protocols": [
+    "mpp"
+   ],
+   "minimum_payment_micro": 10000,
+   "fee_bps": 0,
+   "note": "pay per call with a wallet, no account. A payment is at least $0.01; the call is charged only its real price, and the rest stays as this wallet's credit for its next calls (credit is not paid back as money)."
+  },
+  "reviews": {
+   "teams": 10,
+   "samples": [
+    {
+     "usefulness": "useful",
+     "reason": "Caption track of a 10-minute video at a flat $0.0011.",
+     "client": "mcp",
+     "month": "2026-11"
+    },
+    {
+     "usefulness": "useful",
+     "reason": "Transcripci\u00f3n de TikTok en espa\u00f1ol, completa y limpia con filtro jq; sirvi\u00f3 para extraer estructura de gancho y cierre.",
+     "client": "mcp",
+     "month": "2026-11"
+    },
+    {
+     "usefulness": "not_useful",
+     "reason": "The result did not include captions for this video.",
+     "client": "codex",
+     "month": "2026-11"
+    }
+   ],
+   "share": {
+    "useful": 0.74,
+    "partly": 0.1,
+    "not_useful": 0.17
+   }
+  }
+ },
+ "provider": {
+  "service": "anyapi",
+  "display_name": "AnyAPI",
+  "limits": "no published per-key request-rate limit on /v1/run - AnyAPI does not advertise a quota it does not enforce. Spend is bounded instead by the wallet balance, the key's own spend cap, and the per-request `max_cost_usd` ceiling the caller sets. The unauthenticated /agent/signup trial route is limited to 3 per IP per hour.",
+  "pricing_url": "https://getanyapi.com/catalog",
+  "docs": "https://getanyapi.com/docs"
+ },
+ "siblings": [
+  {
+   "id": "scrapecreators.x.v1-tiktok-video-transcript",
+   "provider": "scrapecreators",
+   "provider_display": "ScrapeCreators",
+   "name": "TikTok video transcript by URL \u2014 captions, subtitles",
+   "scope": "",
+   "kind": "data",
+   "cost": {
+    "type": "per_call",
+    "value": 1,
+    "currency": "credit",
+    "per": 1,
+    "unit": "call",
+    "reported_charge": {
+     "path": "credits_charged",
+     "unit": "credit"
+    },
+    "usd": 0.00188
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": null,
+   "params": [
+    "url",
+    "language",
+    "use_ai_as_fallback"
+   ],
+   "observed": {
+    "samples": 65416,
+    "decided": 65011,
+    "ok_rate": 0.9969,
+    "p50_ms": 2573,
+    "p95_ms": 14442,
+    "last_ok_days": 0,
+    "hit_rate": null,
+    "hit_samples": 0
+   },
+   "reviews": {
+    "teams": 25,
+    "share": {
+     "useful": 0.77,
+     "partly": 0.07,
+     "not_useful": 0.16
+    }
+   }
+  }
+ ],
+ "related_capabilities": [
+  {
+   "endpoint_id": "treg.tiktok.comment.replies",
+   "capability": "tiktok.comment.replies",
+   "does": "List replies to a comment"
+  },
+  {
+   "endpoint_id": "treg.tiktok.search.users",
+   "capability": "tiktok.search.users",
+   "does": "Search users by keyword"
+  },
+  {
+   "endpoint_id": "treg.tiktok.search.videos",
+   "capability": "tiktok.search.videos",
+   "does": "Search videos by keyword"
+  },
+  {
+   "endpoint_id": "treg.tiktok.user.profile",
+   "capability": "tiktok.user.profile",
+   "does": "Get a user's public profile"
+  },
+  {
+   "endpoint_id": "treg.tiktok.user.videos",
+   "capability": "tiktok.user.videos",
+   "does": "List a user's recent videos"
+  }
+ ],
+ "call_template": "treg call anyapi.tiktok.video.captions",
+ "example_response": {
+  "output": {
+   "found": true,
+   "data": {
+    "language": "en",
+    "transcript": "Wake up, water first, then ten minutes outside."
+   }
+  },
+  "provider": "anyapi",
+  "costUsd": 0.001,
+  "items": 1,
+  "replayed": false,
+  "source": {
+   "id": "sample",
+   "name": "Sample",
+   "kind": "api",
+   "artworkKey": "sample"
+  },
+  "resultId": "sample-result"
+ },
+ "hints": []
+}

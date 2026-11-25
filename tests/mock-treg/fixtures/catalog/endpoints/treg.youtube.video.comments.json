@@ -1,0 +1,437 @@
+{
+ "endpoint": {
+  "id": "treg.youtube.video.comments",
+  "provider": "treg",
+  "provider_display": "treg",
+  "name": "youtube.video.comments \u2014 routed: best of 3 providers, own keys first",
+  "summary": "Comments on a YouTube video by id or URL \u2014 provider-native comment rows in `comments`",
+  "method": "POST",
+  "path": "/youtube.video.comments",
+  "scope": "",
+  "tier": "core",
+  "kind": "routed",
+  "domain": "video",
+  "call_template": "treg call treg.youtube.video.comments",
+  "cost": {
+   "type": "per_success",
+   "value": 0.0009,
+   "currency": "USD",
+   "per": 1,
+   "unit": "call",
+   "source": "inferred",
+   "confidence": "documented",
+   "checked": null,
+   "varies": true,
+   "note": "Not free: $0.0009\u2013$0.00188 per hit across 3 providers, 0% markup. A call also pays each provider tried before the hit that bills a miss (2 of 3 do), up to X-Treg-Route-Max-Cost (default $1); X-Treg-Route-Waterfall: 0 pays for one provider only",
+   "usd": 0.0009
+  },
+  "async": null,
+  "platform_eligible": true,
+  "platform_blocked": null,
+  "miss": {
+   "status": 200,
+   "means": "output.comments == []"
+  },
+  "status": null,
+  "status_note": null,
+  "superseded_by": null,
+  "verified": null,
+  "added": null,
+  "docs_url": "",
+  "has_example": false,
+  "input": {
+   "bodyType": "json",
+   "body": {
+    "video_id": {
+     "type": "string",
+     "required": false,
+     "note": "identity"
+    },
+    "url": {
+     "type": "string",
+     "format": "url",
+     "required": false,
+     "note": "identity"
+    }
+   },
+   "note": "Send what you know; treg sends each provider only the fields it accepts ({video_id} | {url}). Omit a field you don't have: a url field holding something else, such as N/A, is refused (422 invalid_identity). On a miss it tries the next provider, cheapest first. Options are X-Treg-Route-* headers, never body fields. The answer is {output, raw, _treg}; X-Treg-Served-By names the provider."
+  },
+  "routed_children": [
+   "crawl4ai.youtube.video.comments",
+   "scrapecreators.youtube.video.comments",
+   "tikhub.youtube.video.comments"
+  ],
+  "capability": "youtube.video.comments",
+  "capability_description": "List a video's comments",
+  "platform": "youtube",
+  "platform_label": "YouTube",
+  "observed": null,
+  "wallet": {
+   "payable": false,
+   "reason": "routed",
+   "note": "a routed treg tool needs a treg account; sign in to call it"
+  }
+ },
+ "provider": {
+  "service": "treg",
+  "display_name": "treg"
+ },
+ "siblings": [
+  {
+   "id": "brightdata.x.youtube-comments",
+   "provider": "brightdata",
+   "provider_display": "Bright Data",
+   "name": "YouTube video comments by video URL",
+   "scope": "any_account",
+   "kind": "data",
+   "cost": {
+    "type": "per_result",
+    "value": 0.0015,
+    "currency": "USD",
+    "unit": "record",
+    "reserve": {
+     "entities": {}
+    },
+    "usd": 0.0015
+   },
+   "platform_eligible": false,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-11-10",
+   "params": [
+    "dataset_id",
+    "format",
+    "input"
+   ],
+   "observed": null
+  },
+  {
+   "id": "crawl4ai.youtube.video.comments",
+   "provider": "crawl4ai",
+   "provider_display": "Crawl4AI",
+   "name": "Comments of a YouTube video",
+   "scope": "any_account",
+   "kind": "data",
+   "cost": {
+    "type": "per_success",
+    "value": 0.9,
+    "currency": "credit",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.0009
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-10-11",
+   "params": [
+    "limit",
+    "video"
+   ],
+   "observed": {
+    "samples": 40170,
+    "decided": 40166,
+    "ok_rate": 0.9934,
+    "p50_ms": 1533,
+    "p95_ms": 7376,
+    "last_ok_days": 0,
+    "hit_rate": 0.7241,
+    "hit_samples": 39892
+   },
+   "reviews": {
+    "teams": 10,
+    "share": {
+     "useful": 0.75,
+     "partly": 0.25,
+     "not_useful": 0.0
+    }
+   }
+  },
+  {
+   "id": "justoneapi.x.youtube-get-video-comment-v1",
+   "provider": "justoneapi",
+   "provider_display": "Just One API",
+   "name": "YouTube video comments by video id",
+   "scope": "",
+   "kind": "data",
+   "cost": {
+    "type": "per_success",
+    "value": 0.1,
+    "currency": "CNY",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.01476
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "videoId",
+    "cursor",
+    "languageCode",
+    "countryCode",
+    "sortBy"
+   ],
+   "observed": null
+  },
+  {
+   "id": "scrapecreators.youtube.video.comments",
+   "provider": "scrapecreators",
+   "provider_display": "ScrapeCreators",
+   "name": "YouTube video comments by URL \u2014 replies, likes, authors",
+   "scope": "any_account",
+   "kind": "data",
+   "cost": {
+    "type": "per_call",
+    "value": 1,
+    "currency": "credit",
+    "per": 1,
+    "unit": "call",
+    "reported_charge": {
+     "path": "credits_charged",
+     "unit": "credit"
+    },
+    "usd": 0.00188
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "url",
+    "order"
+   ],
+   "observed": {
+    "samples": 8019,
+    "decided": 7677,
+    "ok_rate": 0.9974,
+    "p50_ms": 2461,
+    "p95_ms": 5117,
+    "last_ok_days": 0,
+    "hit_rate": 0.7919,
+    "hit_samples": 7644
+   },
+   "reviews": {
+    "teams": 0
+   }
+  },
+  {
+   "id": "tikhub.youtube.video.comments",
+   "provider": "tikhub",
+   "provider_display": "TikHub",
+   "name": "YouTube video comments by video id",
+   "scope": "any_account",
+   "kind": "data",
+   "cost": {
+    "type": "per_call",
+    "value": 0.001,
+    "currency": "USD",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.001
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "video_id",
+    "language_code",
+    "country_code",
+    "sort_by",
+    "continuation_token",
+    "need_format"
+   ],
+   "observed": {
+    "samples": 62539,
+    "decided": 62317,
+    "ok_rate": 0.9988,
+    "p50_ms": 2121,
+    "p95_ms": 5305,
+    "last_ok_days": 0,
+    "hit_rate": 0.9703,
+    "hit_samples": 62223
+   },
+   "reviews": {
+    "teams": 0
+   }
+  },
+  {
+   "id": "youtube.youtube.video.comments",
+   "provider": "youtube",
+   "provider_display": "YouTube",
+   "name": "List comments on a YouTube video by video id",
+   "scope": "any_account",
+   "kind": "data",
+   "cost": {
+    "type": "free",
+    "value": 0,
+    "currency": "USD",
+    "unit": "call",
+    "usd": 0.0
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "part",
+    "videoId",
+    "order",
+    "maxResults",
+    "pageToken",
+    "textFormat"
+   ],
+   "observed": null
+  }
+ ],
+ "observed_pending": true,
+ "related_capabilities": [
+  {
+   "endpoint_id": "treg.youtube.channel.profile",
+   "capability": "youtube.channel.profile",
+   "does": "A channel's profile & lifetime stats"
+  },
+  {
+   "endpoint_id": "treg.youtube.channel.videos",
+   "capability": "youtube.channel.videos",
+   "does": "List a channel's videos"
+  },
+  {
+   "endpoint_id": "treg.youtube.search.videos",
+   "capability": "youtube.search.videos",
+   "does": "Search videos by keyword"
+  },
+  {
+   "endpoint_id": "treg.youtube.video.detail",
+   "capability": "youtube.video.detail",
+   "does": "Get a video's metadata & stats"
+  }
+ ],
+ "routing": {
+  "contract": {
+   "identity": [
+    [
+     "video_id"
+    ],
+    [
+     "url"
+    ]
+   ],
+   "output": {
+    "comments": {
+     "type": "array",
+     "items": {
+      "type": "object"
+     },
+     "required": true
+    },
+    "next_cursor": {
+     "type": "string"
+    }
+   },
+   "miss": "comments == []",
+   "derive": {}
+  },
+  "plan": [
+   {
+    "endpoint_id": "crawl4ai.youtube.video.comments",
+    "accepts": [
+     [
+      "video_id"
+     ]
+    ],
+    "usd": 0.0009,
+    "cost": {
+     "type": "per_success",
+     "value": 0.9,
+     "currency": "credit",
+     "usd": 0.0009
+    },
+    "hit_rate": 0.7241,
+    "usd_per_hit": 0.0009,
+    "works": 0.9934
+   },
+   {
+    "endpoint_id": "tikhub.youtube.video.comments",
+    "accepts": [
+     [
+      "video_id"
+     ]
+    ],
+    "usd": 0.001,
+    "cost": {
+     "type": "per_call",
+     "usd": 0.001
+    },
+    "hit_rate": 0.9703,
+    "usd_per_hit": 0.0010306090899721734,
+    "works": 0.9988
+   },
+   {
+    "endpoint_id": "scrapecreators.youtube.video.comments",
+    "accepts": [
+     [
+      "url"
+     ]
+    ],
+    "usd": 0.00188,
+    "cost": {
+     "type": "per_call",
+     "value": 1,
+     "currency": "credit",
+     "usd": 0.00188
+    },
+    "hit_rate": 0.7919,
+    "usd_per_hit": 0.002374037125899735,
+    "works": 0.9974
+   }
+  ],
+  "also": [
+   {
+    "endpoint_id": "brightdata.x.youtube-comments",
+    "usd": 0.0015,
+    "cost": {
+     "type": "per_result",
+     "usd": 0.0015
+    }
+   },
+   {
+    "endpoint_id": "justoneapi.x.youtube-get-video-comment-v1",
+    "usd": 0.01476,
+    "cost": {
+     "type": "per_success",
+     "value": 0.1,
+     "currency": "CNY",
+     "usd": 0.01476
+    }
+   },
+   {
+    "endpoint_id": "youtube.youtube.video.comments",
+    "usd": 0.0,
+    "cost": {
+     "type": "free",
+     "usd": 0.0
+    }
+   }
+  ],
+  "max_cost_usd": 1.0,
+  "headers": {
+   "X-Treg-Route-Waterfall": "on by default: a miss tries the next provider; 0 = stop at the first miss",
+   "X-Treg-Route-Max-Cost": "USD ceiling for the whole call (default 1.00)",
+   "X-Treg-Route-Prefer": "provider[,\u2026], the name before an id's first dot (quickenrich), not an endpoint id",
+   "X-Treg-Route-Exclude": "provider[,\u2026], the name before an id's first dot (quickenrich), not an endpoint id",
+   "X-Treg-Route-Strict-Filters": "1 = never call a provider that cannot apply a filter you sent (answers 422, nothing charged); off by default \u2014 the answer names what was ignored in X-Treg-Ignored-Filters"
+  }
+ },
+ "call_template": "treg call treg.youtube.video.comments",
+ "example_response": null,
+ "hints": []
+}

@@ -1,3 +1,4 @@
+// Over 200 lines: one request built from a row, every input filled, checked and laid out in one pass.
 // The treg request for one row of an enrichment (pure). Column values fill the
 // input templates, then get cleaned, typed and checked against the tool's
 // declared inputs, and are laid out the way treg expects (resolve.py): query
@@ -11,6 +12,7 @@ import { cleanDomain, DOMAIN_INPUT_NAMES } from './enrich-input-clean';
 import { setAvailable } from './enrich-accepts';
 import { TREG_TOOL_ID_PATTERN } from './constants';
 import type { ToolInput } from './enrich-tool-io';
+import { hiringTitleMissing } from './hiring/title-words';
 
 export interface RequestTool {
   id: string;
@@ -155,7 +157,8 @@ export function buildRequest(
     if (bad) return { ok: false, invalid: bad };
     sent[input.name] = t.value;
   }
-  const missing = missingInputs(tool, new Set(Object.keys(sent)));
+  // A hiring search whose role title has no word to search for would answer any role: missing, as an empty one.
+  const missing = missingInputs(tool, new Set(Object.keys(sent))) ?? hiringTitleMissing(tool.id, inputMap, sent);
   if (missing) return { ok: false, missing };
 
   const method = tool.method.toUpperCase();

@@ -216,6 +216,14 @@ export function transferRows(userId: string, request: TransferRequest, surface: 
   if (Object.entries(request.columnMapping).some(badMapping)) {
     return { fail: 'invalid', error: 'column_mapping must map non-empty source names to destination name strings.' };
   }
+  // A retry with its key and the same arguments answers its first transfer before anything else is checked,
+  // as a keyed run start does (#109): even while either sheet is busy, and without a transfer slot, so a sender
+  // retrying after a timeout always gets its answer. The guards in front let a keyed call through for this
+  // (routes/api-v1-shared.ts, mcp/tool-helpers.ts). A new key, or a known one with other arguments, goes on to
+  // the checks below, and the transaction reads the ledger again.
+  const hashes = transferHashes(request);
+  const known = readTransferLedger(userId, request.idempotencyKey, hashes);
+  if (known && !('conflict' in known)) return { ok: known.replay, replayed: true, changed: known.changed };
   // Neither sheet may be in the middle of a sort, an import or a column change (lib/sheet-busy.ts): REST's
   // route checks only the sheet in its path, MCP both, before here; this holds for every caller.
   for (const sheet of [request.sourceSheetId, request.destinationSheetId]) {
@@ -228,7 +236,6 @@ export function transferRows(userId: string, request: TransferRequest, surface: 
     error: slot === 'rate'
       ? 'Too many transfer starts. Wait a minute and try again.' : 'Another transfer is already active.',
   };
-  const hashes = transferHashes(request);
   try {
     return db.transaction(() => executeTransfer(userId, request, hashes, surface)).immediate();
   } catch (error) {
