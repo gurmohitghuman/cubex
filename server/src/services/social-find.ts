@@ -15,7 +15,7 @@ import { nowDate } from '../lib/clock';
 import { dayIn } from '../lib/ai-visibility/check';
 import { countRows } from '../lib/sql-helpers';
 import { recallChoices, rerunInput } from '../lib/enrich-run-recall';
-import { POST_COLUMNS as P, foundColumn } from '../lib/social/names';
+import { POST_COLUMNS as P } from '../lib/social/names';
 import { PLATFORM_SPECS, type Platform } from '../lib/social/platforms';
 import { newestColumnRun } from './enrich-column';
 import { rerunEnrichmentColumn, type RerunEstimate } from './enrich-rerun';
@@ -23,6 +23,7 @@ import { startEnrichmentRun } from './enrich-run-start';
 import { updateView } from './views';
 import { withoutChangeLog } from '../lib/change-log';
 import { getSheetColumns } from '../lib/sql-helpers';
+import { getColumnTypes } from '../lib/column-types';
 import { postsSheetsOf, sheetLive, type SocialRecord } from './social-store';
 import { sinceDay, TOP_POSTS_VIEW, topPostsWhere } from './social-write';
 import type { RunFail } from './run-shared';
@@ -38,14 +39,28 @@ const ALL = { mode: 'all' as const, status: 'any' as const, test: null, rowIndex
 const bad = (message: string): RunFail => ({ fail: 'bad_request', message });
 const round6 = (n: number) => Math.round(n * 1e6) / 1e6;
 
-// Each platform's search column, still a search of this table; or why Find posts can't run.
+// The Searches columns that add rows to another sheet, with the tool each one's newest run asks.
+function listColumns(userId: string, searches: string): Array<{ column: string; toolId: string; dest: string }> {
+  const types = getColumnTypes(searches, userId);
+  return getSheetColumns(searches, userId).flatMap(column => {
+    if (types[column] !== 'enrich-status') return [];
+    const e = newestColumnRun(searches, userId, column)?.config.enrichment;
+    return e?.list?.destSheetId ? [{ column, toolId: e.toolId, dest: e.list.destSheetId }] : [];
+  });
+}
+
+// Each platform's search column, still a search of this table; or why Find posts can't run. A platform's column
+// is found by what fills it (a list adding rows to its Posts sheet, its own search first), not by its name, so a
+// renamed column still searches.
 function columnsOf(userId: string, r: SocialRecord): Array<{ platform: Platform; column: string }> | RunFail {
   if (!sheetLive(userId, r.searches_sheet_id)) return bad('This table no longer has its Searches sheet.');
+  const lists = listColumns(userId, r.searches_sheet_id);
   const out: Array<{ platform: Platform; column: string }> = [];
   for (const [platform, sheet] of Object.entries(postsSheetsOf(r)) as Array<[Platform, string]>) {
-    const column = foundColumn(PLATFORM_SPECS[platform].label);
-    const run = newestColumnRun(r.searches_sheet_id, userId, column);
-    if (!run || !sheetLive(userId, sheet)) continue; // a platform deleted since: left out
+    const into = lists.filter(l => l.dest === sheet);
+    const column = (into.find(l => l.toolId === PLATFORM_SPECS[platform].search.toolId) ?? into[0])?.column;
+    const run = column ? newestColumnRun(r.searches_sheet_id, userId, column) : null;
+    if (!column || !run || !sheetLive(userId, sheet)) continue; // a platform deleted since: left out
     if (run.active) {
       return { fail: 'conflict', message: run.status === 'paused'
         ? `"${column}" is paused: resume or cancel it in Searches, then find posts again.`

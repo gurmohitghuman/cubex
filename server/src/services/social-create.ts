@@ -43,7 +43,7 @@ export interface SocialTable {
 const COMMENT_SHEET_COLUMNS = [C.post, C.platform, C.author, C.text, C.likes, C.replies];
 
 // A platform's Posts columns: its search's, its formulas, then each step picked.
-function postsColumnsOf(platform: Platform, input: SocialInput): string[] {
+export function postsColumnsOf(platform: Platform, input: SocialInput): string[] {
   const spec = PLATFORM_SPECS[platform];
   const has = (s: string) => input.steps.includes(s as SocialInput['steps'][number]);
   const creator = has('creator') && spec.creator ? [S.creator, ...spec.creator.outputs.map(o => o.columnName)] : [];
@@ -115,7 +115,7 @@ function makeTable(userId: string, input: SocialInput, runs: PlatformRuns[], col
       writeListColumn(userId, searches, sheet, r.search, `The ${spec.label} search`);
       writeFormulas(userId, sheet, spec.formulas);
       if (r.transcript) writeStepColumn(userId, sheet, r.transcript, `${spec.label} transcripts`);
-      if (input.steps.includes('breakdown')) writeBreakdown(userId, sheet, spec);
+      if (input.steps.includes('breakdown')) writeBreakdown(userId, sheet, spec, !!r.transcript);
       if (r.creator) writeStepColumn(userId, sheet, r.creator, `${spec.label} creators`);
       if (r.usual) {
         writeStepColumn(userId, sheet, r.usual, `${spec.label} creators' recent posts`);
