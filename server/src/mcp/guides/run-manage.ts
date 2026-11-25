@@ -1,5 +1,4 @@
 // The guides of the tools that follow, control and undo runs (guide.ts says what a guide holds).
-import { ANSWERS_PAGE_MAX } from '../../lib/api-v1-constants';
 import { STATUS_WORDS } from '../../services/enrich-agent-shared';
 import type { ToolGuide } from './guide';
 
@@ -41,15 +40,12 @@ export const RUN_MANAGE_GUIDES: Record<string, ToolGuide> = {
       'Rows add cost_usd (an AI row on your own provider key: only OpenRouter\'s fee, and provider_cost_usd); AI '
         + 'rows paid_with, tokens and searches; enrichment rows found_by; waterfall rows answered_by and trace (each '
         + 'step reached: outcome, value, cost).',
-      `include_answers adds each row's stored answer (up to ${ANSWERS_PAGE_MAX} rows a page), to find paths for `
-        + 'add_enrichment_field; on an HTTP run that used saved keys it needs the \'secrets\' scope.',
     ],
   },
   undo_run: {
     text: [
-      'A restored cell\'s stored answer is never reused, so running it again bills again. Clean, formula and lookup '
-        + 'columns reading a restored cell work it out again (free); no auto-run starts. Rows a list enrichment '
-        + 'added to another sheet stay (delete_rows removes them).',
+      'Clean, formula and lookup columns reading a restored cell work it out again (free); no auto-run starts. Rows '
+        + 'a list enrichment added to another sheet stay (delete_rows removes them).',
       'Newest first: while a newer run that wrote one of its columns can be undone, an older one is refused.',
       'Returns state and how many cells were restored, skipped and gone; a big undo answers state undoing and goes '
         + 'on in the background (the sheet is busy meanwhile: call again with dry_run true to see how far it got).',

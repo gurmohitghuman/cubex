@@ -6,7 +6,7 @@ export const SETUP_GUIDES: Record<string, ToolGuide> = {
     text: [
       'A step whose columns this setup made before CARRIES THEM ON, filling only rows it hasn\'t done: call again '
         + 'with the same inputs and names to fill new rows or finish a stopped run (get_setup_run shows the choices '
-        + 'a run used). Auto-run is turned on only after a run on every row.',
+        + 'a run used).',
       'Each started AI and enrichment step gets a spend limit within what is left of the ceiling (one with no known '
         + 'price runs without one).',
     ],
@@ -40,9 +40,8 @@ export const SETUP_GUIDES: Record<string, ToolGuide> = {
         + 'stay; a column (or an AI column\'s output column) filled another way now is left, with a note.',
       'AI, HTTP API, enrichment and waterfall columns run the restored way next time (control_run rerun mode all '
         + 'bills every row); clean, formula and lookup columns keep their cells until their own tool works them out '
-        + 'again (free). Auto-run follows the version, from the rows there now; one paused by hand stays paused. '
-        + 'Refused while a run or setup is going on the sheet, or a clean, formula or lookup column is still '
-        + 'filling.',
+        + 'again (free). Refused while a run or setup is going on the sheet, or a clean, formula or lookup column '
+        + 'is still filling.',
     ],
   },
   save_setup: {

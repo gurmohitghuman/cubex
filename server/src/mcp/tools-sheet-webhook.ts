@@ -26,7 +26,9 @@ export function registerSheetWebhookTools(server: McpServer, ctx: McpAuthCtx): v
       + 'adds one (one per sheet) and a column marking the rows it adds. The url is shown until the first event '
       + 'arrives, and only to a key with the write scope; after that it is hidden and rotate makes a new one (the '
       + 'old one stops at once). delete: the webhook and its kept events go; its '
-      + `columns and rows stay. Every action but get needs the write scope. ${GUIDE_POINTER}`,
+      + 'columns and rows stay. new_token: senders must then send the answer\'s token (shown once) as '
+      + 'Authorization: Bearer <token>, or get 404; an old one stops. Every action but get needs the write scope. '
+      + `${GUIDE_POINTER}`,
     inputSchema: z.object({
       action: z.enum(ACTIONS).describe('What to do'),
       sheet_id: z.string().describe(SHEET_ID),

@@ -32,7 +32,7 @@ export function registerSetupRunTools(server: McpServer, ctx: McpAuthCtx): void 
       + 'steps send a request per row; clean and formula steps are free. '
       + 'ESTIMATE_ONLY DEFAULTS TO TRUE: the first call prices each step and starts nothing; tell the user, then '
       + 'call again with estimate_only:false. Called again with the same inputs and names, it carries on the '
-      + 'columns it made. '
+      + 'columns it made. Auto-run is turned on only after a run on every row. '
       + 'Saved keys in its requests need the "secrets" scope. COST CEILING: max_cost_usd refuses to start (nothing '
       + 'is created) when the estimate\'s high end, plus one row\'s most for each AI step, is above it, or when a '
       + 'step has no known price unless allow_unpriced is true. Returns a setup_run '

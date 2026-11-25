@@ -93,10 +93,12 @@ export const WATERFALL_DESCRIPTION =
   + '{{input_key}}) or lookup (free: another sheet\'s return_column where match_column matches the input; put it '
   + 'first to skip paid steps). inputs maps each input key ONCE to a column or {"value": fixed}; steps read keys, '
   + 'never columns (treg tools take first_name, last_name, full_name, domain, company, linkedin_url, email). '
+  + 'check: verify (treg\'s email verify, paid) or a formula over {{value}}. '
   + 'COSTS MONEY: enrichment steps bill the treg balance, ai steps OpenRouter. estimate_only DEFAULTS TO TRUE: '
   + 'cost and answer rate per row and per step, nothing created: tell the user, then call again with '
   + 'estimate_only false. spend_limit_usd '
-  + `caps the run. ${DAILY_LIMIT_NOTE} `
+  + `caps the run. ${DAILY_LIMIT_NOTE} dry_run writes nothing and returns each row's trace; a real run then reuses `
+  + 'what it bought at $0 for 7 days. '
   + 'add_to_column runs an existing waterfall column again, keeping its setup unless you pass new parts. action '
   + '"describe" (read scope) returns a column\'s setup to edit and send back. Returns run_id: poll '
   + 'get_run_status (run_type waterfall), then get_run_results for the traces.';

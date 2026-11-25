@@ -9,8 +9,6 @@ const RETRY_WORDS = 'idempotency_key makes a retry safe: the same key and argume
 export const STRUCTURE_GUIDES: Record<string, ToolGuide> = {
   append_rows: {
     text: [
-      'With auto-dedupe on (set_auto_dedupe), a row whose key the sheet already had says kept: false (it went to '
-        + 'the trash) and auto_dedupe says what was not kept or replaced.',
       `${RETRY_WORDS} A replay leaves out auto_run (the first call set the runs off).`,
     ],
   },
@@ -33,8 +31,6 @@ export const STRUCTURE_GUIDES: Record<string, ToolGuide> = {
         + 'lookups, rules or views come along), with a run\'s status words (⏳, ❌, ⏭️, ➕) left empty. Free, no AI; '
         + 'name defaults to "Copy of <sheet>". Use it to keep a sheet as it is now, for example before running its '
         + 'columns again; it answers once every row is in (rows_copied).',
-      'Enrichment results its columns bought that were not yet added as rows in another sheet are dropped '
-        + '(list_results_dropped says how many and for which sheets).',
     ],
   },
   manage_sheet_webhook: {
@@ -43,8 +39,7 @@ export const STRUCTURE_GUIDES: Record<string, ToolGuide> = {
         + 'fields.',
       'turn_off: events get 404 and add nothing until turn_on. add_field: json_path (like $.email or $.plan.name) '
         + 'and column, a new column each event fills, as text (default) or as json. remove_field: field_id; its '
-        + 'column and values stay. new_token: senders must then send the answer\'s token (shown once) as '
-        + 'Authorization: Bearer <token>, or get 404; an old one stops. remove_token: no token needed.',
+        + 'column and values stay. remove_token: no token needed.',
       'manage_table or manage_sheet create with webhook true makes a sheet with one.',
     ],
   },

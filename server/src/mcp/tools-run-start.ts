@@ -51,7 +51,7 @@ export function registerRunStartTools(server: McpServer, ctx: McpAuthCtx) {
         + 'COST CEILING: max_cost_usd refuses to start when the estimate\'s high end plus one row\'s most is above '
         + 'it, or the model has no known price unless allow_unpriced is true. It is also the run\'s hard spend '
         + 'limit; spend_limit_usd sets one without the check (with both, the lower one). A run at its limit pauses '
-        + '(pause_reason spend_limit).'
+        + '(pause_reason spend_limit); with web search or fetch, or a model with no listed price, spend can pass it.'
         + capRunToolNote(ctx.spend ?? null) + ` ${GUIDE_POINTER}`,
       inputSchema: {
         sheet_id: z.string().describe(SHEET_ID),

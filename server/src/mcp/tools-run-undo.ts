@@ -33,7 +33,8 @@ export function registerRunUndoTool(server: McpServer, ctx: McpAuthCtx) {
       + 'status, "Answered by" and step columns), and so does its rows\' out_of_date state. Use it when a run '
       + 'wrote wrong answers; to fill rows again instead, control_run rerun. It SKIPS a cell changed since (by a '
       + 'person, an agent or a newer run); cells in rows or columns deleted since count as gone. Nothing runs '
-      + 'again and nothing is refunded. A run '
+      + 'again and nothing is refunded. A restored cell\'s stored answer is never reused, so running it again '
+      + 'bills again. A run '
       + 'still going can\'t be undone (control_run cancel first). '
       + `Each run once, for ${UNDO_KEEP_DAYS} days after it `
       + 'started. Pass run_type and run_id (list_runs, get_sheet\'s column_details), or sheet_id and column for '

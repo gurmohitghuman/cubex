@@ -75,8 +75,9 @@ export function registerSetupVersionTools(server: McpServer, ctx: McpAuthCtx): v
     description: 'Put a sheet\'s column setup back as a setup version (list_setup_versions) has it. DEFAULT '
       + 'dry_run true: only says what restoring would do, column by column, and `blocked`: why it can\'t be '
       + 'restored now. With dry_run false gone columns come back EMPTY, with their setup. '
-      + 'NOTHING RUNS AND NOTHING IS BILLED, and no cell changes. Needs the write and run scopes (secrets too when a '
-      + `request it puts back reads saved keys); a dry run needs read. ${GUIDE_POINTER}`,
+      + 'NOTHING RUNS AND NOTHING IS BILLED, and no cell changes. Auto-run follows the version, from the rows there '
+      + 'now; one paused by hand stays paused. Needs the write and run scopes (secrets too when a request it puts '
+      + `back reads saved keys); a dry run needs read. ${GUIDE_POINTER}`,
     inputSchema: z.object({
       sheet_id: z.string().describe(SHEET_ID),
       version_id: z.string().describe('The version (list_setup_versions)'),

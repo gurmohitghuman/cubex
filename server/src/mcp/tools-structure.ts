@@ -88,7 +88,9 @@ export function registerStructureTools(server: McpServer, ctx: McpAuthCtx) {
         + '(free, no AI). delete puts the sheet '
         + 'in the trash whole (rows, columns, runs, views, webhook), cancels its active runs and stops its webhook; '
         + 'it is kept for the days set in Settings (30 by default; 0 deletes at once), and restore_from_trash brings '
-        + `it back. Returns the table's updated tab list. ${GUIDE_POINTER}`,
+        + 'it back. Enrichment results its columns bought that were not yet added as rows in another sheet are '
+        + 'dropped (list_results_dropped says how many and for which sheets). Returns the table\'s updated tab list. '
+        + `${GUIDE_POINTER}`,
       inputSchema: {
         action: z.enum(['create', 'rename', 'copy', 'delete', 'reorder']).describe('What to do'),
         table_id: z.string().describe('The table (list_tables)'),

@@ -31,8 +31,9 @@ export function registerRunResultTools(server: McpServer, ctx: McpAuthCtx) {
       description:
         'Each row\'s outcome in a run: row id, status, error message and an error_class saying what to DO. Use it '
         + 'when cells are blank or wrong, instead of rerunning blind. Rerun only the rows whose error_class says a '
-        + 'rerun can work (control_run rerun). include_answers adds each row\'s stored answer, to find '
-        + `paths for add_enrichment_field. Pages by cursor. ${GUIDE_POINTER}`,
+        + 'rerun can work (control_run rerun). include_answers adds each row\'s stored answer (up to '
+        + `${ANSWERS_PAGE_MAX} rows a page), to find paths for add_enrichment_field; on an HTTP run that used saved `
+        + `keys it needs the 'secrets' scope. Pages by cursor. ${GUIDE_POINTER}`,
       inputSchema: {
         run_type: z.enum(['ai', 'http', 'enrichment', 'waterfall']).describe('The kind of run'),
         run_id: z.string().describe('The run (list_runs lists them)'),

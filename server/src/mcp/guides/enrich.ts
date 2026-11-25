@@ -7,11 +7,9 @@ export const ENRICH_GUIDES: Record<string, ToolGuide> = {
   waterfall_column: {
     text: [
       'A value result_type can\'t read is no answer, and the next step runs. A row with none of a step\'s requires '
-        + 'key sets skips it for free. check: verify (treg\'s email verify, paid) or a formula over {{value}}. '
-        + 'column_name holds the answer, "⏭️ Not found" or "❌ <step>: <why>"; "<column> (Answered by)" names the '
-        + 'step.',
-      'A treg answer found within the days set in Settings is reused at $0. dry_run writes nothing and returns each '
-        + 'row\'s trace; a real run then reuses what it bought at $0 for 7 days.',
+        + 'key sets skips it for free. column_name holds the answer, "⏭️ Not found" or "❌ <step>: <why>"; '
+        + '"<column> (Answered by)" names the step.',
+      'A treg answer found within the days set in Settings is reused at $0.',
       'action "describe" (read scope) returns a column\'s setup in this shape to edit and send back (without the '
         + 'secrets scope HTTP keys read "…" and are kept when sent back with the same id and URL).',
     ],
@@ -23,8 +21,6 @@ export const ENRICH_GUIDES: Record<string, ToolGuide> = {
       'A row whose exact lookup found something within the days set in Settings reuses it at $0.',
       'A row whose providers all answer 429 asks again for free (rate_limit_retries), then fails; lower concurrency '
         + 'if 429s go on.',
-      'destination_auto_run lists the auto-runs the new rows set off there, and chained_auto_run this sheet\'s '
-        + 'auto-runs that read what the run writes (HTTP ones send real requests).',
     ],
     fields: { run_if: RUN_IF_HELP, save_only: saveOnlyHelp('run_enrichment') },
     spendCap: true,
