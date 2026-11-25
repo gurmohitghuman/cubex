@@ -3,6 +3,7 @@
 // (services/webhook-auto-delete-sweep.ts), and said in words for the sheet's History.
 import { activeWhere, allOffError, groupItems, isGroup, isOrGroup, type WhereItem } from '../lib/row-filter/where';
 import type { CompiledFilter } from '../lib/row-filter/sql';
+import type { FilterOp } from '../lib/row-filter/ops';
 import { fillingColumns } from '../lib/field-fill-columns';
 import { prepareWhere } from './row-filter';
 
@@ -29,17 +30,29 @@ export function compileAutoDeleteRules(
   return 'error' in prepared ? prepared : { ok: prepared.ok.filter };
 }
 
-// The rules in words, for History: "Score" lt "5" and ("Status" has_result or "Email" not_empty).
+// Each operator in the words the app's filter panel uses (client/src/lib/views.ts whereWords).
+const OP_WORDS: Record<FilterOp, string> = {
+  eq: 'is', neq: 'is not', contains: 'contains', not_contains: 'does not contain', starts_with: 'starts with',
+  ends_with: 'ends with', empty: 'is empty', not_empty: 'is not empty', any_of: 'is any of',
+  not_any_of: 'is none of', gt: 'is greater than', gte: 'is greater than or equal to', lt: 'is less than',
+  lte: 'is less than or equal to', date_eq: 'date is', date_neq: 'date is not', date_gt: 'date is after',
+  date_gte: 'date is on or after', date_lt: 'date is before', date_lte: 'date is on or before',
+  has_error: 'has an error', has_result: 'has a result', not_run: 'is not run yet',
+  condition_not_met: 'is kept out by "Only run if"', running: 'is still running',
+  out_of_date: 'is out of date (its inputs changed)',
+};
+
+// The rules in words, for History: "Score" is less than "5" and ("Status" has a result or "Email" is not empty).
 export function autoDeleteRulesWords(where: readonly WhereItem[]): string {
   const words = (item: WhereItem): string => {
     if (isGroup(item)) {
       const join = isOrGroup(item) ? ' or ' : ' and ';
       return `(${activeWhere(groupItems(item)).map(words).join(join)})`;
     }
-    const subject = item.column === undefined ? 'any run column' : `"${item.column}"`;
+    const subject = item.column === undefined ? 'any AI, HTTP API or enrichment column' : `"${item.column}"`;
     const value = item.values ? ` ${item.values.map(v => `"${v}"`).join(', ')}`
       : item.value === undefined ? '' : ` "${item.value}"`;
-    return `${subject} ${item.operator}${value}`;
+    return `${subject} ${OP_WORDS[item.operator] ?? item.operator}${value}`;
   };
   return activeWhere(where).map(words).join(' and ');
 }

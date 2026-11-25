@@ -93,8 +93,8 @@ const sweep = async (ms = 10_000) => { clock += ms; await autoDeleteSweep(clock)
   check('A back to the first mode clears the rules', view(id)?.mode === 'actions_finish' && view(id)?.where === null,
     view(id))
   check('A History says the rules in words, and that a switch back cleared them',
-    history(id).some(h => h.includes('older rows the webhook added are deleted once they pass its rules: "Score" lt '
-      + '"5"')) && history(id).at(-1)!.endsWith('(its rules are cleared)'), history(id))
+    history(id).some(h => h.includes('older rows the webhook added are deleted once they pass its rules: "Score" is '
+      + 'less than "5"')) && history(id).at(-1)!.endsWith('(its rules are cleared)'), history(id))
 }
 
 // B: rows that pass leave, whether or not auto-run has run on them.
