@@ -1,6 +1,6 @@
 // When a run schedule fires next (lib/run-schedule-time.ts), pure: daily, weekdays, weekly, monthly and every N
 // hours, in a time zone; a wall time a clock change skips fires at the first minute after it, one that happens twice
-// fires the first time; and the time fields are checked.
+// fires the first time (also in a zone more than 12 hours from UTC); and the time fields are checked.
 import assert from 'node:assert/strict'
 import timeMod from '../../server/src/lib/run-schedule-time'
 const { nextFireAt, scheduleTimeProblem } = timeMod as typeof import('../../server/src/lib/run-schedule-time')
@@ -47,6 +47,16 @@ check('a skipped wall time fires at the first minute after it (New York, 02:30 o
 check('a wall time that happens twice fires the first time (New York, 01:30 on 2026-11-01)', () => {
   assert.equal(next({ timeZone: 'America/New_York', atTime: '01:30' }, '2026-11-01T00:00:00Z'),
     '2026-11-01T05:30:00.000Z')
+})
+// Chatham is UTC+13:45 in summer and +12:45 in winter, its clocks changing at 03:45 (back) and 02:45 (forward).
+check('a zone more than 12 hours from UTC: the first time of a doubled hour, and an hour that is not skipped', () => {
+  const chatham = { timeZone: 'Pacific/Chatham' }
+  // 2026-04-05 local, 02:56 happens at 13:11Z (+13:45), then again at 14:11Z (+12:45): the first, and once a day.
+  assert.equal(next({ ...chatham, atTime: '02:56' }, '2026-04-04T11:36:00Z'), '2026-04-04T13:11:00.000Z')
+  assert.equal(next({ ...chatham, atTime: '02:56' }, '2026-04-04T13:12:00Z'), '2026-04-05T14:11:00.000Z')
+  // 2026-09-27 local, 02:44 jumps to 03:45: 02:12 still happens (13:27Z), 03:00 is skipped (first minute: 03:45).
+  assert.equal(next({ ...chatham, atTime: '02:12' }, '2026-09-26T11:16:00Z'), '2026-09-26T13:27:00.000Z')
+  assert.equal(next({ ...chatham, atTime: '03:00' }, '2026-09-26T11:16:00Z'), '2026-09-26T14:00:00.000Z')
 })
 check('time zones with a half hour, and UTC', () => {
   assert.equal(next({ timeZone: 'Asia/Kolkata' }, '2026-11-24T00:00:00Z'), '2026-11-24T03:30:00.000Z')

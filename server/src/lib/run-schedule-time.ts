@@ -34,12 +34,16 @@ function wallAsUtc(ms: number, zone: string): number {
 const offsetAt = (ms: number, zone: string) => wallAsUtc(ms, zone) - Math.floor(ms / 1000) * 1000;
 
 // The instant a wall time (given as the UTC instant that reads the same) happens in the zone: the earlier one when
-// it happens twice, the first minute after it when a clock change skips it.
+// it happens twice, null when a clock change skips it. The offsets tried are the zone's a day before and after (one
+// on each side of a change), not half a day: a zone more than 12 hours from UTC (Chatham, +13:45 in summer) is
+// still on the far side of a change half a day away, and took the later time, or a time it has, for skipped.
 const exactly = (wall: number, zone: string): number | null => {
-  for (const guess of [wall - offsetAt(wall - DAY / 2, zone), wall - offsetAt(wall + DAY / 2, zone)]) {
-    if (wallAsUtc(guess, zone) === wall) return guess;
+  let first: number | null = null;
+  for (const offset of new Set([offsetAt(wall - DAY, zone), offsetAt(wall, zone), offsetAt(wall + DAY, zone)])) {
+    const at = wall - offset;
+    if (wallAsUtc(at, zone) === wall && (first === null || at < first)) first = at;
   }
-  return null;
+  return first;
 };
 function instantOf(wall: number, zone: string): number {
   for (let m = 0; m <= 180; m++) {
