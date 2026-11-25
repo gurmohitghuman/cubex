@@ -8,6 +8,7 @@ import { timeZoneOf } from '../lib/ai-visibility/check';
 import { createHiringTable } from '../services/hiring-create';
 import { estimateHiringCheck, startHiringCheck } from '../services/hiring-check';
 import { hiringFor, hiringView } from '../services/hiring-store';
+import { setHiringCompanyFilters } from '../services/hiring-filters-set';
 import { runFailHttpStatus } from '../services/run-shared';
 
 const router = express.Router();
@@ -47,6 +48,20 @@ router.get('/:id', (req: AuthRequest, res) => {
   } catch (error) {
     console.error('Read hiring table error:', error);
     res.status(500).json({ error: 'Failed to read the hiring table' });
+  }
+});
+
+// PATCH /:id: {minRoles, leaveOutCompanies} (either or both): its filters on Companies, from the next check.
+router.patch('/:id', (req: AuthRequest, res) => {
+  try {
+    const rec = recordOf(req, res);
+    if (!rec) return;
+    const out = setHiringCompanyFilters(req.userId!, rec.id, isObj(req.body) ? req.body : {}, 'camel');
+    if ('fail' in out) return res.status(runFailHttpStatus(out)).json({ error: out.message });
+    res.json({ hiring: out.ok });
+  } catch (error) {
+    console.error('Change hiring table error:', error);
+    res.status(500).json({ error: 'Failed to change the hiring table' });
   }
 });
 

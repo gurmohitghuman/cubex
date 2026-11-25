@@ -1,8 +1,8 @@
 import express from 'express';
 import { db } from '../lib/db';
 import { WEBHOOK_BODY_TIMEOUT_MS, WEBHOOK_MAX_BODY_BYTES, WEBHOOK_TOKEN_PATTERN } from '../lib/constants';
-import { sha256Hex } from '../lib/webhook-token';
-import { takeWebhookToken } from '../lib/webhook-bucket';
+import { sha256Hex, webhookAuthMatches } from '../lib/webhook-token';
+import { holdWebhookBody, takeWebhookToken } from '../lib/webhook-bucket';
 import { checkPayloadShape } from '../lib/json-guard';
 import {
   appendWebhookDelivery,
@@ -27,6 +27,7 @@ interface WebhookReq extends express.Request {
   webhookSource?: WebhookSourceRow;
   // The hash checked: the append lands only while the webhook still has it.
   webhookTokenHash?: string;
+  webhookAuthHash?: string | null;
   idempotencyKey?: string | null;
 }
 
@@ -51,13 +52,30 @@ function validateSource(req: WebhookReq, res: express.Response, next: express.Ne
   // Step 3: token_hash lookup -> unknown, disabled or its sheet in the trash: generic 404.
   const tokenHash = sha256Hex(token);
   const source = db.prepare(
-    `SELECT id, user_id, sheet_id, enabled, raw_column_name, store_raw_mode, total_received
+    `SELECT id, user_id, sheet_id, enabled, raw_column_name, store_raw_mode, total_received, auth_token_hash
        FROM webhook_sources ws WHERE token_hash = ?
          AND EXISTS (SELECT 1 FROM sheets s WHERE s.id = ws.sheet_id AND s.trash_id IS NULL)`,
   ).get(tokenHash) as WebhookSourceRow | undefined;
   if (!source || source.enabled !== 1) {
     return res.status(404).json({ error: 'Not found' });
   }
+
+  // Its token, when it has one (Authorization: Bearer <token>): missing or wrong gets the same generic 404 as
+  // a wrong URL, so the answer doesn't say a token is needed. Checked before the bucket, so a sender with only
+  // the URL can't use up the real sender's allowance.
+  if (source.auth_token_hash && !webhookAuthMatches(req.headers.authorization, source.auth_token_hash)) {
+    return res.status(404).json({ error: 'Not found' });
+  }
+
+  // The bucket below counts starts; this caps the events still arriving at once, which slow bodies could
+  // otherwise pile up (each may take WEBHOOK_BODY_TIMEOUT_MS). First, so an event refused here doesn't spend
+  // the sender's allowance. Released when the request ends, however it ends (a refusal below too).
+  const release = holdWebhookBody(source.id);
+  if (!release) {
+    res.setHeader('Retry-After', '1');
+    return res.status(429).json({ error: 'Too many events are arriving at once.' });
+  }
+  res.once('close', release);
 
   // Step 4: per-source bucket — keyed on the STABLE source.id (not the token
   // hash) so rotation can't reset the limit, and ONLY now that the token is
@@ -78,6 +96,7 @@ function validateSource(req: WebhookReq, res: express.Response, next: express.Ne
 
   req.webhookSource = source;
   req.webhookTokenHash = tokenHash;
+  req.webhookAuthHash = source.auth_token_hash ?? null;
   req.idempotencyKey = idem.key;
   next();
 }
@@ -138,7 +157,7 @@ router.post('/:token', validateSource, bodyDeadline, parseBody, (req: WebhookReq
   // Step 7: the append transaction (row cap, insert, delivery, prune, data_version).
   try {
     const result = appendWebhookDelivery(source, mappings, payload, rawPayloadText,
-      { idempotencyKey: req.idempotencyKey, tokenHash: req.webhookTokenHash });
+      { idempotencyKey: req.idempotencyKey, tokenHash: req.webhookTokenHash, authHash: req.webhookAuthHash });
     if (!result.ok) {
       // Its sheet went to the trash, or the URL was rotated, turned off or
       // deleted, meanwhile: the generic 404.

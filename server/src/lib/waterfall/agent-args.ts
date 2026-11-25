@@ -22,7 +22,7 @@ const isObj = (v: unknown): v is Json => !!v && typeof v === 'object' && !Array.
 export const AGENT_TOP = ['sheet_id', 'column_name', 'add_to_column', 'result_type', 'phone', 'inputs', 'steps',
   'answered_by_column', 'hide_step_columns', 'rows', 'test', 'use_sheet_filter', 'target_row_ids', 'run_if',
   'spend_limit_usd', 'concurrency', 'rate_limit_retries', 'fresh', 'estimate_only', 'idempotency_key', 'webhook_id',
-  'auto_run', 'action', 'dry_run', 'test_step', 'template'];
+  'auto_run', 'action', 'dry_run', 'test_step', 'template', 'save_only'];
 const STEP_KEYS: Record<string, string[]> = {
   enrichment: ['tool_id', 'inputs', 'value_path', 'provider_order', 'skip_providers', 'stop_at_first',
     'max_cost_usd'],

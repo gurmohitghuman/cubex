@@ -13,9 +13,12 @@ import { generateWebhookToken, revealWebhookSecret, sha256Hex } from './webhook-
 // one you browse on (a tunnel, a public domain in front of a LAN install).
 // Otherwise it's a path, and the browser resolves it against the address the
 // user is actually on (WebhookEndpoint.tsx).
-export function webhookUrlForSecret(secret: string): string {
-  const base = (process.env.PUBLIC_URL || '').replace(/\/$/, '');
-  return `${base}/api/webhooks/${secret}`;
+// base: an API or MCP caller has no page to resolve a path against, so it gets
+// the absolute address it reached Cubex on (lib/file-links.ts linkBase), which
+// is PUBLIC_URL when that is set.
+export function webhookUrlForSecret(secret: string, base?: string): string {
+  const at = (base ?? process.env.PUBLIC_URL ?? '').replace(/\/+$/, '');
+  return `${at}/api/webhooks/${secret}`;
 }
 
 export interface WebhookSourceFull {
@@ -33,6 +36,8 @@ export interface WebhookSourceFull {
   last_error_message: string | null;
   created_at: string;
   rotated_at: string | null;
+  auth_token_hash: string | null;
+  auth_token_set_at: string | null;
 }
 
 export function getSourceForSheet(sheetId: string, userId: string): WebhookSourceFull | null {
@@ -64,6 +69,9 @@ export function serializeSource(src: WebhookSourceFull): Record<string, unknown>
     lastErrorMessage: src.last_error_message,
     createdAt: src.created_at,
     rotatedAt: src.rotated_at,
+    // Senders must send its token (Authorization: Bearer). Never the token or its hash.
+    tokenRequired: !!src.auth_token_hash,
+    tokenSetAt: src.auth_token_set_at,
     // Reveal window: full URL until first delivery, then masked.
     masked: !revealable,
     url: secret ? webhookUrlForSecret(secret) : null,

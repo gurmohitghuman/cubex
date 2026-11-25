@@ -1,9 +1,9 @@
 // Shared by the tests of the deadline on an answer whose client stopped reading it (answer-stall, -slow and -unseen)
 // and of an export's end (export-stop): the check and log capture, a server on a Unix socket (a named pipe on Windows)
 // with the server's timeouts, the time each tagged connection closed, and clients that never read or read a chunk every
-// 10 ms. A Unix socket, not TCP: TCP's buffers here grow to 32 MB a side and would take a stalled answer whole. A Unix
-// socket's are small and fixed, and answers go out through the same Node stream code either way. The client can't see a
-// hang-up it doesn't read, so the server's sockets are watched.
+// 10 ms (or at a set pace). A Unix socket, not TCP: TCP's buffers here grow to 32 MB a side and would take a stalled
+// answer whole. A Unix socket's are small and fixed, and answers go out through the same Node stream code either way.
+// The client can't see a hang-up it doesn't read, so the server's sockets are watched.
 import fs from 'node:fs'
 import net from 'node:net'
 import os from 'node:os'
@@ -70,14 +70,17 @@ export function stallKit(name: string) {
     return closedAt.has(tag) ? closedAt.get(tag)! - started : -1
   }
   // A client that sends its requests and reads a chunk at a time, one every 10 ms, until every answer is in or the
-  // server hangs up: each answer's status, body bytes and declared length, and the time.
-  function steady(paths: string | string[]): Promise<{ got: Got[]; ms: number }> {
+  // server hangs up: each answer's status, body bytes and declared length, and the time. A chunk is what the
+  // system's buffers hold, 8 KB on a Mac's Unix socket and far more on Linux, so with `bytesPerSecond` it reads at
+  // that pace instead, whatever the chunk size: it waits only while it is ahead of it.
+  function steady(paths: string | string[], bytesPerSecond?: number): Promise<{ got: Got[]; ms: number }> {
     return new Promise(resolve => {
       const c = open(paths)
       const started = Date.now(), got: Got[] = []
-      let head = ''
+      let head = '', read = 0
       const done = () => { c.destroy(); resolve({ got, ms: Date.now() - started }) }
       c.on('data', (d: Buffer) => {
+        read += d.length
         for (let rest = d.toString('latin1'); rest;) {
           const body = got.at(-1)
           if (body && body.bytes < body.length) {
@@ -96,8 +99,10 @@ export function stallKit(name: string) {
         }
         const last = got.at(-1)
         if (got.length === [paths].flat().length && last!.bytes >= last!.length) return done()
+        const wait = bytesPerSecond ? (read * 1000) / bytesPerSecond - (Date.now() - started) : 10
+        if (wait <= 0) return
         c.pause()
-        setTimeout(() => c.resume(), 10)
+        setTimeout(() => c.resume(), wait)
       })
       c.on('close', done)
     })

@@ -14,11 +14,25 @@ export const isSearchKey = (e: KeyboardEvent): boolean =>
 // AG Grid rebuild every column (recreateColumnDefs) on every re-render of the
 // sheet: each cell edit, live-update batch and loadMore page.
 
+// Tab on a focused run cell goes to its play button (RunRowButton) before the next cell, and Shift+Tab on the
+// button back to its cell: the grid leaves those two to the cell, which moves the focus itself. Enter and Space on
+// the button press it (the grid would start editing the cell instead).
+export const runButtonKey = (e: KeyboardEvent): boolean => {
+  if (e.ctrlKey || e.metaKey || e.altKey) return false
+  const at = e.target as HTMLElement | null
+  if (!at) return false
+  const onButton = at.classList.contains('cube-run-row')
+  if (e.key === 'Enter' || e.key === ' ') return onButton
+  if (e.key !== 'Tab') return false
+  return e.shiftKey ? onButton : !!at.querySelector?.(':scope .cube-run-row')
+}
+
 export const DEFAULT_COL_DEF: ColDef = {
   sortable: false, filter: true, resizable: true, editable: true, minWidth: 100, suppressSizeToFit: true,
   // A search key on a cell that isn't being edited opens search (the grid's
   // wrapper handles it) instead of starting an edit with "/".
-  suppressKeyboardEvent: (p: SuppressKeyboardEventParams) => !p.editing && isSearchKey(p.event),
+  suppressKeyboardEvent: (p: SuppressKeyboardEventParams) =>
+    !p.editing && (isSearchKey(p.event) || runButtonKey(p.event)),
 }
 
 // The grid's context (AgGridReact `context`): read by cells, never re-rendering

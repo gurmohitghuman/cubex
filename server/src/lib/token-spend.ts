@@ -46,11 +46,10 @@ export const capNoRoomMessage = (t: CapOf, perRowUsd: number): string => `The ac
 export const OVERSHOOT_NOTE = 'At the cap, new AI and enrichment runs, previews and AI helpers are refused, and '
   + 'running ones pause (resume them once the cap is raised; an auto-run goes on by itself). HTTP API runs cost '
   + 'nothing here and go on. Calls already in flight finish and count, so spend can pass the cap by those alone: '
-  + `an AI run has up to its concurrency of rows out at once (default ${DEFAULT_AI_CONCURRENCY}, at most `
-  + `${MAX_AI_CONCURRENCY}) and up to ${WORKER_POOL_SIZE} runs work at once; a preview runs up to ${PREVIEW_MAX_ROWS} `
-  + `rows, at most ${MAX_ACTIVE_PREVIEWS_PER_USER} previews at once; each AI helper makes one or two small calls. An `
-  + 'enrichment or waterfall run first holds room for its rows at their per-row cap, so it stops before the cap '
-  + '(one with no per-row cap stops once what was billed reaches it).';
+  + `an AI run's concurrency of rows (default ${DEFAULT_AI_CONCURRENCY}, at most ${MAX_AI_CONCURRENCY}) in each of `
+  + `up to ${WORKER_POOL_SIZE} runs, a preview's ${PREVIEW_MAX_ROWS} rows (at most ${MAX_ACTIVE_PREVIEWS_PER_USER} `
+  + 'previews), an AI helper\'s one or two small calls. An enrichment or waterfall run holds room for its rows at '
+  + 'their per-row cap, so it stops before the cap (with no per-row cap, once what was billed reaches it).';
 
 // What the agent-facing tools say (nothing without a cap): the cap and what
 // was left when the tool list was made. full: also what happens at the cap

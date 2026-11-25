@@ -34,7 +34,7 @@ X-Cubex-Signature: sha256=5c0a...e19b
 | Field | What it is |
 |---|---|
 | `event` | `run.finished`, or `test` for a test notice (its other fields are `null`). |
-| `run_id` | The run. Read it with `get_run_status` (MCP) or `GET /api/v1/ai-runs/:id`, `GET /api/v1/http-runs/:id`; a setup with `get_setup_run` or `GET /api/v1/setup-runs/:id`. |
+| `run_id` | The run. Read it with `get_run_status` (MCP) or `GET /api/v1/ai-runs/:id`, `GET /api/v1/http-runs/:id`; a setup or a column run (`run_columns`) with `get_setup_run` or `GET /api/v1/setup-runs/:id`. |
 | `kind` | `ai`, `http`, `enrichment`, `waterfall` or `setup`. |
 | `sheet_id` | The sheet it ran on. |
 | `status` | `completed`, `failed` or `cancelled`. Completed means every row was processed, not that every row worked: the run's status tells you how many failed. |
@@ -110,7 +110,7 @@ To check one by hand: `printf '%s' "$BODY" | openssl dgst -sha256 -hmac "$SECRET
 
 ## For agents and scripts
 
-Pass a webhook's id as `webhook_id` when you start a run: `run_ai_column`, `run_http_enrichment`, `run_enrichment`, `waterfall_column`, `apply_setup` and a `control_run` rerun over MCP, or the same field on `POST /api/v1/sheets/:id/ai-runs`, `/http-runs`, `/enrichment-runs`, `/waterfall-columns`, `/setups/:id/apply` and the reruns. That webhook hears when the run finishes, even when it's set to hear only named runs. `list_run_webhooks` (MCP) and `GET /api/v1/run-webhooks` list the ids.
+Pass a webhook's id as `webhook_id` when you start a run: `run_ai_column`, `run_http_enrichment`, `run_enrichment`, `waterfall_column`, `apply_setup`, `run_columns` and a `control_run` rerun over MCP, or the same field on `POST /api/v1/sheets/:id/ai-runs`, `/http-runs`, `/enrichment-runs`, `/waterfall-columns`, `/setups/:id/apply`, `/column-runs` and the reruns. That webhook hears when the run finishes, even when it's set to hear only named runs. `list_run_webhooks` (MCP) and `GET /api/v1/run-webhooks` list the ids.
 
 With **every run** on, a webhook also hears each step of a setup (each is a run of its own) as well as the setup, and every auto-run batch.
 
