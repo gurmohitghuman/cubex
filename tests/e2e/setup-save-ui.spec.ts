@@ -67,7 +67,8 @@ test('enrichment and waterfall columns: Save in the drawer runs nothing', async 
   const on = await api.put(`/api/autorun/sheets/${sheetId}/columns`, { data: {
     column: 'Work email', enabled: true, dailyCapUsd: 1 } })
   expect(on.status(), await on.text()).toBe(200)
-  const paused = await api.post(`/api/autorun/sheets/${sheetId}/pause`, { data: { paused: true, column: 'Work email' } })
+  const paused = await api.post(`/api/autorun/sheets/${sheetId}/pause`, {
+    data: { paused: true, column: 'Work email' } })
   expect(paused.status(), await paused.text()).toBe(200)
   const autoRun = () => readDb(db => db.prepare(`SELECT enabled, paused_reason FROM autorun_columns
     WHERE sheet_id = ? AND status_column = ?`).get(sheetId, 'Work email'))
