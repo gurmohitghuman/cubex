@@ -42,7 +42,7 @@ export interface SocialTable {
 const COMMENT_SHEET_COLUMNS = [C.post, C.platform, C.author, C.text, C.likes, C.replies];
 
 // A platform's Posts columns: its search's, its formulas, then each step picked.
-function postsColumnsOf(platform: Platform, input: SocialInput): string[] {
+export function postsColumnsOf(platform: Platform, input: SocialInput): string[] {
   const spec = PLATFORM_SPECS[platform];
   const has = (s: string) => input.steps.includes(s as SocialInput['steps'][number]);
   const creator = has('creator') && spec.creator ? [S.creator, ...spec.creator.outputs.map(o => o.columnName)] : [];
