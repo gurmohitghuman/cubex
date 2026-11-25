@@ -9,9 +9,9 @@
 import { runAs } from '../lib/actor';
 import express from 'express';
 import { contentDispositionFilename } from '../lib/csv-safety';
-import { planSheetExport } from '../lib/csv-export';
+import { exportContentType, planSheetExport } from '../lib/csv-export';
 import type { WhereItem } from '../lib/row-filter/where';
-import { responseWriter, writeSheetCsv } from '../lib/csv-write';
+import { responseWriter, writeSheetCsv, writeSheetJsonl } from '../lib/csv-write';
 import { findFileLink, linkOptions, releaseFileLink, useFileLink } from '../lib/file-links';
 import { busyMessage, sheetBusyWith, withSheetRead } from '../lib/sheet-busy';
 import { redactError } from '../lib/redact';
@@ -115,9 +115,10 @@ router.get('/download/:token', async (req, res) => {
   try {
     const link = findFileLink(token, 'download');
     if (!link) return notFound(res);
-    const plan = planSheetExport(
-      link.sheet_id, link.user_id, linkOptions<{ columns: string[]; where: WhereItem[]; saved: WhereItem[] }>(link),
-    );
+    // format: 'jsonl' for JSON lines (create_download_link format); a link from before has none: CSV.
+    const options = linkOptions<{ columns: string[]; where: WhereItem[]; saved: WhereItem[]; format: string }>(link);
+    const jsonl = options.format === 'jsonl';
+    const plan = planSheetExport(link.sheet_id, link.user_id, options);
     if ('fail' in plan) {
       return plan.fail === 'not_found' ? notFound(res)
         : res.status(409).json({
@@ -127,9 +128,9 @@ router.get('/download/:token', async (req, res) => {
     // The link is used inside the read hold, so a busy sheet leaves it unused.
     const outcome = await withSheetRead(link.sheet_id, async () => {
       if (!useFileLink(link)) return 'used' as const;
-      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-      res.setHeader('Content-Disposition', contentDispositionFilename(plan.sheetName, 'csv'));
-      await writeSheetCsv(link.sheet_id, link.user_id, plan, responseWriter(res));
+      res.setHeader('Content-Type', exportContentType(jsonl ? 'jsonl' : 'csv'));
+      res.setHeader('Content-Disposition', contentDispositionFilename(plan.sheetName, jsonl ? 'jsonl' : 'csv'));
+      await (jsonl ? writeSheetJsonl : writeSheetCsv)(link.sheet_id, link.user_id, plan, responseWriter(res));
       res.end();
       return 'sent' as const;
     });
