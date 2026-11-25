@@ -4,6 +4,7 @@ import csv from 'csv-parser';
 import { sanitizeColumnName } from './sql-helpers';
 import { stripControlAndC1Chars, stripFormulaGuard } from './csv-safety';
 import { stripInvisibleNameChars } from './name-safety';
+import { cutChars } from './row-select/cut-cells';
 
 // Parsing half of CSV import (the validation + cap checks live in
 // csv-import-validate.ts). ZERO mutation — nothing here touches the sheet.
@@ -22,7 +23,8 @@ export interface ScannedCsv { summary: CsvSummary; rows: () => AsyncIterable<Rec
 const SHOWN_HEADER_CHARS = 80;
 function shownHeader(raw: string): string {
   const clean = stripInvisibleNameChars(stripControlAndC1Chars(String(raw))).replace(/\s+/g, ' ').trim();
-  return clean.length > SHOWN_HEADER_CHARS ? `${clean.slice(0, SHOWN_HEADER_CHARS)}…` : clean;
+  // cutChars never ends on the first half of a surrogate pair (an emoji cut in two).
+  return clean.length > SHOWN_HEADER_CHARS ? `${cutChars(clean, SHOWN_HEADER_CHARS)}…` : clean;
 }
 
 // Thrown when two raw CSV headers collapse to the same sanitized name. The route
