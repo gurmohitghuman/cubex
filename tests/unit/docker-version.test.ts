@@ -42,4 +42,13 @@ const bare = fs.mkdtempSync(path.join(os.tmpdir(), 'cubex-dv-'))
 assert.equal(dockerVersion(bare, { SOURCE_COMMIT: A }), 'main aaaaaaa')
 assert.equal(dockerVersion(bare, none), '')
 console.log('ok   CUBEX_VERSION as it is; SOURCE_COMMIT without a .git; nothing with neither')
+// The build context brings what the script reads: .dockerignore leaves .git out, all but HEAD, the refs and
+// packed-refs (an exception after the exclusion wins), never its config or objects.
+const ignore = fs.readFileSync(path.join(process.cwd(), '.dockerignore'), 'utf8').split(/\r?\n/)
+  .map(l => l.trim())
+const at = (line: string) => ignore.lastIndexOf(line)
+assert.ok(at('.git') >= 0, '.git is left out of the build context')
+for (const kept of ['!.git/HEAD', '!.git/refs', '!.git/packed-refs']) assert.ok(at(kept) > at('.git'), kept)
+assert.deepEqual(ignore.filter(l => l.startsWith('!.git')).sort(), ['!.git/HEAD', '!.git/packed-refs', '!.git/refs'])
+console.log('ok   the build context keeps .git\'s HEAD, refs and packed-refs, and nothing else of it')
 console.log('docker-version: all assertions passed')
