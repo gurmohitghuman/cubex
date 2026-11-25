@@ -19,6 +19,22 @@ export interface HttpRerunBasis {
   cleanMaster: string; latestRun: HTTPRunRow; config: HTTPAPIConfig; extractedColumns: string[];
 }
 
+// A run of the column still going (or a stopped one still clearing its ⏳ cells, migration 004: its clear
+// would wipe a new run's placeholders in rows it hasn't reached), as the refusal a rerun or a new setup gives.
+export function httpRunActiveOn(sheetId: string, userId: string, master: string): RunFail | null {
+  const conflictingRun = db.prepare(`
+    SELECT id FROM http_runs
+    WHERE sheet_id = ? AND user_id = ? AND master_column_name = ?
+      AND (status IN ('pending','running','paused') OR placeholder_work IS NOT NULL)
+    LIMIT 1
+  `).get(sheetId, userId, master);
+  return conflictingRun ? {
+    fail: 'conflict',
+    message: autorunFillingColumn(sheetId, userId, master) ?? 'A run on this column is still active, or still '
+      + 'clearing the cells of a stopped run. Wait for it to finish, or stop it first.',
+  } : null;
+}
+
 export function httpRerunChecks(userId: string, p: HttpRerunParams): RunFail | HttpRerunBasis {
   // A sheet busy sorting, importing or rewriting a column takes no run (lib/sheet-busy.ts).
   const busy = sheetBusyWith(p.sheetId);
@@ -31,19 +47,8 @@ export function httpRerunChecks(userId: string, p: HttpRerunParams): RunFail | H
   const cleanMaster = getSheetColumns(p.sheetId, userId, false).includes(p.masterColumnName)
     ? p.masterColumnName : sanitizeColumnName(p.masterColumnName);
 
-  const conflictingRun = db.prepare(`
-    SELECT id FROM http_runs
-    WHERE sheet_id = ? AND user_id = ? AND master_column_name = ?
-      -- A stopped run still clearing its ⏳ cells (migration 004) counts: its
-      -- clear would wipe the new run's placeholders in rows it hasn't reached.
-      AND (status IN ('pending','running','paused') OR placeholder_work IS NOT NULL)
-    LIMIT 1
-  `).get(p.sheetId, userId, cleanMaster);
-  if (conflictingRun) return {
-    fail: 'conflict',
-    message: autorunFillingColumn(p.sheetId, userId, cleanMaster) ?? 'A run on this column is still active, or still '
-      + 'clearing the cells of a stopped run. Wait for it to finish, or stop it first.',
-  };
+  const active = httpRunActiveOn(p.sheetId, userId, cleanMaster);
+  if (active) return active;
 
   // rowid is monotonic insert order — a reliable "newest" tiebreaker when two
   // runs share a created_at second (uuid id ordering is random and would pick

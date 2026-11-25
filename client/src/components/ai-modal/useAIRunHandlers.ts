@@ -117,7 +117,8 @@ export const useAIRunHandlers = (a: Args) => {
       // and the header pill appears, both clear signals. (Credit reuse still
       // happens server-side; result.reusedRows is left unused by design — the
       // owner asked not to surface a "reused N preview results" toast.)
-      if (result.runId) a.onRunStarted?.(result.runId)
+      if (!result.runId) return
+      a.onRunStarted?.(result.runId)
 
       const { run, spend } = await aiAPI.getRun(result.runId)
       setCurrentRun(run as any); setRunSpend(spend ?? null); setIsPolling(true); a.setStep('run')
@@ -125,6 +126,23 @@ export const useAIRunHandlers = (a: Args) => {
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Failed to start AI run')
     }
+  }
+
+  // Save (an edit's): the setup becomes the column's and nothing runs; its next run uses it.
+  const [isSaving, setIsSaving] = useState(false)
+  const handleSave = async () => {
+    if (!a.columnName.trim() || a.nameError) return toast.error(a.nameError || 'Please provide a valid column name')
+    if (!a.model) return toast.error('Choose a model under Configure, or set a default model in Settings.')
+    setIsSaving(true)
+    try {
+      await aiAPI.startRun({ ...runBody(), saveOnly: true })
+      toast.success('Setup saved. Nothing ran.')
+      a.onSuccess()
+      a.resetState()
+      a.onClose()
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Couldn\'t save the setup')
+    } finally { setIsSaving(false) }
   }
 
   // Pause/resume/cancel toasts removed — the header pill state changes
@@ -156,7 +174,7 @@ export const useAIRunHandlers = (a: Args) => {
     // Preview state + handlers, re-exported so AIColumnModal keeps one hook surface.
     ...preview,
     runResults, runSpend, currentRun, setCurrentRun, isPolling, setIsPolling,
-    handleStartRun,
+    handleStartRun, handleSave, isSaving,
     handlePauseRun, handleResumeRun, handleCancelRun, raiseLimitFor, setRaiseLimitFor,
   }
 }

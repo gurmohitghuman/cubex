@@ -16,6 +16,10 @@ async function restorePicked(trashId: number, seqs: number[]) {
   return { ...got, rows }
 }
 
+// Every delete's toast stays this long, with Restore or without (a column whose cells are still moving in says
+// where to restore it from later, and needs as long to read).
+const DELETED_TOAST_MS = 10_000
+
 // A delete's success toast with "Restore" when it went to the trash: one click
 // puts it back (services/trash-restore*.ts), then `onRestored` reloads what shows it.
 // seqs: only those rows of the batch (auto-dedupe's batch holds a whole day's).
@@ -23,7 +27,7 @@ export function toastDeleted(
   message: string, trashId: number | null | undefined,
   opts: { id?: string; onRestored?: () => void; seqs?: number[] } = {},
 ): void {
-  if (!trashId) { toast.success(message, opts.id ? { id: opts.id } : undefined); return }
+  if (!trashId) { toast.success(message, { id: opts.id, duration: DELETED_TOAST_MS }); return }
   const restore = async (toastId: string) => {
     toast.dismiss(toastId)
     const busy = toast.loading('Restoring…')
@@ -47,5 +51,5 @@ export function toastDeleted(
       <button type="button" className="underline whitespace-nowrap" onClick={() => void restore(t.id)}
         data-testid="deleted-toast-restore">Restore</button>
     </span>
-  ), { id: opts.id, duration: 10000 })
+  ), { id: opts.id, duration: DELETED_TOAST_MS })
 }

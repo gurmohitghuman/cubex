@@ -23,9 +23,12 @@ const KEEP = { keepFence: true };
 
 const forgetUsage = (runId: string) => db.prepare('DELETE FROM run_usage WHERE run_id = ?').run(runId);
 
-// setupOnly 2: set up by a template (a social research table's AI steps), never run; 1: restored.
+// setup_only 3: a setup someone saved without running it (services/column-setup-save.ts).
+export const SETUP_SAVED = 3;
+
+// setupOnly 2: set up by a template (a social research table's AI steps), never run; 1: restored; 3: saved.
 export function writeAiSetup(
-  sheetId: string, userId: string, column: string, f: AiFill, setupOnly: 1 | 2 = 1,
+  sheetId: string, userId: string, column: string, f: AiFill, setupOnly: 1 | 2 | 3 = 1,
 ): string {
   const id = uuidv4();
   const structured = !!f.outputColumns?.length;
@@ -46,10 +49,10 @@ export function writeAiSetup(
 
 // columns: the sheet's columns once the restore has added its own back. A
 // caller that can't use saved keys freezes them off, as its reruns would.
-// setupOnly 2: set up by a template (an AI visibility table), never run; 1: restored.
+// setupOnly 2: set up by a template (an AI visibility table), never run; 1: restored; 3: saved (SETUP_SAVED).
 export function writeHttpSetup(
   sheetId: string, userId: string, column: string, f: HttpFill, columns: string[], hasSecretsScope: boolean,
-  setupOnly: 1 | 2 = 1,
+  setupOnly: 1 | 2 | 3 = 1,
 ): string {
   const id = uuidv4();
   db.prepare(`INSERT INTO http_runs (id, sheet_id, user_id, config, status, total_rows, processed_rows,

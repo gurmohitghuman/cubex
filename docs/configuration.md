@@ -4,6 +4,8 @@
 
 Everything is optional. Settings live in `~/.cubex/config.env` (on Windows, `%LOCALAPPDATA%\cubex\config.env`), one `KEY=value` per line; after a change, run `cubex restart`. (With Docker, Coolify or a source checkout, they live elsewhere: see [Other ways to run Cubex](other-ways-to-run.md).)
 
+A setting in milliseconds (its name ends in `_MS`) is at most `2147483647` (about 24.8 days), the longest wait Node can keep: a longer value counts as that, and the log says so once when Cubex starts.
+
 | Variable | Default | What it does |
 |---|---|---|
 | `PORT` | `3002` | Port Cubex listens on. |

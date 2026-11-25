@@ -42,7 +42,7 @@ function send(res: express.Response, r: TokenRunResult) {
 //         temperature?, web_search?, search_engine?, search_mode?,
 //         max_searches_per_row?, web_fetch?, max_content_tokens?, max_pages_per_row?, max_chars?, concurrency?,
 //         target_row_ids?, estimate_only?, preview_rows?, idempotency_key?, webhook_id?,
-//         max_cost_usd?, allow_unpriced?, spend_limit_usd? }
+//         max_cost_usd?, allow_unpriced?, spend_limit_usd?, save_only? }
 router.post('/sheets/:id/ai-runs', requireScope('run'), async (req: TokenAuthRequest, res) => {
   try {
     const b = (req.body ?? {}) as Record<string, unknown>;
@@ -59,7 +59,7 @@ router.post('/sheets/:id/ai-runs', requireScope('run'), async (req: TokenAuthReq
 // Body: { url, method?, headers?, body?, response_mapping: [{ json_path,
 //         column_name }], master_column_name?, batch_size?, timeout_ms?, retries?,
 //         retry_post?, skip_empty_values?, status_code_column?, webhook_id?,
-//         target_row_ids?, run_if?, estimate_only?, idempotency_key? } (the MCP
+//         target_row_ids?, run_if?, estimate_only?, idempotency_key?, save_only? } (the MCP
 //         tool's fields; `curl` + `save_keys` can stand in for url/method/headers/
 //         body), or the earlier shape { config: { requestConfig (timeout = ms),
 //         responseMapping: [{ jsonPath, columnName }], batchSize, runIf }, ... }.
@@ -83,7 +83,7 @@ router.post('/sheets/:id/http-runs', requireScope('run'), async (req: TokenAuthR
     send(res, await tokenStartHttpRun(caller(req), {
       ...args, sheet_id: req.params.id, master_column_name: b.master_column_name,
       target_row_ids: b.target_row_ids, estimate_only: b.estimate_only, idempotency_key: idempotencyKey(req, b),
-      status_code_column: b.status_code_column, webhook_id: b.webhook_id,
+      status_code_column: b.status_code_column, webhook_id: b.webhook_id, save_only: b.save_only,
     }));
   } catch (error) {
     console.error('POST /v1/sheets/:id/http-runs error:', error);

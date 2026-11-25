@@ -29,6 +29,7 @@ if (nodeTooOld) {
 
 import express from 'express';
 import { runMigrations } from './db/migrate';
+import { adoptLegacyRunInputs } from './lib/run-inputs/legacy';
 import { assertEncryptionConfigured } from './lib/crypto';
 import { applyServerMiddleware } from './lib/server-middleware';
 import { escapeC1InJson } from './lib/json-c1-escape';
@@ -85,6 +86,8 @@ import { sizeWalFile } from './lib/wal-file';
 
 // Run database migrations on boot before anything else.
 runMigrations();
+// Out-of-date stamps from before migration 066 get their input list, before anything reads them.
+adoptLegacyRunInputs();
 // On Windows the -wal file is made its full size now, before any other thread or process opens the database and
 // before the server serves, so no commit has to grow it (lib/wal-file.ts).
 sizeWalFile(db, DB_PATH);

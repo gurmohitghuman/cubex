@@ -17,12 +17,14 @@ import { sheetNameTaken } from '../lib/sheet-crud-helpers';
 import { checkNames, daysSince, type CheckNames } from '../lib/ai-visibility/check';
 import { changeFormula } from '../lib/ai-visibility/formulas';
 import {
-  AI_VISIBILITY_CHECK_SOON_DAYS, FORMULA_MAX_CHARS, HEAVY_JOB_RETRY_MS, MAX_COLUMNS_PER_SHEET,
+  AI_VISIBILITY_CATCH_UP_MS, AI_VISIBILITY_CATCH_UP_POLL_MS, AI_VISIBILITY_CHECK_SOON_DAYS, FORMULA_MAX_CHARS,
+  HEAVY_JOB_RETRY_MS, MAX_COLUMNS_PER_SHEET,
 } from '../lib/constants';
 import { NAMED_BY_COLUMN, QUESTION_COLUMN } from '../lib/ai-visibility/engines';
 import { copySheetValues } from './sheet-copy';
 import { newestColumnRun } from './enrich-column';
 import { sheetFree } from './ai-visibility-columns';
+import { followsPending } from './autorun-fence';
 import { addComparison, answerColumnsOf, competitorsOf } from './ai-visibility-check-columns';
 import {
   aiVisibilityRecord, engineColumnsOf, estimateAsk, startAsk, type AiVisibilityRecord, type AskEstimate,
@@ -124,8 +126,14 @@ export async function startCheck(
 
 // A copy, by the name the check chose. Made before a restart, it's there by
 // that name, finishing on its own: the check waits for it, and takes it only
-// when its History says it's a whole copy of this sheet.
+// when its History says it's a whole copy of this sheet. Named by follows each
+// engine's answer as it lands, so for a moment after the last run it can read
+// "1 of 1" before "1 of 2": the copy waits for the sheet's formula and lookup
+// columns to catch up first (AI_VISIBILITY_CATCH_UP_MS at most).
 async function copyInto(userId: string, tableId: string, sourceId: string, name: string): Promise<string | string[]> {
+  for (const end = Date.now() + AI_VISIBILITY_CATCH_UP_MS; followsPending(sourceId, userId) && Date.now() < end;) {
+    await new Promise(resolve => setTimeout(resolve, AI_VISIBILITY_CATCH_UP_POLL_MS));
+  }
   for (let tries = 0; ; tries++) {
     await sheetFree(sourceId);
     const out = await copySheetValues(userId, sourceId, { name });

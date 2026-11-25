@@ -116,9 +116,13 @@ test('app: a delete that answers "moving" says where to restore it from, with no
   await page.locator(HEADER('Notes')).click({ button: 'right' })
   await page.getByText('Delete column', { exact: true }).click()
   await page.getByRole('button', { name: 'Delete', exact: true }).click()
-  await expect(page.getByText('Column "Notes" deleted: its cells are still going to the trash. You can restore it '
-    + 'from the Trash once they are in.')).toBeVisible()
+  const moving = page.getByText('Column "Notes" deleted: its cells are still going to the trash. You can restore '
+    + 'it from the Trash once they are in.')
+  await expect(moving).toBeVisible()
   await expect(page.getByTestId('deleted-toast-restore')).toHaveCount(0)
+  // As long as a delete's toast with Restore (10 s), not the default 4 s.
+  await page.waitForTimeout(6_000)
+  await expect(moving).toBeVisible()
   await expect(page.getByTestId('deleted-toast')).toHaveCount(0)
   await expect(page.locator(HEADER('Notes'))).toHaveCount(0)
   expect(await columnsOf(sheetId)).toEqual(['Name'])
