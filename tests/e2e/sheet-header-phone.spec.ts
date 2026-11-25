@@ -16,7 +16,8 @@ async function headerButtons(page: Page) {
 }
 
 for (const size of [{ name: 'phone', width: 390, height: 844 }, { name: 'desktop', width: 1280, height: 800 }]) {
-  test(`the sheet header at ${size.name} width: every button reachable, nothing overlapping`, async ({ page, context }) => {
+  const title = `the sheet header at ${size.name} width: every button reachable, nothing overlapping`
+  test(title, async ({ page, context }) => {
     test.setTimeout(90_000)
     const api = await authedApi()
     const v1 = await bearer(await makeToken(api, ['read', 'write', 'run'], `header-${size.name}-${Date.now()}`))
@@ -29,14 +30,17 @@ for (const size of [{ name: 'phone', width: 390, height: 844 }, { name: 'desktop
     } })
     expect(start.status(), await start.text()).toBe(202)
     const runId = (await start.json()).run_id
-    await expect.poll(async () => (await listed(api, 'http', sheetId, runId))?.status, { timeout: 30_000 }).toBe('paused')
+    await expect.poll(async () => (await listed(api, 'http', sheetId, runId))?.status, { timeout: 30_000 })
+      .toBe('paused')
     await page.setViewportSize({ width: size.width, height: size.height })
     await openSheet(page, context, api, tableId)
     await expect(page.getByRole('button', { name: 'Resume', exact: true }).first()).toBeVisible()
     await expect(page.getByRole('button', { name: /Stop all/ })).toBeVisible()
 
     // A "Paused" toast lies over the header for a few seconds (another item); the header is measured once it goes.
-    await expect(page.locator('[role="status"]:not([data-testid="paused-runs-notice"])').filter({ hasText: /paused/i })).toHaveCount(0, { timeout: 20_000 })
+    const pausedToast = page.locator('[role="status"]:not([data-testid="paused-runs-notice"])')
+      .filter({ hasText: /paused/i })
+    await expect(pausedToast).toHaveCount(0, { timeout: 20_000 })
     const header = page.locator('header').first()
     const box = (await header.boundingBox())!
     // One row from sm up; on a phone two: the name, then the run controls and the menus.
@@ -54,7 +58,8 @@ for (const size of [{ name: 'phone', width: 390, height: 844 }, { name: 'desktop
     }
     // No two buttons overlap, the row count overlaps none of them, and the sheet name stays readable.
     const boxes = await Promise.all((await headerButtons(page)).map(async b => ({
-      label: (await b.getAttribute('aria-label')) ?? (await b.textContent())?.trim() ?? '?', box: (await b.boundingBox())!,
+      label: (await b.getAttribute('aria-label')) ?? (await b.textContent())?.trim() ?? '?',
+      box: (await b.boundingBox())!,
     })))
     const overlap = (a: { x: number; y: number; width: number; height: number },
       b: { x: number; y: number; width: number; height: number }) =>
