@@ -22,7 +22,8 @@ export function registerSetupRunTools(server: McpServer, ctx: McpAuthCtx): void 
   registerTool(server, 'apply_setup', {
     description:
       'Build a saved setup\'s columns (list_setups) on a sheet and fill them, each step once the columns it reads '
-      + 'are filled. COSTS MONEY: AI steps call your model per row, enrichments spend your treg balance, HTTP API '
+      + 'are filled: a whole chain of columns on another sheet (for one column, use its own tool). '
+      + 'COSTS MONEY: AI steps call your model per row, enrichments spend your treg balance, HTTP API '
       + 'steps send a request per row; clean and formula steps are free. '
       + 'ESTIMATE_ONLY DEFAULTS TO TRUE: the first call prices each step and starts nothing; tell the user, then '
       + 'call again with estimate_only:false. A step whose columns this setup made before CARRIES THEM ON, filling '
@@ -31,7 +32,8 @@ export function registerSetupRunTools(server: McpServer, ctx: McpAuthCtx): void 
       + 'Saved keys in its requests need the "secrets" scope. COST CEILING: max_cost_usd refuses to start (nothing '
       + 'is created) when the estimate\'s high end, plus one row\'s most for each AI step, is above it, or when a '
       + 'step has no known price unless allow_unpriced is true. Each started AI and enrichment step gets a spend '
-      + 'limit within what is left of the ceiling. Returns a setup_run with each step\'s run_id (get_run_status '
+      + 'limit within what is left of the ceiling (one with no known price runs without one). Returns a setup_run '
+      + 'with each step\'s run_id (get_run_status '
       + 'works on those); follow it with get_setup_run.'
       + capToolNote(ctx.spend ?? null, true),
     inputSchema: z.object({

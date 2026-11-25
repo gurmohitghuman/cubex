@@ -35,8 +35,8 @@ export const RUN_ENRICHMENT_DESCRIPTION =
   + 'if 429s go on. '
   + 'LIST JOBS (get_enrichment adds_rows:true) need list: run with test:true, wait for get_run_status to say '
   + 'completed, read the fields with get_list_fields, pick them with add_list_rows, then control_run rerun mode '
-  + '"empty"; or pass list.fields. destination_auto_run and chained_auto_run list the auto-runs the new rows set '
-  + 'off (HTTP ones send real requests). '
+  + '"empty"; or pass list.fields. destination_auto_run lists the auto-runs the new rows set off there, and '
+  + 'chained_auto_run this sheet\'s auto-runs that read what the run writes (HTTP ones send real requests). '
   + 'Returns run_id at once: poll get_run_status (run_type "enrichment").';
 
 export function registerEnrichTools(server: McpServer, ctx: McpAuthCtx) {

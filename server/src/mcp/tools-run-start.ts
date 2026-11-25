@@ -44,12 +44,13 @@ export function registerRunStartTools(server: McpServer, ctx: McpAuthCtx) {
         + 'from several sources use waterfall_column; for treg.to data, run_enrichment. '
         + 'Writes "<column_name> (Output)"; output_columns writes several typed columns from ONE call per row (never '
         + 'run a second AI pass to reformat a first). A new run with output_columns on existing columns is refused. '
-        + 'The prompt names columns as /column_name: lowercase, each run of other characters as _. Model: model, '
-        + 'else the sheet\'s default, else the account\'s (list_models). '
+        + 'The prompt names columns as /column_name: lowercase, each run of other characters as _ (an unknown one is '
+        + 'refused with a suggestion). Model: model, else the sheet\'s default, else the account\'s (list_models). '
         + 'Returns run_id at once: poll get_run_status, then read_rows or get_run_results. After a target_row_ids '
         + 'test, finish with control_run rerun mode "empty". '
-        + 'web_search and web_fetch work only on the sites in the cells the prompt references; search fees are '
-        + 'usually most of the cost (search_engine, max_searches_per_row). '
+        + 'web_fetch reads pages only on the sites in the cells the prompt references (/domain or /website); '
+        + 'web_search searches the web, and its fees are usually most of the cost (search_engine, '
+        + 'max_searches_per_row). '
         + 'COST CEILING: max_cost_usd refuses to start when the estimate\'s high end plus one row\'s most is above '
         + 'it, or the model has no known price unless allow_unpriced is true. It is also the run\'s hard spend '
         + 'limit; spend_limit_usd sets one without the check (with both, the lower one). '
@@ -85,7 +86,8 @@ export function registerRunStartTools(server: McpServer, ctx: McpAuthCtx) {
           `Most searches a row (1-${MAX_SEARCHES_PER_ROW}; needs web_search). OpenAI, Google and xAI models' own `
           + 'search can\'t be capped: search_engine auto then uses Exa, native is refused.'),
         web_fetch: lenientBoolean().optional().describe('Let the model open web pages, per row only on the sites (a '
-          + 'URL or bare domain) in the cells the prompt references. Adds the "(Data)" column.'),
+          + 'URL or bare domain) in the cells the prompt references. With output_columns, the "(Data)" column lists '
+          + 'the pages it used.'),
         max_content_tokens: lenientInt(WEB_FETCH_MAX_CONTENT_TOKENS_MIN, WEB_FETCH_MAX_CONTENT_TOKENS_MAX,
           `max_content_tokens must be ${MAX_CONTENT_TOKENS_RANGE}.`).optional().describe(
           `Cut each page web_fetch reads to about this many tokens (${WEB_FETCH_MAX_CONTENT_TOKENS_MIN}-`

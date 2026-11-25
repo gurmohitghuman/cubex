@@ -22,11 +22,14 @@ export function registerRunStatusTool(server: McpServer, ctx: McpAuthCtx) {
         + `time is up (with ${MAX_RUN_WAITS_PER_USER} waits of your account open, at once with waited: false). `
         + '"completed" means every row was processed, not that it worked: check failed_rows, then get_run_results. '
         + 'list_runs finds a lost run_id. '
-        + 'pause_reason says why a run paused itself: token_cap, spend_limit (resume with a spend_limit_usd of at '
-        + 'least resume_least_usd), provider_errors, storage (free disk space first), stalled, web_engine (allow Exa '
-        + 'on OpenRouter\'s Server Tools page), or for enrichments daily_limit, balance, no_key or unreachable. '
-        + 'control_run resumes or cancels. waiting: its rows wait for a column another run (held_by) holds. On your '
-        + 'own provider key cost_usd is only OpenRouter\'s fee; provider_cost_usd is the provider\'s bill. '
+        + 'pause_reason says why a run paused itself, and pause_message what to do: token_cap, spend_limit (resume '
+        + 'with a higher spend_limit_usd; an AI run\'s least is resume_least_usd), provider_errors, storage (free '
+        + 'disk space first), stalled, web_engine (allow Exa on OpenRouter\'s Server Tools page); an enrichment\'s '
+        + 'is in enrichment (daily_limit, balance, no_key, unreachable and others). control_run resumes or cancels. '
+        + 'waiting: its rows wait for a column another run (held_by) holds; a paused holder keeps them waiting. '
+        + 'AI runs add concurrency, rows_paid_with, searches, web_search and spend_limit_usd; enrichment runs '
+        + 'daily_limit, enrichment, providers and list; waterfall runs waterfall. On your own provider key cost_usd '
+        + 'is only OpenRouter\'s fee; provider_cost_usd is the provider\'s bill. '
         + `condition_skipped_rows (run_if) are not in total_rows. ${STATUS_WORDS}`,
       inputSchema: {
         run_type: z.enum(['ai', 'http', 'enrichment', 'waterfall'])

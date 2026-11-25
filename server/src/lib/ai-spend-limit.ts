@@ -20,7 +20,7 @@
 // row can cost more than its most. A model with no listed price (none, or a negative one)
 // has no most: such a run stops once what was billed reaches the limit.
 import {
-  AI_HOLD_MESSAGE_TOKENS, AI_HOLD_WEB_TOOLS_TOKENS, WEB_FETCH_PAGES_PER_ROW,
+  AI_HOLD_MESSAGE_TOKENS, AI_HOLD_WEB_TOOLS_TOKENS, AI_RESET_MAYBE_BILLED_MS, WEB_FETCH_PAGES_PER_ROW,
   WEB_FETCH_TOKENS_PER_PAGE, WEB_FETCH_USD_PER_PAGE, WEB_SEARCH_TOKENS_PER_SEARCH, WEB_SEARCHES_PER_ROW,
   WEB_SEARCHES_PER_ROW_NATIVE,
 } from './constants';
@@ -179,7 +179,9 @@ export const PRICE_UNREAD_MESSAGE = "Cubex couldn't read the model's price from 
 // What the agent-facing tools say about an AI run's spend limit (and when spend can pass it).
 export const AI_SPEND_LIMIT_NOTE = 'A row starts only while what the run spent, plus the most its rows out and that '
   + "row can cost (at least 8,000 output tokens at the model's listed prices), stays within the limit; otherwise "
-  + 'it waits, or pauses with pause_reason spend_limit (control_run resume with a spend_limit_usd of at least '
-  + "get_run_status's resume_least_usd). Spend can pass the limit with web search or fetch, on a model with no "
-  + 'listed price, on a server restart, or when a cut-off or retried call was billed.'
+  + 'it waits, or pauses with pause_reason spend_limit and its rows not started stay ⏳ (control_run resume with '
+  + "a spend_limit_usd of at least get_run_status's resume_least_usd). A call cut off before it answered counts "
+  + 'at its most for the rest of the run. Spend can pass the limit only with web search or fetch, on a model with '
+  + 'no listed price, on a server restart with calls out, or when a call reset within '
+  + `${AI_RESET_MAYBE_BILLED_MS / 1000} seconds (so tried again) was billed.`
   + " If OpenRouter's model list can't be read, the run pauses (pause_reason provider_errors); resume to retry.";

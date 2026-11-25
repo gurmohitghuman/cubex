@@ -38,7 +38,8 @@ export function registerRunResultTools(server: McpServer, ctx: McpAuthCtx) {
         + '"retryable" (rate limit, timeout, 5xx), "not_found" (404 or 410; on every row, a wrong URL path), '
         + '"configuration" (URL, auth, headers, {{name}}, JSONPath, blocked address), "response_format" (not JSON), '
         + '"unknown". Retry only the transient ones with control_run rerun (mode errored for AI, missing for HTTP). '
-        + 'Rows add cost_usd; AI rows paid_with, tokens and searches; enrichment rows found_by; waterfall rows '
+        + 'Rows add cost_usd (an AI row on your own provider key: only OpenRouter\'s fee, and provider_cost_usd); AI '
+        + 'rows paid_with, tokens and searches; enrichment rows found_by; waterfall rows '
         + 'answered_by and trace (each step reached: outcome, value, cost). include_answers adds each row\'s stored '
         + `answer (up to ${ANSWERS_PAGE_MAX} rows a page), to find paths for add_enrichment_field; on an HTTP run `
         + 'that used saved keys it needs the \'secrets\' scope. Pages by cursor.',

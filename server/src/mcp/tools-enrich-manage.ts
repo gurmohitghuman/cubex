@@ -109,8 +109,8 @@ export function registerEnrichManageTools(server: McpServer, ctx: McpAuthCtx) {
       paused: lenientBoolean().optional().describe('true pauses, false resumes'),
       where: z.array(condition).max(20).optional().describe('Only rows passing every condition auto-run'),
       run_if: z.string().max(MAX_RULE_CHARS).optional().describe(
-        'Auto-run\'s "Only run if" rule; rows that fail it wait (no marker) until a column it reads changes. '
-        + RULE_POINTER),
+        'Auto-run\'s "Only run if" rule; rows that fail it wait (no marker) until a column it reads changes. Kept '
+        + 'when omitted (a first turn-on takes the column\'s own rule); "" clears it. ' + RULE_POINTER),
       daily_cap_usd: z.number().positive().optional()
         .describe(`An enrichment's dollars a day (default ${AUTORUN_DEFAULT_DAILY_CAP_USD})`),
       daily_row_cap: z.number().int().min(1).optional()
