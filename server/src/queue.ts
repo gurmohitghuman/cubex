@@ -57,12 +57,15 @@ const { HTTPRerunJob } = require(path.join(COMPILED_JOBS_DIR, 'http-rerun-job'))
 // must persist (queued/resumable runs included).
 export const JOBS_DB_PATH = process.env.JOBS_DB_PATH || path.join(DATA_DIR, 'jobs.db');
 
-let started = false;
+// The queue's start, once asked (null: not started, or stopped). A stop waits for it (stopQueue).
+let started: Promise<void> | null = null;
 
-export async function startQueue(): Promise<void> {
-  if (started) return;
-  started = true;
+export function startQueue(): Promise<void> {
+  started ??= startSidequest();
+  return started;
+}
 
+async function startSidequest(): Promise<void> {
   // In WAL mode before any of the queue's connections opens it (lib/jobs-db.ts).
   await jobsDbInWal(JOBS_DB_PATH);
   await Sidequest.start({
@@ -84,6 +87,10 @@ export async function startQueue(): Promise<void> {
     // Don't start the bundled web dashboard: it would bind port 8678 with no
     // auth and expose job internals.
     dashboard: { enabled: false },
+    // Cubex's own stop (lib/server-lifecycle.ts installShutdownHandlers) closes the queue first, then saves what
+    // it holds and lets the process end. Sidequest's would close it too and then call process.exit(0) at once,
+    // racing those saves, and exiting so can hang Node (nodejs/node#54918).
+    gracefulShutdown: false,
   });
 
   console.log(`🧰 Sidequest started (jobs.db: ${JOBS_DB_PATH}, shim: ${JOBS_SHIM_PATH})`);
@@ -103,8 +110,12 @@ export async function startQueue(): Promise<void> {
 }
 
 export async function stopQueue(): Promise<void> {
-  if (!started) return;
-  started = false;
+  const starting = started;
+  if (!starting) return;
+  started = null;
+  // A stop asked while the queue still starts (right after boot) waits for the start, then stops it: stopped
+  // half way, Sidequest and the insert worker came up after the stop and kept the process running.
+  try { await starting; } catch { return; }
   try {
     // The inserts already asked land first (lib/job-inserts.ts).
     await closeJobInserts();
