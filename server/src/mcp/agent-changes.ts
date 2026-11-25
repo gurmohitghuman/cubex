@@ -39,8 +39,26 @@ export const CHANGES_RECORDED_AFTER = 'v0.8.12';
 // Newest first.
 export const AGENT_CHANGES: ReleaseChanges[] = [
   {
-    version: 'v0.8.45',
+    version: 'v0.8.44',
     changes: [
+      {
+        change: 'changed',
+        tools: ['run_enrichment', 'waterfall_column'],
+        summary: 'run_enrichment and waterfall_column take rate_limit_retries (0-10, default 5): how many times a '
+          + 'step retries for free when providers answer 429.',
+        details: 'Each waterfall step and check counts its own, and a verified email\'s finds and checks share one. '
+          + 'Reruns, auto-run and waterfall_column describe keep it. Set 0 to fail fast on a 429, or up to 10 to '
+          + 'wait longer for tight provider limits.',
+      },
+      {
+        change: 'changed',
+        tools: ['list_tables'],
+        summary: 'list_tables no longer counts every row on the call: a sheet whose rows changed is counted first, '
+          + 'waiting up to 2 seconds. One still being counted then answers its last count with '
+          + 'row_count_updating: true.',
+        details: 'row_count_updating means that row_count may be out of date: call list_tables again in a moment for '
+          + 'the new count. GET /api/v1/tables answers the same.',
+      },
       {
         change: 'changed',
         tools: ['create_download_link'],
@@ -167,29 +185,6 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
         tools: ['get_setup_run', 'control_setup_run'],
         summary: 'A column run (run_columns) shows as a setup run with no setup: setup_id null, column_run with its '
           + 'mode and rows, and a step for each column (kind can be waterfall).',
-      },
-    ],
-  },
-  {
-    version: 'v0.8.44',
-    changes: [
-      {
-        change: 'changed',
-        tools: ['run_enrichment', 'waterfall_column'],
-        summary: 'run_enrichment and waterfall_column take rate_limit_retries (0-10, default 5): how many times a '
-          + 'step retries for free when providers answer 429.',
-        details: 'Each waterfall step and check counts its own, and a verified email\'s finds and checks share one. '
-          + 'Reruns, auto-run and waterfall_column describe keep it. Set 0 to fail fast on a 429, or up to 10 to '
-          + 'wait longer for tight provider limits.',
-      },
-      {
-        change: 'changed',
-        tools: ['list_tables'],
-        summary: 'list_tables no longer counts every row on the call: a sheet whose rows changed is counted first, '
-          + 'waiting up to 2 seconds. One still being counted then answers its last count with '
-          + 'row_count_updating: true.',
-        details: 'row_count_updating means that row_count may be out of date: call list_tables again in a moment for '
-          + 'the new count. GET /api/v1/tables answers the same.',
       },
     ],
   },
