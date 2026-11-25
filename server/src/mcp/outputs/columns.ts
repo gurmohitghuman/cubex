@@ -28,8 +28,8 @@ export const manageTable = obj({
 // The table's sheets in order: other fields of the sheet too.
 const sheetRow = open({ id: str, name: str, position: num });
 // A test of the sheet's column changes (manage_sheet's test actions; get_sheet's test).
-export const sheetTest = obj({ test_id: str, sheet_id: str, test_sheet_id: str, table_id: str, sheet_name: str, rows: num,
-  started_at: str, state: z.enum(['open', 'ending']) });
+export const sheetTest = obj({ test_id: str, sheet_id: str, test_sheet_id: str, table_id: str, sheet_name: str,
+  rows: num, started_at: str, state: z.enum(['open', 'ending']) });
 export const manageSheet = obj({
   sheet: opt(sheetRef), sheets: opt(z.array(sheetRow)).describe('Not for the test actions'), deleted: opt(bool),
   trash: opt(trash), test: opt(sheetTest), added: opt(num).describe('test_add_rows'),

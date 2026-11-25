@@ -39,7 +39,13 @@ async function finish(t: TestRecord): Promise<void> {
   while (!(await purgeSheet(t.test_sheet_id, t.user_id, null))) {
     await new Promise(resolve => setTimeout(resolve, HEAVY_JOB_RETRY_MS));
   }
-  db.prepare('DELETE FROM sheet_tests WHERE id = ?').run(t.id);
+  // The record goes, and the sheet's open grids are told: one that loaded while the test was closing shows it as
+  // it is again.
+  db.transaction(() => {
+    db.prepare('DELETE FROM sheet_tests WHERE id = ?').run(t.id);
+    db.prepare(`UPDATE sheets SET data_version = data_version + 1, updated_at = datetime('now')
+      WHERE id = ? AND user_id = ?`).run(t.sheet_id, t.user_id);
+  }).immediate();
   releaseClosingCopy(t.test_sheet_id);
   addHeldDeliveries(t.sheet_id, t.user_id);
 }

@@ -37,6 +37,8 @@ const { listSheets } = await import('../../server/src/lib/sheet-crud-helpers')
 const { liveSheets } = await import('../../server/src/services/table-row-counts')
 const { aiRunStamper } = await import('../../server/src/lib/run-inputs/stampers')
 const { ensureRunInputKey } = await import('../../server/src/lib/run-inputs/keys')
+const { deleteRowsToTrash } = await import('../../server/src/services/trash-rows')
+const { listTrash } = await import('../../server/src/services/trash-read')
 
 const uid = uuid(), tid = uuid(), sid = uuid()
 const COLS = ['Name', 'Domain', 'Fit', 'Short']
@@ -139,20 +141,24 @@ await check('add rows: from the top, at random, never past 50', () => {
   assert.ok('ok' in many && many.ok.rows <= 50)
 })
 
-// The person changes the prompt in the copy and runs it on its first 3 rows; one of them had its Name edited there.
+// The person tries one prompt on row 3, changes it and runs it on the first 3 rows (one had its Name edited there),
+// then runs row 0 again with the same prompt: rows 0 and 1 keep their answers, row 3's was another prompt's.
 let newRun = ''
 await check('a run on the copy with a new setup', () => {
-  newRun = aiRun(copy, P2)
-  const copied = rows(copy)
-  copied[2].data = JSON.stringify({ ...JSON.parse(copied[2].data), Name: 'edited in the test' })
-  for (const r of copied.slice(0, 3)) {
+  const answer = (runId: string, r: { id: string; row_index: number; data: string }) => {
     const data = JSON.stringify({ ...JSON.parse(r.data), Fit: `new ${r.row_index}` })
-    const s = stamp(copy, newRun, data)
+    const s = stamp(copy, runId, data)
     db.prepare(`UPDATE rows SET data = ?, run_inputs = json_set(COALESCE(run_inputs, '{}'), ?, ?) WHERE id = ?`)
       .run(data, s.path, s.fp, r.id)
     db.prepare(`INSERT INTO ai_results (id,run_id,user_id,row_index,output_value,status,cost_usd)
-      VALUES (?,?,?,?,?,'completed',0.01)`).run(uuid(), newRun, uid, r.row_index, `new ${r.row_index}`)
+      VALUES (?,?,?,?,?,'completed',0.01)`).run(uuid(), runId, uid, r.row_index, `new ${r.row_index}`)
   }
+  answer(aiRun(copy, 'Is /name a good fit?'), rows(copy)[3])
+  newRun = aiRun(copy, P2)
+  const copied = rows(copy)
+  copied[2].data = JSON.stringify({ ...JSON.parse(copied[2].data), Name: 'edited in the test' })
+  for (const r of copied.slice(0, 3)) answer(newRun, r)
+  answer(aiRun(copy, P2), rows(copy)[0])
   db.prepare(`UPDATE formula_columns SET formula = '{{Name}}.slice(0, 3)' WHERE sheet_id = ?`).run(copy)
 })
 
@@ -194,13 +200,22 @@ await check('discard: the sheet is as it was and takes changes again; the copy t
   const before = rows(sid).map(r => r.data)
   const out = await startSheetTest(uid, sid, { rows: 3 })
   assert.ok('ok' in out, JSON.stringify(out))
+  // A row deleted in the copy isn't listed in the trash under the sheet's name, only when the copy is asked for.
+  const copyId = out.ok.test_sheet_id
+  db.transaction(() => deleteRowsToTrash(copyId, uid, 'grid', { ids: [rows(copyId)[0].id] })).immediate()
+  assert.equal(listTrash(uid).items.length, 0)
+  assert.equal(listTrash(uid, { sheetId: copyId }).items.length, 1)
   const gone = discardSheetTest(uid, sid)
   assert.ok('ok' in gone)
+  const version = () => db.prepare('SELECT data_version FROM sheets WHERE id = ?').pluck().get(sid) as number
+  const closing = version()
   assert.equal(busy.sheetBusyWith(sid), null)
   assert.equal(busy.sheetBusyWith(out.ok.test_sheet_id), hold.CLOSING, 'nothing new starts on the closing copy')
   await until(() => !testOfSheet(sid, uid), 'the test record goes')
   assert.equal(busy.sheetBusyWith(out.ok.test_sheet_id), null)
   assert.deepEqual(rows(sid).map(r => r.data), before)
+  assert.equal(listTrash(uid, { sheetId: copyId }).items.length, 0, 'its trash went with the copy')
+  assert.ok(version() > closing, 'open grids hear that the test is gone')
 })
 
 await check('a restart holds an open test\'s sheet again', async () => {
