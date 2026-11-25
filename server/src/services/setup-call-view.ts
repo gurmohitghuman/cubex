@@ -4,12 +4,10 @@
 import { db } from '../lib/db';
 import { SETUP_CALL_KEEP_HOURS, SETUP_CALL_MAX_ITEMS } from '../lib/constants-setups';
 import { stepColumns, type SetupSpec } from '../lib/setups/spec';
+import { callItem, type SetupCallItem } from '../lib/setups/call-item';
 import { getSetupRun, loadSetupRun, type SetupRunView } from './setup-run-store';
 
-export interface SetupCallItem {
-  item: number;                            // its place in the items sent (or the file's rows), from 0
-  outputs: Record<string, string | null>;  // each column the setup makes: its value, null when empty
-}
+export type { SetupCallItem } from '../lib/setups/call-item';
 export interface SetupCallView {
   id: string; setup_id: string | null; setup_name: string; status: SetupRunView['status']; items: number;
   layer: number; layers: number; error_message: string | null; created_at: string; updated_at: string;
@@ -32,7 +30,7 @@ const FINISHED = new Set(['done', 'failed', 'cancelled']);
 const plusHours = (at: string, hours: number): string =>
   new Date(Date.parse(`${at.replace(' ', 'T')}Z`) + hours * 3_600_000).toISOString();
 
-// A page of items' outputs: every column the setup's steps make, from the working table's rows by index.
+// A page of items' status and outputs: every column the setup's steps make, from the working table's rows by index.
 function resultsOf(userId: string, sheetId: string, spec: SetupSpec, page: ResultsPage) {
   const columns = [...new Set(spec.steps.flatMap(stepColumns))];
   const limit = Math.min(SETUP_CALL_MAX_ITEMS, Math.max(1, page.limit ?? SETUP_CALL_MAX_ITEMS));
@@ -42,12 +40,7 @@ function resultsOf(userId: string, sheetId: string, spec: SetupSpec, page: Resul
   const results = rows.slice(0, limit).map(r => {
     let cells: Record<string, unknown> = {};
     try { cells = JSON.parse(r.data) as Record<string, unknown>; } catch { /* an unreadable row reads as empty */ }
-    const outputs: Record<string, string | null> = Object.create(null);
-    for (const c of columns) {
-      const v = cells[c];
-      outputs[c] = typeof v === 'string' && v !== '' ? v : null;
-    }
-    return { item: r.row_index, outputs };
+    return callItem(r.row_index, cells, columns);
   });
   return { results, next_from: rows.length > limit ? rows[limit].row_index : null };
 }

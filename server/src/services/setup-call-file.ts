@@ -6,7 +6,7 @@
 // working table goes. Results: get_setup_call a page at a time, or create_download_link with setup_call_id.
 import { getSetup } from './setup-library';
 import { webhookIdProblem } from './run-hooks-attach';
-import { newWorkingTable, removeWorkingTable, startCall, type CallInput, type CallOutcome } from './setup-call';
+import { newWorkingTable, removeWorkingTable, startCall, type CallInput, type StartOutcome } from './setup-call';
 import type { ApplyFail } from './setup-apply';
 import { db } from '../lib/db';
 
@@ -43,7 +43,7 @@ export function prepareFileCall(
 
 // Once the file's rows are in: the call starts (or is refused, and its working table goes). A file with no rows
 // starts nothing.
-export async function startFileCall(userId: string, sheetId: string, call: CallLinkOptions): Promise<CallOutcome> {
+export async function startFileCall(userId: string, sheetId: string, call: CallLinkOptions): Promise<StartOutcome> {
   const rows = db.prepare('SELECT 1 FROM rows WHERE sheet_id = ? AND user_id = ? LIMIT 1').get(sheetId, userId);
   if (!rows) {
     removeWorkingTable(userId, call.tableId);

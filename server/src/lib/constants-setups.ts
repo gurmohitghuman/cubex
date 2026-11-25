@@ -27,9 +27,11 @@ export const MAX_SETUP_VERSION_BYTES = 4 * 1024 * 1024;
 export const SETUP_VERSION_DIFF_CHARS = 400;
 export const SETUP_VERSION_DIFF_CHARS_APP = 20_000;
 
-// A setup called on items without a sheet (services/setup-call.ts): at most this many items in one call, each
-// value at most this long, and its hidden working table kept this many hours after the call finishes (its results
-// with it). A working table whose call never started (a crash between the two) goes after one hour.
+// A setup called on items without a sheet (services/setup-call.ts): at most this many items in one call, and its
+// hidden working table kept this many hours after the call finishes (its results with it). A working table whose
+// call never started (a crash between the two) goes after one hour.
 export const SETUP_CALL_MAX_ITEMS = 100;
 export const SETUP_CALL_KEEP_HOURS = envInt('SETUP_CALL_KEEP_HOURS', 24);
 export const SETUP_CALL_ORPHAN_HOURS = 1;
+// How often the sweep looks for working tables to remove.
+export const SETUP_CALL_SWEEP_MS = 10 * 60_000;

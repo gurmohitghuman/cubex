@@ -1,8 +1,9 @@
 // A saved setup called on items without a sheet (services/setup-call.ts), on a migrated throwaway DB, with a free
 // chain of two clean columns: the items checked (count, unknown inputs, cell types); an estimate starts nothing
 // and leaves no working table; a call runs on a hidden working table that no list or count shows, finishes with
-// each item's outputs in the order sent, and its id is the setup run's; the sweep removes the working table once
-// the results have been kept long enough (and an orphan one), and the call is then not found.
+// each item's status and outputs in the order sent (Cubex's words in a cell never an output), and its id is the
+// setup run's; a start takes a run-start slot; the sweep removes the working table once the results have been kept
+// long enough (and an orphan one), and the call is then not found.
 import { v4 as uuid } from 'uuid'
 import dbMod from '../../server/src/lib/db'
 import migMod from '../../server/src/db/migrate'
@@ -11,6 +12,7 @@ import callMod from '../../server/src/services/setup-call'
 import readMod from '../../server/src/services/workspace-read'
 import overviewMod from '../../server/src/services/workspace-overview'
 import trashMod from '../../server/src/services/trash-read'
+import runSharedMod from '../../server/src/services/run-shared'
 import type { SetupSpec } from '../../server/src/lib/setups/spec'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
@@ -19,6 +21,7 @@ const { callSetup, getSetupCall, sweepSetupCalls } = callMod as typeof import('.
 const { listTablesWithSheets } = readMod as typeof import('../../server/src/services/workspace-read')
 const { workspaceOverview } = overviewMod as typeof import('../../server/src/services/workspace-overview')
 const { listTrash } = trashMod as typeof import('../../server/src/services/trash-read')
+const { takeRunStart } = runSharedMod as typeof import('../../server/src/services/run-shared')
 const { setupSweep } = await import('../../server/src/services/setup-sweep')
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
@@ -86,15 +89,42 @@ for (let i = 0; i < 200 && view.status === 'running'; i++) {
 }
 check('the call finishes done', view.status === 'done', view)
 check('each item\'s outputs, in the order sent', JSON.stringify(view.results) === JSON.stringify([
-  { item: 0, outputs: { Trimmed: 'Ada LOVELACE', Lower: 'ada lovelace' } },
-  { item: 1, outputs: { Trimmed: null, Lower: null } },
-  { item: 2, outputs: { Trimmed: 'Grace', Lower: 'grace' } },
-  { item: 3, outputs: { Trimmed: '42', Lower: '42' } },
+  { item: 0, status: 'done', error: null, outputs: { Trimmed: 'Ada LOVELACE', Lower: 'ada lovelace' } },
+  { item: 1, status: 'not_run', error: null, outputs: { Trimmed: null, Lower: null } },
+  { item: 2, status: 'done', error: null, outputs: { Trimmed: 'Grace', Lower: 'grace' } },
+  { item: 3, status: 'done', error: null, outputs: { Trimmed: '42', Lower: '42' } },
 ]), view.results)
+
+// Cubex's words in a cell are never an output: the item's status and error say what happened.
+const sheetOfCall = db.prepare('SELECT sheet_id FROM setup_calls WHERE id = ?').pluck().get(call.id) as string
+const putCells = (index: number, cells: Record<string, string>) => db.prepare(
+  'UPDATE rows SET data = json_patch(data, ?) WHERE sheet_id = ? AND row_index = ?',
+).run(JSON.stringify(cells), sheetOfCall, index)
+putCells(0, { Lower: '❌ Error: Rate limited' })
+putCells(1, { Trimmed: '⏭️ Not found' })
+putCells(2, { Trimmed: '⏭️ Condition not met' })
+const marked = getSetupCall(uid, call.id)!.results!
+check('a failed cell: error, naming the column, and no output', marked[0].status === 'error'
+  && marked[0].error === 'Lower: Rate limited' && marked[0].outputs.Lower === null
+  && marked[0].outputs.Trimmed === 'Ada LOVELACE', marked[0])
+check('a step that found nothing: no_result, no output', marked[1].status === 'no_result'
+  && marked[1].error === null && marked[1].outputs.Trimmed === null, marked[1])
+check('a step its rule kept out: condition_not_met', marked[2].status === 'condition_not_met'
+  && marked[2].outputs.Trimmed === null && marked[2].outputs.Lower === 'grace', marked[2])
 check('kept until 24 hours after it finished', view.keep_until !== null
   && Math.abs(Date.parse(view.keep_until) - Date.now() - 24 * 3_600_000) < 120_000, view.keep_until)
 check('auto-run is never turned on in a working table',
   (db.prepare('SELECT COUNT(*) FROM autorun_columns WHERE enabled = 1').pluck().get() as number) === 0)
+
+// A start takes a slot of the token's run-start window (an estimate doesn't): a full window refuses it before
+// any working table is made.
+const tok = uuid()
+while (!('limited' in (takeRunStart(uid, tok) ?? {}))) { /* fill the window */ }
+const limited = await callSetup(uid, setupId, [{ Name: 'x' }], { estimateOnly: false }, { ...caller, tokenId: tok })
+check('a full run-start window refuses a start', 'fail' in limited && limited.fail === 'rate_limited'
+  && !!limited.rate && hiddenTables() === 1, limited)
+const pricedOk = await callSetup(uid, setupId, [{ Name: 'x' }], { estimateOnly: true }, { ...caller, tokenId: tok })
+check('an estimate still answers with the window full', 'ok' in pricedOk && 'estimate' in pricedOk.ok, pricedOk)
 
 // The sweep: nothing yet; once the keep time has passed, the working table goes and the call is not found.
 check('the sweep keeps a fresh call', sweepSetupCalls() === 0 && hiddenTables() === 1)

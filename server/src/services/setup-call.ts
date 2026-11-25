@@ -9,10 +9,12 @@
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
 import {
-  SETUP_CALL_KEEP_HOURS, SETUP_CALL_MAX_ITEMS, SETUP_CALL_ORPHAN_HOURS,
+  SETUP_CALL_KEEP_HOURS, SETUP_CALL_MAX_ITEMS, SETUP_CALL_ORPHAN_HOURS, SETUP_CALL_SWEEP_MS,
 } from '../lib/constants-setups';
 import { sheetBusyWith } from '../lib/sheet-busy';
 import type { SetupSpec } from '../lib/setups/spec';
+import type { RateDecision } from '../lib/rate-window';
+import { startRefusalMessage, takeRunStart } from './run-shared';
 import { withoutChangeLog } from '../lib/change-log';
 import { getSetup } from './setup-library';
 import { applySetup, type ApplyFail, type ApplyInput } from './setup-apply';
@@ -29,10 +31,12 @@ import { MAX_ROWS_PER_SHEET } from '../lib/constants';
 export type CallInput = Pick<ApplyInput, 'models' | 'estimateOnly' | 'webhookId' | 'maxCostUsd' | 'allowUnpriced'>;
 export { CALL_NOT_FOUND, getSetupCall, type SetupCallView } from './setup-call-view';
 
-export type CallOutcome =
-  | { ok: { estimate: object; makes: string[]; items: number } }
-  | { ok: { setup_call: SetupCallView } }
-  | ApplyFail;
+// rate_limited: the token's run-start window is full (rate: for REST's Retry-After).
+export type CallFail = Omit<ApplyFail, 'fail'> & { fail: ApplyFail['fail'] | 'rate_limited'; rate?: RateDecision };
+type CallOk = { ok: { estimate: object; makes: string[]; items: number } } | { ok: { setup_call: SetupCallView } };
+export type CallOutcome = CallOk | CallFail;
+// A start on a working table that holds its items (startCall): its run-start slot was taken before.
+export type StartOutcome = CallOk | ApplyFail;
 
 const bad = (message: string): ApplyFail => ({ fail: 'bad_request', message });
 
@@ -88,7 +92,7 @@ export function newWorkingTable(userId: string, spec: SetupSpec): { tableId: str
 export async function startCall(
   userId: string, setupId: string, work: { tableId: string; sheetId: string }, input: CallInput,
   caller: { hasSecretsScope: boolean },
-): Promise<CallOutcome> {
+): Promise<StartOutcome> {
   const { tableId, sheetId } = work;
   let started = false;
   try {
@@ -110,13 +114,26 @@ export async function startCall(
   }
 }
 
+// A start takes a slot of the access token's run-start window, as a column run's start does (run-shared.ts); a
+// token at its spend cap is refused first, unless every step is free.
+function startSlot(userId: string, tokenId: string, spec: SetupSpec): CallFail | null {
+  const paid = spec.steps.some(s => s.kind === 'ai' || s.kind === 'enrichment');
+  const refused = takeRunStart(userId, tokenId, paid);
+  if (!refused) return null;
+  return 'capped' in refused ? { fail: 'forbidden', message: refused.capped }
+    : { fail: 'rate_limited', message: startRefusalMessage(refused), rate: refused.limited };
+}
+
 export async function callSetup(
-  userId: string, setupId: string, rawItems: unknown, input: CallInput, caller: { hasSecretsScope: boolean },
+  userId: string, setupId: string, rawItems: unknown, input: CallInput,
+  caller: { hasSecretsScope: boolean; tokenId?: string | null },
 ): Promise<CallOutcome> {
   const setup = getSetup(userId, setupId);
   if (!setup) return { fail: 'not_found', message: 'Setup not found' };
   const items = itemsOf(rawItems, setup.spec.inputs);
   if (typeof items === 'string') return bad(items);
+  const slot = !input.estimateOnly && caller.tokenId ? startSlot(userId, caller.tokenId, setup.spec) : null;
+  if (slot) return slot;
   const work = newWorkingTable(userId, setup.spec);
   if ('fail' in work) return work;
   const appended = withoutChangeLog(() => appendRows(work.sheetId, userId, items));
@@ -150,10 +167,9 @@ export function sweepSetupCalls(): number {
   return due.length;
 }
 
-const SWEEP_MS = 10 * 60_000;
 let timer: ReturnType<typeof setInterval> | null = null;
 export function startSetupCallLoop(): void {
   if (timer) return;
-  timer = setInterval(() => { sweepSetupCalls(); }, SWEEP_MS);
+  timer = setInterval(() => { sweepSetupCalls(); }, SETUP_CALL_SWEEP_MS);
   timer.unref?.();
 }

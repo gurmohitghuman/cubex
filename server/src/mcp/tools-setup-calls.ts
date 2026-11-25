@@ -39,16 +39,17 @@ export function registerSetupCallTools(server: McpServer, ctx: McpAuthCtx): void
     if (denied) return denied;
     const input = callInputOf(a, 'mcp');
     if ('fail' in input) return err(input.message);
-    const out = await callSetup(ctx.userId, setup_id, items, input, { hasSecretsScope: ctx.scopes.has('secrets') });
+    const out = await callSetup(ctx.userId, setup_id, items, input,
+      { hasSecretsScope: ctx.scopes.has('secrets'), tokenId: ctx.tokenId });
     if ('fail' in out) return err(out.message + (out.estimate ? ` Estimate: ${JSON.stringify(out.estimate)}` : ''));
     return ok(out.ok);
   });
 
   registerTool(server, 'get_setup_call', {
     description:
-      'A setup call (call_setup): its status and steps, and once finished, results: each item\'s outputs by '
-      + `column, ${SETUP_CALL_MAX_ITEMS} at a time (next_from starts the next page). wait_seconds waits for it to `
-      + `finish. Kept ${SETUP_CALL_KEEP_HOURS} hours after it finishes. Read-only.`,
+      'A setup call (call_setup): its status and steps, and once finished, results: each item\'s status, error '
+      + `and outputs by column, ${SETUP_CALL_MAX_ITEMS} at a time (next_from starts the next page). wait_seconds `
+      + `waits for it to finish. Kept ${SETUP_CALL_KEEP_HOURS} hours after it finishes. Read-only.`,
     inputSchema: z.object({
       setup_call_id: z.string().describe('The call (call_setup returned it)'),
       wait_seconds: z.number().int().min(0).max(25).optional()
