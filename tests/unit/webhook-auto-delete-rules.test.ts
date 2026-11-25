@@ -44,7 +44,7 @@ function webhookSheet(name: string, columns: string[], n: number, data: (i: numb
   const insert = db.prepare('INSERT INTO rows (id, sheet_id, user_id, row_index, data) VALUES (?, ?, ?, ?, ?)')
   db.transaction(() => {
     for (let i = 0; i < n; i++) insert.run(uuid(), id, uid, i, JSON.stringify({ [raw]: '📥 12:00:00', ...data(i) }))
-  })()
+  }).immediate()
   return { id, raw }
 }
 const left = (sheetId: string) =>

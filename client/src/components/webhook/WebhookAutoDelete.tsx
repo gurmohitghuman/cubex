@@ -1,3 +1,4 @@
+// Over 200 lines: one form (its two modes, the rules and the confirm) whose save checks what all of it says.
 import React, { useState } from 'react'
 import { Trash2 } from 'lucide-react'
 import toast from 'react-hot-toast'

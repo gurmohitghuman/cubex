@@ -13,8 +13,8 @@
 //   until it succeeds.
 // In mode rules a row leaves once it passes the rules instead (auto-run's watermarks and queue aren't asked).
 // In either mode a row still in progress stays: ⏳ (being filled) or ➕ (a list job's results still on their way)
-// in any of the sheet's run columns, the rule language's own "running". The rules are worked out on each row of the window, as a
-// column of the read, so a window still reads at most `scan` rows however few pass.
+// in any of the sheet's run columns, the rule language's own "running". The rules are worked out on each row of the
+// window, as a column of the read, so a window still reads at most `scan` rows however few pass.
 import { db } from '../lib/db';
 import { jsonPath } from '../lib/json-path';
 import { holdsRunMarker, LIST_MARK, RUNNING_MARK, trimBlank } from '../lib/run-markers';
