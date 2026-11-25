@@ -25,10 +25,11 @@ const list = (names: string[]) => names.map(n => `"${n}"`).join(', ');
 // The model each AI step runs on: a new step the one picked for it (by the
 // setup's own name for it, `saved`), else its saved one, else the defaults;
 // a step carrying a column on runs on the column's own model, so another one
-// picked for it is refused. Each must still be on OpenRouter.
+// picked for it is refused. Each must still be on OpenRouter. sheetId null:
+// a setup call's items, without a sheet (its defaults are the account's).
 export async function withModels(
   fitted: SetupSpec, saved: SetupSpec, models: Record<string, string>, modes: StepMode[],
-  existing: SheetColumnStep[], sheetId: string, userId: string,
+  existing: SheetColumnStep[], sheetId: string | null, userId: string,
 ): Promise<SetupSpec | ApplyFail> {
   const catalog = await fetchModels(Date.now());
   const steps = [];

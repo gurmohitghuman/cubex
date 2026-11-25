@@ -1,15 +1,16 @@
 // A saved setup called like a function on 1-SETUP_CALL_MAX_ITEMS items, without a sheet: one implementation for
 // /api/v1 (routes/api-v1-setup-calls.ts) and MCP (mcp/tools-setup-calls.ts). The items become the rows of a hidden
 // working table (tables.hidden, migration 067: never listed or counted), one column per setup input, and the setup
-// runs there through applySetup, as on any sheet: its estimate and ceiling, its step runs, pause, resume and stop
+// runs there through applySetup, as on any sheet: its ceiling, its step runs, pause, resume and stop
 // (control_setup_run), the run-finished webhook (kind "setup"). The call's id is the setup run's, so polling and
-// the webhook name one id. An estimate, or a start refused, removes the working table at once; a started call's
-// table goes SETUP_CALL_KEEP_HOURS after it finishes (the sweep below), its results with it. Auto-run is never
-// turned on there (ApplyInput.call). The working table goes through the trash, purged at once and never listed.
+// the webhook name one id. An estimate makes no working table: it is a pure read (setup-call-estimate.ts). A start
+// refused removes the working table at once; a started call's table goes SETUP_CALL_KEEP_HOURS after it finishes
+// (the sweep below), its results with it, and a call paused that long is stopped first. Auto-run is never turned
+// on there (ApplyInput.call). The working table goes through the trash, purged at once and never listed.
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
 import {
-  SETUP_CALL_KEEP_HOURS, SETUP_CALL_MAX_ITEMS, SETUP_CALL_ORPHAN_HOURS, SETUP_CALL_SWEEP_MS,
+  CALL_SHEETS_PRUNE_ROWS, SETUP_CALL_KEEP_HOURS, SETUP_CALL_MAX_ITEMS, SETUP_CALL_ORPHAN_HOURS, SETUP_CALL_SWEEP_MS,
 } from '../lib/constants-setups';
 import { sheetBusyWith } from '../lib/sheet-busy';
 import type { SetupSpec } from '../lib/setups/spec';
@@ -21,6 +22,7 @@ import { withoutChangeLog } from '../lib/change-log';
 import { getSetup } from './setup-library';
 import { applySetup, type ApplyFail, type ApplyInput } from './setup-apply';
 import { getSetupCall, type SetupCallView } from './setup-call-view';
+import { loadSetupRun } from './setup-run-store';
 import { createTable } from './table-crud';
 import { addSheetColumn } from './column-add';
 import { appendRows } from './rows-write';
@@ -28,6 +30,9 @@ import { parseCellMap, txnFailMessage } from './data-plane-shared';
 import { trashTable } from './trash-sheets';
 import { purgeTrashItems } from './trash-purge';
 import { MAX_ROWS_PER_SHEET } from '../lib/constants';
+import { ENRICH_SPEND_WINDOWS } from '../lib/constants-enrich';
+import { estimateSetupCall } from './setup-call-estimate';
+import { cancelStepRuns } from './setup-run-control';
 
 // What a call takes besides its items: apply_setup's choices that make sense without a sheet.
 export type CallInput = Pick<ApplyInput, 'models' | 'estimateOnly' | 'webhookId' | 'maxCostUsd' | 'allowUnpriced'>;
@@ -41,6 +46,11 @@ export type CallOutcome = CallOk | CallFail;
 export type StartOutcome = CallOk | ApplyFail;
 
 const bad = (message: string): ApplyFail => ({ fail: 'bad_request', message });
+// apply_setup's input for a call: no test rows, and auto-run never turned on.
+const applyInputOf = (input: CallInput): ApplyInput => ({
+  models: input.models, estimateOnly: input.estimateOnly, webhookId: input.webhookId ?? null,
+  maxCostUsd: input.maxCostUsd ?? null, allowUnpriced: input.allowUnpriced, firstRows: null, call: true,
+});
 
 // The items, checked: an array of 1 to `max` objects keyed by the inputs of `what` (the setup, or the tool for an
 // enrichment call), each value a string, number, boolean or null (a cell). An item may leave inputs out (empty).
@@ -90,8 +100,8 @@ export function newWorkingTable(userId: string, spec: SetupSpec): { tableId: str
   return { tableId, sheetId };
 }
 
-// The setup applied on a working table that holds its items: priced, or started as a call. Unless it starts, the
-// working table is removed.
+// The setup applied on a working table that holds its items, started as a call (an estimate never makes one:
+// setup-call-estimate.ts). Unless it starts, the working table is removed.
 export async function startCall(
   userId: string, setupId: string, work: { tableId: string; sheetId: string }, input: CallInput,
   caller: { hasSecretsScope: boolean },
@@ -101,10 +111,7 @@ export async function startCall(
   try {
     const items = db.prepare('SELECT COUNT(*) FROM rows WHERE sheet_id = ? AND user_id = ?').pluck()
       .get(sheetId, userId) as number;
-    const out = await applySetup(userId, sheetId, setupId, {
-      models: input.models, estimateOnly: input.estimateOnly, webhookId: input.webhookId ?? null,
-      maxCostUsd: input.maxCostUsd ?? null, allowUnpriced: input.allowUnpriced, firstRows: null, call: true,
-    }, caller);
+    const out = await applySetup(userId, sheetId, setupId, applyInputOf(input), caller);
     if ('fail' in out) return out;
     if ('estimate' in out.ok) return { ok: { estimate: out.ok.estimate, makes: out.ok.makes, items } };
     const runId = out.ok.setup_run.id;
@@ -135,7 +142,8 @@ export async function callSetup(
   if (!setup) return { fail: 'not_found', message: 'Setup not found' };
   const items = itemsOf(rawItems, setup.spec.inputs);
   if (typeof items === 'string') return bad(items);
-  const slot = !input.estimateOnly && caller.tokenId ? startSlot(userId, caller.tokenId, setup.spec) : null;
+  if (input.estimateOnly) return estimateSetupCall(userId, setup, items, applyInputOf(input), caller);
+  const slot = caller.tokenId ? startSlot(userId, caller.tokenId, setup.spec) : null;
   if (slot) return slot;
   const work = newWorkingTable(userId, setup.spec);
   if ('fail' in work) return work;
@@ -154,9 +162,39 @@ export async function callSetup(
 const orphanSeconds = (): number =>
   Math.ceil((FILE_LINK_TTL_MINUTES * 60_000 + receiveBackstopMs()) / 1000) + SETUP_CALL_ORPHAN_HOURS * 3600;
 
-// The sweep: the working tables of calls (setup and enrichment calls) finished SETUP_CALL_KEEP_HOURS ago, and of
-// calls that never started.
-export function sweepSetupCalls(): number {
+// A call paused SETUP_CALL_KEEP_HOURS ago (by hand, or at a limit, the token's cap or its ceiling) and not resumed
+// since is stopped, as control_setup_run's cancel stops it; its results are then kept as any finished call's.
+export const STALE_PAUSE = `Paused for more than ${SETUP_CALL_KEEP_HOURS} hours, so it was stopped.`;
+async function stopStalePaused(keep: string): Promise<void> {
+  const stale = db.prepare(`SELECT c.id FROM setup_calls c JOIN setup_runs r ON r.id = c.id
+    WHERE r.status = 'paused' AND r.updated_at <= datetime('now', ?)`).pluck().all(keep) as string[];
+  const stop = db.prepare(`UPDATE setup_runs SET status = 'cancelled', error_message = ?, updated_at = datetime('now')
+    WHERE id = ? AND status = 'paused' AND updated_at <= datetime('now', ?)`);
+  for (const id of stale) {
+    // Resumed meanwhile: it goes on.
+    if (stop.run(STALE_PAUSE, id, keep).changes === 0) continue;
+    try { await cancelStepRuns(loadSetupRun(id)!); } catch (err) {
+      console.error(`Setup call ${id}'s runs couldn't all be stopped:`, err);
+    }
+  }
+}
+
+// A call's sheet stays in call_sheets (Settings' spend card names its spend) until the sheet is gone and the longest
+// spend window can't reach its spend. A slice a sweep.
+const CALL_SHEETS_KEEP_DAYS = Math.max(...ENRICH_SPEND_WINDOWS);
+function pruneCallSheets(): void {
+  db.prepare(`DELETE FROM call_sheets WHERE rowid IN (SELECT c.rowid FROM call_sheets c
+      WHERE c.created_at < datetime('now', ?) AND NOT EXISTS (SELECT 1 FROM sheets s WHERE s.id = c.sheet_id)
+      AND NOT EXISTS (SELECT 1 FROM enrichment_calls e WHERE e.sheet_id = c.sheet_id
+        AND e.created_at >= datetime('now', ?))
+    LIMIT ${CALL_SHEETS_PRUNE_ROWS})`).run(`-${CALL_SHEETS_KEEP_DAYS} days`, `-${CALL_SHEETS_KEEP_DAYS} days`);
+}
+
+// The sweep: calls paused too long are stopped; then the working tables of calls (setup and enrichment calls)
+// finished SETUP_CALL_KEEP_HOURS ago, and of calls that never started, are removed. Returns how many it removed.
+export async function sweepSetupCalls(): Promise<number> {
+  await stopStalePaused(`-${SETUP_CALL_KEEP_HOURS} hours`);
+  pruneCallSheets();
   const due = db.prepare(`SELECT c.user_id, c.table_id FROM setup_calls c JOIN setup_runs r ON r.id = c.id
       WHERE r.status IN ('done', 'failed', 'cancelled') AND r.updated_at <= datetime('now', ?)
     UNION ALL
@@ -183,6 +221,8 @@ export function sweepSetupCalls(): number {
 let timer: ReturnType<typeof setInterval> | null = null;
 export function startSetupCallLoop(): void {
   if (timer) return;
-  timer = setInterval(() => { sweepSetupCalls(); }, SETUP_CALL_SWEEP_MS);
+  timer = setInterval(() => {
+    sweepSetupCalls().catch(err => console.error('The setup call sweep failed (tried again next time):', err));
+  }, SETUP_CALL_SWEEP_MS);
   timer.unref?.();
 }
