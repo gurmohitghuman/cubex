@@ -34,6 +34,12 @@ const legacyConfig = z.object({
 
 export const runRoutes = (): RouteDoc[] => [
   op({
+    method: 'get', path: '/sheets/{id}/prompt-starters', operationId: 'listPromptStarters', tag: 'runs',
+    scope: 'read', summary: "Good first prompts for an AI column, written with the sheet's columns.",
+    description: 'Qualify, classify, an opener, a lead score and a company profile, the ones the app offers. Each '
+      + 'comes as the arguments of an AI run start (run): fill in the [square brackets] before starting it.',
+  }),
+  op({
     method: 'post', path: '/sheets/{id}/ai-runs', operationId: 'startAiRun', tag: 'runs', scope: 'run',
     summary: 'Run an AI prompt on every row (or some), into one column or several typed ones.',
     description: 'One AI call per row, which costs money: estimate_only or preview_rows first.',

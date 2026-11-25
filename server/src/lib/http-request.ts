@@ -46,7 +46,7 @@ export { extractDataWithJSONPath };
 import { readBoundedBody, readErrorSnippet } from './http-body-read';
 
 // One try of a row's request: its parsed JSON body and status code. Caches
-// identical GET/HEAD answers for 5 min. allowSavedKeys carries the run-level
+// identical GET/HEAD answers for 5 min within one run. allowSavedKeys carries the run-level
 // secret policy (http_runs.allow_secrets) into template substitution; runId
 // makes each key lookup re-check it atomically (closing the resume-freeze
 // TOCTOU — see replaceTemplateVariables / lookupApiKey). Throws typed errors
@@ -87,7 +87,11 @@ export async function sendHTTPRequest(
   const canonicalHeaders = Object.fromEntries(
     Object.entries(processedHeaders).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
   );
-  const cacheKey = JSON.stringify({ userId, method, url: processedUrl, headers: canonicalHeaders, body: processedBody });
+  // Scoped by run too: rows of one run asking the same thing share its answer, but a run the user starts again calls
+  // again instead of reading what the last run was told (within HTTP_REQUEST_CACHE_TTL_MS it got nothing new).
+  const cacheKey = JSON.stringify({
+    userId, runId: runId ?? null, method, url: processedUrl, headers: canonicalHeaders, body: processedBody,
+  });
   if (cacheable) {
     const cached = getCachedResponse(cacheKey);
     if (cached !== null) return cached;

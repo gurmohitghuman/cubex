@@ -7,6 +7,8 @@ import { trashAnswer } from '../services/trash-answer';
 import { tableFailHttpStatus } from '../services/table-crud';
 import { describeSheet, descriptionProblem } from '../services/descriptions';
 import { listSheets, verifySheetInTable } from '../lib/sheet-crud-helpers';
+import { webhookFlagProblem, webhookForNewSheet } from '../services/sheet-webhook';
+import { linkBase } from '../lib/file-links';
 
 const router = express.Router();
 
@@ -15,12 +17,18 @@ function send(res: express.Response, result: SheetCrudOutcome, created = false) 
   res.status(created ? 201 : 200).json(result.ok);
 }
 
-// POST /v1/tables/:tableId/sheets {name?, after_sheet_id?}
+// POST /v1/tables/:tableId/sheets {name?, after_sheet_id?, webhook?}. webhook: true also gives the new
+// sheet its incoming webhook, with the URL in the answer.
 router.post('/tables/:tableId/sheets', requireScope('write'), (req: TokenAuthRequest, res) => {
   try {
-    const { name, after_sheet_id } = (req.body ?? {}) as { name?: unknown; after_sheet_id?: unknown };
+    const { name, after_sheet_id, webhook } = (req.body ?? {}) as
+      { name?: unknown; after_sheet_id?: unknown; webhook?: unknown };
+    const flag = webhookFlagProblem(webhook);
+    if (flag) return res.status(400).json({ error: flag });
     const after = typeof after_sheet_id === 'string' ? after_sheet_id : undefined;
-    send(res, createSheet(req.userId!, req.params.tableId, name, after), true);
+    const result = createSheet(req.userId!, req.params.tableId, name, after);
+    if ('fail' in result || webhook !== true || !result.ok.sheet) return send(res, result, true);
+    res.status(201).json({ ...result.ok, ...webhookForNewSheet(req.userId!, result.ok.sheet.id, linkBase(req)) });
   } catch (error) {
     console.error('POST /v1/tables/:tableId/sheets error:', error);
     res.status(500).json({ error: 'Failed to create sheet' });

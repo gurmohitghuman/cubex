@@ -5,12 +5,13 @@ import type { SheetData } from '@/utils/api/types'
 import { hiringAPI, type HiringCheck, type HiringView } from '@/utils/api/hiring'
 import { HIRING_CHECK_POLL_MS, checkDay } from '@/lib/hiring'
 import { HiringCheckDialog } from './HiringCheckDialog'
+import { HiringFiltersDialog } from './HiringFiltersDialog'
 
 // Above the grid of a hiring table's three sheets: what it searches for, its
 // sheets, Check now / Check again (the estimate first), and the last check:
 // still going (looked at every few seconds until it ends), done (what it
 // found, and how many companies its filters on Companies kept off) or stopped
-// (why). A new table opens on its first check's estimate.
+// (why). Filters… changes those filters, from the next check. A new table opens on its first check's estimate.
 const plural = (n: number, w: string, ws = `${w}s`) => `${n.toLocaleString('en-US')} ${n === 1 ? w : ws}`
 const going = (c: HiringCheck | undefined) => c?.stage === 'searching' || c?.stage === 'summarizing'
 
@@ -30,6 +31,7 @@ export const HiringBanner: React.FC<{ v: HiringView; sheetId: string; onChanged:
     const navigate = useNavigate()
     const location = useLocation()
     const [checking, setChecking] = useState(false)
+    const [filtering, setFiltering] = useState(false)
     const last = v.checks[0]
     // A new table opens on its first check's estimate (the dialog that made it says so).
     useEffect(() => {
@@ -49,6 +51,7 @@ export const HiringBanner: React.FC<{ v: HiringView; sheetId: string; onChanged:
       return () => clearInterval(timer)
     }, [last, v.id, onChanged])
     const close = useCallback(() => setChecking(false), [])
+    const closeFilters = useCallback(() => setFiltering(false), [])
 
     const sheets = [['Companies', v.companiesSheetId], ['Roles', v.rolesSheetId], ['Searches', v.searchesSheetId]]
     const where = [v.place, v.country].filter(Boolean).join(', ')
@@ -72,6 +75,9 @@ export const HiringBanner: React.FC<{ v: HiringView; sheetId: string; onChanged:
             ))}
           </span>
           <span className="flex-1" />
+          <button type="button" className="text-xs text-gray-600 underline disabled:opacity-50"
+            disabled={going(last)} onClick={() => setFiltering(true)} data-testid="hiring-filters"
+            title="Which companies get a row on Companies">Filters…</button>
           <button type="button" className="btn-secondary text-xs px-3 py-1 disabled:opacity-50"
             disabled={going(last)} onClick={() => setChecking(true)} data-testid="hiring-check">
             {last ? 'Check again…' : 'Check now…'}</button>
@@ -85,6 +91,7 @@ export const HiringBanner: React.FC<{ v: HiringView; sheetId: string; onChanged:
         </div>
         {last?.stage === 'done' && last.problems.map(p => <p key={p} className="text-xs text-gray-500">{p}</p>)}
         {checking && <HiringCheckDialog v={v} onClose={close} onStarted={onChanged} />}
+        {filtering && <HiringFiltersDialog v={v} onClose={closeFilters} onSaved={onChanged} />}
       </div>
     )
   }
