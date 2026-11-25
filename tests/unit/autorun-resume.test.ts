@@ -1,7 +1,8 @@
 // Resuming auto-run paused by hand (services/autorun-resume.ts), on a migrated throwaway DB: waiting_rows run
 // keeps every waiting row (as before), empty_only drops those whose cell holds a value, skip drops them all and
 // moves the watermark to the top row; one column's resume touches only its own rows, a clean column's are never
-// dropped, History says which, and set_auto_run refuses a bad waiting_rows or one with paused true. Slices of
+// dropped, nor those of an auto-run that was never paused; a blank or "Condition not met" cell reads as not run;
+// History says which, and set_auto_run refuses a bad waiting_rows or one with paused true. Slices of
 // HEAVY_SLICE_ROWS: 12,000 waiting rows go in more than one.
 import assert from 'node:assert/strict'
 import { v4 as uuid } from 'uuid'
@@ -119,6 +120,27 @@ async function main() {
       assert.ok('ok' in out, JSON.stringify(out))
       assert.deepEqual([waiting(s.entries.Status), waiting(s.entries.Other), waiting(s.entries.Clean)], [0, 0, 12])
     })
+
+  await ok('a resume of every auto-run leaves one that was never paused alone: its waiting rows are about to run',
+    async () => {
+      const s = sheet(30)
+      db.prepare('UPDATE autorun_columns SET paused_reason = NULL WHERE id = ?').run(s.entries.Other)
+      await resumeAutorun(uid, s.sid, 'skip')
+      assert.deepEqual([waiting(s.entries.Other), fence(s.entries.Other)], [30, 9], 'Other keeps its rows and place')
+      assert.deepEqual([waiting(s.entries.Status), fence(s.entries.Status)], [0, 29])
+    })
+
+  await ok('empty_only: a blank or "⏭️ Condition not met" cell has not run, so its row runs; a ❌ is kept', async () => {
+    const s = sheet(4)
+    const nbsp = String.fromCharCode(0xa0)
+    const cells = ['⏭️ Condition not met', ` ${nbsp}`, '❌ Error: timed out', '✅ Found']
+    const put = db.prepare(`UPDATE rows SET data = json_set(data, '$."Status"', ?) WHERE id = ?`)
+    cells.forEach((v, i) => put.run(v, s.ids[i]))
+    await resumeAutorun(uid, s.sid, 'empty_only', 'Status')
+    const left = db.prepare('SELECT row_id FROM autorun_pending WHERE autorun_id = ?').pluck()
+      .all(s.entries.Status) as string[]
+    assert.deepEqual(left.sort(), [s.ids[0], s.ids[1]].sort())
+  })
 
   assert.equal(await resumeAutorun(uid, uuid(), 'skip'), false, 'no such sheet')
   if (failures > 0) { console.error(`${failures} autorun-resume check(s) failed`); process.exit(1) }

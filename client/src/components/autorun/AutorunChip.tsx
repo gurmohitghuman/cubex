@@ -15,8 +15,9 @@ const TONE = {
 // of the sheet's auto-runs, each with its settings, and pauses or resumes them all; a resume asks what the rows
 // added or changed meanwhile do (services/autorun-resume.ts on the server).
 const RESUME: Array<[WaitingRows, string, string]> = [
-  ['run', 'Run the rows that waited', 'Rows added or changed while paused run now.'],
-  ['empty_only', 'Keep existing results', 'Only waiting rows with an empty cell run.'],
+  // A cell with a result never runs again either way: the two differ only on a row that failed.
+  ['run', 'Run the rows that waited', 'Rows added or changed while paused run now; a failed row tries again.'],
+  ['empty_only', 'Keep existing results', 'The same, but a failed row keeps its error.'],
   ['skip', 'Continue without running them', 'Only rows added or changed from now on run.'],
 ]
 export const AutorunChip: React.FC<{ autorun: AutorunControls }> = ({ autorun }) => {
