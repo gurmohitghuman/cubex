@@ -33,6 +33,7 @@ import { MAX_ROWS_PER_SHEET } from '../lib/constants';
 import { ENRICH_SPEND_WINDOWS } from '../lib/constants-enrich';
 import { estimateSetupCall } from './setup-call-estimate';
 import { cancelStepRuns } from './setup-run-control';
+import { cancelRun } from './run-lifecycle';
 
 // What a call takes besides its items: apply_setup's choices that make sense without a sheet.
 export type CallInput = Pick<ApplyInput, 'models' | 'estimateOnly' | 'webhookId' | 'maxCostUsd' | 'allowUnpriced'>;
@@ -163,7 +164,8 @@ const orphanSeconds = (): number =>
   Math.ceil((FILE_LINK_TTL_MINUTES * 60_000 + receiveBackstopMs()) / 1000) + SETUP_CALL_ORPHAN_HOURS * 3600;
 
 // A call paused SETUP_CALL_KEEP_HOURS ago (by hand, or at a limit, the token's cap or its ceiling) and not resumed
-// since is stopped, as control_setup_run's cancel stops it; its results are then kept as any finished call's.
+// since is stopped, as control_setup_run's (or, for an enrichment call, control_run's) cancel stops it; its results
+// are then kept as any finished call's.
 export const STALE_PAUSE = `Paused for more than ${SETUP_CALL_KEEP_HOURS} hours, so it was stopped.`;
 async function stopStalePaused(keep: string): Promise<void> {
   const stale = db.prepare(`SELECT c.id FROM setup_calls c JOIN setup_runs r ON r.id = c.id
@@ -175,6 +177,19 @@ async function stopStalePaused(keep: string): Promise<void> {
     if (stop.run(STALE_PAUSE, id, keep).changes === 0) continue;
     try { await cancelStepRuns(loadSetupRun(id)!); } catch (err) {
       console.error(`Setup call ${id}'s runs couldn't all be stopped:`, err);
+    }
+  }
+  // An enrichment call is its run. Why it stopped is written only while it is still paused that long, and the
+  // cancel's own flip follows with nothing awaited between, so a resume meanwhile keeps it going.
+  const runs = db.prepare(`SELECT c.id, c.user_id FROM enrichment_item_calls c JOIN http_runs r ON r.id = c.id
+    WHERE r.status = 'paused' AND r.updated_at <= datetime('now', ?)`).all(keep) as
+    Array<{ id: string; user_id: string }>;
+  const why = db.prepare(`UPDATE http_runs SET error_message = ? WHERE id = ? AND status = 'paused'
+    AND updated_at <= datetime('now', ?)`);
+  for (const r of runs) {
+    if (why.run(STALE_PAUSE, r.id, keep).changes === 0) continue;
+    try { await cancelRun('http', r.id, r.user_id); } catch (err) {
+      console.error(`Enrichment call ${r.id} couldn't be stopped:`, err);
     }
   }
 }

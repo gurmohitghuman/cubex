@@ -6,11 +6,14 @@ import { mcpClient, call, callError } from './helpers-mcp'
 // One enrichment tool called on items without a sheet (services/enrich-call.ts), against the mock treg:
 // call_enrichment prices by default and makes nothing; a ceiling it could pass refuses it before anything runs;
 // started, it is an enrichment run on a working table no list shows, and get_run_results gives each item's row
-// (row_index is the item); a tool with a "status" field runs too. REST prices it (estimate_only), refuses an input
-// the tool lacks, and needs "run".
+// (row_index is the item); a tool with a "status" field runs too, and Settings' spend card shows what the calls
+// spent as "A call without a sheet". REST prices it (estimate_only), refuses an input the tool lacks, and needs
+// "run".
 const TOOL = 'treg.people.email.find'
 
-test('an enrichment called on items: priced, refused over a ceiling, run without a sheet', async () => {
+test('an enrichment called on items: priced, refused over a ceiling, run without a sheet', async ({
+  page, context,
+}) => {
   test.setTimeout(120_000)
   const api = await authedApi()
   await freshTreg(api)
@@ -50,6 +53,15 @@ test('an enrichment called on items: priced, refused over a ceiling, run without
   await expect.poll(async () => (await call(client, 'get_run_status', { run_type: 'enrichment',
     run_id: checked.run_id, wait_seconds: 5 })).status, { timeout: 60_000 }).toMatch(/completed|failed/)
   expect(await tables()).toBe(before)
+
+  // What the calls spent: one line for calls in Settings, never the working table's name.
+  const spend = await (await api.get(`${BASE}/api/enrich/spend?days=30`)).json()
+  expect(spend.columns.filter((c: any) => c.call)).toHaveLength(1)
+  await context.addCookies((await api.storageState()).cookies)
+  await page.goto(`${BASE}/settings/http-enrichment`)
+  const card = page.getByTestId('enrich-spend-card')
+  await expect(card).toContainText('A call without a sheet', { timeout: 15_000 })
+  await expect(card).not.toContainText('Enrichment call ')
 
   const auth = { Authorization: `Bearer ${token}` }
   const priced = await api.post(`${BASE}/api/v1/enrichments/${TOOL}/calls`, { headers: auth,
