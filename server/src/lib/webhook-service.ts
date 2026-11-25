@@ -36,6 +36,8 @@ export interface WebhookSourceFull {
   last_error_message: string | null;
   created_at: string;
   rotated_at: string | null;
+  auth_token_hash: string | null;
+  auth_token_set_at: string | null;
 }
 
 export function getSourceForSheet(sheetId: string, userId: string): WebhookSourceFull | null {
@@ -67,6 +69,9 @@ export function serializeSource(src: WebhookSourceFull): Record<string, unknown>
     lastErrorMessage: src.last_error_message,
     createdAt: src.created_at,
     rotatedAt: src.rotated_at,
+    // Senders must send its token (Authorization: Bearer). Never the token or its hash.
+    tokenRequired: !!src.auth_token_hash,
+    tokenSetAt: src.auth_token_set_at,
     // Reveal window: full URL until first delivery, then masked.
     masked: !revealable,
     url: secret ? webhookUrlForSecret(secret) : null,

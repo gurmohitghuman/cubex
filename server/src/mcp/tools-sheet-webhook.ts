@@ -5,15 +5,18 @@
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/server';
 import {
-  addSheetWebhookField, createSheetWebhook, deleteSheetWebhook, getSheetWebhook, removeSheetWebhookField,
-  rotateSheetWebhook, setSheetWebhookEnabled, sheetWebhookView, type SheetWebhookOutcome,
+  addSheetWebhookField, createSheetWebhook, deleteSheetWebhook, getSheetWebhook, newSheetWebhookToken,
+  removeSheetWebhookField, removeSheetWebhookToken, rotateSheetWebhook, setSheetWebhookEnabled, sheetWebhookView,
+  type SheetWebhookOutcome,
 } from '../services/sheet-webhook';
 import type { WebhookSourceFull } from '../lib/webhook-service';
 import { McpAuthCtx, ok, err, missingScope, registerTool, SHEET_ID, mcpLinkBase } from './tool-helpers';
 import { busyMessage, sheetBusyWith } from '../lib/sheet-busy';
 import { changedOf } from './changed';
 
-const ACTIONS = ['get', 'create', 'turn_on', 'turn_off', 'rotate', 'add_field', 'remove_field', 'delete'] as const;
+const ACTIONS = [
+  'get', 'create', 'turn_on', 'turn_off', 'rotate', 'add_field', 'remove_field', 'new_token', 'remove_token', 'delete',
+] as const;
 
 export function registerSheetWebhookTools(server: McpServer, ctx: McpAuthCtx): void {
   registerTool(server, 'manage_sheet_webhook', {
@@ -24,7 +27,9 @@ export function registerSheetWebhookTools(server: McpServer, ctx: McpAuthCtx): v
       + 'arrives, and only to a key with the write scope; after that it is hidden and rotate makes a new one (the '
       + 'old one stops at once). turn_off: events get 404 and add nothing until turn_on. add_field: json_path '
       + '(like $.email or $.plan.name) and column, a new column each event fills, as text (default) or as json. '
-      + 'remove_field: field_id; its column and values stay. delete: the webhook and its kept events go; its '
+      + 'remove_field: field_id; its column and values stay. new_token: senders must then send the answer\'s '
+      + 'token (shown once) as Authorization: Bearer <token>, or get 404; an old one stops. remove_token: no '
+      + 'token needed. delete: the webhook and its kept events go; its '
       + 'columns and rows stay. manage_table or manage_sheet create with webhook true makes a sheet with one. '
       + 'Every action but get needs the write scope.',
     inputSchema: z.object({
@@ -71,6 +76,12 @@ export function registerSheetWebhookTools(server: McpServer, ctx: McpAuthCtx): v
       return answer(setSheetWebhookEnabled(ctx.userId, sheet_id, action === 'turn_on'));
     }
     if (action === 'rotate') return answer(rotateSheetWebhook(ctx.userId, sheet_id));
+    if (action === 'new_token') {
+      const made = newSheetWebhookToken(ctx.userId, sheet_id);
+      if ('fail' in made) return err(made.message);
+      return ok({ webhook: sheetWebhookView(made.ok.source, mcpLinkBase(ctx)), token: made.ok.token, changed: [] });
+    }
+    if (action === 'remove_token') return answer(removeSheetWebhookToken(ctx.userId, sheet_id));
     if (action === 'add_field') {
       if (!json_path || !column) return err('add_field needs json_path and column.');
       const added = addSheetWebhookField(ctx.userId, sheet_id, { jsonPath: json_path, column, asJson: as === 'json' });

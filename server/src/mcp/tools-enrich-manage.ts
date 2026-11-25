@@ -96,7 +96,8 @@ export function registerEnrichManageTools(server: McpServer, ctx: McpAuthCtx) {
       'Turn auto-run on or off for an enrichment or HTTP API column, or pause and resume it. When on, the column '
       + 'repeats its newest run on new rows and on rows whose inputs get filled, once a row; rows already there '
       + 'are left alone. Clean and formula columns follow their source columns instead, free and without run_if or '
-      + 'caps (turning a formula column on again lifts a pause). '
+      + 'caps (turning a formula column on again lifts a pause). A resume takes waiting_rows for the rows that '
+      + 'waited meanwhile. '
       + 'An enrichment\'s daily_cap_usd is never above the daily limit. '
       + 'An enrichment auto-run SPENDS the treg balance on every new row; with a webhook on the sheet, anyone with '
       + 'its URL can add rows that spend. An HTTP API auto-run SENDS REAL REQUESTS (leads to a sequencer, messages), '
@@ -107,6 +108,8 @@ export function registerEnrichManageTools(server: McpServer, ctx: McpAuthCtx) {
       column: z.string().optional().describe('The column; with paused and no column, every auto-run on the sheet'),
       enabled: lenientBoolean().optional().describe('true turns auto-run on for column, false off'),
       paused: lenientBoolean().optional().describe('true pauses, false resumes'),
+      waiting_rows: z.enum(['run', 'empty_only', 'skip']).optional().describe('On resume, the rows added or changed '
+        + 'while paused: run (default) runs them, empty_only only those whose cell is empty, skip none (from now on)'),
       where: z.array(condition).max(20).optional().describe('Only rows passing every condition auto-run'),
       run_if: z.string().max(MAX_RULE_CHARS).optional().describe(
         'Auto-run\'s "Only run if" rule; rows that fail it wait (no marker) until a column it reads changes. Kept '

@@ -201,6 +201,9 @@ export const WEBHOOK_RATE_BURST = 20;
 // Idle entries in the per-token bucket Map are evicted after this long so
 // deleted/rotated webhooks don't linger in memory.
 export const WEBHOOK_BUCKET_IDLE_EVICT_MS = 5 * 60 * 1000;
+// Events one webhook may have arriving at once (their bodies still coming in). The bucket counts starts, so
+// slow bodies could otherwise pile up within it (each may take WEBHOOK_BODY_TIMEOUT_MS). Excess -> 429.
+export const WEBHOOK_MAX_OPEN_BODIES = 20;
 // Structural guard on the parsed payload (runs AFTER JSON.parse, BEFORE any
 // extraction/write). Bounds json_set cost and delivery-store size. Over -> 400.
 export const WEBHOOK_MAX_JSON_DEPTH = 10;

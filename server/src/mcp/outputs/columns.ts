@@ -18,7 +18,8 @@ const sheetRef = obj({ id: str, name: str, position: opt(num), row_count: opt(nu
 const sheetWebhook = obj({
   id: str, sheet_id: str, enabled: bool,
   url: nul(str).describe('Where senders POST; null after the first event, or for a key without write'),
-  url_hidden: bool, column: str, events_received: num, last_event_at: nul(str), last_error: nul(str),
+  url_hidden: bool, token_required: bool, token_set_at: nul(str),
+  column: str, events_received: num, last_event_at: nul(str), last_error: nul(str),
   last_error_at: nul(str), created_at: str, rotated_at: nul(str),
   fields: z.array(obj({ id: str, json_path: str, column: str, as: z.enum(['text', 'json']), created_at: str })),
 });
@@ -27,7 +28,9 @@ const madeWebhook = {
   webhook_error: opt(str).describe('webhook true: why it was not added; the sheet is there'),
 };
 export const manageSheetWebhook = obj({
-  webhook: opt(nul(sheetWebhook)).describe('null: the sheet has none'), deleted: opt(bool), changed,
+  webhook: opt(nul(sheetWebhook)).describe('null: the sheet has none'),
+  token: opt(str).describe('new_token: shown once; senders put it in Authorization: Bearer <token>'),
+  deleted: opt(bool), changed,
 });
 // create, rename, delete or create_sample: the fields of that action.
 export const manageTable = obj({

@@ -31,6 +31,7 @@ export const TOOL_OUTPUTS = {
   clean_column: fill.cleanColumn, formula_column: fill.formulaColumn, write_formula: fill.writeFormula,
   lookup_column: fill.lookupColumn, add_enrichment_field: fill.addEnrichmentField,
   get_list_fields: fill.getListFields, add_list_rows: fill.addListRows, set_auto_run: fill.setAutoRun,
+  list_prompt_starters: fill.listPromptStarters,
   search_enrichments: enrich.searchEnrichments, get_enrichment: enrich.getEnrichment,
   run_enrichment: enrich.runEnrichment, waterfall_column: enrich.waterfallColumn,
   ai_visibility: enrich.aiVisibility, hiring_signals: enrich.hiringSignals, get_balances: enrich.getBalances,
