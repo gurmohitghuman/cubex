@@ -1,3 +1,4 @@
+// Over 200 lines: the sweep, its checks and its one slice stay together, so each slice checks what the sweep did.
 // Auto-delete's sweep (API process, every AUTO_DELETE_SWEEP_MS; services/webhook-auto-delete.ts says what it
 // does). For each webhook sheet with it on, a read first: is there a finished row older than the newest
 // keep_rows (services/webhook-auto-delete-rows.ts)? Only then a bulk writer (lib/bulk-slices.ts): slices of at
@@ -22,6 +23,7 @@ import { hasSpanWork } from '../lib/derived-spans';
 import { getSheetColumns, verifySheetOwnership } from '../lib/sql-helpers';
 import { countOf, logSheetChange } from '../lib/change-log';
 import { listRunInto } from './enrich-list-guard';
+import { activeSetupRuns } from './sheet-runs';
 import { autoRunsHolding, finishedRows, newestLeaving } from './webhook-auto-delete-rows';
 import { copyRows, deleteRows, logRows, type CopyTo } from './webhook-auto-delete-move';
 import type { AutoDeleteRow } from './webhook-auto-delete';
@@ -36,7 +38,8 @@ let sweeping = false;
 const COPY_RETRY_MS = 60_000;
 
 // What keeps it out of a sheet now: nothing, only auto-run's own runs (they end soon), or anything else (a
-// person's run, a paused one, a list run adding rows to it).
+// person's run, a paused one, a list run adding rows to it, a setup being used on it: between its steps no run
+// is going, but the next step still fills the rows).
 function runsIn(sheetId: string, userId: string): 'none' | 'autorun' | 'other' {
   const http = db.prepare(`SELECT autorun_id, status FROM http_runs
     WHERE sheet_id = ? AND user_id = ? AND status IN ('pending', 'running', 'paused')`)
@@ -44,8 +47,9 @@ function runsIn(sheetId: string, userId: string): 'none' | 'autorun' | 'other' {
   const ai = db.prepare(`SELECT 1 FROM ai_runs WHERE sheet_id = ? AND user_id = ?
     AND status IN ('pending', 'running', 'paused') LIMIT 1`).get(sheetId, userId);
   const list = listRunInto(sheetId, userId);
-  if (http.length === 0 && !ai && !list) return 'none';
-  return !ai && !list && http.every(r => r.autorun_id && r.status !== 'paused') ? 'autorun' : 'other';
+  const setup = activeSetupRuns(sheetId, userId).length > 0;
+  if (http.length === 0 && !ai && !list && !setup) return 'none';
+  return !ai && !list && !setup && http.every(r => r.autorun_id && r.status !== 'paused') ? 'autorun' : 'other';
 }
 const sheetsOf = (cfg: AutoDeleteRow): string[] =>
   (cfg.copy_to_sheet_id === null ? [cfg.sheet_id] : [cfg.sheet_id, cfg.copy_to_sheet_id]);

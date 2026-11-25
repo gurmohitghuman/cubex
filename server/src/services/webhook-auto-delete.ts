@@ -11,6 +11,7 @@ import { AUTO_DELETE_KEEP_DEFAULT, AUTO_DELETE_KEEP_MAX } from '../lib/constants
 import { getSheetColumns, verifySheetOwnership } from '../lib/sql-helpers';
 import { countOf, logSheetChange } from '../lib/change-log';
 import type { WebhookSourceFull } from '../lib/webhook-service';
+import { activeSetupRuns } from './sheet-runs';
 
 export interface AutoDeleteRow {
   source_id: string; user_id: string; sheet_id: string; mode: string; keep_rows: number;
@@ -57,7 +58,10 @@ function waitingFor(row: AutoDeleteRow): string | null {
   const run = db.prepare(`SELECT 1 FROM http_runs WHERE sheet_id = ? AND user_id = ? AND status = 'paused'
     UNION ALL SELECT 1 FROM ai_runs WHERE sheet_id = ? AND user_id = ? AND status = 'paused' LIMIT 1`)
     .get(row.sheet_id, row.user_id, row.sheet_id, row.user_id);
-  return run ? 'A run on this sheet is paused: no row leaves until it is resumed or cancelled.' : null;
+  if (run) return 'A run on this sheet is paused: no row leaves until it is resumed or cancelled.';
+  const setup = activeSetupRuns(row.sheet_id, row.user_id).find(r => r.status === 'paused');
+  return setup ? `The setup "${setup.setup}" is paused on this sheet: no row leaves until it is resumed or `
+    + 'cancelled.' : null;
 }
 
 export function autoDeleteView(sourceId: string): AutoDeleteView | null {
