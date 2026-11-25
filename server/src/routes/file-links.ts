@@ -11,7 +11,7 @@ import express from 'express';
 import { contentDispositionFilename } from '../lib/csv-safety';
 import { exportContentType, planSheetExport } from '../lib/csv-export';
 import type { WhereItem } from '../lib/row-filter/where';
-import { responseWriter, writeSheetCsv, writeSheetJsonl } from '../lib/csv-write';
+import { responseTurn, responseWriter, writeSheetCsv, writeSheetJsonl } from '../lib/csv-write';
 import { findFileLink, linkOptions, releaseFileLink, useFileLink } from '../lib/file-links';
 import { busyMessage, sheetBusyWith, withSheetRead } from '../lib/sheet-busy';
 import { redactError } from '../lib/redact';
@@ -125,7 +125,9 @@ router.get('/download/:token', async (req, res) => {
           error: `${plan.error} The sheet changed since this link was made; ask for a new one.`,
         });
     }
-    // The link is used inside the read hold, so a busy sheet leaves it unused.
+    // Its turn on the connection first (lib/csv-write.ts responseTurn): a client gone meanwhile leaves the link
+    // unused. The link is used inside the read hold, so a busy sheet leaves it unused too.
+    if (!await responseTurn(res)) return;
     const outcome = await withSheetRead(link.sheet_id, async () => {
       if (!useFileLink(link)) return 'used' as const;
       res.setHeader('Content-Type', exportContentType(jsonl ? 'jsonl' : 'csv'));
