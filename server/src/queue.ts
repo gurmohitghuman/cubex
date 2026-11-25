@@ -13,6 +13,7 @@ import { DATA_DIR } from './lib/db-path';
 import { parseTargetRows } from './lib/run-targets';
 import type { RecoveredRuns } from './lib/orphan-runs';
 import { clearRunPlaceholders } from './lib/run-placeholders';
+import { dropRunSpans } from './lib/derived-spans';
 import { jobsDbInWal } from './lib/jobs-db';
 import { closeJobInserts, enqueueJob, startJobInserts } from './lib/job-inserts';
 
@@ -56,12 +57,15 @@ const { HTTPRerunJob } = require(path.join(COMPILED_JOBS_DIR, 'http-rerun-job'))
 // must persist (queued/resumable runs included).
 export const JOBS_DB_PATH = process.env.JOBS_DB_PATH || path.join(DATA_DIR, 'jobs.db');
 
-let started = false;
+// The queue's start, once asked (null: not started, or stopped). A stop waits for it (stopQueue).
+let started: Promise<void> | null = null;
 
-export async function startQueue(): Promise<void> {
-  if (started) return;
-  started = true;
+export function startQueue(): Promise<void> {
+  started ??= startSidequest();
+  return started;
+}
 
+async function startSidequest(): Promise<void> {
   // In WAL mode before any of the queue's connections opens it (lib/jobs-db.ts).
   await jobsDbInWal(JOBS_DB_PATH);
   await Sidequest.start({
@@ -83,6 +87,10 @@ export async function startQueue(): Promise<void> {
     // Don't start the bundled web dashboard: it would bind port 8678 with no
     // auth and expose job internals.
     dashboard: { enabled: false },
+    // Cubex's own stop (lib/server-lifecycle.ts installShutdownHandlers) closes the queue first, then saves what
+    // it holds and lets the process end. Sidequest's would close it too and then call process.exit(0) at once,
+    // racing those saves, and exiting so can hang Node (nodejs/node#54918).
+    gracefulShutdown: false,
   });
 
   console.log(`🧰 Sidequest started (jobs.db: ${JOBS_DB_PATH}, shim: ${JOBS_SHIM_PATH})`);
@@ -102,8 +110,12 @@ export async function startQueue(): Promise<void> {
 }
 
 export async function stopQueue(): Promise<void> {
-  if (!started) return;
-  started = false;
+  const starting = started;
+  if (!starting) return;
+  started = null;
+  // A stop asked while the queue still starts (right after boot) waits for the start, then stops it: stopped
+  // half way, Sidequest and the insert worker came up after the stop and kept the process running.
+  try { await starting; } catch { return; }
   try {
     // The inserts already asked land first (lib/job-inserts.ts).
     await closeJobInserts();
@@ -157,11 +169,16 @@ export async function enqueueHTTPRerun(runId: string, targetRows: number[]): Pro
 // left alone they would spin with no worker, and Cancel refuses a failed run.
 function failUnresumed(kind: 'ai' | 'http', id: string): void {
   const table = kind === 'ai' ? 'ai_runs' : 'http_runs';
-  const failed = db.prepare(
-    `UPDATE ${table} SET status = 'failed', error_message = 'Could not resume after restart. Re-run to continue.',
-       placeholder_work = 'clearing', updated_at = datetime('now') WHERE id = ? AND status = 'pending'`,
-  ).run(id);
-  if (failed.changes > 0) {
+  const sheetId = db.transaction(() => {
+    const s = db.prepare(
+      `UPDATE ${table} SET status = 'failed', error_message = 'Could not resume after restart. Re-run to continue.',
+         placeholder_work = 'clearing', updated_at = datetime('now') WHERE id = ? AND status = 'pending'
+       RETURNING sheet_id`,
+    ).pluck().get(id) as string | undefined;
+    if (s) dropRunSpans(s, { kind, id });
+    return s;
+  }).immediate();
+  if (sheetId) {
     clearRunPlaceholders(kind, id).catch(err => console.error(`Clearing the cells of ${kind} run ${id} failed:`, err));
   }
 }

@@ -18,7 +18,7 @@ import {
 } from '../lib/constants';
 import { jsonPath } from '../lib/sql-rows';
 import { PLACEHOLDER } from '../lib/run-markers';
-import { getLockedRunColumns } from '../lib/run-locked-columns';
+import { placeholderWorkColumns } from '../lib/run-locked-columns';
 import { nextSpan, spanWorked } from '../lib/derived-spans';
 import { getSheetColumns, verifySheetOwnership } from '../lib/sql-helpers';
 import { asBulkWriter } from '../lib/bulk-slices';
@@ -87,16 +87,18 @@ function queuedSlice(s: Step): boolean {
   return more;
 }
 
-// The rows a stopped run's ⏳ clear told this column (lib/derived-spans.ts), in storage order, from its oldest
-// span once that clear has ended. A row gone since (deleted, in the trash: a restore queues it again) is passed
-// over. A row where an input this column reads holds ⏳ again, a run going or clearing on that input, is waited
-// at: worked out now, the ⏳ would read as empty, and that run tells the row once its ⏳ goes (a result, or its
-// clear). Rows written are quiet, as an undo's: only clean, formula and lookup columns follow them. True while
-// there may be more. Call inside a transaction (a slice).
+// The rows a run's start or a stopped run's ⏳ clear told this column (lib/derived-spans.ts), in storage order,
+// from its oldest span once that seeding or clear has ended. A row gone since (deleted, in the trash: a restore
+// queues it again) is passed over. Queued rows (a worker's answer, a person's edit) always run before spans so a
+// quiet span slice never swallows a loud write. A row where an input holds ⏳ while a run is mid-seed or mid-clear
+// on that input is waited at until that finishes; while a run is going, ⏳ reads as empty so formulas follow the
+// cells as they are now. Rows written are quiet, as an undo's: only clean, formula and lookup columns follow them.
+// True while there may be more. Call inside a transaction (a slice).
 function spanSlice(s: Step): boolean {
   const began = sliceClock();
   const e = s.entry;
   if (!stillCurrent(s)) return false;
+  if (db.prepare('SELECT 1 FROM autorun_pending WHERE autorun_id = ? LIMIT 1').get(e.id)) return true;
   const span = nextSpan(e.id);
   if (!span) return false;
   const want = span.rowids.slice(span.done, span.done + s.spanPage);
@@ -104,8 +106,8 @@ function spanSlice(s: Step): boolean {
   const read = readDerivedRows(db.prepare(`SELECT rowid AS rowid, row_index AS i, ${sel.sql} FROM rows
     WHERE rowid IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ? ORDER BY rowid`)
     .iterate(...sel.params, JSON.stringify(want), e.sheet_id, e.user_id), s.spanPage, s.inputs.length);
-  const locked = getLockedRunColumns(e.sheet_id, e.user_id, { clearing: true });
-  const held = s.inputs.flatMap((c, k) => (locked.has(c) ? [`in${k}`] : []));
+  const busy = placeholderWorkColumns(e.sheet_id, e.user_id);
+  const held = s.inputs.flatMap((c, k) => (busy.has(c) ? [`in${k}`] : []));
   const wait = held.length === 0 ? -1 : read.rows.findIndex(r => held.some(k => r[k] === PLACEHOLDER));
   const rows = wait < 0 ? read.rows : read.rows.slice(0, wait);
   const reads = rows.map(r => asDerivedRead(r, s.inputs.length));

@@ -183,6 +183,8 @@ const RUNS_WHILE_SHEET_BUSY = new Set([
 // busyRefusal).
 const KEYED_RUNS_WHILE_SHEET_BUSY = new Set([
   'update_cells', 'run_ai_column', 'run_http_enrichment', 'run_enrichment', 'waterfall_column',
+  // A retry answers its first transfer; any other keyed transfer is refused as busy there (rows-transfer.ts).
+  'transfer_rows',
 ]);
 
 export function refuseWhileSheetBusy(name: string, handler: ToolHandler): ToolHandler {

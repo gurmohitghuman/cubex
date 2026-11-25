@@ -8,6 +8,7 @@ import assert from 'node:assert/strict'
 import { v4 as uuid } from 'uuid'
 import { undoKit } from './run-undo-kit'
 import cellsMod from '../../server/src/lib/placeholder-cells'
+import spansMod from '../../server/src/lib/derived-spans'
 import writeMod from '../../server/src/lib/run-cells-write'
 import markMod from '../../server/src/lib/autorun-mark'
 import formulaMod from '../../server/src/services/formula-column'
@@ -15,6 +16,7 @@ import followMod from '../../server/src/services/derived-follow'
 import entryMod from '../../server/src/services/autorun-entry'
 const { clearProcessingPlaceholders, seedProcessingPlaceholders } =
   cellsMod as typeof import('../../server/src/lib/placeholder-cells')
+const { dropRunSpans } = spansMod as typeof import('../../server/src/lib/derived-spans')
 const { writeRunCells } = writeMod as typeof import('../../server/src/lib/run-cells-write')
 const { markAutorunInputs } = markMod as typeof import('../../server/src/lib/autorun-mark')
 const { startFormulaColumn } = formulaMod as typeof import('../../server/src/services/formula-column')
@@ -48,6 +50,8 @@ export function spanKit(name: string) {
     const last = db.prepare('SELECT MAX(row_index) FROM rows WHERE sheet_id = ?').pluck().get(sid) as number
     await seedProcessingPlaceholders({ run: { kind: 'http', id }, sheetId: sid, userId: uid, columns: ['Answer'],
       targets: opts.targets ?? null, lastRow: last, live: () => true })
+    // A stopped run's transition to 'clearing' drops its start's seed spans before the clear writes its own.
+    if (!opts.going) dropRunSpans(sid, { kind: 'http', id })
     return { kind: 'http', id }
   }
   const readers = async (sid: string) => {
