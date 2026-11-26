@@ -103,7 +103,7 @@ export const tableRoutes = (): RouteDoc[] => [
   }),
   op({
     method: 'post', path: '/sheets/{id}/sort', operationId: 'sortSheet', tag: 'tables', scope: 'write',
-    summary: 'Sort the rows by a column, for good. The new order is saved.',
+    summary: 'Sort the rows by a column: the rows move, and the new order is saved.',
     body: z.object(SORT_FIELDS),
   }),
   op({
