@@ -117,7 +117,10 @@ export async function clearProcessingPlaceholders(
     return took;
   }, {
     rows: readers > 0 ? readRows : sliceRows(false), checkpointed: readers > 0,
+    // Putting values back reads each row's journaled cells (JSON parsed per cell) as well as writing them: half the
+    // bytes a slice may write (at 8 MB a Windows runner's slice held the event loop 280 ms).
     sizes: back && restoring > 0 ? (ids, json) => rowBytesWithKept(ids, json, back.undoId) : undefined,
+    bytes: back && restoring > 0 ? HEAVY_SLICE_BYTES / 2 : undefined,
   });
   bump.run(sheetId, userId);
   // A run's clear kicks its readers once the run lets its columns go (lib/run-placeholders.ts).
