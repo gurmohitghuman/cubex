@@ -42,6 +42,14 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
     version: 'v0.8.47',
     changes: [
       {
+        change: 'server',
+        summary: 'transfer_rows with a move takes rows holding at most 16 MB a call (a copy still 32 MB): a move '
+          + 'past it is refused, naming both caps, and nothing moves.',
+        details: 'A move writes each row three times in one transaction, so 32 MB of rows passed the database\'s '
+          + 'room. The refusal says how much the call picked: move fewer rows, or copy a single row past the cap, '
+          + 'then delete_rows.',
+      },
+      {
         change: 'changed',
         tools: ['manage_table'],
         summary: 'manage_table takes action star or unstar with table_id: a starred table is in the user\'s '
