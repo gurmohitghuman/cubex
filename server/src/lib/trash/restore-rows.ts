@@ -11,7 +11,8 @@
 // run was filling ("⏳ ...") comes back empty.
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db';
-import { MAX_COLUMNS_PER_SHEET, TRASH_PLACE_CHECK_ROWS } from '../constants';
+import { HEAVY_SLICE_BYTES, MAX_COLUMNS_PER_SHEET, TRASH_PLACE_CHECK_ROWS } from '../constants';
+import { withinBytes } from '../slice-bytes';
 import { oneTransaction, yieldToRequests } from '../slices';
 import { appendColumnsToOrder, getSheetColumns } from '../sql-helpers';
 import { nextRowIndex } from '../sheet-busy';
@@ -114,9 +115,13 @@ export function restoreSlice(
     const item = db.prepare('SELECT restore_at, restored FROM trash_items WHERE id = ?').get(itemId) as
       { restore_at: number | null; restored: number };
     const list = picks ? JSON.stringify(picks) : null;
+    // A slice takes as many as fit half of HEAVY_SLICE_BYTES (each written twice: into the rows, out of the
+    // trash), read first. Picked rows go in one transaction with the batch's end, all of them.
+    const sizes = picks ? null : db.prepare(`SELECT octet_length(data) FROM trash_rows WHERE item_id = ?
+      ORDER BY seq LIMIT ?`).pluck().all(itemId, limit) as number[];
     const rows = db.prepare(`SELECT seq, row_index, row_id, data FROM trash_rows WHERE item_id = ?
       AND (? IS NULL OR seq IN (SELECT value FROM json_each(?))) ORDER BY seq LIMIT ?`)
-      .all(itemId, list, list, limit) as TrashRow[];
+      .all(itemId, list, list, sizes ? withinBytes(sizes, HEAVY_SLICE_BYTES / 2) : limit) as TrashRow[];
     if (rows.length === 0) return;
     const insert = db.prepare('INSERT INTO rows (id, sheet_id, user_id, row_index, data) VALUES (?, ?, ?, ?, ?)');
     const idTaken = db.prepare('SELECT 1 FROM rows WHERE id = ?').pluck();
