@@ -1,0 +1,163 @@
+name: Install from the built archive
+
+# Installs this commit with its installers on Linux and Windows the way every `cubex update` to a release does: from
+# the release's built app archive (scripts/pack-dist.sh), not by building. The archive is served on 127.0.0.1 and
+# CUBEX_DIST_URL points --source at it; each install must say it took the pre-built app, then answer on /api/health.
+# The Release workflow calls it with the archive it is about to attach; on pull requests that touch the installers,
+# the packing or this file, the first job builds one the same way.
+
+on:
+  pull_request:
+    paths:
+      - install.sh
+      - install.ps1
+      - scripts/pack-dist.sh
+      - .github/workflows/install-dist.yml
+      - .github/workflows/release.yml
+  workflow_call:
+    inputs:
+      ref:
+        description: Commit to test (the caller's commit when empty)
+        type: string
+        default: ''
+      artifact:
+        description: Take the cubex-dist artifact this run already built (Release), instead of building one
+        type: boolean
+        default: false
+  workflow_dispatch:
+
+concurrency:
+  group: install-dist-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CUBEX_REF: ${{ inputs.ref || github.event.pull_request.head.sha || github.sha }}
+
+jobs:
+  build:
+    name: Build the app archive
+    if: ${{ !inputs.artifact }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out the commit
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ env.CUBEX_REF }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Build and package the app
+        run: |
+          npm ci --include=dev --no-audit --no-fund
+          npm run build
+          bash scripts/pack-dist.sh release-assets
+
+      - name: Upload the archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: cubex-dist
+          path: |
+            release-assets/cubex-dist.tar.gz
+            release-assets/cubex-dist.tar.gz.sha256
+          retention-days: 1
+
+  linux:
+    name: Install from the archive on Linux
+    needs: build
+    if: ${{ !cancelled() && (needs.build.result == 'success' || needs.build.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out the commit
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ env.CUBEX_REF }}
+
+      - name: Download the archive
+        uses: actions/download-artifact@v4
+        with:
+          name: cubex-dist
+          path: ${{ runner.temp }}/dist
+
+      - name: Install from it, start and reach Cubex
+        env:
+          CUBEX_HOME: ${{ runner.temp }}/cubex/home
+          CUBEX_BIN_DIR: ${{ runner.temp }}/cubex/bin
+          CUBEX_DIST_URL: http://127.0.0.1:8765
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8765 --bind 127.0.0.1 --directory "$RUNNER_TEMP/dist" > /dev/null 2>&1 &
+          curl -fsS --retry 10 --retry-connrefused --retry-delay 1 -o /dev/null \
+            "$CUBEX_DIST_URL/cubex-dist.tar.gz.sha256"
+          SECONDS=0
+          bash install.sh --source . --port 3093 --no-service --no-modify-path | tee "$RUNNER_TEMP/install.out"
+          echo "Installed in ${SECONDS}s"
+          grep -q 'Downloaded pre-built Cubex' "$RUNNER_TEMP/install.out" \
+            || { echo "::error::The install didn't take the pre-built app"; exit 1; }
+          if grep -q 'Building Cubex' "$RUNNER_TEMP/install.out"; then
+            echo "::error::The install built Cubex"; exit 1
+          fi
+          curl -fsS --retry 10 --retry-connrefused --retry-delay 2 http://127.0.0.1:3093/api/health
+          echo
+          "$CUBEX_BIN_DIR/cubex" status
+          "$CUBEX_BIN_DIR/cubex" stop
+
+  windows:
+    name: Install from the archive on Windows
+    needs: build
+    if: ${{ !cancelled() && (needs.build.result == 'success' || needs.build.result == 'skipped') }}
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - name: Check out the commit
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ env.CUBEX_REF }}
+
+      - name: Download the archive
+        uses: actions/download-artifact@v4
+        with:
+          name: cubex-dist
+          path: ${{ runner.temp }}/dist
+
+      # The runner's windows are elevated: a background-process install is allowed here (install.ps1).
+      - name: Install from it, start and reach Cubex
+        env:
+          CUBEX_DIST_URL: http://127.0.0.1:8765
+          CUBEX_ALLOW_ELEVATED: '1'
+        run: |
+          $home_ = Join-Path $env:RUNNER_TEMP 'cubex'
+          Start-Process python -ArgumentList '-m', 'http.server', '8765', '--bind', '127.0.0.1', '--directory',
+            "$env:RUNNER_TEMP\dist" -WindowStyle Hidden
+          $served = $false
+          for ($i = 0; $i -lt 30 -and -not $served; $i++) {
+            try { Invoke-WebRequest -UseBasicParsing "$env:CUBEX_DIST_URL/cubex-dist.tar.gz.sha256" | Out-Null
+              $served = $true } catch { Start-Sleep -Seconds 1 }
+          }
+          if (-not $served) { throw 'The archive is not being served on 127.0.0.1:8765.' }
+          $clock = [Diagnostics.Stopwatch]::StartNew()
+          $out = & ([scriptblock]::Create((Get-Content -Raw -LiteralPath install.ps1))) --source $PWD --dir $home_ `
+            --port 3093 --no-service --no-modify-path *>&1 | Out-String
+          $code = $LASTEXITCODE
+          $out
+          "Installed in $([int]$clock.Elapsed.TotalSeconds)s"
+          if ($code) { throw "The installer exited with $code." }
+          if ($out -notmatch 'Downloaded pre-built Cubex') { throw "The install didn't take the pre-built app." }
+          if ($out -match 'Building Cubex') { throw 'The install built Cubex.' }
+          & "$home_\bin\cubex.cmd" status
+          if ($LASTEXITCODE) { exit 1 }
+          $health = Invoke-RestMethod -UseBasicParsing http://127.0.0.1:3093/api/health
+          if ($health.status -ne 'ok') { throw "Unhealthy: $($health | ConvertTo-Json -Compress)" }
+          & "$home_\bin\cubex.cmd" stop
+          if ($LASTEXITCODE) { exit 1 }

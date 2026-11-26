@@ -16,6 +16,8 @@ CUBEX_REPO="${CUBEX_REPO:-gurmohitghuman/cubex}" # the public GitHub repository
 CUBEX_REF="${CUBEX_REF:-stable}" # stable = the latest release
 CUBEX_HOME="${CUBEX_HOME:-$HOME/.cubex}"
 CUBEX_BIN_DIR="${CUBEX_BIN_DIR:-$HOME/.local/bin}"
+# Where a release's pre-built app is (default: its GitHub downloads). Set, --source takes the one there too.
+CUBEX_DIST_URL="${CUBEX_DIST_URL:-}"
 NODE_MAJOR=24
 MARKER=.cubex-home # marks a folder as a Cubex install; uninstall only ever deletes inside those
 
@@ -40,7 +42,7 @@ EOF
 
 main() {
   PORT_ARG='' PUBLIC=0 SOURCE='' NO_START=0 NO_SERVICE=0 NO_PATH=0 FORCE=0 PASSWORD='' LOCKED=0
-  NODE_NEXT=0 CONFIG_CHANGED=0 REF_GIVEN=0
+  NODE_NEXT=0 CONFIG_CHANGED=0 REF_GIVEN=0 PREBUILT=0
   while [ $# -gt 0 ]; do
     case "$1" in
       --port) PORT_ARG="${2:?--port needs a number}"; shift 2 ;;
@@ -244,6 +246,7 @@ latest_release() {
 # installed app is already this exact version (nothing to do).
 fetch_source() {
   local next="$CUBEX_HOME/app.next" sha='' ref="$CUBEX_REF"
+  PREBUILT=0
   rm -rf "$next" && mkdir "$next"
   if [ -n "$SOURCE" ]; then
     # Tracked and new files only: never node_modules, data or .env secrets. A node_modules
@@ -255,6 +258,7 @@ fetch_source() {
       done \
       | tar -cf - --null -T -) | tar -xf - -C "$next" || die "Copying $SOURCE failed (it must be a git checkout of Cubex)."
     SRC_ID="local $(git -C "$SOURCE" rev-parse --short HEAD) $(date '+%Y-%m-%d %H:%M')"
+    if [ -n "$CUBEX_DIST_URL" ]; then fetch_prebuilt '' "$next"; fi
     return 0
   fi
   if [ "$ref" = stable ]; then ref="$(latest_release)"; fi
@@ -267,25 +271,105 @@ fetch_source() {
   curl -fsSL "https://codeload.github.com/$CUBEX_REPO/tar.gz/${sha:-$ref}" \
     | tar -xzf - -C "$next" --strip-components 1 || die "Downloading Cubex ($CUBEX_REPO, $ref) failed."
   ok "Downloaded Cubex ($SRC_ID)"
+  fetch_prebuilt "$ref" "$next"
+}
+
+# Downloads pre-built server/dist and client/dist for a release tag when available.
+# Older tags without the archive, branches and commit SHAs fall back to building from source (PREBUILT=0).
+# No tag ('', from --source): the archive at CUBEX_DIST_URL.
+fetch_prebuilt() {
+  local ref="$1" next="$2"
+  if [ -n "$ref" ] && ! [[ "$ref" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then return 0; fi
+  local base="${CUBEX_DIST_URL:-https://github.com/$CUBEX_REPO/releases/download/$ref}"
+  while [ "${base%/}" != "$base" ]; do base="${base%/}"; done
+  local sumfile="$TMP/cubex-dist.tar.gz.sha256" code=''
+  code="$(curl -sSL -o "$sumfile" -w '%{http_code}' "$base/cubex-dist.tar.gz.sha256" 2>/dev/null)" || code=000
+  if [ "$code" != 200 ]; then
+    rm -f "$sumfile"
+    return 0
+  fi
+  local bom=$'\xef\xbb\xbf' cr=$'\r' line='' want='' file='' extra='' got='' entries='' entry='' stage=''
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line#"$bom"}"
+    line="${line%"$cr"}"
+    line="${line#"${line%%[![:space:]]*}"}"
+    line="${line%"${line##*[![:space:]]}"}"
+    if [ -n "$line" ]; then break; fi
+  done < "$sumfile"
+  rm -f "$sumfile"
+  [ -n "$line" ] || die "The Cubex build checksum file was invalid."
+  read -r want file extra <<< "$line" || true
+  file="${file#\*}"
+  case "$want" in *[!0-9a-fA-F]*) want='' ;; esac
+  if [ "${#want}" -ne 64 ] || [ -n "$extra" ] || [ "$file" != cubex-dist.tar.gz ]; then
+    die "The Cubex build checksum file was invalid."
+  fi
+  want="$(printf '%s' "$want" | tr 'A-F' 'a-f')"
+  local archive="$TMP/cubex-dist.tar.gz"
+  curl -fsSL "$base/cubex-dist.tar.gz" -o "$archive" || die "Downloading the Cubex build archive failed."
+  got="$(sha256 "$archive" | tr 'A-F' 'a-f')"
+  [ "$got" = "$want" ] || die "The Cubex build archive failed its checksum."
+  entries="$(tar -tzf "$archive" 2>/dev/null)" || die "Reading the Cubex build archive failed."
+  [ -n "$entries" ] || die "The Cubex build archive is empty."
+  while IFS= read -r entry; do
+    [ -n "$entry" ] || continue
+    case "$entry" in
+      server/dist|server/dist/*|client/dist|client/dist/*) ;;
+      *) die "The Cubex build archive contains an unexpected file: $entry" ;;
+    esac
+    case "/$entry/" in
+      */../*|*\\*) die "The Cubex build archive contains an unsafe path: $entry" ;;
+    esac
+  done <<< "$entries"
+  stage="$next/.dist-stage"
+  rm -rf "$stage" && mkdir -p "$stage"
+  # As root, tar would keep the archive's owners and modes: the files are the installing user's instead.
+  tar -xzf "$archive" --no-same-owner --no-same-permissions -C "$stage" \
+    || die "Unpacking the Cubex build archive failed."
+  rm -f "$archive"
+  if [ ! -f "$stage/server/dist/index.js" ] || [ ! -f "$stage/server/dist/package.json" ] \
+    || [ ! -f "$stage/client/dist/index.html" ]; then
+    rm -rf "$stage"
+    die "The Cubex build archive is incomplete."
+  fi
+  mkdir -p "$next/server" "$next/client"
+  rm -rf "$next/server/dist" "$next/client/dist"
+  mv "$stage/server/dist" "$next/server/dist"
+  mv "$stage/client/dist" "$next/client/dist"
+  rm -rf "$stage"
+  PREBUILT=1
+  ok "Downloaded pre-built Cubex (${ref:-$base})"
 }
 
 build_app() {
   local next="$CUBEX_HOME/app.next" log="$CUBEX_HOME/logs/install.log" node=node
-  say "  Building Cubex; this takes a minute or two..."
   if [ "$NODE_NEXT" = 1 ]; then node=node.next; fi # the Node it will run on
-  # shellcheck disable=SC2030 # PATH changes only for the build's subshell
-  if ! (cd "$next" && export PATH="$CUBEX_HOME/$node/bin:$PATH" npm_config_update_notifier=false &&
-    npm ci --include=dev --no-audit --no-fund && npm run build && npm prune --omit=dev --no-audit --no-fund) \
-    > "$log" 2>&1; then
-    tail -n 25 "$log" >&2
-    die "Building Cubex failed (full log: $log). If the log mentions node-gyp or a compiler,
+  if [ "$PREBUILT" = 1 ]; then
+    say "  Setting up Cubex; this takes a few seconds..."
+    # shellcheck disable=SC2030 # PATH changes only for the install subshell
+    if ! (cd "$next" && export PATH="$CUBEX_HOME/$node/bin:$PATH" npm_config_update_notifier=false &&
+      npm ci --omit=dev --no-audit --no-fund) > "$log" 2>&1; then
+      tail -n 25 "$log" >&2
+      die "Setting up Cubex failed (full log: $log). If the log mentions node-gyp or a compiler,
 install build tools and run this again: macOS: xcode-select --install;
 Debian/Ubuntu: sudo apt install build-essential python3."
+    fi
+  else
+    say "  Building Cubex; this takes a minute or two..."
+    # shellcheck disable=SC2030 # PATH changes only for the build's subshell
+    if ! (cd "$next" && export PATH="$CUBEX_HOME/$node/bin:$PATH" npm_config_update_notifier=false &&
+      npm ci --include=dev --no-audit --no-fund && npm run build && npm prune --omit=dev --no-audit --no-fund) \
+      > "$log" 2>&1; then
+      tail -n 25 "$log" >&2
+      die "Building Cubex failed (full log: $log). If the log mentions node-gyp or a compiler,
+install build tools and run this again: macOS: xcode-select --install;
+Debian/Ubuntu: sudo apt install build-essential python3."
+    fi
   fi
   echo "$SRC_ID" > "$next/.cubex-version"
   echo "$NODE_MAJOR" > "$next/.cubex-node" # its native modules' Node (cubex rollback checks it)
   chmod +x "$next/bin/cubex"
-  ok "Built Cubex"
+  if [ "$PREBUILT" = 1 ]; then ok "Installed Cubex"; else ok "Built Cubex"; fi
 }
 
 # Swap the new build in, with the new Node when it was built for one. If Cubex
