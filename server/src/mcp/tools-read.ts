@@ -14,6 +14,7 @@ import { GUIDE_POINTER } from './guides/guide';
 import { aggregatesSchema, columnsSchema, fitGroups, groupBySchema, maxCharsPerCellSchema } from './query-schema';
 import { parseColumns } from '../lib/row-select/paths';
 import { parseAggregate } from '../lib/row-aggregate/spec';
+import { testOfSheet, testView } from '../services/sheet-test-store';
 
 const ownsSheet = (sheetId: string, userId: string): boolean =>
   !!db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ? AND trash_id IS NULL').get(sheetId, userId);
@@ -39,7 +40,9 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
         'A sheet\'s structure and state. Read it before choosing what to run or fix, then read_rows or a run '
         + 'tool. Answers the columns in order, row_count, data_version, row_generation, its description and '
         + 'limits (rows and columns left: check before a big append or import). column_details says what each column '
-        + 'is and what fills it. It also answers active runs, views and auto_dedupe. include_counts counts filled, '
+        + 'is and what fills it. It also answers active runs, views, auto_dedupe and test (a test of its column '
+        + 'changes, manage_sheet\'s test, or null: the sheet takes no changes until it is applied or discarded; work '
+        + 'in test_sheet_id). include_counts counts filled, '
         + `empty and error rows per column. ${GUIDE_POINTER}`,
       inputSchema: {
         sheet_id: z.string().describe(SHEET_ID),
@@ -62,8 +65,10 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
       // Report REMAINING budget, not just the ceilings: "you can add 47 more
       // rows" needs no arithmetic, and the caps live in one place server-side
       // so an agent never has to hardcode them.
+      const test = testOfSheet(sheet_id, ctx.userId);
       return ok({
         ...meta,
+        test: test ? testView(test) : null,
         limits: {
           max_rows: MAX_ROWS_PER_SHEET,
           rows_remaining: Math.max(0, MAX_ROWS_PER_SHEET - meta.row_count),
