@@ -25,6 +25,8 @@ export interface UsageRow extends UsageFigures {
   sheet_deleted?: boolean
   column?: string | null
   column_deleted?: boolean
+  // Ran on a test copy of the sheet (changes tried on sample rows), counted under the sheet.
+  on_test_copy?: boolean
   kind?: UsageKind
   last_run_at?: string
   // By day:

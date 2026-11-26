@@ -59,10 +59,60 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
           + 'are kept 24 hours.',
       },
       {
+        change: 'added',
+        tools: ['call_enrichment'],
+        summary: 'call_enrichment runs one enrichment tool on 1-1,000 items without a sheet, refused up front instead '
+          + 'of pausing halfway when it could pass max_cost_usd, the daily limit, the treg balance or the token cap.',
+        details: 'It answers a run_id: get_run_status and get_run_results answer for it, with row_index as the '
+          + 'item. estimate_only defaults to true.',
+      },
+      {
+        change: 'changed',
+        tools: ['create_upload_link', 'create_download_link'],
+        summary: 'create_upload_link takes setup_id (with max_cost_usd) instead of sheet_id: the file\'s rows become a '
+          + 'setup call\'s items, and the call starts once the file is in.',
+        details: 'get_setup_call pages results with results_from and limit (next_from says where the next page '
+          + 'starts); create_download_link takes setup_call_id to save every item\'s inputs and outputs as a CSV.',
+      },
+      {
+        change: 'changed',
+        tools: ['manage_sheet', 'get_sheet'],
+        summary: 'manage_sheet tries column changes on sample rows: test copies a sheet\'s top rows and setup into a '
+          + 'hidden copy, apply_test makes the copy\'s setup the sheet\'s and puts the sample results back, '
+          + 'discard_test drops it.',
+        details: 'Work in test.test_sheet_id with the usual tools; meanwhile the sheet answers busy to every change '
+          + 'and its webhook deliveries wait (get_sheet\'s test). apply_test is a dry run unless dry_run is false.',
+      },
+      {
+        change: 'changed',
+        tools: ['get_usage'],
+        summary: 'get_usage counts runs on a sheet\'s test copy under that sheet, also after the test ends: their '
+          + 'rows have on_test_copy: true, apart from the sheet\'s own column of the same name.',
+        details: 'The whole account\'s usage lists them under the tested sheet too, not as a deleted sheet. REST: GET '
+          + '/usage, whose CSV has an On sample rows column.',
+      },
+      {
         change: 'changed',
         tools: ['get_usage'],
         summary: 'get_usage lists what a call without a sheet ran as call: true, with sheet_id and sheet_name null, '
           + 'not as a deleted sheet; by column every call adds up in one row.',
+      },
+      {
+        change: 'changed',
+        tools: ['manage_sheet_webhook'],
+        summary: 'manage_sheet_webhook takes set_auto_delete and auto_delete_off: a webhook sheet keeps its newest '
+          + 'keep_rows rows and deletes older ones once they are finished, not to the trash.',
+        details: 'A row leaves once every auto-run column has run on it and, with success_column, once that has a '
+          + 'result; copy_to_sheet_id copies it to another sheet first. get\'s webhook has auto_delete, null while '
+          + 'off.',
+      },
+      {
+        change: 'changed',
+        tools: ['manage_sheet_webhook'],
+        summary: 'manage_sheet_webhook\'s set_auto_delete takes mode "rules" with where (read_rows\' language): older '
+          + 'webhook rows are deleted once they pass it, whether auto-run has run on them or not.',
+        details: 'get\'s auto_delete has mode and where. A switch to rules needs success_column: null when one is '
+          + 'set; a switch back to actions_finish clears the rules.',
       },
     ],
   },

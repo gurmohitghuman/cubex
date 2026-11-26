@@ -6,17 +6,20 @@ import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/server';
 import {
   addSheetWebhookField, createSheetWebhook, deleteSheetWebhook, getSheetWebhook, newSheetWebhookToken,
-  removeSheetWebhookField, removeSheetWebhookToken, rotateSheetWebhook, setSheetWebhookEnabled, sheetWebhookView,
-  type SheetWebhookOutcome,
+  removeSheetWebhookAutoDelete, removeSheetWebhookField, removeSheetWebhookToken, rotateSheetWebhook,
+  setSheetWebhookAutoDelete, setSheetWebhookEnabled, sheetWebhookView, type SheetWebhookOutcome,
 } from '../services/sheet-webhook';
 import type { WebhookSourceFull } from '../lib/webhook-service';
 import { McpAuthCtx, ok, err, missingScope, registerTool, SHEET_ID, mcpLinkBase } from './tool-helpers';
 import { busyMessage, sheetBusyWith } from '../lib/sheet-busy';
+import { nullableWhereLike } from './where-schema';
 import { changedOf } from './changed';
+import { AUTO_DELETE_KEEP_DEFAULT, AUTO_DELETE_KEEP_MAX } from '../lib/constants-webhook-auto-delete';
 import { GUIDE_POINTER } from './guides/guide';
 
 const ACTIONS = [
-  'get', 'create', 'turn_on', 'turn_off', 'rotate', 'add_field', 'remove_field', 'new_token', 'remove_token', 'delete',
+  'get', 'create', 'turn_on', 'turn_off', 'rotate', 'add_field', 'remove_field', 'new_token', 'remove_token',
+  'set_auto_delete', 'auto_delete_off', 'delete',
 ] as const;
 
 export function registerSheetWebhookTools(server: McpServer, ctx: McpAuthCtx): void {
@@ -27,8 +30,12 @@ export function registerSheetWebhookTools(server: McpServer, ctx: McpAuthCtx): v
       + 'arrives, and only to a key with the write scope; after that it is hidden and rotate makes a new one (the '
       + 'old one stops at once). delete: the webhook and its kept events go; its '
       + 'columns and rows stay. new_token: senders must then send the answer\'s token (shown once) as '
-      + 'Authorization: Bearer <token>, or get 404; an old one stops. Every action but get needs the write scope. '
-      + `${GUIDE_POINTER}`,
+      + 'Authorization: Bearer <token>, or get 404; an old one stops. set_auto_delete: keep the newest keep_rows '
+      + `rows (default ${AUTO_DELETE_KEEP_DEFAULT}); older rows the webhook added are deleted, not to the trash `
+      + '(they can\'t be restored), once every auto-run column has run on them and, with success_column, once it '
+      + 'has a result, or with mode rules once they pass where, whether auto-run has run on them or not; with '
+      + 'copy_to_sheet_id they are copied there first. auto_delete_off stops it. Every action but get needs the '
+      + `write scope. ${GUIDE_POINTER}`,
     inputSchema: z.object({
       action: z.enum(ACTIONS).describe('What to do'),
       sheet_id: z.string().describe(SHEET_ID),
@@ -36,13 +43,27 @@ export function registerSheetWebhookTools(server: McpServer, ctx: McpAuthCtx): v
       column: z.string().optional().describe('add_field: the new column\'s name'),
       as: z.enum(['text', 'json']).optional().describe('add_field: text (default) or the value as JSON'),
       field_id: z.string().optional().describe('remove_field: the field (get lists them)'),
+      mode: z.enum(['actions_finish', 'rules']).optional().describe('set_auto_delete: when rows leave'),
+      where: nullableWhereLike('set_auto_delete, mode rules: rows leave once they pass it.'),
+      keep_rows: z.number().int().optional()
+        .describe(`set_auto_delete: newest rows kept, 0 to ${AUTO_DELETE_KEEP_MAX}`),
+      success_column: z.string().nullable().optional()
+        .describe('set_auto_delete: rows leave once this column has a result'),
+      copy_to_sheet_id: z.string().nullable().optional()
+        .describe('set_auto_delete: copy rows to this sheet before they leave'),
     }).strict(),
-  }, async ({ action, sheet_id, json_path, column, as, field_id }) => {
+  }, async ({
+    action, sheet_id, json_path, column, as, field_id, mode, where, keep_rows, success_column, copy_to_sheet_id,
+  }) => {
     const denied = missingScope(ctx, action === 'get' ? 'read' : 'write');
     if (denied) return denied;
     const addOnly = json_path !== undefined || column !== undefined || as !== undefined;
     if (addOnly && action !== 'add_field') return err('json_path, column and as are for add_field.');
     if (field_id !== undefined && action !== 'remove_field') return err('field_id is for remove_field.');
+    const autoDelete = [mode, where, keep_rows, success_column, copy_to_sheet_id].some(v => v !== undefined);
+    if (autoDelete && action !== 'set_auto_delete') {
+      return err('mode, where, keep_rows, success_column and copy_to_sheet_id are for set_auto_delete.');
+    }
 
     if (action === 'get') {
       const got = getSheetWebhook(ctx.userId, sheet_id);
@@ -51,8 +72,8 @@ export function registerSheetWebhookTools(server: McpServer, ctx: McpAuthCtx): v
         changed: [] });
     }
     // get reads while a sort or an import runs, as get_sheet does. Setting one up and adding or removing a field
-    // change columns and wait, as over REST; the webhook's own controls (on, off, a new URL or token, delete) go
-    // through, so a leaked URL can be cut off mid-import (lib/sheet-busy.ts webhookControl).
+    // change columns and wait, as over REST; the webhook's own controls (on, off, a new URL or token, auto-delete,
+    // delete) go through, so a leaked URL can be cut off mid-import (lib/sheet-busy.ts webhookControl).
     const waits = action === 'create' || action === 'add_field' || action === 'remove_field';
     const busy = waits ? sheetBusyWith(sheet_id) : null;
     if (busy) return err(busyMessage(busy));
@@ -82,6 +103,11 @@ export function registerSheetWebhookTools(server: McpServer, ctx: McpAuthCtx): v
       return ok({ webhook: sheetWebhookView(made.ok.source, mcpLinkBase(ctx)), token: made.ok.token, changed: [] });
     }
     if (action === 'remove_token') return answer(removeSheetWebhookToken(ctx.userId, sheet_id));
+    if (action === 'set_auto_delete') {
+      return answer(setSheetWebhookAutoDelete(ctx.userId, sheet_id,
+        { mode, where, keep_rows, success_column, copy_to_sheet_id }));
+    }
+    if (action === 'auto_delete_off') return answer(removeSheetWebhookAutoDelete(ctx.userId, sheet_id));
     if (action === 'add_field') {
       if (!json_path || !column) return err('add_field needs json_path and column.');
       const added = addSheetWebhookField(ctx.userId, sheet_id, { jsonPath: json_path, column, asJson: as === 'json' });

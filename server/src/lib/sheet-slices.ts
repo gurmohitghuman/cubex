@@ -9,7 +9,7 @@
 // (withSlicedRedo), counts answer busy (slicedUnlessBusy), and search walks on.
 import { db } from './db';
 import { yieldToRequests } from './slices';
-import { busyEpoch, busyMessage, sheetBusyWith } from './sheet-busy';
+import { busyEpoch, busyMessage, rowsMovingOn } from './sheet-busy';
 import { FILTER_SLICE_MAX_ROWS, FILTER_SLICE_MIN_ROWS, FILTER_SLICE_MS, FILTER_SLICE_ROWS } from './constants-filters';
 
 export interface SliceWalk {
@@ -61,9 +61,9 @@ export async function walkSlices(
 // must start from scratch each time.
 export async function withSlicedRedo<T>(sheetId: string, attempt: (sliced: boolean) => Promise<T>): Promise<T> {
   const epoch = busyEpoch(sheetId);
-  if (!sheetBusyWith(sheetId)) {
+  if (!rowsMovingOn(sheetId)) {
     const out = await attempt(true);
-    if (!sheetBusyWith(sheetId) && busyEpoch(sheetId) === epoch) return out;
+    if (!rowsMovingOn(sheetId) && busyEpoch(sheetId) === epoch) return out;
   }
   return attempt(false);
 }
@@ -73,11 +73,11 @@ export async function withSlicedRedo<T>(sheetId: string, attempt: (sliced: boole
 // at once hold the server for seconds). While one runs, or when one ran
 // meanwhile, the answer is its busy message: try again once it's done.
 export async function slicedUnlessBusy<T>(sheetId: string, attempt: () => Promise<T>): Promise<T | { busy: string }> {
-  const running = sheetBusyWith(sheetId);
+  const running = rowsMovingOn(sheetId);
   if (running) return { busy: busyMessage(running) };
   const epoch = busyEpoch(sheetId);
   const out = await attempt();
-  const now = sheetBusyWith(sheetId);
+  const now = rowsMovingOn(sheetId);
   if (now || busyEpoch(sheetId) !== epoch) return { busy: busyMessage(now ?? 'moving rows') };
   return out;
 }

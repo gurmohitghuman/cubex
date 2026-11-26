@@ -22,6 +22,13 @@ const sheetWebhook = obj({
   column: str, events_received: num, last_event_at: nul(str), last_error: nul(str),
   last_error_at: nul(str), created_at: str, rotated_at: nul(str),
   fields: z.array(obj({ id: str, json_path: str, column: str, as: z.enum(['text', 'json']), created_at: str })),
+  auto_delete: nul(obj({
+    mode: z.enum(['actions_finish', 'rules']), where: nul(z.array(z.unknown())), keep_rows: num,
+    success_column: nul(str), copy_to_sheet_id: nul(str),
+    copy_to_sheet: nul(str), paused: nul(str).describe('Why no row leaves until you act'),
+    waiting: nul(str).describe('What rows wait for now: a paused auto-run or run'),
+    rows_deleted: num, last_deleted_at: nul(str),
+  })).describe('null: off'),
 });
 const madeWebhook = {
   webhook: opt(info('webhook true: the new sheet\'s webhook with its url, as manage_sheet_webhook answers')),
@@ -45,8 +52,13 @@ export const manageTable = obj({
 
 // The table's sheets in order: other fields of the sheet too.
 const sheetRow = open({ id: str, name: str, position: num });
+// A test of the sheet's column changes (manage_sheet's test actions; get_sheet's test).
+export const sheetTest = obj({ test_id: str, sheet_id: str, test_sheet_id: str, table_id: str, sheet_name: str,
+  rows: num, started_at: str, state: z.enum(['open', 'ending']) });
 export const manageSheet = obj({
-  sheet: opt(sheetRef), sheets: z.array(sheetRow), deleted: opt(bool), trash: opt(trash),
+  sheet: opt(sheetRef), sheets: opt(z.array(sheetRow)).describe('Not for the test actions'), deleted: opt(bool),
+  trash: opt(trash), test: opt(sheetTest), added: opt(num).describe('test_add_rows'),
+  apply: opt(info('apply_test: what it did or would do')),
   rows_copied: opt(num), columns: opt(strs), list_results_dropped: opt(info('List results that were not added')),
   ...madeWebhook, changed,
 });

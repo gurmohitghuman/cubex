@@ -2,13 +2,14 @@ import React from 'react'
 import { WebhookDrawer } from './WebhookDrawer'
 import { WebhookPayloadModal } from './WebhookPayloadModal'
 import type { AutoDedupeView } from '@/utils/api'
+import type { ColumnType } from '@/utils/api/types'
 
 // The two webhook overlays SheetPage renders (the management drawer + the
 // row-level raw-payload modal), grouped so SheetPage's JSX stays lean. Pure
 // presentational pass-through — all state lives in SheetPage.
 export function SheetWebhookOverlays({
   drawerOpen, onCloseDrawer, sheetId, rowCount, onColumnsChanged, onCreateNewTable,
-  payloadRowIndex, onClosePayload, autorunOn, autoDedupe, onAutoDedupe,
+  payloadRowIndex, onClosePayload, autorunOn, autoDedupe, onAutoDedupe, columns, columnTypes, sheets,
 }: {
   // Auto-run is on in this sheet: every delivered row can spend (the drawer says so).
   autorunOn?: boolean
@@ -23,6 +24,10 @@ export function SheetWebhookOverlays({
   // The sheet's auto-dedupe (null: off), and opening its settings.
   autoDedupe?: AutoDedupeView | null
   onAutoDedupe?: () => void
+  // For auto-delete: the sheet's columns and the table's sheets.
+  columns?: string[]
+  columnTypes?: Record<string, ColumnType>
+  sheets?: Array<{ id: string; name: string }>
 }) {
   return (
     <>
@@ -36,6 +41,9 @@ export function SheetWebhookOverlays({
         autorunOn={autorunOn}
         autoDedupe={autoDedupe}
         onAutoDedupe={onAutoDedupe}
+        columns={columns}
+        columnTypes={columnTypes}
+        sheets={sheets}
       />
       <WebhookPayloadModal
         isOpen={payloadRowIndex != null}

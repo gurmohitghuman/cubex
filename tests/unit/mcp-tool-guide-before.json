@@ -171,5 +171,8 @@
   },
   "get_setup_call": {
     "description": "Where a setup call (call_setup) is: running, paused, done, failed or cancelled, each step's state and run_id, and once it has finished, results: each item, in the order sent, with its status, error and outputs by column (null when it has no value). With wait_seconds it answers when the call finishes or the time is up, so you poll less. Results are kept 24 hours after the call finishes (keep_until). Read-only."
+  },
+  "call_enrichment": {
+    "description": "Run one enrichment tool (search_enrichments) on 1-1000 items without a sheet, each keyed by its input names. COSTS MONEY; estimate_only defaults to true. Refused before it starts, never halfway, when it could pass max_cost_usd, today's daily limit, the treg balance or the token's cap. Returns a run_id: get_run_status, then get_run_results with status_filter all (row_index is the item). SPEND CAP: this access token may spend $5.00 in all on AI and enrichments (for its whole life, not per month); $4.00 was left when this tool list was loaded (get_balances says what is left now). At the cap, new AI and enrichment runs, previews and AI helpers are refused, and running ones pause (resume them once the cap is raised; an auto-run goes on by itself). HTTP API runs cost nothing here and go on. Calls already in flight finish and count, so spend can pass the cap by those alone: an AI run's concurrency of rows (default 5, at most 100) in each of up to 4 runs, a preview's 20 rows (at most 3 previews), an AI helper's one or two small calls. An enrichment or waterfall run holds room for its rows at their per-row cap, so it stops before the cap (with no per-row cap, once what was billed reaches it)."
   }
 }

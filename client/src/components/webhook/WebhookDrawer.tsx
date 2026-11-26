@@ -6,9 +6,11 @@ import { useWebhook } from './useWebhook'
 import { WebhookStatus } from './WebhookStatus'
 import { WebhookEndpoint } from './WebhookEndpoint'
 import { WebhookToken } from './WebhookToken'
+import { WebhookAutoDelete } from './WebhookAutoDelete'
 import { WebhookMapping } from './WebhookMapping'
 import { WebhookDeliveries } from './WebhookDeliveries'
 import type { AutoDedupeView } from '@/utils/api'
+import type { ColumnType } from '@/utils/api/types'
 
 // Sheet-scoped webhook drawer (slide-over from the right). A webhook is a
 // persistent always-on source the user returns to — so this is a drawer with
@@ -17,6 +19,7 @@ import type { AutoDedupeView } from '@/utils/api'
 // creates/removes columns (marker + mapped columns).
 export function WebhookDrawer({
   isOpen, onClose, sheetId, rowCount, onColumnsChanged, onCreateNewTable, autorunOn, autoDedupe, onAutoDedupe,
+  columns = [], columnTypes = {}, sheets = [],
 }: {
   isOpen: boolean
   onClose: () => void
@@ -34,6 +37,10 @@ export function WebhookDrawer({
   // The sheet's auto-dedupe (null: off), and opening its settings.
   autoDedupe?: AutoDedupeView | null
   onAutoDedupe?: () => void
+  // The sheet's columns and the table's sheets, for auto-delete's success column and where it copies rows.
+  columns?: string[]
+  columnTypes?: Record<string, ColumnType>
+  sheets?: Array<{ id: string; name: string }>
 }) {
   const wh = useWebhook(sheetId, isOpen)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -95,6 +102,10 @@ export function WebhookDrawer({
                   {autoDedupe ? 'Change it' : 'Set it up'}
                 </button>
               </p>
+            )}
+            {sheetId && (
+              <WebhookAutoDelete sheetId={sheetId} source={wh.source} onSource={wh.setSource} columns={columns}
+                columnTypes={columnTypes} sheets={sheets} />
             )}
             <WebhookDeliveries deliveries={wh.deliveries} />
           </>

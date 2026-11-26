@@ -53,6 +53,8 @@ const ALLOWED: Allowed[] = [
     why: 'sets empty_filter or column_filters (the two fields its loop names), never column_order' },
   { file: 'services/column-reorder.ts', fn: 'reorderSheetColumns', sql: 'SET column_order',
     why: 'the same names in a new order: a list missing one is refused (column-order-lists.test.ts)' },
+  { file: 'services/sheet-test-start.ts', fn: 'makeTest', sql: 'INSERT INTO sheets',
+    why: 'a test\'s new hidden copy starts with no columns ([]): no name was listed to drop' },
   { file: 'services/setup-version-apply.ts', fn: 'writePlan', sql: 'SET column_order',
     why: 'mergeOrder keeps every name the sheet lists now, around the version\'s (column-order-lists.test.ts)' },
 ]
@@ -125,7 +127,8 @@ check('a call is followed across files whatever separators the paths name them w
     return typeof calls === 'string' ? calls : calls.map(c => `${c.getSourceFile().fileName}:${c.getStart()}`)
   }
   const found = seen(decl)
-  assert.ok(Array.isArray(found) && found.length > 0 && found.every(c => c.startsWith(caller)), String(found))
+  // rows-transfer.ts among them (auto-delete's copy calls it too, services/webhook-auto-delete-move.ts).
+  assert.ok(Array.isArray(found) && found.some(c => c.startsWith(caller)), String(found))
   assert.deepEqual(seen(backslashed), found)
   assert.deepEqual(seen(mixed), found)
   assert.equal(bindsFrom(path.win32.normalize(caller), name, decl), true, 'a caller named with "\\"')

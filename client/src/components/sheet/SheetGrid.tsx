@@ -114,6 +114,7 @@ export interface SheetGridProps {
   onLoadEarlier?: (windowStart: number, firstRowIndex: number) => void
   onOpenSearch?: () => void
   registerSearch?: AGGridSpreadsheetProps['registerSearch']
+  readOnly?: boolean
 }
 
 export const SheetGrid: React.FC<SheetGridProps> = (props) => {
@@ -127,7 +128,7 @@ export const SheetGrid: React.FC<SheetGridProps> = (props) => {
     fetchActiveHTTPRuns, fetchActiveAIRuns, reloadSheetData, rowGenerationRef, registerClearSelection, registerViewport,
     onOpenEnrichment, autorun, columnSpend, onAutorunAction, cleanColumns, onOpenClean, formulaColumns, onOpenFormula,
     onSaveSetup, hiddenColumns, onHideColumn, rowFilterActive, onClearAllFilters, lookupColumns, onOpenLookup,
-    columnDescriptions, onEditDescription, windowStart, onLoadEarlier, onOpenSearch, registerSearch,
+    columnDescriptions, onEditDescription, windowStart, onLoadEarlier, onOpenSearch, registerSearch, readOnly,
     onOpenWaterfall, runColumns,
   } = props
 
@@ -239,7 +240,7 @@ export const SheetGrid: React.FC<SheetGridProps> = (props) => {
       registerClearSelection={registerClearSelection}
       registerViewport={registerViewport}
       windowStart={windowStart} onLoadEarlier={onLoadEarlier} onOpenSearch={onOpenSearch}
-      registerSearch={registerSearch}
+      registerSearch={registerSearch} readOnly={readOnly}
       className="w-full h-full"
     />
       </div>

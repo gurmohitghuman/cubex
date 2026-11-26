@@ -57,7 +57,7 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   set_auto_dedupe: write('Keep one row per key as rows arrive', true, true),
   manage_table: write('Create, rename or delete a table (to the trash)', true, false),
   manage_sheet_webhook: write("Set up or change a sheet's incoming webhook", true, false),
-  manage_sheet: write('Create, rename, copy, delete or reorder sheets (to the trash)', true, false),
+  manage_sheet: write('Create, rename, copy, delete, reorder or test sheets (to the trash)', true, false),
   import_csv: write('Import a CSV', true, false),
   // A one-time link is not read-only (it is a credential for one transfer), so
   // careful clients ask first; open world, since the file moves outside Cubex.
@@ -117,6 +117,7 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   get_setup_run: read('Get a setup run'),
   call_setup: write('Call a setup on items', false, false, true),
   get_setup_call: read('Get a setup call'),
+  call_enrichment: write('Call an enrichment on items', false, false, true),
   manage_run_schedule: write('Manage run schedules', true, false, true),
   control_setup_run: write('Pause, resume or stop a setup run', true, false, true),
   list_setup_versions: read("List or compare a sheet's setup versions"),

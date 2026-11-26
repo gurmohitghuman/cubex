@@ -14,7 +14,7 @@
 //   nothing in memory holds, so each sheet shows that count as updating, and is counted again when asked for.
 import { db } from './db';
 import { rowsChangedOf } from './rows-changed';
-import { busyEpoch, onSheetFree, sheetBusyWith } from './sheet-busy';
+import { busyEpoch, onSheetFree, rowsMovingOn } from './sheet-busy';
 import { writeWhenFree } from './write-when-free';
 import { ROW_COUNT_SLICE_ROWS, ROW_COUNT_TRIES, ROW_COUNT_WRITE_RETRY_MS } from './constants-row-counts';
 
@@ -70,13 +70,13 @@ async function countRows(sheetId: string, userId: string): Promise<number> {
 // 'busy': a heavy operation runs on the sheet, or ran during the count and still does; it is counted once free.
 async function count(q: Queued): Promise<'counted' | 'busy'> {
   for (let tries = 1; ;) {
-    if (sheetBusyWith(q.sheetId) !== null) return 'busy';
+    if (rowsMovingOn(q.sheetId) !== null) return 'busy';
     const epoch = busyEpoch(q.sheetId);
     const marker = markerNow(q.sheetId, q.userId);
     if (marker === null) { known.delete(q.sheetId); return 'counted'; }
     const rows = await countRows(q.sheetId, q.userId);
     // One came and went during the count: the sheet is free now, so it is counted again at once.
-    if (sheetBusyWith(q.sheetId) !== null || busyEpoch(q.sheetId) !== epoch) continue;
+    if (rowsMovingOn(q.sheetId) !== null || busyEpoch(q.sheetId) !== epoch) continue;
     if (markerNow(q.sheetId, q.userId) !== marker && tries < ROW_COUNT_TRIES) { tries++; continue; }
     // With its marker from before: one that moved meanwhile leaves the sheet to be counted again when asked.
     known.set(q.sheetId, { rows, marker });

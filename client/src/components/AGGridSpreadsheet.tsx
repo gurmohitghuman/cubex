@@ -35,7 +35,7 @@ export const AGGridSpreadsheet: React.FC<AGGridSpreadsheetProps> = (props) => {
     onSelectedRowsChange, onCellClick, runActions = NO_RUN_ACTIONS,
     columnTypes = NO_COLUMN_TYPES, autorun, columnSpend, cleanColumns, formulaColumns, lookupColumns,
     columnDescriptions, activeHTTPRunsByColumn = {}, activeAIRunsByColumn = {},
-    onColumnReorder, sheetId,
+    onColumnReorder, sheetId, readOnly,
     lastRenamedColumn = null, registerClearSelection, registerViewport, hiddenColumns, rowFilterActive,
     onClearAllFilters,
     windowStart = 0, onLoadEarlier, onOpenSearch, registerSearch, failedRuns, onRetryFailed, runCells = null,
@@ -109,7 +109,7 @@ export const AGGridSpreadsheet: React.FC<AGGridSpreadsheetProps> = (props) => {
     columns, columnTypes, columnWidths, emptyFilter, columnFilters, autorun, columnSpend, cleanColumns,
     formulaColumns, lookupColumns, columnDescriptions, hiddenColumns, onDeleteColumn, onAddColumn, colIdFor,
     handleHeaderColumnDelete, openColumnMenu, rowNumberDigits: String(windowStart + data.length).length,
-    failedRuns, onRetryFailed,
+    failedRuns, onRetryFailed, readOnly,
   })
 
   const {

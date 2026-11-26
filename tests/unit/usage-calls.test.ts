@@ -104,6 +104,25 @@ for (const groupBy of ['column', 'run']) {
     && csv.filter(l => l.includes('Deleted sheet')).length === 1, csv)
 }
 
+// The call sweep keeps call_sheets past every spend window: the usage history has none.
+const { sweepSetupCalls } = await import('../../server/src/services/setup-call')
+db.prepare("UPDATE call_sheets SET created_at = datetime('now', '-400 days')").run()
+await sweepSetupCalls()
+const later = ask('run').report.rows.map(r => r as Row).find(r => r.run_id === c2)
+check('a removed call\'s run still reads as a call\'s after the sweep, however old', later?.call === true
+  && later.sheet_id === null && later.sheet_deleted === false, later)
+
+// A test copy's run next to the calls: under its sheet, marked, while the calls keep their one line.
+const copy = sheet('Leads test', false)
+db.prepare('INSERT INTO test_copies (copy_id, sheet_id, user_id) VALUES (?,?,?)').run(copy, leads, uid)
+aiRun(copy, 'Summary', 0.02, '2026-10-08 10:00:00')
+const mixed = ask('column').report.rows.map(r => r as Row)
+const onCopy = mixed.find(r => r.on_test_copy === true)
+const calls = mixed.filter(r => r.call === true)
+check('a test copy\'s run counts under its sheet, the calls still in one line', onCopy?.sheet_id === leads
+  && onCopy.column === 'Summary' && !('call' in onCopy) && calls.length === 1 && calls[0].on_test_copy === false
+  && calls[0].runs === 3, mixed)
+
 if (failures > 0) { console.error(`${failures} usage-calls check(s) failed`); process.exit(1) }
 console.log('usage-calls: all assertions passed')
 process.exit(0)

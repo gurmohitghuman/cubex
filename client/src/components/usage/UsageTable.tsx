@@ -1,6 +1,6 @@
 import React from 'react'
 import type { UsageReport, UsageRow } from '@/utils/api'
-import { columnMeta, columnName, money, perCell, startedText } from './usage-copy'
+import { columnMeta, columnName, money, ON_SAMPLE_ROWS, perCell, startedText } from './usage-copy'
 
 const TH = 'px-3 py-2 text-left text-xs font-medium text-gray-600'
 const TD = 'px-3 py-2 text-sm text-gray-800 align-top'
@@ -9,7 +9,8 @@ const NUM = 'text-right tabular-nums'
 function Label({ row, group }: { row: UsageRow; group: UsageReport['group_by'] }) {
   if (group === 'day') return <span>{row.day}</span>
   const meta = group === 'run'
-    ? [row.what, row.status, row.column_deleted ? 'deleted column' : null].filter(Boolean).join(' · ')
+    ? [row.what, row.status, row.column_deleted ? 'deleted column' : null, row.on_test_copy ? ON_SAMPLE_ROWS : null]
+      .filter(Boolean).join(' · ')
     : columnMeta(row)
   return (
     <span className="block min-w-0">
@@ -21,7 +22,7 @@ function Label({ row, group }: { row: UsageRow; group: UsageReport['group_by'] }
 }
 
 // One row per column, day or run; costs right-aligned. A deleted column keeps
-// its last name, struck through.
+// its last name, struck through; a test copy's runs say "on sample rows".
 export const UsageTable: React.FC<{ report: UsageReport }> = ({ report }) => {
   const group = report.group_by
   return (
@@ -39,7 +40,7 @@ export const UsageTable: React.FC<{ report: UsageReport }> = ({ report }) => {
         </thead>
         <tbody className="divide-y divide-gray-100">
           {report.rows.map((r, i) => (
-            <tr key={r.run_id ?? r.day ?? `${r.sheet_id}:${r.column}:${r.column_deleted}:${i}`}>
+            <tr key={r.run_id ?? r.day ?? `${r.sheet_id}:${r.column}:${r.column_deleted}:${r.on_test_copy}:${i}`}>
               {group === 'run' && (
                 <td className={`${TD} whitespace-nowrap text-gray-600`}>{startedText(r.started_at)}</td>
               )}
