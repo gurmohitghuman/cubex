@@ -22,6 +22,14 @@ $Password = 'update-now-password'
 $ReleaseRepo = if ($env:RELEASE_REPO) { $env:RELEASE_REPO } else { 'gurmohitghuman/cubex' }
 $Cli = Join-Path $CubexHome 'bin\cubex.cmd'
 $web = New-Object Microsoft.PowerShell.Commands.WebRequestSession # keeps the session cookie
+# On a failure: what went wrong, then what the update and Cubex wrote (the last update's status and log, Cubex's log).
+trap {
+  "::error::$_"
+  foreach ($f in 'update-status.json', 'update.log', 'logs\cubex.log') {
+    "--- $f"; Get-Content (Join-Path $CubexHome $f) -Tail 60 -ErrorAction SilentlyContinue
+  }
+  break
+}
 
 function Step([string]$What) { ''; "== $What" }
 # One request; an error status is an answer here, not an exception. A body goes as UTF-8 JSON.

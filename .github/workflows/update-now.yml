@@ -59,16 +59,19 @@ jobs:
         with:
           path: src
           fetch-depth: 0
+      # Its own limit, so the step after still shows what happened if it hangs.
       - name: An update that rolls back, then the real one
+        timeout-minutes: 30
         run: |
           export CUBEX_HOME="$RUNNER_TEMP/cubex/home" CUBEX_BIN_DIR="$RUNNER_TEMP/cubex/bin"
           bash src/tests/install/update-now.sh src
+      # The files themselves: cubex logs follows the log and never ends.
       - name: What the updates said, and Cubex's log
         if: always()
         run: |
           home="$RUNNER_TEMP/cubex/home"
           for f in update-status.json update.log; do echo "--- $f"; cat "$home/$f" 2>/dev/null || true; done
-          echo '--- cubex logs'; "$RUNNER_TEMP/cubex/bin/cubex" logs 2>/dev/null | tail -60 || true
+          echo '--- logs/cubex.log'; tail -n 80 "$home/logs/cubex.log" 2>/dev/null || true
 
   windows:
     name: Update now (Windows x64)
@@ -88,6 +91,7 @@ jobs:
           path: src
           fetch-depth: 0
       - name: An update that rolls back, then the real one
+        timeout-minutes: 30
         run: |
           $env:CUBEX_HOME = Join-Path $env:RUNNER_TEMP 'cubex'
           .\src\tests\install\update-now.ps1 src
@@ -98,4 +102,4 @@ jobs:
           foreach ($f in 'update-status.json', 'update.log') {
             "--- $f"; Get-Content (Join-Path $home_ $f) -ErrorAction SilentlyContinue
           }
-          '--- cubex logs'; & (Join-Path $home_ 'bin\cubex.cmd') logs 2>$null | Select-Object -Last 60
+          '--- logs\cubex.log'; Get-Content (Join-Path $home_ 'logs\cubex.log') -Tail 80 -ErrorAction SilentlyContinue

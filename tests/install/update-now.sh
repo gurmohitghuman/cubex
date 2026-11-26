@@ -25,7 +25,18 @@ url="http://127.0.0.1:$TEST_PORT"
 jar="$WORK/cookies" answer="$WORK/answer"
 : > "$jar"
 
-fail() { echo "::error::$*"; exit 1; }
+# What went wrong, then what the update and Cubex wrote (the last update's status and log, Cubex's log). On stderr:
+# fail often runs inside a command substitution, which would keep stdout.
+fail() {
+  local f
+  {
+    echo "::error::$*"
+    for f in update-status.json update.log logs/cubex.log; do
+      echo "--- $f"; tail -n 60 "$CUBEX_HOME/$f" 2>/dev/null || true
+    done
+  } >&2
+  exit 1
+}
 step() { echo; echo "== $*"; }
 password_json() { jq -nc --arg password "$1" '{password: $password}'; }
 # One request: prints the HTTP status and keeps the body in $answer. A body goes as JSON; curl options last.
