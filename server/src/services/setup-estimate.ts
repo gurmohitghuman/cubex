@@ -8,7 +8,8 @@
 // says one row's most (row_most_usd), which its run's spend limit keeps room
 // for: a ceiling must cover that on top of the high ends. A step carrying
 // a column of the sheet on is priced on the rows it hasn't done, with the
-// column's own settings (setup-estimate-again.ts).
+// column's own settings (setup-estimate-again.ts). A setup call's items are
+// priced the same way without a sheet (from: EstimateRowsFrom with items).
 import { COLUMN_REF_PATTERN } from '../lib/prompt';
 import { resolveAiConcurrency } from '../lib/ai-model-resolve';
 import { ruleColumns } from '../lib/run-condition';
@@ -17,6 +18,7 @@ import { mainColumn, stepColumns, type AiStep, type SetupSpec, type StepKind } f
 import type { SheetColumnStep, StepMode } from '../lib/setups/again';
 import type { SearchOptions } from '../lib/web-search-options';
 import { estimateAiRun } from './run-estimate';
+import type { EstimateRowsFrom } from './run-estimate-rows';
 import { estimateEnrichment } from './enrich-setup';
 import { estimateAgain } from './setup-estimate-again';
 
@@ -46,33 +48,36 @@ export const rowMostOf = (e: { row_most_usd: number | null }) =>
 
 // A rule reading a column the setup writes (made new, or carried on) is left out: those values will change.
 export async function aiEstimate(
-  userId: string, sheetId: string, s: AiStep, sheetColumns: string[], made: string[], rowIndexes: number[] | null,
+  userId: string, from: EstimateRowsFrom, s: AiStep, sheetColumns: string[], made: string[],
+  rowIndexes: number[] | null,
 ) {
   const later = columnLookup(made);
   const prompt = s.prompt.replace(COLUMN_REF_PATTERN, (full, token: string) =>
     (later.prompt(token) !== undefined ? EARLIER_VALUE : full));
   const ruleOk = !s.runIf || ruleColumns(s.runIf).every(c => sheetColumns.includes(c) && !made.includes(c));
   return estimateAiRun(userId, {
-    sheetId, prompt, systemPrompt: s.systemPrompt ?? undefined, model: s.model ?? undefined,
+    ...from, prompt, systemPrompt: s.systemPrompt ?? undefined, model: s.model ?? undefined,
     useOpenRouterWebSearch: s.webSearch, useWebFetch: s.webFetch, outputColumns: s.outputColumns ?? undefined,
     maxChars: s.maxChars, targetRowIndexes: rowIndexes ?? undefined, search: s.search as SearchOptions | null,
-    runIf: ruleOk ? s.runIf : null, concurrency: resolveAiConcurrency(s.concurrency ?? undefined, sheetId, userId),
+    runIf: ruleOk ? s.runIf : null, concurrency: resolveAiConcurrency(s.concurrency ?? undefined, from.sheetId, userId),
     // History is found by the prompt as the step's start stores it, not the one rewritten for pricing.
     fetchLimits: s.fetchLimits, historyColumn: mainColumn(s), historyPrompt: s.prompt,
   });
 }
 
 export async function estimateSetup(
-  userId: string, sheetId: string, plan: { spec: SetupSpec; layers: number[]; modes: StepMode[] },
+  userId: string, from: EstimateRowsFrom, plan: { spec: SetupSpec; layers: number[]; modes: StepMode[] },
   sheetColumns: string[], rows: number, rowIndexes: number[] | null, existing: SheetColumnStep[],
 ): Promise<SetupEstimate> {
   const made = plan.spec.steps.flatMap(stepColumns);
   const steps: StepEstimate[] = [];
+  const { sheetId } = from;
   for (const [i, s] of plan.spec.steps.entries()) {
     const base = { column: mainColumn(s), kind: s.kind, layer: plan.layers[i] + 1, mode: plan.modes[i], rows,
       note: null, low_usd: null, high_usd: null, row_most_usd: null, sends_requests: false, free: false };
     const own = plan.modes[i] === 'again' ? existing.find(c => c.columns[0] === base.column)?.step : undefined;
-    if (own) {
+    // Carrying a column on needs the sheet that has it (a call's items have none: every step is new there).
+    if (own && sheetId !== null) {
       steps.push(await estimateAgain(userId, sheetId, own, base, { sheetColumns, made, rowIndexes }));
       continue;
     }
@@ -92,7 +97,7 @@ export async function estimateSetup(
       else steps.push({ ...base, low_usd: round(out.ok.estimate.lowUsd), high_usd: round(out.ok.estimate.highUsd) });
       continue;
     }
-    const out = await aiEstimate(userId, sheetId, s, sheetColumns, made, rowIndexes);
+    const out = await aiEstimate(userId, from, s, sheetColumns, made, rowIndexes);
     if ('fail' in out) { steps.push({ ...base, note: out.message }); continue; }
     const cost = out.ok.estimated_cost_usd;
     steps.push({

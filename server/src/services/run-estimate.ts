@@ -4,10 +4,8 @@
 // A1: never call startAiRun/startHttpRun from here). Returns a priced RANGE for
 // AI (an honest low/high, "actual depends on usage"),
 // web search and fetch fees included. HTTP's estimate: run-estimate-http.ts.
-import { getSheetColumns, verifySheetOwnership } from '../lib/sql-helpers';
 import { AI_ESTIMATE_DEFAULT_OUTPUT_TOKENS_LOW, AI_ESTIMATE_DEFAULT_OUTPUT_TOKENS_HIGH } from '../lib/constants-ai';
 import { processPromptTemplate } from '../lib/prompt';
-import { unknownPromptRefsError } from '../lib/prompt-ref-validate';
 import { resolveAiModel } from '../lib/ai-model-resolve';
 import { modelProblem } from '../lib/ai-model-check';
 import { fetchModels } from '../lib/openrouter';
@@ -17,16 +15,17 @@ import { rowMostUsd } from './run-estimate-most';
 import { buildMultiOutputInstruction, type OutputColumnSpec } from '../lib/ai-multi-output';
 import { webFeesPerRow, webInputTokensPerRow, type Range, type WebTools } from '../lib/ai-web-cost';
 import type { SearchOptions } from '../lib/web-search-options';
-import { ruleRowsAndSample, targetRowsAndSample } from './run-estimate-rows';
-import { checkRunRule } from './run-rule';
+import { estimateRows, type EstimateRowsFrom } from './run-estimate-rows';
 import { ranOnOwnKey, tokenHistory, type HistoryFrom } from './ai-token-history';
 import { estimateWebWork, fetchPriceNote, webNote, webSearchEstimate } from './run-estimate-web';
 import { inFlightFor } from './ai-in-flight';
 import type { InFlight } from '../lib/ai-in-flight';
 import type { FetchLimits } from '../lib/web-fetch-options';
 
-export interface AiEstimateInput {
-  sheetId: string;
+// sheetId (EstimateRowsFrom): the sheet whose rows it prices, or null with `items`, a setup call's items priced
+// without a sheet (setup-call-estimate.ts).
+export type AiEstimateInput = AiEstimateSettings & EstimateRowsFrom;
+interface AiEstimateSettings {
   prompt: string;
   systemPrompt?: string;
   model?: string;
@@ -104,21 +103,12 @@ export type AiEstimateOutcome =
   | { ok: AiEstimate; fetchNote: string | null };
 
 export async function estimateAiRun(userId: string, input: AiEstimateInput): Promise<AiEstimateOutcome> {
-  const owns = verifySheetOwnership(input.sheetId, userId);
-  if (!owns) return { fail: 'not_found', message: 'Sheet not found' };
-
-  // Same up-front ref rejection a real run does — never price a prompt that
-  // would substitute "[MISSING]" on every row (A9).
-  const refsError = unknownPromptRefsError(input.sheetId, userId, input.prompt);
-  if (refsError) return { fail: 'bad_request', message: refsError };
-
-  const rule = checkRunRule(input.sheetId, userId, input.runIf);
-  if ('error' in rule) return { fail: 'bad_request', message: rule.error };
-  const { count, sample, skipped } = rule.ok
-    ? await ruleRowsAndSample(input.sheetId, userId, rule.ok, input.targetRowIndexes)
-    : { ...targetRowsAndSample(input.sheetId, userId, input.targetRowIndexes), skipped: 0 };
+  // The rows, after the checks a start makes (the prompt's columns, the rule): run-estimate-rows.ts.
+  const rows = await estimateRows(userId, input);
+  if ('fail' in rows) return rows;
+  const { columns, rule, count, sample, skipped } = rows;
   if (count === 0) {
-    return { fail: 'no_rows', message: rule.ok ? 'No rows pass the "Only run if" rule.' : 'No rows to process.' };
+    return { fail: 'no_rows', message: rule ? 'No rows pass the "Only run if" rule.' : 'No rows to process.' };
   }
 
   // Input tokens: render the prompt against sampled rows (+ system prompt, + a
@@ -129,7 +119,6 @@ export async function estimateAiRun(userId: string, input: AiEstimateInput): Pro
   const instructionTokens = input.outputColumns
     ? estimateTokens(buildMultiOutputInstruction(input.outputColumns, { withSources: usesWeb })) : 0;
   const fixedTokens = sysTokens + instructionTokens;
-  const columns = getSheetColumns(input.sheetId, userId, false);
   const perRowInput = sample.map(d => estimateTokens(processPromptTemplate(input.prompt, d, columns)) + fixedTokens);
   const avgInputTokens = Math.round(average(perRowInput) ?? estimateTokens(input.prompt) + fixedTokens);
 
@@ -216,7 +205,7 @@ export async function estimateAiRun(userId: string, input: AiEstimateInput): Pro
   return {
     ok: {
       rows_to_process: count,
-      ...(rule.ok ? { run_if: rule.ok.rule, rows_skipped_by_rule: skipped } : {}),
+      ...(rule ? { run_if: rule.rule, rows_skipped_by_rule: skipped } : {}),
       model,
       pricing_available: pricingAvailable,
       estimated_cost_usd: cost,

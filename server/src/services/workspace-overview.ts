@@ -32,17 +32,20 @@ export interface Overview {
 // A sheet's rows, counted no further than ROW_COUNT_CAP + 1 entries of the (sheet_id, user_id, ...) index. The
 // runs and setup runs going now: each WHERE holds a partial index's (migrations 014, 028 and 059), and
 // `+user_id` keeps the planner off the user_id index, which on a single account holds every run there ever was.
+// The sheets of hidden working tables (a setup call's, services/setup-call.ts): never listed or counted.
+const HIDDEN_SHEETS_SQL = '(SELECT hs.id FROM sheets hs JOIN tables ht ON ht.id = hs.table_id WHERE ht.hidden = 1)';
 export const OVERVIEW_SQL = {
   rowCount: 'SELECT COUNT(*) FROM (SELECT 1 FROM rows WHERE sheet_id = ? AND user_id = ? LIMIT ?)',
   runs: `
     SELECT id, sheet_id, status, column_name AS col, NULL AS autorun_id, processed_rows, total_rows, created_at,
            rowid, 0 AS http
-    FROM ai_runs WHERE +user_id = ? AND setup_only = 0 AND ${ACTIVE_STATUS_SQL}
+    FROM ai_runs WHERE +user_id = ? AND setup_only = 0 AND ${ACTIVE_STATUS_SQL} AND sheet_id NOT IN ${HIDDEN_SHEETS_SQL}
     UNION ALL
     SELECT id, sheet_id, status, master_column_name, autorun_id, processed_rows, total_rows, created_at, rowid, 1
-    FROM http_runs WHERE +user_id = ? AND setup_only = 0 AND ${ACTIVE_STATUS_SQL}`,
+    FROM http_runs WHERE +user_id = ? AND setup_only = 0 AND ${ACTIVE_STATUS_SQL}
+      AND sheet_id NOT IN ${HIDDEN_SHEETS_SQL}`,
   setupRuns: `SELECT id, setup_name, sheet_id, status, created_at, rowid FROM setup_runs
-    WHERE +user_id = ? AND status IN ('running', 'paused')`,
+    WHERE +user_id = ? AND status IN ('running', 'paused') AND sheet_id NOT IN ${HIDDEN_SHEETS_SQL}`,
 };
 
 function cappedRowCount(sheetId: string, userId: string): Pick<OverviewSheet, 'row_count' | 'row_count_at_least'> {
@@ -65,13 +68,14 @@ function tablesAndSheets(userId: string): Pick<Overview, 'table_count' | 'sheet_
     SELECT t.id, t.name, IFNULL(s.n, 0) AS sheet_count FROM tables t
     LEFT JOIN (SELECT table_id, COUNT(*) AS n, MAX(updated_at) AS changed FROM sheets
       WHERE user_id = ? AND trash_id IS NULL AND test_of IS NULL GROUP BY table_id) s ON s.table_id = t.id
-    WHERE t.user_id = ? AND t.trash_id IS NULL
+    WHERE t.user_id = ? AND t.trash_id IS NULL AND t.hidden = 0
     ORDER BY MAX(t.updated_at, IFNULL(s.changed, '')) DESC, t.created_at DESC, t.rowid DESC LIMIT ?
   `).all(userId, userId, OVERVIEW_TABLES) as Array<{ id: string; name: string; sheet_count: number }>;
   const totals = db.prepare(`SELECT
-      (SELECT COUNT(*) FROM tables WHERE user_id = ? AND trash_id IS NULL) AS tables,
+      (SELECT COUNT(*) FROM tables WHERE user_id = ? AND trash_id IS NULL AND hidden = 0) AS tables,
       (SELECT COUNT(*) FROM sheets s JOIN tables t ON t.id = s.table_id
-        WHERE s.user_id = ? AND s.trash_id IS NULL AND s.test_of IS NULL AND t.trash_id IS NULL) AS sheets`)
+        WHERE s.user_id = ? AND s.trash_id IS NULL AND s.test_of IS NULL AND t.trash_id IS NULL AND t.hidden = 0)
+        AS sheets`)
     .get(userId, userId) as { tables: number; sheets: number };
   if (!tables.length) return { table_count: totals.tables, sheet_count: totals.sheets, tables: [] };
   // The sheets of those tables changed most recently, shown under their table in the app's order.

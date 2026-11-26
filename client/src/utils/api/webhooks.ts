@@ -65,7 +65,7 @@ export interface WebhookDelivery {
   payload: unknown | null
   payloadBytes: number
   // duplicate: auto-dedupe didn't keep its row (another row has its key).
-  status: 'stored' | 'partial' | 'duplicate' | 'pruned' | 'error'
+  status: 'stored' | 'partial' | 'duplicate' | 'pruned' | 'error' | 'held'
   errorMessage: string | null
   receivedAt: string
   // Added again from the log ("Add again"): the delivery it repeats.

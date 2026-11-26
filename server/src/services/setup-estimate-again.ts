@@ -57,7 +57,7 @@ export async function estimateAgain(
   }
   const targets = await resolveRerunTargets(sheetId, userId, main, 'empty', scope, keptOut);
   if (!targets.length) return nothing;
-  const out = await aiEstimate(userId, sheetId, own, ctx.sheetColumns, ctx.made, targets);
+  const out = await aiEstimate(userId, { sheetId }, own, ctx.sheetColumns, ctx.made, targets);
   if ('fail' in out) return out.fail === 'no_rows' ? nothing : { ...base, rows: targets.length, note: out.message };
   const cost = out.ok.estimated_cost_usd;
   return {

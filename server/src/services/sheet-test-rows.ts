@@ -48,6 +48,14 @@ export function sheetRowsOf(sheetId: string, userId: string, ids: string[]): str
   return [...new Set(ids)].filter(id => found.has(id));
 }
 
+// The rows at these places in the sheet (the app's selection), in the order given, once each.
+export function sheetRowsAt(sheetId: string, userId: string, indexes: number[]): string[] {
+  const at = new Map((db.prepare(`SELECT row_index, id FROM rows WHERE sheet_id = ? AND user_id = ?
+    AND row_index IN (SELECT value FROM json_each(?))`).all(sheetId, userId, JSON.stringify(indexes)) as
+    Array<{ row_index: number; id: string }>).map(r => [r.row_index, r.id]));
+  return [...new Set(indexes)].flatMap(i => (at.has(i) ? [at.get(i)!] : []));
+}
+
 // The sheet's run-input keys mapped to the copy's (made there for the same column names).
 function keyMap(t: Test): Map<string, string> {
   const out = new Map<string, string>();

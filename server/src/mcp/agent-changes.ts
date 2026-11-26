@@ -50,6 +50,15 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
           + 'it lists the tools that have one. No tool or argument changed.',
       },
       {
+        change: 'added',
+        tools: ['call_setup', 'get_setup_call'],
+        summary: 'call_setup runs a saved setup on 1-100 items without a sheet, like a function; get_setup_call '
+          + 'answers each item\'s outputs once it finishes.',
+        details: 'Items are objects keyed by the setup\'s inputs; estimate_only defaults to true. The call id is a '
+          + 'setup run id: control_setup_run pauses or cancels it, a run webhook reports it as kind setup. Results '
+          + 'are kept 24 hours.',
+      },
+      {
         change: 'changed',
         tools: ['manage_sheet', 'get_sheet'],
         summary: 'manage_sheet tries column changes on sample rows: test copies a sheet\'s top rows and setup into a '

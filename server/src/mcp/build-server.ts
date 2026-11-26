@@ -38,6 +38,7 @@ import { registerLookupTool } from './tools-lookup';
 import { registerDedupeTool } from './tools-dedupe';
 import { registerSetupTools } from './tools-setups';
 import { registerSetupRunTools } from './tools-setup-runs';
+import { registerSetupCallTools } from './tools-setup-calls';
 import { registerRunScheduleTools } from './tools-run-schedules';
 import { registerSetupVersionTools } from './tools-setup-versions';
 import { registerRunWebhookTools } from './tools-run-webhooks';
@@ -122,6 +123,7 @@ export function registerAllTools(server: McpServer, ctx: McpAuthCtx) {
   registerDedupeTool(server, ctx);
   registerSetupTools(server, ctx);
   registerSetupRunTools(server, ctx);
+  registerSetupCallTools(server, ctx);
   registerRunScheduleTools(server, ctx);
   registerSetupVersionTools(server, ctx);
   registerRunWebhookTools(server, ctx);

@@ -22,7 +22,8 @@ interface SheetTabsBarProps {
   // Setup versions: the dialog opened on the sheet (components/setup-versions/).
   onSetupVersions: (s: Sheet) => void
   onReorderSheets: (orderedSheetIds: string[]) => void
-  onAddRows: (count: number) => void
+  // Left out while the sheet is being tested on a copy: it takes no rows then.
+  onAddRows?: (count: number) => void
 }
 
 type RenameState = { sheetId: string; value: string } | null
@@ -69,7 +70,7 @@ export const SheetTabsBar: React.FC<SheetTabsBarProps> = ({
     <div className="flex items-stretch border-t border-gray-200 bg-gray-50 pl-6 pr-2 h-9">
       {/* Add-rows control on the left (its original position); sheet tabs follow it. */}
       <div className="flex items-center pr-3 mr-3 border-r border-gray-200">
-        <AddRowButton onAddRows={onAddRows} />
+        {onAddRows && <AddRowButton onAddRows={onAddRows} />}
       </div>
       {/* Scrolls sideways when the tabs don't fit (a wheel scrolls it too), so
           every sheet and the "+" stay reachable. */}
@@ -79,7 +80,8 @@ export const SheetTabsBar: React.FC<SheetTabsBarProps> = ({
         onWheel={e => { if (e.deltaY && !e.deltaX) e.currentTarget.scrollLeft += e.deltaY }}
       >
         {sheets.map((sheet, index) => {
-          const isActive = activeSheet?.id === sheet.id
+          // A test's copy is open: the tab of the sheet it tests stays the active one.
+          const isActive = (activeSheet?.test_of ?? activeSheet?.id) === sheet.id
           if (renaming?.sheetId === sheet.id) {
             return (
               <input
