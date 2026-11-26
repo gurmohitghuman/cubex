@@ -42,7 +42,7 @@ async function main() {
     }
     for (const [old, [tool, how]] of Object.entries(to)) {
       const said = replaced.get(old) ?? ''
-      assert.ok(said.startsWith(`${old} was renamed to ${tool} in Cubex v0.8.46: call ${tool} instead. `), said)
+      assert.ok(said.startsWith(`${old} was renamed to ${tool} in Cubex v0.8.47: call ${tool} instead. `), said)
       assert.ok(said.includes(`${tool} with ${how}`), said)
     }
     assert.match(replaced.get('set_description')!, /manage_sheet with action "describe", sheet_id and description/)

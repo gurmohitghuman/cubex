@@ -1,7 +1,7 @@
 // manage_column: add, rename, describe, reorder or delete a sheet's columns, on the shared cascade services
 // (column-add/-rename/-delete, column-reorder, descriptions), with the same rules as /api/v1 and the app.
 // Each action's fields are its old tool's (add_column, rename_column, set_description, set_column_order,
-// delete_column, before v0.8.46); a field another action takes is refused. Sorting rows is manage_sheet's sort.
+// delete_column, before v0.8.47); a field another action takes is refused. Sorting rows is manage_sheet's sort.
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/server';
 import { db } from '../lib/db';
