@@ -72,6 +72,22 @@ export const setupRoutes = (): RouteDoc[] => [
     responses: { 200: 'The estimate.', 201: 'Started: the setup_run.' },
   }),
   op({
+    method: 'post', path: '/setups/{setupId}/calls', operationId: 'callSetup', tag: 'setups', scope: 'run',
+    summary: 'Run a saved setup on 1-100 items without a sheet, or price that first.',
+    description: "Same as MCP's call_setup, but estimate_only defaults to false here. Each item is an object keyed by "
+      + "the setup's input names. Poll GET /setup-calls/{callId} for each item's outputs; "
+      + 'POST /setup-runs/{runId}/control with the call id pauses, resumes or cancels it.',
+    body: toolBody('call_setup', {
+      omit: ['setup_id', 'estimate_only'],
+      extend: { estimate_only: z.boolean().optional().describe('true prices it and starts nothing. Default false.') },
+    }),
+    responses: { 200: 'The estimate.', 201: 'Started: the setup_call.' },
+  }),
+  op({
+    method: 'get', path: '/setup-calls/{callId}', operationId: 'getSetupCall', tag: 'setups', scope: 'read',
+    summary: "A setup call: its status, and once it has finished each item's outputs.",
+  }),
+  op({
     method: 'post', path: '/sheets/{id}/column-runs', operationId: 'runColumns', tag: 'setups', scope: 'run',
     summary: "Run several of a sheet's run columns again on chosen rows, or price that first.",
     description: "Same as MCP's run_columns, but estimate_only defaults to false here. Followed as a setup run "

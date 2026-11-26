@@ -27,7 +27,7 @@ export interface TableSummary {
 
 export async function listTablesWithSheets(userId: string): Promise<TableSummary[]> {
   const tables = db.prepare(
-    `SELECT id, name, created_at, updated_at FROM tables WHERE user_id = ? AND trash_id IS NULL
+    `SELECT id, name, created_at, updated_at FROM tables WHERE user_id = ? AND trash_id IS NULL AND hidden = 0
      ORDER BY created_at DESC`,
   ).all(userId) as Array<{ id: string; name: string; created_at: string; updated_at: string }>;
   const sheets = liveSheets(userId);

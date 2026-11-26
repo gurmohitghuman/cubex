@@ -81,6 +81,9 @@ export interface TrashList { items: TrashEntry[]; kept_days: number; next_before
 // q: words in a table, sheet or column name, or the access token that deleted it. Rows and columns deleted in a
 // test's hidden copy (sheets.test_of, migration 070) are listed only when that sheet is asked for: under the
 // sheet's own name they would read as the sheet's, and they go with the copy when its test ends.
+// A setup call's working table goes through the trash on its way out (services/setup-call.ts): never listed.
+const NOT_HIDDEN = 'AND table_id NOT IN (SELECT id FROM tables WHERE hidden = 1)';
+
 export function listTrash(
   userId: string,
   opts: {
@@ -89,7 +92,7 @@ export function listTrash(
 ): TrashList {
   const limit = Math.max(1, Math.min(TRASH_LIST_PAGE, opts.limit ?? TRASH_LIST_PAGE));
   const like = opts.q?.trim() ? `%${opts.q.trim().replace(/[\\%_]/g, c => `\\${c}`)}%` : null;
-  const rows = db.prepare(`SELECT * FROM trash_items WHERE user_id = ? AND id < ?
+  const rows = db.prepare(`SELECT * FROM trash_items WHERE user_id = ? AND id < ? ${NOT_HIDDEN}
       AND (? IS NULL OR kind = ?) AND (? IS NULL OR how = ?) AND (? IS NULL OR sheet_id = ?)
       AND (? IS NOT NULL OR sheet_id IS NULL
         OR NOT EXISTS (SELECT 1 FROM sheets s WHERE s.id = trash_items.sheet_id AND s.test_of IS NOT NULL))
@@ -102,7 +105,7 @@ export function listTrash(
   const more = rows.length > limit;
   const page = more ? rows.slice(0, limit) : rows;
   const days = getTrashDays(userId);
-  const total = db.prepare('SELECT IFNULL(SUM(bytes), 0) FROM trash_items WHERE user_id = ?').pluck()
+  const total = db.prepare(`SELECT IFNULL(SUM(bytes), 0) FROM trash_items WHERE user_id = ? ${NOT_HIDDEN}`).pluck()
     .get(userId) as number;
   return {
     items: page.map(i => entryOf(i, days)), kept_days: days,

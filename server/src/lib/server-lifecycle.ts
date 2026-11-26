@@ -11,6 +11,7 @@ import { writeRowCountsNow } from './row-counts';
 import { WEBHOOK_BUCKET_IDLE_EVICT_MS } from './constants';
 import { startAutorunLoop } from '../services/autorun-loop';
 import { startSetupLoop } from '../services/setup-sweep';
+import { startSetupCallLoop } from '../services/setup-call';
 import { startRunScheduleLoop } from '../services/run-schedule-fire';
 import { startDerivedFollow } from '../services/derived-follow';
 import { startListDrainLoop } from '../services/enrich-list-drain';
@@ -76,6 +77,8 @@ export const startBackground = (recovered?: RecoveredRuns) => {
       startAutorunLoop();
       // Setups being used on sheets start their next steps (services/setup-runner.ts).
       startSetupLoop();
+      // A setup call's working table goes once its results have been kept long enough (services/setup-call.ts).
+      startSetupCallLoop();
       // Scheduled reruns: what is due fires as a column run (services/run-schedule-fire.ts).
       startRunScheduleLoop();
       // A write to a clean, formula or lookup column's input works it out again at once (services/derived-follow.ts).

@@ -66,6 +66,11 @@ const runsOf = (steps: StepRecord[]) =>
   steps.filter(s => s.state === 'running' && (s.kind === 'ai' || s.kind === 'http') && s.runId)
     .map(s => ({ kind: s.kind as 'ai' | 'http', runId: s.runId! }));
 
+// A stopped setup's runs of the layer working now stop too (a setup call paused too long: setup-call.ts).
+export async function cancelStepRuns(r: SetupRunRow): Promise<void> {
+  for (const x of runsOf(stepsOf(r))) await cancelRun(x.kind, x.runId, r.user_id);
+}
+
 export async function controlSetupRun(
   userId: string, id: string, action: SetupRunAction, hasSecretsScope: boolean,
 ): Promise<{ ok: SetupRunView } | RunFail> {
@@ -135,7 +140,7 @@ export async function controlSetupRun(
       return { fail: 'conflict', message: `It has already ended (it's ${r.status}).` };
     }
     setStatus(id, 'cancelled', 'You stopped it.');
-    for (const x of runs) await cancelRun(x.kind, x.runId, userId);
+    await cancelStepRuns(r);
   }
   return { ok: getSetupRun(userId, id)! };
 }
