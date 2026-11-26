@@ -73,7 +73,7 @@ export async function agentAskAiVisibility(
     sheetId: rec.questions_sheet_id,
     ok: {
       runs: started.started.map(s => ({ column: s.column, run_id: s.runId, rows: s.rows })), problems: started.problems,
-      next: 'Each run is an enrichment run: follow it with get_run_status (run type enrichment).',
+      next: 'Each run is an enrichment run: follow it with get_run (action status, run_type enrichment).',
     },
   };
 }
@@ -119,7 +119,7 @@ export async function agentCheckAiVisibility(
   return {
     ok: {
       ...checkJson(out.ok),
-      next: 'Each run is an enrichment run: follow it with get_run_status (run type enrichment). The change '
+      next: 'Each run is an enrichment run: follow it with get_run (action status, run_type enrichment). The change '
         + 'column fills as the answers come.',
     },
   };

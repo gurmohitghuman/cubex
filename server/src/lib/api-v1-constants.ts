@@ -24,7 +24,7 @@ export const API_V1_MAX_ROWS_PAGE = 500;
 export const MCP_MAX_ROWS_PAGE = 100;
 // read_rows / rows/query `row_ids`: the most rows one read names (services/rows-by-id.ts).
 export const ROWS_BY_ID_MAX = 1000;
-// get_run_results with include_answers: stored answers can be large (a few KB each), so such a page is short.
+// get_run (action results) with include_answers: stored answers can be large (a few KB each), so such a page is short.
 export const ANSWERS_PAGE_MAX = 10;
 // Over MCP a read by id keeps rows up to about this many characters and lists
 // the rest in unread_ids, as export_csv does (MCP_EXPORT_MAX_CHARS below).
@@ -120,7 +120,7 @@ export const IDEMPOTENT_WRITE_KEY_MAX_CHARS = 200;
 export const IDEMPOTENT_WRITE_PRUNE_ROWS = 250;
 export const IDEMPOTENT_WRITE_PRUNE_APPENDS = 25;
 
-// list_saved_keys / GET /api/v1/saved-keys. Without a name: at most KEYS_LISTED
+// get_account (action saved_keys) / GET /api/v1/saved-keys. Without a name: at most KEYS_LISTED
 // keys a call (keys_count is whole; `after` pages on) and BRIEF places and
 // setups a key. With a name: up to USES_LISTED of each. Every count is whole.
 export const SAVED_KEYS_LISTED = 20;

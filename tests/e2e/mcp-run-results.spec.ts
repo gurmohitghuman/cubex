@@ -39,7 +39,7 @@ test('get_run_results surfaces per-row failures and filters in SQL', async () =>
 
   // DEFAULT is 'failed' — the whole point. No status_filter passed.
   const failed = parseResult(await client.callTool({
-    name: 'get_run_results', arguments: { run_type: 'http', run_id: started.run_id },
+    name: 'get_run', arguments: { action: 'results', run_type: 'http', run_id: started.run_id },
   }))
   expect(failed.status_filter).toBe('failed')
   expect(failed.results.length).toBe(3)
@@ -68,16 +68,16 @@ test('get_run_results surfaces per-row failures and filters in SQL', async () =>
   // cursor. If the filter were applied after paging we'd get an empty array
   // with a live cursor, and a paging caller would loop forever.
   const okOnly = parseResult(await client.callTool({
-    name: 'get_run_results',
-    arguments: { run_type: 'http', run_id: started.run_id, status_filter: 'completed' },
+    name: 'get_run',
+    arguments: { action: 'results', run_type: 'http', run_id: started.run_id, status_filter: 'completed' },
   }))
   expect(okOnly.results).toHaveLength(0)
   expect(okOnly.next_cursor).toBeNull()
 
   // 'all' sees every row.
   const all = parseResult(await client.callTool({
-    name: 'get_run_results',
-    arguments: { run_type: 'http', run_id: started.run_id, status_filter: 'all' },
+    name: 'get_run',
+    arguments: { action: 'results', run_type: 'http', run_id: started.run_id, status_filter: 'all' },
   }))
   expect(all.results.length).toBe(3)
 
@@ -107,7 +107,7 @@ test('get_run_results pages, and only returns matching rows on a mixed run', asy
   await pollTerminal(client, started.run_id)
 
   const failed = parseResult(await client.callTool({
-    name: 'get_run_results', arguments: { run_type: 'http', run_id: started.run_id },
+    name: 'get_run', arguments: { action: 'results', run_type: 'http', run_id: started.run_id },
   }))
   expect(failed.results).toHaveLength(0)
   expect(failed.next_cursor).toBeNull()
@@ -116,22 +116,23 @@ test('get_run_results pages, and only returns matching rows on a mixed run', asy
   expect(failed.error_summary).toBeUndefined()
 
   const okOnly = parseResult(await client.callTool({
-    name: 'get_run_results',
-    arguments: { run_type: 'http', run_id: started.run_id, status_filter: 'completed' },
+    name: 'get_run',
+    arguments: { action: 'results', run_type: 'http', run_id: started.run_id, status_filter: 'completed' },
   }))
   expect(okOnly.results.length).toBe(2)
   for (const r of okOnly.results) expect(r.status).toBe('completed')
 
   // limit:1 → a cursor, and following it yields the NEXT row (not a repeat).
   const page1 = parseResult(await client.callTool({
-    name: 'get_run_results',
-    arguments: { run_type: 'http', run_id: started.run_id, status_filter: 'all', limit: 1 },
+    name: 'get_run',
+    arguments: { action: 'results', run_type: 'http', run_id: started.run_id, status_filter: 'all', limit: 1 },
   }))
   expect(page1.results).toHaveLength(1)
   expect(page1.next_cursor).not.toBeNull()
   const page2 = parseResult(await client.callTool({
-    name: 'get_run_results',
+    name: 'get_run',
     arguments: {
+      action: 'results',
       run_type: 'http', run_id: started.run_id, status_filter: 'all',
       limit: 1, cursor: page1.next_cursor,
     },
@@ -176,14 +177,14 @@ test('AI rows say who paid and their tokens; the run counts rows per payer', asy
   ]
   const pick = (r: any) => ({ paid_with: r.paid_with, tokens: r.tokens,
     ...('provider_cost_usd' in r ? { provider_cost_usd: r.provider_cost_usd } : {}) })
-  const viaMcp = parseResult(await client.callTool({ name: 'get_run_results',
-    arguments: { run_type: 'ai', run_id: runId, status_filter: 'all' } }))
+  const viaMcp = parseResult(await client.callTool({ name: 'get_run',
+    arguments: { action: 'results', run_type: 'ai', run_id: runId, status_filter: 'all' } }))
   expect(viaMcp.results.map(pick)).toEqual(expected)
   const auth = { headers: { Authorization: `Bearer ${token}` } }
   const viaRest = await (await api.get(`${BASE}/api/v1/ai-runs/${runId}/results?status=all`, auth)).json()
   expect(viaRest.results.map(pick)).toEqual(expected)
 
-  const status = parseResult(await client.callTool({ name: 'get_run_status', arguments: { run_type: 'ai',
+  const status = parseResult(await client.callTool({ name: 'get_run', arguments: { action: 'status', run_type: 'ai',
     run_id: runId } }))
   expect(status.rows_paid_with).toEqual({ own_key: 2, credits: 1 })
   expect(status.provider_cost_usd).toBe(0.000174)

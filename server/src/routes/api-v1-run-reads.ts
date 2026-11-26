@@ -41,7 +41,7 @@ router.get('/models', requireScope('read'), async (req: TokenAuthRequest, res) =
 });
 
 // GET /v1/runs?sheet_id=&filter=active|terminal|all&limit= — recent AI and
-// HTTP runs, newest first (services/run-list.ts, shared with MCP list_runs),
+// HTTP runs, newest first (services/run-list.ts, shared with MCP get_run (action list)),
 // so a script that lost a run_id can find it again.
 router.get('/runs', requireScope('read'), (req: TokenAuthRequest, res) => {
   try {

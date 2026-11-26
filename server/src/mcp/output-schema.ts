@@ -20,6 +20,27 @@ export const open = <T extends z.ZodRawShape>(shape: T) => z.looseObject(shape);
 // An object keyed by names people choose (columns, groups): any key, values of one shape.
 export const keyed = <T extends z.ZodType>(value: T) => z.record(z.string(), value);
 
+// The answer of a tool that does one of several things (its action or mode): every field any of them answers, each
+// optional; a field two of them answer differently is either one's.
+type ShapeKeys<S extends readonly z.ZodRawShape[]> = S[number] extends infer U
+  ? U extends z.ZodRawShape ? keyof U & string : never : never;
+type ShapeAt<S extends readonly z.ZodRawShape[], K extends string> = S[number] extends infer U
+  ? U extends z.ZodRawShape ? K extends keyof U ? U[K] : never : never : never;
+export type Either<S extends readonly z.ZodRawShape[]> = { [K in ShapeKeys<S>]: z.ZodOptional<ShapeAt<S, K>> };
+export function eitherAnswer<S extends readonly z.ZodRawShape[]>(...shapes: S): Either<S> {
+  const byKey = new Map<string, z.ZodType[]>();
+  for (const shape of shapes) {
+    for (const [key, schema] of Object.entries(shape)) {
+      const seen = byKey.get(key) ?? [];
+      if (!seen.includes(schema as z.ZodType)) seen.push(schema as z.ZodType);
+      byKey.set(key, seen);
+    }
+  }
+  // The union is typed as the optional of either schema: the input it takes is the same.
+  return Object.fromEntries([...byKey].map(([key, schemas]) => [key, (schemas.length === 1 ? schemas[0]
+    : z.union(schemas as [z.ZodType, z.ZodType, ...z.ZodType[]])).optional()])) as Either<S>;
+}
+
 // What a handler's answer must be to fit a schema (registerTool checks it at compile time): zod's input
 // type with the "any other key" of open, keyed and info objects left out, since an interface has no index
 // signature. Every named field is checked, null and absent included; an info or keyed value is any object

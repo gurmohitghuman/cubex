@@ -33,7 +33,7 @@ test('control_run reruns a structured run into the same columns', async () => {
   const rows = async () => parseResult(await call('read_rows', { sheet_id: sheetId })).rows as Array<{ id: string; data: Record<string, string> }>
   const settle = async (runId: string) => {
     for (let i = 0; i < 80; i++) {
-      const s = parseResult(await call('get_run_status', { run_type: 'ai', run_id: runId }))
+      const s = parseResult(await call('get_run', { action: 'status', run_type: 'ai', run_id: runId }))
       if (['completed', 'failed', 'cancelled'].includes(s?.status) && !JSON.stringify(await rows()).includes('⏳')) return s
       await pause()
     }
@@ -114,7 +114,7 @@ test('control_run reruns a structured run into the same columns', async () => {
   // Renamed "Score (Output)", the status column still reruns as a structured
   // run (by id and from the menu), and a single-column run can't take it over.
   await whenFree(() => call('rename_column', { sheet_id: sheetId, column: 'Score (Status)', new_name: 'Score (Output)' }), r => !!r.isError)
-  const latest = parseResult(await call('list_runs', { sheet_id: sheetId, limit: 1 })).runs[0]
+  const latest = parseResult(await call('get_run', { action: 'list', sheet_id: sheetId, limit: 1 })).runs[0]
   const renamed = parseResult(await rerun(latest.id, { mode: 'empty' }))
   const renamedStatus = await settle(renamed.run_id)
   expect(renamedStatus.column_name).toBe('Score (Output)')

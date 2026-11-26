@@ -1,5 +1,5 @@
 // The guide paragraphs for a saved setup, or one enrichment tool, called on items without a sheet (apply_setup and
-// run_enrichment with items, followed with get_setup_run; guide.ts says what a guide holds).
+// run_enrichment with items, followed with get_run (action setup); guide.ts says what a guide holds).
 import { ENRICH_CALL_MAX_ITEMS, SETUP_CALL_KEEP_HOURS, SETUP_CALL_MAX_ITEMS } from '../../lib/constants-setups';
 import type { ToolGuide } from './guide';
 
@@ -10,14 +10,17 @@ export const SETUP_ITEMS_TEXT = [
   'With items, the estimate only reads: it prices each step on the items (an AI step\'s "Only run if" rule is '
     + 'checked on each one) and makes nothing. A start counts against the access token\'s run starts per minute, as '
     + 'a column run\'s does.',
-  'With items, Cubex runs the setup on a working table of its own that you never see: not in the app, list_tables, '
+  'With items, Cubex runs the setup on a working table of its own that you never see: not in the app, get_workspace, '
     + 'get_workspace or the trash. Each step runs as it would on a sheet, and auto-run is never turned on there. '
     + 'What its enrichments spend shows in Settings as "A call without a sheet".',
-  'The call\'s id is a setup run\'s id: get_setup_run answers it, control_setup_run pauses, resumes or cancels it, '
-    + 'a run webhook named with webhook_id reports it as kind "setup" with that id as run_id, and get_run_status '
+  'The call\'s id is a setup run\'s id: get_run (action setup) answers it, control_setup_run pauses, resumes or '
+    + 'cancels it, '
+    + 'a run webhook named with webhook_id reports it as kind "setup" with that id as run_id, and get_run (action '
+    + 'status) '
     + 'works on each step\'s run_id.',
   `A call left paused for ${SETUP_CALL_KEEP_HOURS} hours is stopped (cancelled), and its results are then kept `
-    + `${SETUP_CALL_KEEP_HOURS} hours too. Then its working table is deleted and get_setup_run answers not found.`,
+    + `${SETUP_CALL_KEEP_HOURS} hours too. Then its working table is deleted and get_run (action setup) answers not `
+    + `found.`,
 ];
 
 export const GET_SETUP_RUN_GUIDE: ToolGuide = {
@@ -40,13 +43,15 @@ export const GET_SETUP_RUN_GUIDE: ToolGuide = {
 // run_enrichment with items.
 export const ENRICH_ITEMS_TEXT = [
   `With items: 1-${ENRICH_CALL_MAX_ITEMS.toLocaleString('en-US')} of them, each keyed by the tool's input names `
-    + '(get_enrichment lists them); fields picks the output fields to keep (default every one). Use it to enrich a few records for '
+    + '(find_enrichments get lists them); fields picks the output fields to keep (default every one). Use it to enrich '
+    + 'a few records for '
     + 'a script or another app; for several steps on items, apply_setup with items. It takes only tool_id, items, '
     + 'fields, estimate_only, max_cost_usd, allow_unpriced and webhook_id.',
   'With items, the estimate only reads: it prices the items as the estimate on a sheet prices rows (items that '
     + 'reuse an answer found for the same inputs cost $0) and makes nothing. A tool with no known price is refused, '
     + 'unless allow_unpriced. Started, its spend limit is the estimate\'s high end.',
-  'With items, the call is an enrichment run on a working table of its own: get_run_results gives each item\'s '
+  'With items, the call is an enrichment run on a working table of its own: get_run (action results) gives each '
+    + 'item\'s '
     + 'status, fields and error, control_run stops it, and webhook_id names a run webhook for it. Each output field '
     + 'keeps its name; status_column names the column with each item\'s status (Status, or Status 2 for a tool that '
     + 'answers a status field, as an email check does).',

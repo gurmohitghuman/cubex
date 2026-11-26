@@ -11,10 +11,10 @@ description: "Check what Cubex allows before a big job, or why it refused one: r
 
 ## Money
 
-- `get_balances` (free): the treg balance that pays for enrichments, the enrichment daily limit (`limit_usd`, `used_today_usd`, `remaining_usd`, UTC days; only the user can change it, in Settings), and what OpenRouter reports for the AI key.
+- `get_account` (action `balances`) (free): the treg balance that pays for enrichments, the enrichment daily limit (`limit_usd`, `used_today_usd`, `remaining_usd`, UTC days; only the user can change it, in Settings), and what OpenRouter reports for the AI key.
 - One run: an enrichment's `max_cost_per_row_usd` and `spend_limit_usd` (it pauses there). `estimate_only: true` on `run_ai_column`, `run_enrichment` or `run_http_enrichment` prices a run without starting it.
 - Auto-run: `get_sheet`'s `column_details` shows `auto_run`, `auto_run_caps` (`usd_per_day` for an enrichment, `rows_per_day` for an HTTP API column) and `auto_run_paused` per column.
-- Spent so far: `get_usage` with `range` (`this_week`, `this_month`, `last_week`, `last_month`) and `group_by` (`column`, `day` or `run`), for one sheet or the whole account.
+- Spent so far: `get_account` (action `usage`) with `range` (`this_week`, `this_month`, `last_week`, `last_month`) and `group_by` (`column`, `day` or `run`), for one sheet or the whole account.
 
 ## Request limits
 

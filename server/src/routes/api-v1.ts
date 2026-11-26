@@ -150,8 +150,10 @@ router.get('/me', requireScope('read'), (req: TokenAuthRequest, res) => {
 });
 
 // GET /api/v1/version: the running version, the latest release the daily check found and whether it
-// is newer (services/version-info.ts; get_version and Settings read the same). Reads only what is kept:
-// it never asks GitHub. ?since=<release> adds what changed for agents after it, as get_version's since.
+// is newer (services/version-info.ts; get_account (action version) and Settings read the same). Reads only what is
+// kept:
+// it never asks GitHub. ?since=<release> adds what changed for agents after it, as get_account (action version)'s
+// since.
 router.get('/version', requireScope('read'), (req: TokenAuthRequest, res) => {
   try {
     const info = versionInfo(req.userId!);

@@ -1,5 +1,5 @@
 // The waterfall parts of the programmatic run reads (services/run-status.ts:
-// get_run_status, list_runs, get_run_results and their /api/v1 routes): a
+// get_run (action status), get_run (action list), get_run (action results) and their /api/v1 routes): a
 // summary's spend, limit and per-step counts, and a result row's answering
 // step, cost and trace. Bounded: the run's few tally rows, a page of results.
 import { db } from '../lib/db';

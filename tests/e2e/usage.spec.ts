@@ -65,9 +65,9 @@ test('usage by column, day and run; a deleted column stays; the app, REST, MCP a
 
     // MCP: the same read.
     const client = await mcpClient(token, 'e2e usage')
-    const mcp = await call(client, 'get_usage', { sheet_id: sheetId })
+    const mcp = await call(client, 'get_account', { action: 'usage', sheet_id: sheetId })
     expect(mcp.totals.total_cost_usd).toBeCloseTo(cost, 6)
-    expect((await call(client, 'get_usage', {})).totals.runs).toBeGreaterThanOrEqual(1)
+    expect((await call(client, 'get_account', { action: 'usage' })).totals.runs).toBeGreaterThanOrEqual(1)
     await client.close()
 
     // A deleted column stays, with what it cost.

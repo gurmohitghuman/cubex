@@ -66,7 +66,7 @@ test("a lookup step waiting on another sheet's run says where; its link opens th
   })
   const said = 'Waits for "Email" on sheet "Contacts", which a run there is still filling: 2 rows wait.'
   const waitingOf = async () =>
-    (await call(mcp, 'get_run_status', { run_type: 'waterfall', run_id: wf.run_id })).waiting
+    (await call(mcp, 'get_run', { action: 'status', run_type: 'waterfall', run_id: wf.run_id })).waiting
   await expect.poll(async () => (await waitingOf())?.message, { timeout: 30_000 }).toBe(said)
   const waiting = await waitingOf()
   expect(waiting).toMatchObject({
@@ -88,7 +88,7 @@ test("a lookup step waiting on another sheet's run says where; its link opens th
   releaseCrm()
   expect((await waitForTerminal(v1, `/api/v1/http-runs/${crmRun}`)).status).toBe('completed')
   await expect.poll(async () =>
-    (await call(mcp, 'get_run_status', { run_type: 'waterfall', run_id: wf.run_id })).status,
+    (await call(mcp, 'get_run', { action: 'status', run_type: 'waterfall', run_id: wf.run_id })).status,
   { timeout: 30_000 }).toBe('completed')
   expect((await rowsOf(api, leads.sheetId)).map(r => r['Work email']))
     .toEqual(['fresh@crm.example', 'fresh@crm.example', '⏭️ Not found'])

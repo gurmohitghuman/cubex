@@ -40,7 +40,7 @@ const STALE: ReadonlySet<ColumnRunMode> = new Set(['out_of_date', 'empty_or_out_
 const round = (n: number) => Math.round(n * 1e4) / 1e4;
 const notes = (...parts: Array<string | null | false>) => parts.filter(Boolean).join(' ') || null;
 
-// layer: 1-based, as get_setup_run shows it and a setup's estimate does.
+// layer: 1-based, as get_run (action setup) shows it and a setup's estimate does.
 const zero = (c: { column: string; kind: RunKind; layer: number }): ColumnEstimate => ({
   column: c.column, kind: c.kind, layer: c.layer + 1, rows: 0, low_usd: 0, high_usd: 0, row_most_usd: null,
   sends_requests: c.kind === 'http', at_most: false, note: 'No row needs it now.',

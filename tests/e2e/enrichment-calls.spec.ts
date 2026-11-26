@@ -20,7 +20,7 @@ test('an enrichment called on items: priced, refused over a ceiling, run without
   await freshTreg(api)
   const token = await makeAccessToken(api, ['read', 'write', 'run'], 'enrichment-calls')
   const client = await mcpClient(token)
-  const tables = async () => (await call(client, 'list_tables', {})).tables.length
+  const tables = async () => (await call(client, 'get_workspace', { all_tables: true })).tables.length
   const before = await tables()
   const items = [{ full_name: 'Ada Lovelace', domain: 'acme.com' }, { full_name: 'Grace Hopper', domain: 'navy.mil' }]
 
@@ -45,9 +45,9 @@ test('an enrichment called on items: priced, refused over a ceiling, run without
     max_cost_usd: 10 })
   expect(started.items).toBe(2)
   expect(await tables()).toBe(before)
-  await expect.poll(async () => (await call(client, 'get_run_status', { run_type: 'enrichment',
+  await expect.poll(async () => (await call(client, 'get_run', { action: 'status', run_type: 'enrichment',
     run_id: started.run_id, wait_seconds: 5 })).status, { timeout: 60_000 }).toMatch(/completed|failed/)
-  const results = await call(client, 'get_run_results', { run_type: 'enrichment', run_id: started.run_id,
+  const results = await call(client, 'get_run', { action: 'results', run_type: 'enrichment', run_id: started.run_id,
     status_filter: 'all' })
   expect(results.results.map((r: any) => r.row_index).sort()).toEqual([0, 1])
   expect(await tables()).toBe(before)
@@ -57,7 +57,7 @@ test('an enrichment called on items: priced, refused over a ceiling, run without
     items: [{ email: 'ada@acme.com' }], estimate_only: false, max_cost_usd: 10 })
   expect(checked.status_column).toBe('Status 2')
   expect(checked.output_columns).toContain('status')
-  await expect.poll(async () => (await call(client, 'get_run_status', { run_type: 'enrichment',
+  await expect.poll(async () => (await call(client, 'get_run', { action: 'status', run_type: 'enrichment',
     run_id: checked.run_id, wait_seconds: 5 })).status, { timeout: 60_000 }).toMatch(/completed|failed/)
   expect(await tables()).toBe(before)
 

@@ -56,7 +56,8 @@ test('a token at its spend cap: refused and paused, then resumed after a raise i
   }
   expect(text('write_formula')).toContain('At the cap this is refused.')
   expect(text('read_rows')).not.toContain('SPEND CAP')
-  expect((await call(client, 'get_balances', {})).access_token).toMatchObject({ spend_cap_usd: 0.02, left_usd: 0.02 })
+  expect((await call(client, 'get_account', { action: 'balances' })).access_token)
+    .toMatchObject({ spend_cap_usd: 0.02, left_usd: 0.02 })
 
   // Two rows fit at up to $0.01 each: the run pauses at the cap with the rest still to do.
   const started = await call(client, 'run_enrichment', { sheet_id: sheetId, ...FIND })
@@ -64,7 +65,7 @@ test('a token at its spend cap: refused and paused, then resumed after a raise i
   const paused = await waitMcpRun(client, started.run_id, ['paused'])
   expect(paused.enrichment.pause_reason).toBe('token_cap')
   expect(paused.error_message).toContain('"e2e spend cap"')
-  const spent = (await call(client, 'get_balances', {})).access_token
+  const spent = (await call(client, 'get_account', { action: 'balances' })).access_token
   expect(spent.spent_usd).toBeGreaterThan(0)
   expect(spent.spent_usd).toBeLessThanOrEqual(0.02)
   expect((await rowsOf(api, sheetId)).filter(r => r['Find email'] === '✅ Found').length).toBeLessThan(6)
@@ -93,7 +94,7 @@ test('a token at its spend cap: refused and paused, then resumed after a raise i
   await call(client, 'control_run', { run_type: 'enrichment', run_id: started.run_id, action: 'resume' })
   await waitMcpRun(client, started.run_id, ['completed'])
   expect((await rowsOf(api, sheetId)).filter(r => r['Find email'] === '✅ Found')).toHaveLength(6)
-  const after = (await call(client, 'get_balances', {})).access_token
+  const after = (await call(client, 'get_account', { action: 'balances' })).access_token
   expect(after.spent_usd).toBeGreaterThan(spent.spent_usd)
   // The usage history counts the same numbers.
   const usage = await (await bearer.get(`/api/v1/usage?sheet_id=${sheetId}`)).json()

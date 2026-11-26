@@ -1,5 +1,5 @@
 // Saved API keys by name and where each is used, for agents (MCP
-// list_saved_keys and GET /api/v1/saved-keys, 'read' scope). Never a value, a
+// get_account (action saved_keys) and GET /api/v1/saved-keys, 'read' scope). Never a value, a
 // masked value, its length or its hash: the value column isn't even read.
 // Where: a live sheet's HTTP API, enrichment or waterfall column whose setup
 // (its newest run, the one reruns, auto-run and get_sheet use) names the key

@@ -54,6 +54,7 @@ export function startRunRule(
 export const runIfReply = (rule: string) => ({
   run_if: rule,
   run_if_note: 'target_rows counts the rows before the rule. Rows that fail it get "⏭️ Condition not met" and '
-    + 'cost nothing; get_run_status counts them (condition_skipped_rows) and leaves them out of total_rows once '
+    + 'cost nothing; get_run (action status) counts them (condition_skipped_rows) and leaves them out of total_rows '
+    + 'once '
     + 'the run has started.',
 });

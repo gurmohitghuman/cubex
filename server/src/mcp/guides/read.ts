@@ -1,5 +1,6 @@
 // The guides of the reading tools (guide.ts says what a guide holds).
 import { ROWS_BY_ID_MAX } from '../../lib/api-v1-constants';
+import { CHANGE_LOG_DAYS } from '../../lib/constants';
 import { COLUMN_COUNTS_MAX_COLUMNS } from '../../lib/constants-columns';
 import { IMPORT_GARBLED_SAMPLES } from '../../lib/constants-clean';
 import { INCLUDE_STATUS_HELP, VIEW_HELP, WHERE_LANGUAGE } from '../where-schema';
@@ -46,6 +47,14 @@ export const READ_GUIDES: Record<string, ToolGuide> = {
         + 'lookup columns (a lookup\'s broken says why it stopped, and kept_changing why rows it looked up may hold '
         + 'older values), active_runs and active_setup_runs (control_run cancel_all stops them all), views (pass '
         + 'view to read_rows or export_csv) and auto_dedupe (set_auto_dedupe\'s setting, or null).',
+      `history: A sheet's change log, newest first, kept ${CHANGE_LOG_DAYS} days: columns added, renamed and `
+        + 'deleted, runs started and stopped, auto-run and "Only run if" changes, default model, clean, formula and '
+        + 'lookup columns, views, its webhook, and rows deleted, restored, imported, sorted, moved and deduplicated. '
+        + 'Each line has when (at, UTC), by (the app, an access token by name over the API or MCP, or Cubex itself), '
+        + 'action, column, summary and detail; a line about rows or a column deleted to the trash has its trash_id '
+        + 'and in_trash: true while that item is in the trash (also while a big column\'s cells are still moving in), '
+        + 'false once it is restored or permanently deleted (still true after a restore that left cells behind in '
+        + 'it). For what was deleted, list_trash.',
     ],
   },
   import_csv: { text: ['Fails on columns an active run owns.', GARBLED_HELP] },
@@ -54,7 +63,8 @@ export const READ_GUIDES: Record<string, ToolGuide> = {
       'curl prints the import result (rows imported, new columns).', GARBLED_HELP,
       'With setup_id: the file\'s header names the setup\'s inputs (a column the setup doesn\'t read is ignored, '
         + 'an input the file lacks reads as empty), and the call starts once the file is in: curl prints the '
-        + 'import\'s summary with the setup_call (get_setup_run follows it). Nobody sees an estimate first, so '
+        + 'import\'s summary with the setup_call (get_run (action setup) follows it). Nobody sees an estimate first, '
+        + 'so '
         + 'max_cost_usd is required: a file whose estimate could pass it starts nothing (curl prints the estimate), '
         + 'and so does a file with no rows. Price it first with apply_setup on a few items. mode stays append, and '
         + 'making the link counts as a run start.',

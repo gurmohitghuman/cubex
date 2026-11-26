@@ -1,6 +1,6 @@
 // Settings → Account → Version: the running version, the latest release and whether the daily check
 // is on (services/version-info.ts). Cookie session only (mounted under /api/settings); GET /v1/version
-// and get_version read the same, but only here can the check be turned off or asked at once.
+// and get_account (action version) read the same, but only here can the check be turned off or asked at once.
 import express from 'express';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { setUpdateCheck, readReleaseState } from '../lib/release-store';

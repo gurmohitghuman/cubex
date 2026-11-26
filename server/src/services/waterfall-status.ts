@@ -1,5 +1,5 @@
 // A waterfall run's status (the app's run view, GET /api/waterfall/runs/:id,
-// and the `waterfall` part of get_run_status): how far it is, what it spent
+// and the `waterfall` part of get_run (action status)): how far it is, what it spent
 // (treg and AI, against its limit), and per step how many rows reached it,
 // how many it answered, failed or skipped for missing inputs, and what it cost
 // (waterfall_step_tally). A pure read of the run and its few tally rows.

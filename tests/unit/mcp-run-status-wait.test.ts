@@ -32,8 +32,8 @@ const steady = (id: string) => {
 }
 const status = async (id: string, wait: number) => {
   const started = performance.now()
-  const res = await modern('tools/call', { name: 'get_run_status',
-    arguments: { run_type: 'ai', run_id: id, wait_seconds: wait } }, 'get_run_status')
+  const res = await modern('tools/call', { name: 'get_run',
+    arguments: { action: 'status', run_type: 'ai', run_id: id, wait_seconds: wait } }, 'get_run')
   const result = JSON.parse(res.text).result
   assert.ok(!result.isError, res.text)
   const run = result.structuredContent as {

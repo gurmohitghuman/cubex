@@ -123,7 +123,7 @@ test('MCP: delete_rows, remove_duplicates and manage_sheet go to the trash; rest
     const after = (await call(client, 'read_rows', { sheet_id: sheetId })).rows as Array<{ id: string }>
     expect(after.map(r => r.id).sort()).toEqual(rows.map(r => r.id).sort())
 
-    const history = await call(client, 'get_sheet_history', { sheet_id: sheetId })
+    const history = await call(client, 'get_sheet', { history: true, sheet_id: sheetId })
     expect(history.changes.some((c: { action: string; by: string }) =>
       c.action === 'sheet_restored' && c.by === 'the token "e2e trash mcp" (MCP)')).toBeTruthy()
     await client.close()

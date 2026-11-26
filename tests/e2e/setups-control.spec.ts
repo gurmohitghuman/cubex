@@ -30,7 +30,8 @@ test("a setup's pause and stop reach its running step; it resumes, carries on; a
   }
   const lookup = await call(client, 'run_http_enrichment', { sheet_id: a.sheetId, url: rx.url('/short/{{Website}}'),
     method: 'POST', master_column_name: 'Lookup', response_mapping: [{ json_path: '$.short', column_name: 'Short' }] })
-  await expect.poll(async () => (await call(client, 'get_run_status', { run_type: 'http', run_id: lookup.run_id }))
+  await expect.poll(async () => (await call(client, 'get_run', {
+    action: 'status', run_type: 'http', run_id: lookup.run_id }))
     .status, { timeout: 30_000 }).toBe('completed')
   await call(client, 'formula_column', { sheet_id: a.sheetId, column: 'Label', formula: '{{Short}} + "!"' })
   const setup = await call(client, 'save_setup', { sheet_id: a.sheetId, name: 'Two steps', columns: ['Label'] })
@@ -40,7 +41,7 @@ test("a setup's pause and stop reach its running step; it resumes, carries on; a
   const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
   const step = (view: any, name: string) => view.steps.find((s: any) => s.column === name)
   const httpStatus = async (runId: string) =>
-    (await call(client, 'get_run_status', { run_type: 'http', run_id: runId })).status
+    (await call(client, 'get_run', { action: 'status', run_type: 'http', run_id: runId })).status
 
   // Paused while its first step is held: that step's run pauses (one still writing its placeholders is
   // paused by the next sweep), then its answers are let through. Several sweeps later nothing has moved.
@@ -53,7 +54,7 @@ test("a setup's pause and stop reach its running step; it resumes, carries on; a
   release()
   await rx.settled()
   await sleep(2500)
-  const paused = await call(client, 'get_setup_run', { setup_run_id: run.id })
+  const paused = await call(client, 'get_run', { action: 'setup', setup_run_id: run.id })
   expect(paused.status).toBe('paused')
   expect(await httpStatus(step(paused, 'Lookup').run_id)).toBe('paused')
   // Its rows still wait for an answer: none was written.
@@ -96,7 +97,8 @@ test("a setup's pause and stop reach its running step; it resumes, carries on; a
   const keyedRun = await call(secret, 'run_http_enrichment', { sheet_id: a.sheetId, url: rx.url('/keyed/{{Domain}}'),
     method: 'POST', headers: { 'X-Key': '{{setup_e2e_key2}}' }, master_column_name: 'Keyed',
     response_mapping: [{ json_path: '$.userId', column_name: 'User id' }] })
-  await expect.poll(async () => (await call(secret, 'get_run_status', { run_type: 'http', run_id: keyedRun.run_id }))
+  await expect.poll(async () => (await call(secret, 'get_run', {
+    action: 'status', run_type: 'http', run_id: keyedRun.run_id }))
     .status, { timeout: 30_000 }).toBe('completed')
   const keyed = await call(secret, 'save_setup', { sheet_id: a.sheetId, name: 'Keyed chain', columns: ['User id'] })
   release = rx.hold()
@@ -118,7 +120,8 @@ test("a setup's pause and stop reach its running step; it resumes, carries on; a
   try {
     const ai = await call(client, 'run_ai_column', { sheet_id: a.sheetId, column_name: 'Fit',
       prompt: 'Is /domain a fit?', model: 'deepseek/deepseek-v4-flash' })
-    await expect.poll(async () => (await call(client, 'get_run_status', { run_type: 'ai', run_id: ai.run_id }))
+    await expect.poll(async () => (await call(client, 'get_run', {
+      action: 'status', run_type: 'ai', run_id: ai.run_id }))
       .status, { timeout: 30_000 }).toMatch(/completed|failed/)
     const aiSetup = await call(client, 'save_setup', { sheet_id: a.sheetId, name: 'Fit', columns: ['Fit (Output)'],
       include_upstream: false })
@@ -142,7 +145,7 @@ test("a setup's pause and stop reach its running step; it resumes, carries on; a
     const oneRun = (await call(client, 'apply_setup', { sheet_id: b.sheetId, setup_id: aiSetup.id,
       estimate_only: false })).setup_run
     const oneDone = await waitSetup(client, oneRun.id)
-    const aiRun = await call(client, 'get_run_status', { run_type: 'ai', run_id: oneDone.steps[0].run_id })
+    const aiRun = await call(client, 'get_run', { action: 'status', run_type: 'ai', run_id: oneDone.steps[0].run_id })
     expect(aiRun.total_rows).toBe(1)
   } finally {
     await api.delete('/api/settings/openrouter-key')

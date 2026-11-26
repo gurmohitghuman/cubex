@@ -1,6 +1,7 @@
 // Waits up to `seconds` for a run to change, holding one of the account's run-status wait slots
 // (lib/long-poll-holds.ts, apart from the sheet tabs' change polls). By default any progress ends the wait (the
-// waterfall dry run's loop, waterfall-token-dry.ts). statusOnly (MCP get_run_status) ends it only when the status
+// waterfall dry run's loop, waterfall-token-dry.ts). statusOnly (MCP get_run (action status)) ends it only when the
+// status
 // changes (the run starts, ends, pauses or fails) or the time is up, so an agent following a steady run asks
 // once per wait instead of once per batch of rows. With every slot taken it answers at once, with noSlot.
 import { acquireRunWait } from '../lib/long-poll-holds';

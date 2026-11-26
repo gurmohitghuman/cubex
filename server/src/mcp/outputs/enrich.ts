@@ -1,5 +1,5 @@
 // What the treg.to, waterfall, AI visibility, hiring, balance and usage tools answer (tools-enrich.ts,
-// tools-waterfall.ts, tools-ai-visibility.ts, tools-hiring.ts, tools-balances.ts, tools-usage.ts).
+// tools-waterfall.ts, tools-ai-visibility.ts, tools-hiring.ts, tools-account.ts).
 import { z } from 'zod';
 import { obj, open } from '../output-schema';
 import { bool, changed, info, nul, num, opt, str, strs } from './shared';

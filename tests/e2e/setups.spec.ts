@@ -25,7 +25,7 @@ async function seedPeople(api: APIRequestContext): Promise<string> {
 
 async function waitRun(client: Client, type: 'ai' | 'http', runId: string) {
   await expect.poll(async () =>
-    (await call(client, 'get_run_status', { run_type: type, run_id: runId, wait_seconds: 2 })).status,
+    (await call(client, 'get_run', { action: 'status', run_type: type, run_id: runId, wait_seconds: 2 })).status,
   { timeout: 60_000 }).toMatch(/completed|failed/)
 }
 

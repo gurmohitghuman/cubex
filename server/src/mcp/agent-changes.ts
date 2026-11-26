@@ -43,6 +43,99 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
     changes: [
       {
         change: 'renamed',
+        tools: ['get_run_status'],
+        replaced_by: 'get_run',
+        summary: 'get_run_status is now get_run with action "status": the same run_type, run_id and wait_seconds, '
+          + 'and the same answer.',
+      },
+      {
+        change: 'renamed',
+        tools: ['get_run_results'],
+        replaced_by: 'get_run',
+        summary: 'get_run_results is now get_run with action "results": the same run_type, run_id, status_filter, '
+          + 'cursor, limit and include_answers, and the same answer.',
+      },
+      {
+        change: 'renamed',
+        tools: ['list_runs'],
+        replaced_by: 'get_run',
+        summary: 'list_runs is now get_run with action "list": the same sheet_id, filter and limit, and the same '
+          + 'answer.',
+      },
+      {
+        change: 'renamed',
+        tools: ['get_setup_run'],
+        replaced_by: 'get_run',
+        summary: 'get_setup_run is now get_run with action "setup": the same setup_run_id, sheet_id, setup_id, '
+          + 'wait_seconds, results_from and limit, and the same answer.',
+      },
+      {
+        change: 'renamed',
+        tools: ['get_balances'],
+        replaced_by: 'get_account',
+        summary: 'get_balances is now get_account with action "balances", and the same answer.',
+      },
+      {
+        change: 'renamed',
+        tools: ['get_usage'],
+        replaced_by: 'get_account',
+        summary: 'get_usage is now get_account with action "usage": the same sheet_id, group_by, range, from, to and '
+          + 'limit, and the same answer.',
+      },
+      {
+        change: 'renamed',
+        tools: ['list_saved_keys'],
+        replaced_by: 'get_account',
+        summary: 'list_saved_keys is now get_account with action "saved_keys": the same name and after, and the same '
+          + 'answer.',
+      },
+      {
+        change: 'renamed',
+        tools: ['get_version'],
+        replaced_by: 'get_account',
+        summary: 'get_version is now get_account with action "version": the same since, and the same answer.',
+      },
+      {
+        change: 'renamed',
+        tools: ['list_tables'],
+        replaced_by: 'get_workspace',
+        summary: 'list_tables is now get_workspace with all_tables: true, and the same answer: every table with its '
+          + 'sheets.',
+      },
+      {
+        change: 'renamed',
+        tools: ['get_sheet_history'],
+        replaced_by: 'get_sheet',
+        summary: 'get_sheet_history is now get_sheet with history: true: the same sheet_id, column, before and '
+          + 'limit, and the same answer.',
+      },
+      {
+        change: 'renamed',
+        tools: ['search_enrichments'],
+        replaced_by: 'find_enrichments',
+        summary: 'search_enrichments is now find_enrichments with action "search": the same query, and the same '
+          + 'answer.',
+      },
+      {
+        change: 'renamed',
+        tools: ['get_enrichment'],
+        replaced_by: 'find_enrichments',
+        summary: 'get_enrichment is now find_enrichments with action "get": the same tool_id, and the same answer.',
+      },
+      {
+        change: 'changed',
+        tools: ['get_workspace'],
+        summary: 'get_workspace takes all_tables: true, which answers every table with its sheets (list_tables\' '
+          + 'answer) in place of the overview.',
+      },
+      {
+        change: 'changed',
+        tools: ['get_sheet'],
+        summary: 'get_sheet takes history: true with column, before and limit, which answers the sheet\'s change log '
+          + '(get_sheet_history\'s answer) in place of its details.',
+      },
+      {
+        change: 'renamed',
         tools: ['call_setup'],
         replaced_by: 'apply_setup',
         summary: 'call_setup is apply_setup with items instead of sheet_id: a saved setup run on 1-100 items without a '
@@ -53,10 +146,11 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
       {
         change: 'renamed',
         tools: ['get_setup_call'],
-        replaced_by: 'get_setup_run',
-        summary: 'get_setup_call is get_setup_run: a call on items answers there, with its results paged as before.',
-        details: 'Pass the call\'s id as setup_run_id (it was setup_call_id); wait_seconds, results_from and limit '
-          + 'work as before.',
+        replaced_by: 'get_run',
+        summary: 'get_setup_call is get_run with action "setup": a call on items answers there, with its results paged '
+          + 'as before.',
+        details: 'Call get_run with action "setup" and the call\'s id as setup_run_id (it was setup_call_id); '
+          + 'wait_seconds, results_from and limit work as before.',
       },
       {
         change: 'renamed',
@@ -69,10 +163,10 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
       },
       {
         change: 'changed',
-        tools: ['apply_setup', 'get_setup_run', 'run_enrichment'],
-        summary: 'apply_setup and run_enrichment take items instead of sheet_id, and get_setup_run answers a call on '
-          + 'items with each item\'s outputs.',
-        details: 'get_setup_run also takes wait_seconds, for any setup run. With items, the arguments only a sheet '
+        tools: ['apply_setup', 'run_enrichment'],
+        summary: 'apply_setup and run_enrichment take items instead of sheet_id, and get_run (action setup) answers a '
+          + 'call on items with each item\'s outputs.',
+        details: 'get_run\'s setup also takes wait_seconds, for any setup run. With items, the arguments only a sheet '
           + 'takes (inputs, names, first_rows; column_name, outputs and the rest) are refused by name.',
       },
       {
@@ -93,9 +187,9 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
       },
       {
         change: 'changed',
-        tools: ['list_tables'],
-        summary: 'list_tables gives each table starred (in the user\'s Favorites) and last_opened_at (when the user '
-          + 'last opened it in the app, null until then).',
+        tools: ['get_workspace'],
+        summary: 'get_workspace with all_tables gives each table starred (in the user\'s Favorites) and last_opened_at '
+          + '(when the user last opened it in the app, null until then).',
         details: 'Use them to find the tables the user works in. GET /api/v1/tables answers the same.',
       },
     ],

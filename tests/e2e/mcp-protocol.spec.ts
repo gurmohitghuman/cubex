@@ -107,23 +107,24 @@ test('MCP 2026-07-28 on the wire: resultType, serverInfo, cache fields, headers 
     .toEqual(['complete', 300_000, 'private', STAMP])
 
   // tools/call: resultType and the server's identity; an Mcp-Session-Id is ignored and none is minted.
-  const call = await raw(token, 'tools/call', { name: 'list_tables', arguments: {} },
-    { ...std('tools/call', 'list_tables'), 'Mcp-Session-Id': 'made-up' })
+  const call = await raw(token, 'tools/call', { name: 'get_workspace', arguments: { all_tables: true } },
+    { ...std('tools/call', 'get_workspace'), 'Mcp-Session-Id': 'made-up' })
   expect([call.status, call.body.result.resultType, call.body.result._meta]).toEqual([200, 'complete', STAMP])
   expect(call.headers.get('mcp-session-id')).toBeNull()
   // Mcp-Name may come Base64-encoded; it is decoded before the comparison.
-  const encoded = `=?base64?${Buffer.from('list_tables').toString('base64')}?=`
-  expect((await raw(token, 'tools/call', { name: 'list_tables', arguments: {} },
+  const encoded = `=?base64?${Buffer.from('get_workspace').toString('base64')}?=`
+  expect((await raw(token, 'tools/call', { name: 'get_workspace', arguments: { all_tables: true } },
     std('tools/call', encoded))).status).toBe(200)
 
   // Headers missing, or disagreeing with the body: 400 with HeaderMismatch (-32020).
   const mismatch = async (headers: Record<string, string>, method = 'tools/call') => {
-    const res = await raw(token, method, method === 'tools/call' ? { name: 'list_tables', arguments: {} } : {}, headers)
+    const res = await raw(token, method,
+      method === 'tools/call' ? { name: 'get_workspace', arguments: { all_tables: true } } : {}, headers)
     expect([res.status, res.body.error.code, res.body.id]).toEqual([400, -32020, 41])
     return res.body.error.message as string
   }
   expect(await mismatch(std('tools/call', 'read_rows'))).toBe('Bad Request: the request headers and body disagree: '
-    + 'the body carries params.name="list_tables" but the Mcp-Name header names "read_rows"')
+    + 'the body carries params.name="get_workspace" but the Mcp-Name header names "read_rows"')
   expect(await mismatch(std('tools/call'))).toContain('the required Mcp-Name header is absent')
   expect(await mismatch(std('tools/list'))).toContain('the Mcp-Method header names tools/list')
   expect(await mismatch({ 'MCP-Protocol-Version': MODERN }, 'tools/list'))
@@ -190,7 +191,7 @@ test('MCP 2026-07-28: a write is credited to the token that made it', async () =
   }
   const { rows } = await call('read_rows', { sheet_id: sheetId, limit: 1 })
   await call('delete_rows', { sheet_id: sheetId, row_ids: [rows[0].id] })
-  const { changes: [newest] } = await call('get_sheet_history', { sheet_id: sheetId, limit: 1 })
+  const { changes: [newest] } = await call('get_sheet', { history: true, sheet_id: sheetId, limit: 1 })
   expect({ action: newest.action, via: newest.via, token_name: newest.token_name, by: newest.by })
     .toEqual({ action: 'rows_deleted', via: 'mcp', token_name: name, by: `the token "${name}" (MCP)` })
   await client.close()

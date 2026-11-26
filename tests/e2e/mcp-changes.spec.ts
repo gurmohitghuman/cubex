@@ -6,15 +6,15 @@ import { bearer, makeToken } from './api-v1-run-helpers'
 import { call, callError, mcpClient, modernMcpClient } from './helpers-mcp'
 
 // After an update, an agent learns what changed: the MCP instructions name the running release and what
-// changed for agents in it (server/src/mcp/agent-changes.ts), and get_version with since (GET
+// changed for agents in it (server/src/mcp/agent-changes.ts), and get_account's version with since (GET
 // /api/v1/version?since= the same) lists every release after a version, oldest first. A since that is not
 // a release is refused in the same words on both. A build that is not a release says so. The running
 // version comes from a folder laid out like an install (CUBEX_TEST_HOME), as in settings-version.spec.ts.
 
 const HOME = process.env.CUBEX_TEST_HOME || ''
 const VERSION_FILE = path.join(HOME, 'app', '.cubex-version')
-const AFTER = 'After an update, get_version with since set to the version you last used lists every change for '
-  + 'agents after it.'
+const AFTER = 'After an update, get_account (action version) with since set to the version you last used lists '
+  + 'every change for agents after it.'
 let token: string
 let v1: APIRequestContext
 
@@ -55,16 +55,17 @@ test('the instructions name the release and what changed in it; get_version sinc
     expect(second.changes).toContainEqual(expect.objectContaining({ change: 'changed', tools: ['get_version'] }))
     expect(second.changes).toContainEqual(expect.objectContaining({ change: 'server' }))
     // Both eras answer what REST answers; "0.8.12" reads as v0.8.12.
-    expect(await call(legacy, 'get_version', { since: 'v0.8.12' })).toEqual(answer)
-    expect(await call(modern, 'get_version', { since: '0.8.12' })).toEqual(answer)
+    expect(await call(legacy, 'get_account', { action: 'version', since: 'v0.8.12' })).toEqual(answer)
+    expect(await call(modern, 'get_account', { action: 'version', since: '0.8.12' })).toEqual(answer)
     // From the release before: v0.8.14, then what since v0.8.14 lists (the releases recorded after it, which
     // never repeats v0.8.14); without since, no changes_since.
-    const after = (await call(modern, 'get_version', { since: 'v0.8.14' })).changes_since.releases
-    expect((await call(modern, 'get_version', { since: 'v0.8.13' })).changes_since.releases).toEqual([second, ...after])
+    const after = (await call(modern, 'get_account', { action: 'version', since: 'v0.8.14' })).changes_since.releases
+    expect((await call(modern, 'get_account', {
+      action: 'version', since: 'v0.8.13' })).changes_since.releases).toEqual([second, ...after])
     expect(after.map((r: { version: string }) => r.version)).not.toContain('v0.8.14')
-    expect(await call(legacy, 'get_version', {})).not.toHaveProperty('changes_since')
+    expect(await call(legacy, 'get_account', { action: 'version' })).not.toHaveProperty('changes_since')
     // Older than the list: what it has, and where the rest is.
-    expect((await call(legacy, 'get_version', { since: 'v0.8.1' })).changes_since.note)
+    expect((await call(legacy, 'get_account', { action: 'version', since: 'v0.8.1' })).changes_since.note)
       .toMatch(/^Changes are listed for the releases after v0\.8\.12 only\./)
 
     // Not a release: refused in the same words on REST and MCP.
@@ -72,7 +73,7 @@ test('the instructions name the release and what changed in it; get_version sinc
       + 'has no place in the list: pass the last release you used.'
     const bad = await v1.get(`/api/v1/version?since=${encodeURIComponent('main e2e0003')}`)
     expect([bad.status(), await bad.json()]).toEqual([400, { error: words }])
-    expect(await callError(legacy, 'get_version', { since: 'main e2e0003' })).toBe(words)
+    expect(await callError(legacy, 'get_account', { action: 'version', since: 'main e2e0003' })).toBe(words)
     const twice = await v1.get('/api/v1/version?since=v0.8.12&since=v0.8.13')
     expect(twice.status()).toBe(400)
     expect((await twice.json()).error).toMatch(/not a list\./)

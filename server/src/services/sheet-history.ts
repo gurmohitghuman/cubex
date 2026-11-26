@@ -1,6 +1,6 @@
 // Reading a sheet's change log (migration 037; written by lib/change-log.ts):
 // the app's History panel, GET /api/v1/sheets/:id/history and MCP
-// get_sheet_history. Newest first, a page at a time by id. Kept
+// get_sheet (history). Newest first, a page at a time by id. Kept
 // CHANGE_LOG_DAYS days: the trash sweep prunes older lines in slices.
 import { db } from '../lib/db';
 import {

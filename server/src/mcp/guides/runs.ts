@@ -8,7 +8,7 @@ import { saveOnlyHelp } from '../save-only-schema';
 import type { ToolGuide } from './guide';
 
 const WEBHOOK_ID_HELP = 'A run webhook (list_run_webhooks) to notify when this run finishes, with a signed POST. '
-  + 'Delivery isn\'t guaranteed: keep polling get_run_status, the notice only saves polls.';
+  + 'Delivery isn\'t guaranteed: keep polling get_run (action status), the notice only saves polls.';
 
 export const RUN_GUIDES: Record<string, ToolGuide> = {
   run_ai_column: {

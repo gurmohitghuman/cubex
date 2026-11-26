@@ -34,8 +34,8 @@ const WAITING = '⏳ Processing...'
 
 async function aiStatus(client: Client, runId: string, statuses: string[]) {
   let last: any
-  await expect.poll(async () => (last = await call(client, 'get_run_status',
-    { run_type: 'ai', run_id: runId, wait_seconds: 2 })).status, { timeout: 60_000 }).toMatch(
+  await expect.poll(async () => (last = await call(client, 'get_run',
+    { action: 'status', run_type: 'ai', run_id: runId, wait_seconds: 2 })).status, { timeout: 60_000 }).toMatch(
     new RegExp(`^(${statuses.join('|')})$`))
   return last
 }
@@ -112,7 +112,7 @@ test('an AI run: refused over its ceiling, paused at its spend limit, resumed wi
     expect((await call(client, 'run_ai_column', { ...base, estimate_only: true, max_cost_usd: need })).over_ceiling)
       .toBe(false)
     expect((await call(client, 'get_sheet', { sheet_id: sheetId })).columns).not.toContain('Hi (Output)')
-    expect((await call(client, 'list_runs', { sheet_id: sheetId })).runs).toEqual([])
+    expect((await call(client, 'get_run', { action: 'list', sheet_id: sheetId })).runs).toEqual([])
 
     // spend_limit_usd below one row's most (no ceiling check): the run pauses before any call, its rows waiting.
     const started = await call(client, 'run_ai_column', { ...base, spend_limit_usd: TINY })
@@ -333,7 +333,7 @@ test('apply_setup: refused over its ceiling over MCP and REST; its AI step gets 
     expect(restEst.status()).toBe(200)
     expect((await restEst.json()).estimate).toMatchObject({ over_ceiling: true })
     expect((await api.post(url, { headers: auth, data: { max_cost_usd: -1 } })).status()).toBe(400)
-    expect((await call(client, 'get_setup_run', { sheet_id: sheetId })).setup_runs).toEqual([])
+    expect((await call(client, 'get_run', { action: 'setup', sheet_id: sheetId })).setup_runs).toEqual([])
     const columns = (await call(client, 'get_sheet', { sheet_id: sheetId })).columns
     expect(columns).not.toContain('Shout')
     expect(columns).not.toContain('Greet (Output)')
@@ -345,13 +345,13 @@ test('apply_setup: refused over its ceiling over MCP and REST; its AI step gets 
     expect(run.max_cost_usd).toBe(5)
     let greet: any
     await expect.poll(async () => {
-      const r = await call(client, 'get_setup_run', { setup_run_id: run.id })
+      const r = await call(client, 'get_run', { action: 'setup', setup_run_id: run.id })
       greet = r.steps.find((s: any) => s.column === 'Greet (Output)')
       return greet?.run_id ?? null
     }, { timeout: 60_000 }).not.toBeNull()
     const status = await aiStatus(client, greet.run_id, ['running', 'paused', 'completed', 'failed'])
     expect(status.spend_limit_usd).toBe(5)
-    await expect.poll(async () => (await call(client, 'get_setup_run', { setup_run_id: run.id })).status,
+    await expect.poll(async () => (await call(client, 'get_run', { action: 'setup', setup_run_id: run.id })).status,
       { timeout: 60_000 }).toMatch(/done|failed/)
   } finally {
     await api.delete('/api/settings/openrouter-key')

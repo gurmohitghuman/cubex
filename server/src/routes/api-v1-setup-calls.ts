@@ -1,5 +1,5 @@
 // /api/v1 setup calls: a saved setup run on items without a sheet, and its results. Thin wrappers over
-// services/setup-call.ts, which MCP's apply_setup with items and get_setup_run use too, so the surfaces can't
+// services/setup-call.ts, which MCP's apply_setup with items and get_run (action setup) use too, so the surfaces can't
 // drift. Pause, resume and stop: POST /v1/setup-runs/:id/control with the call's id (api-v1-setups.ts).
 import express from 'express';
 import { requireScope, TokenAuthRequest } from '../middleware/access-token-auth';

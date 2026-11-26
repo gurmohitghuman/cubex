@@ -1,5 +1,5 @@
-// treg's catalog as the agent surfaces show it (MCP search_enrichments and
-// get_enrichment, GET /api/v1/enrichments[/:toolId]): the drawer's search and
+// treg's catalog as the agent surfaces show it (MCP find_enrichments (action search) and
+// find_enrichments (action get), GET /api/v1/enrichments[/:toolId]): the drawer's search and
 // tool details (services/enrich-catalog.ts) in snake_case, with only what an
 // agent needs to set up run_enrichment. Pure reads; the access read (how the
 // user's treg team is served per provider) is free at treg and best effort.

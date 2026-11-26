@@ -88,7 +88,7 @@ async function main() {
     assert.match(one.structuredContent.guide, /\n- where: Rows must pass every item\./)
     const list = await call({})
     assert.deepEqual(list.structuredContent, { tools: Object.keys(TOOL_GUIDES).sort() })
-    assert.match((await call({ tool: 'list_tables' })).structuredContent.guide, /^list_tables has no guide/)
+    assert.match((await call({ tool: 'get_workspace' })).structuredContent.guide, /^get_workspace has no guide/)
     const wrong = await call({ tool: 'red_rows' })
     assert.equal(wrong.isError, true)
     assert.match(wrong.content[0].text, /No tool is named \\"red_rows\\"\. Close matches: read_rows/)

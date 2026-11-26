@@ -44,7 +44,7 @@ const setupCall = obj({
 // estimate_only (its default): estimate, inputs (a sheet's), makes, carries_on (a sheet's) and items (items').
 // Started: setup_run on a sheet, setup_call with items.
 export const applySetup = obj({
-  setup_run: opt(setupRun), setup_call: opt(info('The call, as get_setup_run answers it')),
+  setup_run: opt(setupRun), setup_call: opt(info('The call, as get_run\'s setup answers it')),
   estimate: opt(info('What it would cost, by column')),
   inputs: opt(info('Input -> the column it reads')), makes: opt(strs).describe('The columns it would make'),
   carries_on: opt(strs).describe('The columns it carries on'), items: opt(num), changed,

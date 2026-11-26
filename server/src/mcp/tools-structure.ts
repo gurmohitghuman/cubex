@@ -31,7 +31,8 @@ export function registerStructureTools(server: McpServer, ctx: McpAuthCtx) {
       description:
         'Create, rename, star or delete a table (it holds one or more sheet tabs; manage_sheet changes the tabs). '
         + 'create returns the new table with its first sheet ("Sheet1"); next: add_column, append_rows or import_csv. '
-        + 'star puts it in the user\'s Favorites on the home (list_tables says starred), unstar takes it out. '
+        + 'star puts it in the user\'s Favorites on the home (get_workspace with all_tables says starred), unstar '
+        + 'takes it out. '
         + 'delete puts the table '
         + 'in the trash with all its sheets and rows, cancels its active runs and stops its webhooks; it is kept for '
         + 'the days set in Settings (30 by default; 0 deletes at once), and restore_from_trash brings it back whole. '
@@ -42,7 +43,7 @@ export function registerStructureTools(server: McpServer, ctx: McpAuthCtx) {
         + 'but NOT run: it costs money, so run it (the answer says how) only after the user agrees.',
       inputSchema: {
         action: z.enum(['create', 'rename', 'star', 'unstar', 'delete', 'create_sample']).describe('What to do'),
-        table_id: z.string().optional().describe('rename, star, unstar, delete: the table (list_tables)'),
+        table_id: z.string().optional().describe('rename, star, unstar, delete: the table (get_workspace)'),
         name: z.string().optional().describe('Required for create/rename'),
         webhook: lenientBoolean().optional()
           .describe('create: true gives its first sheet an incoming webhook (manage_sheet_webhook)'),
@@ -101,7 +102,7 @@ export function registerStructureTools(server: McpServer, ctx: McpAuthCtx) {
         + `${TEST_WORDS} ${GUIDE_POINTER}`,
       inputSchema: {
         action: z.enum(['create', 'rename', 'copy', 'delete', 'reorder', ...TEST_ACTIONS]).describe('What to do'),
-        table_id: z.string().describe('The table (list_tables)'),
+        table_id: z.string().describe('The table (get_workspace)'),
         sheet_id: z.string().optional()
           .describe('Required for rename/copy/delete and the test actions (the sheet or its test copy)'),
         name: z.string().optional().describe('create and copy: optional; rename: required'),

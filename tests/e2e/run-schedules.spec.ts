@@ -38,18 +38,18 @@ test('a run schedule: made, changed, paused, fired now as a column run, deleted'
     .toBe(false)
 
   // What firing it now would cost (REST): the enrichment column on the one row, and nothing starts.
-  const runsBefore = (await call(client, 'list_runs', { sheet_id: sheetId })).runs.length
+  const runsBefore = (await call(client, 'get_run', { action: 'list', sheet_id: sheetId })).runs.length
   const priced = await (await api.get(`${BASE}/api/v1/run-schedules/${made.id}/estimate`,
     { headers: { Authorization: `Bearer ${token}` } })).json()
   expect(priced.problems).toEqual([])
   expect(priced.sheets.map((s: any) => [s.sheet_id, s.estimate.columns.map((c: any) => [c.column, c.rows])]))
     .toEqual([[sheetId, [['Work email', 1]]]])
-  expect((await call(client, 'list_runs', { sheet_id: sheetId })).runs.length).toBe(runsBefore)
+  expect((await call(client, 'get_run', { action: 'list', sheet_id: sheetId })).runs.length).toBe(runsBefore)
 
   const fired = (await call(client, 'manage_run_schedule', { action: 'fire_now', schedule_id: made.id })).schedule
   expect(fired.last_error).toBeNull()
   expect(fired.last_run_ids.length).toBe(1)
-  const setupRun = await call(client, 'get_setup_run', { setup_run_id: fired.last_run_ids[0] })
+  const setupRun = await call(client, 'get_run', { action: 'setup', setup_run_id: fired.last_run_ids[0] })
   expect(setupRun.steps.map((s: any) => s.column)).toEqual(['Work email'])
 
   const { sheetId: bare } = await seedLeadRows(api, [{ Name: 'Leo', Website: 'notion.so' }])

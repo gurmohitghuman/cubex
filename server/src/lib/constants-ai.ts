@@ -19,7 +19,7 @@ export const OPENROUTER_MODELS_CACHE_TTL_MS = 5 * 60 * 1000;
 // its model (lib/ai-model-check.ts); without the list in time, it starts.
 export const MODEL_CHECK_WAIT_MS = 3000;
 // What OpenRouter says about the key's money (services/openrouter-balance.ts)
-// is read at most this often per key: estimates and get_balances can repeat.
+// is read at most this often per key: estimates and get_account (action balances) can repeat.
 export const OPENROUTER_BALANCE_CACHE_MS = 30 * 1000;
 // An estimate waits at most this long for it (it is advisory).
 export const OPENROUTER_BALANCE_TIMEOUT_MS = 3_000;

@@ -60,7 +60,8 @@ test('MCP and REST: engine, mode and per-row cap are planned, priced, stored and
   expect(started.web_search).toMatchObject({ engine: 'parallel', runs_on: 'parallel', mode: 'fast', max_searches_per_row: 1 })
   let status: any = null
   for (let i = 0; i < 60; i++) {
-    status = parse(await client.callTool({ name: 'get_run_status', arguments: { run_type: 'ai', run_id: started.run_id } }))
+    status = parse(await client.callTool({ name: 'get_run', arguments: {
+      action: 'status', run_type: 'ai', run_id: started.run_id } }))
     if (['completed', 'failed', 'cancelled'].includes(status?.status)) break
     await new Promise(r => setTimeout(r, 500))
   }

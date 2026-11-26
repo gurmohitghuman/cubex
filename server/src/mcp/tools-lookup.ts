@@ -25,7 +25,7 @@ export function registerLookupTool(server: McpServer, ctx: McpAuthCtx): void {
       sheet_id: z.string().describe('The sheet that gets the lookup column'),
       column: z.string().optional().describe('The lookup column to write; required unless preview is true'),
       source_column: z.string().describe('The column of this sheet holding the value to look up'),
-      other_sheet_id: z.string().describe('The sheet to look in (list_tables gives ids); not sheet_id itself'),
+      other_sheet_id: z.string().describe('The sheet to look in (get_workspace gives ids); not sheet_id itself'),
       match_column: z.string().describe('The column of the other sheet to match against'),
       match: z.enum(['equals', 'contains']).optional()
         .describe('equals (default): whole values; contains: the value anywhere in the other cell (3+ characters; '

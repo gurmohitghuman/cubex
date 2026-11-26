@@ -1,5 +1,5 @@
 // What OpenRouter tells Cubex about the money behind the saved key, for
-// get_balances and the in-flight check (services/ai-in-flight.ts). The account
+// get_account (action balances) and the in-flight check (services/ai-in-flight.ts). The account
 // balance comes from /credits, which OpenRouter documents as needing a
 // management key, so with an ordinary key it is usually refused; the key's own
 // spending limit (/key: limit_remaining, null when none is set) is then all

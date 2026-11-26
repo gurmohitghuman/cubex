@@ -1,6 +1,6 @@
 // Over 200 lines: the summary and results readers of both run kinds, one contract for MCP and /api/v1.
 // Lean run-status + per-row-results readers for the programmatic surfaces
-// (/api/v1 run endpoints + the MCP get_run_status tool). Deliberately NOT the
+// (/api/v1 run endpoints + the MCP get_run (action status) tool). Deliberately NOT the
 // UI's SELECT-* dumps: summaries omit prompts/configs (fetchable elsewhere,
 // and configs can embed key REFERENCES), and results are keyset-paged by
 // row_index with the row's STABLE id joined on (v1 clients address by id).
@@ -73,7 +73,7 @@ export interface RunSummary {
 }
 
 // An index-only range scan on (run_id, status) (migrations 005, 008): about
-// 30 ms for a run with a million results, so list_runs over many huge runs adds up.
+// 30 ms for a run with a million results, so get_run (action list) over many huge runs adds up.
 export function rowOutcomes(
   table: 'ai_results' | 'http_results', runId: string,
 ): { failed_rows: number; succeeded_rows: number } {
@@ -150,7 +150,7 @@ export function getAiRunSummary(runId: string, userId: string): RunSummary | nul
            spend_cut_off_micro, spend_next_row_micro, waiting_on
     FROM ai_runs WHERE id = ? AND user_id = ?
   `).get(runId, userId) as any;
-  // One run's summary only (not list_runs): its least resume limit reads its usage record.
+  // One run's summary only (not get_run (action list)): its least resume limit reads its usage record.
   return r ? { ...aiRunSummaryFromRow(r), ...resumeLeastPart(runId, userId, r) } : null;
 }
 

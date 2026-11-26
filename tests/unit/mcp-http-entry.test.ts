@@ -48,7 +48,8 @@ async function main() {
   })
 
   await check('tools/call: a read works, a write is refused as isError naming the scope', async () => {
-    const okRes = JSON.parse((await modern('tools/call', { name: 'list_tables', arguments: {} }, 'list_tables')).text)
+    const okRes = JSON.parse((await modern('tools/call',
+      { name: 'get_workspace', arguments: { all_tables: true } }, 'get_workspace')).text)
     assert.equal(okRes.result.isError, undefined)
     assert.deepEqual([okRes.result.resultType, okRes.result._meta], ['complete', SERVER])
     const refused = JSON.parse((await modern('tools/call',
@@ -85,7 +86,8 @@ async function main() {
     const { result } = JSON.parse(list.text)
     assert.deepEqual(Object.keys(result), ['tools'])
     assert.deepEqual(result.tools.map((t: { name: string }) => t.name), registered)
-    const call = JSON.parse((await legacy('tools/call', { name: 'list_tables', arguments: {} })).text)
+    const call = JSON.parse((await legacy('tools/call',
+      { name: 'get_workspace', arguments: { all_tables: true } })).text)
     assert.equal(call.result.resultType, undefined)
     assert.ok(Array.isArray(call.result.structuredContent.tables))
   })

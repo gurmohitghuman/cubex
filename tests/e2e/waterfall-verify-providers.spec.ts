@@ -108,8 +108,9 @@ test('MCP: waterfall_column takes provider_order and skip_providers on a check; 
     inputs: { full_name: 'Name', domain: 'Website' },
     steps: [{ kind: 'formula', label: 'Guess', formula: GUESS, check }] }
   const started = await call(mcp, 'waterfall_column', { ...args, estimate_only: false })
-  await expect.poll(async () => (await call(mcp, 'get_run_status',
-    { run_type: 'waterfall', run_id: started.run_id, wait_seconds: 2 })).status, { timeout: 30_000 }).toBe('completed')
+  await expect.poll(async () => (await call(mcp, 'get_run', {
+    action: 'status', run_type: 'waterfall', run_id: started.run_id, wait_seconds: 2,
+  })).status, { timeout: 30_000 }).toBe('completed')
   const names = await asked()
   expect(names[0]).toBe('tomba')
   expect(names.filter(n => SKIP.includes(n))).toEqual([])

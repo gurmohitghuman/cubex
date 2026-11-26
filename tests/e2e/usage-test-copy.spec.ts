@@ -51,7 +51,7 @@ test('a test copy\'s runs count in the sheet\'s usage, also once the test is ove
     const account = (await usage({ group_by: 'run' })).rows as Array<Record<string, unknown>>
     expect(account.find(r => r.run_id === runId)).toMatchObject({ sheet_id: sheetId, on_test_copy: true })
     const client = await mcpClient(token, 'e2e usage test copy')
-    const mcp = await call(client, 'get_usage', { sheet_id: sheetId, group_by: 'run' })
+    const mcp = await call(client, 'get_account', { action: 'usage', sheet_id: sheetId, group_by: 'run' })
     expect(mcp.rows).toEqual([expect.objectContaining({ run_id: runId, sheet_id: sheetId, on_test_copy: true })])
     await client.close()
 

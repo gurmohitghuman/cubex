@@ -251,10 +251,10 @@ test('an old saved waterfall with retired provider names keeps working over REST
     const startNotes = (started.notes as string[]).join('\n')
     expect(startNotes).toContain('"oldfinder"')
     expect(startNotes).toContain('"retiredver"')
-    await expect.poll(async () => (await call(mcp, 'get_run_status',
-      { run_type: 'waterfall', run_id: started.run_id, wait_seconds: 2 })).status,
+    await expect.poll(async () => (await call(mcp, 'get_run',
+      { action: 'status', run_type: 'waterfall', run_id: started.run_id, wait_seconds: 2 })).status,
     { timeout: 30_000 }).toBe('completed')
-    const status = await call(mcp, 'get_run_status', { run_type: 'waterfall', run_id: started.run_id })
+    const status = await call(mcp, 'get_run', { action: 'status', run_type: 'waterfall', run_id: started.run_id })
     expect((status.waterfall.notes as string[]).join('\n')).toContain('"oldfinder"')
 
     // Every row is now filled, and control_run rerun on the saved waterfall keeps working with notes too.
@@ -264,7 +264,7 @@ test('an old saved waterfall with retired provider names keeps working over REST
       { run_type: 'waterfall', run_id: started.run_id, action: 'rerun', mode: 'all' })
     expect((rerun.notes as string[]).join('\n')).toContain('"oldfinder"')
     expect((rerun.notes as string[]).join('\n')).toContain('"retiredver"')
-    await expect.poll(async () => (await call(mcp, 'get_run_status',
-      { run_type: 'waterfall', run_id: rerun.run_id, wait_seconds: 2 })).status,
+    await expect.poll(async () => (await call(mcp, 'get_run',
+      { action: 'status', run_type: 'waterfall', run_id: rerun.run_id, wait_seconds: 2 })).status,
     { timeout: 30_000 }).toBe('completed')
   })

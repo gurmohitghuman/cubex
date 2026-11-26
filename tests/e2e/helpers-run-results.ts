@@ -32,7 +32,7 @@ export async function pollTerminal(
   let last: any = null
   while (Date.now() < deadline) {
     last = parseResult(await client.callTool({
-      name: 'get_run_status', arguments: { run_type: 'http', run_id: runId },
+      name: 'get_run', arguments: { action: 'status', run_type: 'http', run_id: runId },
     }))
     if (['completed', 'failed', 'cancelled'].includes(last?.status)) return last
     await new Promise(r => setTimeout(r, 750))

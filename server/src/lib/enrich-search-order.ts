@@ -1,4 +1,5 @@
-// The order the drawer and search_enrichments list a search's tools in (pure). treg ranks by how well each
+// The order the drawer and find_enrichments (action search) list a search's tools in (pure). treg ranks by how well
+// each
 // tool's words match, so one job's providers come in a run ("tiktok viral videos": five of a user's videos
 // before any search), and a tool of another platform can match on its words alone (YouTube's trending
 // Shorts, "viral videos"). So, keeping treg's order within each group:

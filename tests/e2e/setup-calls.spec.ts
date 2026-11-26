@@ -23,7 +23,7 @@ test('a setup called on items: priced, run without a sheet, each item\'s outputs
   const setup = await call(client, 'save_setup', { sheet_id: a.sheetId, name: 'Call me',
     columns: ['Domain', 'Clean name'] })
   expect([...setup.inputs].sort()).toEqual(['Name', 'Website'])
-  const tables = async () => (await call(client, 'list_tables', {})).tables.length
+  const tables = async () => (await call(client, 'get_workspace', { all_tables: true })).tables.length
   const before = await tables()
 
   // MCP: an estimate by default, nothing made.
@@ -46,8 +46,8 @@ test('a setup called on items: priced, run without a sheet, each item\'s outputs
   expect(started.items).toBe(3)
   expect(await tables()).toBe(before)
   let done: any
-  await expect.poll(async () => (done = await call(client, 'get_setup_run',
-    { setup_run_id: started.id, wait_seconds: 5 })).status, { timeout: 60_000 }).toBe('done')
+  await expect.poll(async () => (done = await call(client, 'get_run',
+    { action: 'setup', setup_run_id: started.id, wait_seconds: 5 })).status, { timeout: 60_000 }).toBe('done')
   expect(done.results).toEqual([
     { item: 0, status: 'done', error: null, outputs: { Domain: 'navy', 'Clean name': 'Grace Hopper' } },
     { item: 1, status: 'done', error: null, outputs: { Domain: 'nasa', 'Clean name': null } },
@@ -113,16 +113,17 @@ test('a setup called on a file: an upload link and REST, results paged and downl
   const started = (await up.json()).setup_call
   expect(started.items).toBe(150)
   let done: any
-  await expect.poll(async () => (done = await call(client, 'get_setup_run',
-    { setup_run_id: started.id, wait_seconds: 5 })).status, { timeout: 60_000 }).toBe('done')
+  await expect.poll(async () => (done = await call(client, 'get_run',
+    { action: 'setup', setup_run_id: started.id, wait_seconds: 5 })).status, { timeout: 60_000 }).toBe('done')
   expect(done.results.length).toBe(100)
   expect(done.next_from).toBe(100)
-  const rest = await call(client, 'get_setup_run', { setup_run_id: started.id, results_from: done.next_from })
+  const rest = await call(client, 'get_run', {
+    action: 'setup', setup_run_id: started.id, results_from: done.next_from })
   expect(rest.results.map((r: any) => r.outputs['Clean name'])).toEqual(names.slice(100).map(n =>
     n.replace(/^p/, 'P')))
   expect(rest.next_from).toBeNull()
   expect(await callError(client, 'get_setup_call', { setup_call_id: started.id }))
-    .toContain('renamed to get_setup_run')
+    .toContain('renamed to get_run')
   const dl = await call(client, 'create_download_link', { setup_call_id: started.id })
   const file = await (await api.get(dl.download_url)).text()
   expect(file.split('\n')[0]).toContain('Clean name')
