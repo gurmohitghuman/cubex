@@ -5,7 +5,7 @@
 // provision tables/sheets, not just work inside existing ones.
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/server';
-import { createTable, renameTable, deleteTable } from '../services/table-crud';
+import { createTable, renameTable, deleteTable, setTableStarred } from '../services/table-crud';
 import { createSheet, renameSheet, deleteSheet, reorderSheets } from '../services/sheet-crud';
 import { copySheetValues, sheetCopyWindow } from '../services/sheet-copy';
 import { tooManyMessage } from '../lib/rate-window';
@@ -29,8 +29,9 @@ export function registerStructureTools(server: McpServer, ctx: McpAuthCtx) {
     'manage_table',
     {
       description:
-        'Create, rename or delete a table (it holds one or more sheet tabs; manage_sheet changes the tabs). create '
-        + 'returns the new table with its first sheet ("Sheet1"); next: add_column, append_rows or import_csv. '
+        'Create, rename, star or delete a table (it holds one or more sheet tabs; manage_sheet changes the tabs). '
+        + 'create returns the new table with its first sheet ("Sheet1"); next: add_column, append_rows or import_csv. '
+        + 'star puts it in the user\'s Favorites on the home (list_tables says starred), unstar takes it out. '
         + 'delete puts the table '
         + 'in the trash with all its sheets and rows, cancels its active runs and stops its webhooks; it is kept for '
         + 'the days set in Settings (30 by default; 0 deletes at once), and restore_from_trash brings it back whole. '
@@ -40,8 +41,8 @@ export function registerStructureTools(server: McpServer, ctx: McpAuthCtx) {
         + 'column filled for free, a dry-run duplicate check of the one duplicate it holds, and an AI column set up '
         + 'but NOT run: it costs money, so run it (the answer says how) only after the user agrees.',
       inputSchema: {
-        action: z.enum(['create', 'rename', 'delete', 'create_sample']).describe('What to do'),
-        table_id: z.string().optional().describe('rename, delete: the table (list_tables)'),
+        action: z.enum(['create', 'rename', 'star', 'unstar', 'delete', 'create_sample']).describe('What to do'),
+        table_id: z.string().optional().describe('rename, star, unstar, delete: the table (list_tables)'),
         name: z.string().optional().describe('Required for create/rename'),
         webhook: lenientBoolean().optional()
           .describe('create: true gives its first sheet an incoming webhook (manage_sheet_webhook)'),
@@ -73,6 +74,11 @@ export function registerStructureTools(server: McpServer, ctx: McpAuthCtx) {
       if (!table_id) return err(`table_id is required for ${action}`);
       if (action === 'rename') {
         const result = renameTable(ctx.userId, table_id, name);
+        return 'fail' in result ? err(result.message) : ok({ ...result.ok, changed: [] });
+      }
+      if (action === 'star' || action === 'unstar') {
+        // Nothing in the table changes: no sheet to name in changed.
+        const result = setTableStarred(ctx.userId, table_id, action === 'star');
         return 'fail' in result ? err(result.message) : ok({ ...result.ok, changed: [] });
       }
       const result = deleteTable(ctx.userId, table_id);

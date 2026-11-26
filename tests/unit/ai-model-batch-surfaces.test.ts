@@ -14,6 +14,7 @@ import { once } from 'node:events'
 import type { AddressInfo } from 'node:net'
 import express from 'express'
 import { v4 as uuid } from 'uuid'
+import { passed } from './ends-on-its-own'
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 const MODEL = 'openai/gpt-4o-mini'
@@ -191,5 +192,5 @@ main()
     openrouter.close()
     if (failures) { console.log(`\n${failures} failure(s)`); process.exit(1) }
     console.log('All ai-model-batch-surfaces assertions passed.')
-    process.exit(0)
+    passed()
   })

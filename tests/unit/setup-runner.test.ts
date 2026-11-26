@@ -24,6 +24,7 @@ import followMod from '../../server/src/services/derived-follow'
 import entryMod from '../../server/src/services/autorun-entry'
 import againMod from '../../server/src/services/setup-step-again'
 import type { SetupSpec } from '../../server/src/lib/setups/spec'
+import { passed } from './ends-on-its-own'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { withSheetRead } = busyMod as typeof import('../../server/src/lib/sheet-busy')
@@ -195,6 +196,6 @@ async function main() {
 
   if (failures) { console.error(`\n${failures} failure(s)`); process.exit(1) }
   console.log('\nall setup-runner checks passed')
-  process.exit(0)
+  passed()
 }
 void main()

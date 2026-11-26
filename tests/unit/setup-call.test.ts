@@ -19,6 +19,7 @@ import runSharedMod from '../../server/src/services/run-shared'
 import spendMod from '../../server/src/services/enrich-spend'
 import constMod from '../../server/src/lib/constants'
 import type { SetupSpec } from '../../server/src/lib/setups/spec'
+import { passed } from './ends-on-its-own'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { insertSetup } = libMod as typeof import('../../server/src/services/setup-library')
@@ -258,4 +259,4 @@ check('a file call starts with its rows as items', 'ok' in fileCall && 'setup_ca
 
 if (failures > 0) { console.error(`${failures} setup-call check(s) failed`); process.exit(1) }
 console.log('setup-call: all assertions passed')
-process.exit(0)
+passed()

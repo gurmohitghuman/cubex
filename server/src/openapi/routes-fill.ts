@@ -72,7 +72,12 @@ export const fillRoutes = (): RouteDoc[] => [
     method: 'post', path: '/sheets/{id}/enrichment-runs', operationId: 'startEnrichmentRun', tag: 'enrich',
     scope: 'run', summary: 'Run a treg enrichment once per row. Each row is a paid call: estimate first.',
     headers: idempotency,
-    body: toolBody('run_enrichment', { omit: ['sheet_id'], strict: true }), responses: started,
+    body: toolBody('run_enrichment', {
+      omit: ['sheet_id', 'items', 'fields', 'max_cost_usd', 'allow_unpriced'], strict: true,
+      extend: {
+        column_name: z.string().max(200).describe('The status column (new, or an existing one with add_to_column)'),
+      },
+    }), responses: started,
   }),
   op({
     method: 'post', path: '/sheets/{id}/enrichment-fields', operationId: 'addEnrichmentField', tag: 'enrich',

@@ -7,6 +7,7 @@
 import assert from 'node:assert/strict'
 import { v4 as uuid } from 'uuid'
 import { endsWithin, PRICED, startStandIn, world } from './ai-spend-kit'
+import { passed } from './ends-on-its-own'
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 
@@ -151,4 +152,4 @@ await ok("a setup's estimate finds runs by the prompt its start stores", async (
 stand.close()
 w.done()
 console.log('ai-run-costs-prompt-key: ok')
-process.exit(0)
+passed()

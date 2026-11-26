@@ -101,5 +101,7 @@ export async function tregKit(name: string) {
       ['Name', 'Website']),
     tregDown: (down: boolean) => fetch(`${TREG}/__mock/state`, { method: 'POST', body: JSON.stringify({ down }) }),
     stop: () => treg.kill(),
+    // The mock treg is stopped before the end, or it would keep the test running.
+    done: () => { treg.kill(); kit.done() },
   }
 }

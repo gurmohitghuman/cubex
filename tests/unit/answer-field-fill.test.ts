@@ -9,6 +9,7 @@ import dbMod from '../../server/src/lib/db'
 import migMod from '../../server/src/db/migrate'
 import fillMod from '../../server/src/services/answer-field-fill'
 import changesMod from '../../server/src/services/lookup-fill-changes'
+import { passed } from './ends-on-its-own'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { readsChangedUnseen } = changesMod as typeof import('../../server/src/services/lookup-fill-changes')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
@@ -99,6 +100,6 @@ async function main() {
 
   if (failures) { console.log(`\n${failures} failed`); process.exit(1) }
   console.log('\nall passed')
-  process.exit(0)
+  passed()
 }
 main().catch(err => { console.error(err); process.exit(1) })

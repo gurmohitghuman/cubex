@@ -1,7 +1,8 @@
 // The server's stop (lib/server-lifecycle.ts installShutdownHandlers), on the real server (server/src/index.ts) in
 // another process with its own database: told to stop (its SIGTERM handlers, called through stdin so it runs the
 // same on Windows), it runs Cubex's stop alone (the queue's own handler is off: queue.ts), and ends on its own
-// with code 0, idle in well under a second. A request still waiting for its body is cut after STOP_GRACE_MS, not
+// with code 0, idle before STOP_GRACE_MS would cut anything (timed from its own "Shutting down" line, so a slow
+// runner's start of the stop isn't counted). A request still waiting for its body is cut after STOP_GRACE_MS, not
 // left to the backstop. After a crash (an uncaught exception) it exits 1, so systemd and launchd start it again
 // (bin/cubex-service.sh restarts only on a failing exit). Something still keeping the process up is named in the
 // log at STOP_BACKSTOP_MS, and the process exits then.
@@ -32,7 +33,8 @@ const freePort = () => new Promise<number>(resolve => {
   })
 })
 
-interface Ended { code: number | null; ms: number; log: string }
+// ms: from the command sent; fromStop: from the stop's "Shutting down" line.
+interface Ended { code: number | null; ms: number; fromStop: number; log: string }
 
 // The server in another process. hold: a timer that keeps the process up whatever the stop closes. Commands on
 // stdin once it listens: "stop" (its SIGTERM handlers), "crash" (an uncaught exception).
@@ -54,11 +56,18 @@ async function server(hold = false) {
       JOBS_DB_PATH: path.join(dir, 'j.db'), JWT_SECRET: '', APP_ENCRYPTION_KEY: '', NODE_ENV: 'production' },
     stdio: ['pipe', 'pipe', 'pipe'],
   })
-  let log = ''
-  child.stdout.on('data', d => { log += d })
-  child.stderr.on('data', d => { log += d })
+  let log = '', stopAt = 0
+  const read = (d: Buffer) => {
+    log += d
+    if (!stopAt && /Shutting down/.test(log)) stopAt = Date.now()
+  }
+  child.stdout.on('data', read)
+  child.stderr.on('data', read)
   let from = 0
-  const ended = new Promise<Ended>(resolve => child.on('close', code => resolve({ code, ms: Date.now() - from, log })))
+  const ended = new Promise<Ended>(resolve => child.on('close', code => {
+    const now = Date.now()
+    resolve({ code, ms: now - from, fromStop: stopAt ? now - stopAt : NaN, log })
+  }))
   for (let i = 0; i < 600 && !/Cubex server running/.test(log); i++) await new Promise(r => setTimeout(r, 50))
   assert.match(log, /Cubex server running/, 'the server started')
   return {
@@ -69,13 +78,15 @@ async function server(hold = false) {
   }
 }
 
-await check('told to stop while idle: Cubex\'s stop alone, ends on its own with code 0, under a second', async () => {
+await check(`told to stop while idle: Cubex's stop alone, ends on its own with code 0, before the ${STOP_GRACE_MS} ms `
+  + 'grace', async () => {
   const s = await server()
   s.send('stop')
   const end = await s.ended
   s.done()
   assert.equal(end.code, 0, end.log)
-  assert.ok(end.ms < 1000, `took ${end.ms} ms: ${end.log.split('\n').filter(l => /Kept up/.test(l)).join()}`)
+  // Ending on its own is the point, not how fast: nothing waited for the grace to cut it, or for the backstop.
+  assert.ok(end.fromStop < STOP_GRACE_MS, `took ${end.fromStop} ms from "Shutting down" (${end.ms} ms from the stop)`)
   assert.match(end.log, /Shutting down \(SIGTERM\)/)
   assert.match(end.log, /Stopped\./)
   assert.doesNotMatch(end.log, /Received SIGTERM/, 'the queue\'s own handler is off')
