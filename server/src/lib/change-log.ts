@@ -18,7 +18,8 @@ export type ChangeAction =
   | 'rows_deleted' | 'rows_restored' | 'rows_imported' | 'rows_sorted' | 'duplicates_removed'
   | 'rows_moved_in' | 'rows_moved_out' | 'sample_created' | 'ai_visibility_created' | 'hiring_created'
   | 'social_created'
-  | 'hiring_filters' | 'setup_version_saved' | 'setup_version_restored' | 'setup_saved';
+  | 'hiring_filters' | 'setup_version_saved' | 'setup_version_restored' | 'setup_saved'
+  | 'test_started' | 'test_applied' | 'test_discarded';
 
 export interface ChangeExtra { column?: string | null; detail?: Record<string, unknown> }
 

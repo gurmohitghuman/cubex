@@ -178,4 +178,32 @@ export const setupRoutes = (): RouteDoc[] => [
     summary: 'Say what restoring a setup version would do, or restore it when dry_run is false.',
     body: toolBody('restore_setup_version', { pick: ['dry_run'] }),
   }),
+  // Tests of column changes on sample rows (api-v1-sheet-test.ts): {id} is the sheet's or its test copy's.
+  op({
+    method: 'get', path: '/sheets/{id}/test', operationId: 'getSheetTest', tag: 'versions', scope: 'read',
+    summary: "The sheet's open test of column changes, or null.",
+  }),
+  op({
+    method: 'post', path: '/sheets/{id}/test', operationId: 'startSheetTest', tag: 'versions', scope: 'write',
+    summary: "Copy the sheet's top rows (or row_ids) and setup into a hidden copy to try column changes on. The "
+      + 'sheet takes no changes until the test is applied or discarded; its webhook deliveries wait.',
+    body: toolBody('manage_sheet', { pick: ['row_ids', 'rows'] }), responses: { 201: 'The test.' },
+  }),
+  op({
+    method: 'post', path: '/sheets/{id}/test/rows', operationId: 'addSheetTestRows', tag: 'versions',
+    scope: 'write', summary: 'Copy more of the sheet\'s rows into its test: from the top, at random, or row_ids.',
+    body: toolBody('manage_sheet', { pick: ['row_ids', 'rows', 'how'] }),
+  }),
+  op({
+    method: 'post', path: '/sheets/{id}/test/apply', operationId: 'applySheetTest', tag: 'versions',
+    scope: 'read', scopeNote: 'Applying (dry_run false) needs write and run, and secrets when a request it writes '
+      + 'reads a saved key.',
+    summary: "Say what applying the test would do, or make the copy's setup the sheet's and put the sample rows' "
+      + 'results back when dry_run is false. Ends the test.',
+    body: toolBody('manage_sheet', { pick: ['dry_run'] }),
+  }),
+  op({
+    method: 'post', path: '/sheets/{id}/test/discard', operationId: 'discardSheetTest', tag: 'versions',
+    scope: 'write', summary: 'Drop the test copy: the sheet stays as it was and takes changes again.',
+  }),
 ];

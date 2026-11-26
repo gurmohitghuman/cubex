@@ -20,6 +20,7 @@ import { planListDest } from './enrich-list-dest';
 import { destRoom } from './enrich-list-room';
 import { entryFor, newestRunOf, type AutorunEntry } from './autorun-entry';
 import type { RunFail } from './run-shared';
+import { isTestCopy, LIST_ON_TEST_COPY } from './sheet-test-store';
 
 const NO_FIELDS = 'Pick the fields to keep first: run it on a few rows, then pick them from the results.';
 const NO_DEST = 'The sheet for its rows was deleted. Pick another with Edit enrichment.';
@@ -68,6 +69,7 @@ const loopWords = (destName: string, c: LoopCloser): string =>
 export function autorunListProblem(sheetId: string, userId: string, config: HTTPAPIConfig): string | null {
   const list = listOf(config);
   if (!list) return null;
+  if (isTestCopy(sheetId)) return LIST_ON_TEST_COPY;
   if (!list.fields?.length) return NO_FIELDS;
   const destName = sheetName(list.destSheetId, userId);
   if (destName === undefined) return NO_DEST;

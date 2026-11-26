@@ -21,6 +21,7 @@ import {
   type WebhookSourceFull,
 } from '../lib/webhook-service';
 import { addWebhookMapping } from './webhook-mapping-add';
+import { isTestCopy } from './sheet-test-store';
 
 export type SheetWebhookFail = { fail: 'bad_request' | 'not_found' | 'conflict'; message: string; busy?: true };
 export type SheetWebhookOutcome<T> = { ok: T } | SheetWebhookFail;
@@ -104,6 +105,10 @@ export function createSheetWebhook(
 ): SheetWebhookOutcome<WebhookSourceFull> {
   if (!verifySheetOwnership(sheetId, userId)) return SHEET_NOT_FOUND;
   if (getSourceForSheet(sheetId, userId)) return { fail: 'conflict', message: 'This sheet already has a webhook.' };
+  // A test's copy takes no rows from outside: the sheet it tests keeps its webhook's events meanwhile.
+  if (isTestCopy(sheetId)) {
+    return { fail: 'conflict', message: 'A test copy can\'t have a webhook. Apply or discard the test first.' };
+  }
   // The routers refuse a busy sheet too, but MCP's create with a table or sheet, and Express between its
   // routers, can reach here after a sort or an import started: adding the column waits for it.
   const busy = sheetBusyWith(sheetId);

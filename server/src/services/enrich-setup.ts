@@ -43,7 +43,7 @@ export async function sheetSetupInfo(userId: string, sheetId: string): Promise<S
     hasWebhook: !!db.prepare('SELECT 1 FROM webhook_sources WHERE sheet_id = ? AND user_id = ? LIMIT 1')
       .get(sheetId, userId),
     sheets: (db.prepare(`SELECT id, name FROM sheets WHERE table_id = ? AND user_id = ? AND trash_id IS NULL
-      ORDER BY position, created_at`)
+      AND test_of IS NULL ORDER BY position, created_at`)
       .all(sheet.table_id, userId) as Array<{ id: string; name: string }>)
       .map(s => ({ ...s, current: s.id === sheetId })),
   };

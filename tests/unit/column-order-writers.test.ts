@@ -53,6 +53,8 @@ const ALLOWED: Allowed[] = [
     why: 'sets empty_filter or column_filters (the two fields its loop names), never column_order' },
   { file: 'services/column-reorder.ts', fn: 'reorderSheetColumns', sql: 'SET column_order',
     why: 'the same names in a new order: a list missing one is refused (column-order-lists.test.ts)' },
+  { file: 'services/sheet-test-start.ts', fn: 'makeTest', sql: 'INSERT INTO sheets',
+    why: 'a test\'s new hidden copy starts with no columns ([]): no name was listed to drop' },
   { file: 'services/setup-version-apply.ts', fn: 'writePlan', sql: 'SET column_order',
     why: 'mergeOrder keeps every name the sheet lists now, around the version\'s (column-order-lists.test.ts)' },
 ]
