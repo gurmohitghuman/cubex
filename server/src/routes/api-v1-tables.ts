@@ -4,7 +4,11 @@
 import express from 'express';
 import { requireScope, TokenAuthRequest } from '../middleware/access-token-auth';
 import { listTablesWithSheets } from '../services/workspace-read';
-import { createTable, renameTable, deleteTable, tableFailHttpStatus } from '../services/table-crud';
+import {
+  createTable, renameTable, deleteTable, setTableStarred, tableFailHttpStatus, type TableCrudFail,
+} from '../services/table-crud';
+import { getTableForClient } from '../lib/sheet-crud-helpers';
+import { db } from '../lib/db';
 import { trashAnswer } from '../services/trash-answer';
 import { createSampleTable } from '../services/sample-table';
 import { sampleAnswer } from '../services/sample-answer';
@@ -12,6 +16,9 @@ import { webhookFlagProblem, webhookForNewSheet } from '../services/sheet-webhoo
 import { linkBase } from '../lib/file-links';
 
 const router = express.Router();
+
+// A refusal inside PATCH's transaction: thrown so the transaction rolls back, then answered.
+class Refused { constructor(readonly fail: TableCrudFail) {} }
 
 router.get('/tables', requireScope('read'), async (req: TokenAuthRequest, res) => {
   try {
@@ -56,15 +63,40 @@ router.post('/tables/sample', requireScope('write'), async (req: TokenAuthReques
   }
 });
 
-// PATCH /v1/tables/:id {name} — rename.
+// PATCH /v1/tables/:id {name?, starred?}: rename, star (the home's Favorites) or both. A starred that isn't true
+// or false changes nothing, and either change refused leaves the other undone. Answers {id, name, starred}.
 router.patch('/tables/:id', requireScope('write'), (req: TokenAuthRequest, res) => {
   try {
-    const result = renameTable(req.userId!, req.params.id, (req.body as { name?: unknown })?.name);
-    if ('fail' in result) return res.status(tableFailHttpStatus(result)).json({ error: result.message });
-    res.json(result.ok);
+    const { name, starred } = (req.body ?? {}) as { name?: unknown; starred?: unknown };
+    if (name === undefined && starred === undefined) {
+      return res.status(400).json({ error: 'Send name to rename the table, starred (true or false) to star it, '
+        + 'or both.' });
+    }
+    if (starred !== undefined && typeof starred !== 'boolean') {
+      return res.status(400).json({ error: 'starred must be true or false.' });
+    }
+    // Both in one transaction (each its own savepoint inside it): either refused, the table stays as it was.
+    try {
+      db.transaction(() => {
+        if (name !== undefined) {
+          const renamed = renameTable(req.userId!, req.params.id, name);
+          if ('fail' in renamed) throw new Refused(renamed);
+        }
+        if (starred !== undefined) {
+          const out = setTableStarred(req.userId!, req.params.id, starred);
+          if ('fail' in out) throw new Refused(out);
+        }
+      }).immediate();
+    } catch (e) {
+      if (e instanceof Refused) return res.status(tableFailHttpStatus(e.fail)).json({ error: e.fail.message });
+      throw e;
+    }
+    const t = getTableForClient(req.params.id, req.userId!);
+    if (!t) return res.status(404).json({ error: 'Table not found' });
+    res.json({ id: t.id, name: t.name, starred: t.starred });
   } catch (error) {
     console.error('PATCH /v1/tables/:id error:', error);
-    res.status(500).json({ error: 'Failed to rename table' });
+    res.status(500).json({ error: 'Failed to change the table' });
   }
 });
 

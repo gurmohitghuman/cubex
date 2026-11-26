@@ -20,7 +20,7 @@ import transformMod from '../../server/src/services/column-transform'
 import mcpMod from '../../server/src/mcp/build-server'
 import { transformPageFault } from './transform-page-fault'
 import { unfinished } from './transform-pass-words'
-import { toTheEnd } from './transform-to-end'
+import { caughtUp, toTheEnd } from './transform-to-end'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { transformColumn } = transformMod as typeof import('../../server/src/services/column-transform')
@@ -76,6 +76,7 @@ async function main() {
   await check('a second page that throws: an error with next_cursor and rows_done, in words that say to go on '
     + 'with it; the first page stays written and data_version moved', async () => {
     const before = dataVersion(sid)
+    await caughtUp()
     fault.arm(251)
     const out = await transform({ sheet_id: sid, operation: 'template', template: '{{T}}-x', target_column: 'T' })
     fault.disarm()
@@ -138,6 +139,7 @@ async function main() {
   await check('a first page that throws answers as before and writes no cell; the column it added stays and '
     + 'data_version moved; the same call then runs', async () => {
     const before = dataVersion(fresh)
+    await caughtUp()
     fault.arm(1)
     const out = await transform({ sheet_id: fresh, operation: 'upper', source_column: 'T', target_column: 'Up' })
     fault.disarm()
@@ -157,6 +159,7 @@ async function main() {
     + 'same call then runs', async () => {
     const call = { sheet_id: late, operation: 'template', template: '{{T}}-x', target_column: 'T',
       where: [{ column: 'K', operator: 'eq', value: 'y' }] }
+    await caughtUp()
     fault.arm(1)
     const out = await transform(call)
     fault.disarm()
@@ -164,6 +167,7 @@ async function main() {
       text: JSON.stringify({ error: 'Something went wrong handling that request. Please try again.' }) }],
     isError: true })
     assert.equal(db.prepare('SELECT count(*) FROM transform_passes WHERE sheet_id = ?').pluck().get(late), 0)
+    await caughtUp()
     const { changed, ...ran } = JSON.parse((await transform(call)).content[0].text)
     assert.deepEqual(ran, { updated: 300, created_column: null })
     assert.deepEqual(changed.map((i: { columns: string[]; rows: number }) => [i.columns, i.rows]), [[['T'], 300]])

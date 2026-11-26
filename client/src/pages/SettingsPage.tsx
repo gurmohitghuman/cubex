@@ -1,6 +1,6 @@
 import React from 'react'
-import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Bookmark, Bot, DatabaseZap, Sparkles, UserRound, Webhook } from 'lucide-react'
+import { Link, Navigate, useParams } from 'react-router-dom'
+import { Bookmark, Bot, DatabaseZap, Sparkles, UserRound, Webhook } from 'lucide-react'
 import { SettingsAiTab } from '@/components/settings/SettingsAiTab'
 import { SettingsEnrichmentTab } from '@/components/settings/SettingsEnrichmentTab'
 import { SettingsAgentsTab } from '@/components/settings/SettingsAgentsTab'
@@ -8,6 +8,7 @@ import { SettingsAccountTab } from '@/components/settings/SettingsAccountTab'
 import { SettingsSetupsTab } from '@/components/settings/SettingsSetupsTab'
 import { SettingsRunWebhooksTab } from '@/components/settings/SettingsRunWebhooksTab'
 import { useVersionInfo } from '@/hooks/useVersionInfo'
+import { AppShell } from '@/components/layout/AppShell'
 
 // Settings shell: route-backed tabs (/settings/:tab — refresh, back button,
 // and deep links like /settings/ai all work), one mental model per tab. Each
@@ -24,7 +25,6 @@ const TABS = [
 ] as const
 
 export const SettingsPage: React.FC = () => {
-  const navigate = useNavigate()
   const { tab } = useParams<{ tab: string }>()
   // A newer release is out: a dot on the Account tab, where the Version card says so.
   const newRelease = useVersionInfo()?.update_available === true
@@ -34,12 +34,9 @@ export const SettingsPage: React.FC = () => {
   if (!active) return <Navigate to="/settings/ai" replace />
 
   return (
-    <div className="h-screen bg-white overflow-auto">
+    <AppShell>
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex items-center space-x-4 mb-6">
-          <button onClick={() => navigate('/dashboard')} className="p-2 text-gray-400 hover:text-gray-600 transition-colors">
-            <ArrowLeft className="h-5 w-5" />
-          </button>
           <div>
             <h1 className="text-title text-gray-900">Settings</h1>
             <p className="text-gray-600 text-sm">Configure your Cubex workspace</p>
@@ -80,6 +77,6 @@ export const SettingsPage: React.FC = () => {
 
         {active.element}
       </div>
-    </div>
+    </AppShell>
   )
 }

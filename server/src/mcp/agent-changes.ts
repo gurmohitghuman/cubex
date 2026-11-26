@@ -45,9 +45,24 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
         change: 'server',
         summary: 'transfer_rows with a move takes rows holding at most 16 MB a call (a copy still 32 MB): a move '
           + 'past it is refused, naming both caps, and nothing moves.',
-        details: 'A move writes each row three times in its one transaction (into the other sheet, into the trash '
-          + 'and out of the source), so 32 MB of rows passed the database\'s room. Move fewer rows a call: a where '
-          + 'on a range, or row_ids in parts.',
+        details: 'A move writes each row three times in one transaction, so 32 MB of rows passed the database\'s '
+          + 'room. The refusal says how much the call picked: move fewer rows, or copy a single row past the cap, '
+          + 'then delete_rows.',
+      },
+      {
+        change: 'changed',
+        tools: ['manage_table'],
+        summary: 'manage_table takes action star or unstar with table_id: a starred table is in the user\'s '
+          + 'Favorites on the home.',
+        details: 'Starring changes nothing in the table, so changed is []. The answer has the table\'s id, name and '
+          + 'starred. PATCH /api/v1/tables/{id} takes starred too.',
+      },
+      {
+        change: 'changed',
+        tools: ['list_tables'],
+        summary: 'list_tables gives each table starred (in the user\'s Favorites) and last_opened_at (when the user '
+          + 'last opened it in the app, null until then).',
+        details: 'Use them to find the tables the user works in. GET /api/v1/tables answers the same.',
       },
     ],
   },

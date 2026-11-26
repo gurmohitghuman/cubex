@@ -41,6 +41,11 @@ test('v1 tables + sheets CRUD: create/rename/reorder/delete, guards', async () =
   // Rename table; conflict → 409.
   expect((await v1.patch(`/api/v1/tables/${table.id}`, { data: { name: 'Renamed' } })).status()).toBe(200)
   expect((await v1.patch(`/api/v1/tables/${table.id}`, { data: { name: 'V1 Table B' } })).status()).toBe(409)
+  // Star it (the home's Favorites): the list says so, and when it was last opened in the app (never yet).
+  const starred = await v1.patch(`/api/v1/tables/${table.id}`, { data: { starred: true } })
+  expect(await starred.json()).toEqual({ id: table.id, name: 'Renamed', starred: true })
+  const listedStar = (await (await v1.get('/api/v1/tables')).json()).tables.find((t: any) => t.id === table.id)
+  expect([listedStar.starred, listedStar.last_opened_at]).toEqual([true, null])
 
   // Sheets: no per-table cap (a 4th tab is fine); name conflict → 409.
   const s2 = await v1.post(`/api/v1/tables/${table.id}/sheets`, { data: { name: 'Tab2' } })

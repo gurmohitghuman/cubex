@@ -15,7 +15,7 @@ import writeMod from '../../server/src/services/rows-write'
 import { columnTrashKit } from './column-trash-kit'
 import { transformPageFault } from './transform-page-fault'
 import { moved, unfinished } from './transform-pass-words'
-import { toTheEnd } from './transform-to-end'
+import { caughtUp, toTheEnd } from './transform-to-end'
 const { transformColumn } = transformMod as typeof import('../../server/src/services/column-transform')
 const { renameSheetColumn } = renameMod as typeof import('../../server/src/services/column-rename')
 const { addSheetColumn } = addMod as typeof import('../../server/src/services/column-add')
@@ -36,6 +36,7 @@ const ending = (id: string, t: string, glob: string) => db.prepare(`SELECT count
 const records = (id: string) => db.prepare('SELECT count(*) FROM transform_passes WHERE sheet_id = ?').pluck().get(id)
 // Stopped on its second page: the cursor after 250 rows.
 async function stopped(p: Params): Promise<string> {
+  await caughtUp()
   fault.arm(251)
   try {
     const out = await transformColumn(uid, p)
