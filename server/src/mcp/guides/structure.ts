@@ -59,6 +59,10 @@ export const STRUCTURE_GUIDES: Record<string, ToolGuide> = {
         + 'paused (why no row leaves until you act) and waiting (a paused auto-run or run the rows wait for). '
         + 'copy_to_sheet_id can\'t be a test copy (manage_sheet test) or a sheet being tested; when a test starts on '
         + 'it later, rows wait until that test ends and waiting says so. auto_delete_off: rows already gone stay gone.',
+      'set_auto_delete mode rules: where needs at least one condition turned on; a row with ⏳ or ➕ in a run column '
+        + 'still stays. A switch to rules needs success_column: null when one is set (a has_result rule waits for a '
+        + 'column there), and a switch back to actions_finish clears the rules. get\'s auto_delete has mode and '
+        + 'where.',
       'manage_table or manage_sheet create with webhook true makes a sheet with one.',
     ],
   },

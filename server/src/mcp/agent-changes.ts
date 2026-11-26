@@ -84,6 +84,14 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
           + 'result; copy_to_sheet_id copies it to another sheet first. get\'s webhook has auto_delete, null while '
           + 'off.',
       },
+      {
+        change: 'changed',
+        tools: ['manage_sheet_webhook'],
+        summary: 'manage_sheet_webhook\'s set_auto_delete takes mode "rules" with where (read_rows\' language): older '
+          + 'webhook rows are deleted once they pass it, whether auto-run has run on them or not.',
+        details: 'get\'s auto_delete has mode and where. A switch to rules needs success_column: null when one is '
+          + 'set; a switch back to actions_finish clears the rules.',
+      },
     ],
   },
   {

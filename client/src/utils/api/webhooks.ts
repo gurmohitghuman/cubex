@@ -1,4 +1,5 @@
 import { api } from './client'
+import type { WhereItem } from './views'
 
 const noServerToast = { skipServerErrorToast: true } as const
 
@@ -30,9 +31,13 @@ export interface WebhookSource {
   autoDelete: WebhookAutoDelete | null
 }
 
-// Auto-delete (server services/webhook-auto-delete.ts): the newest keepRows rows stay; older ones are deleted for
-// good once their auto-run columns have run (and successColumn has a result), copied to copyToSheetId first.
+// Auto-delete (server services/webhook-auto-delete.ts): the newest keepRows rows stay; older ones the webhook added
+// are deleted, not put in the trash, once their auto-run columns have run (and successColumn has a result), or in
+// mode rules once they pass `where`; copied to copyToSheetId first.
 export interface WebhookAutoDelete {
+  // actions_finish: once every auto-run column has run on them; rules: once they pass `where`.
+  mode: 'actions_finish' | 'rules'
+  where: WhereItem[] | null
   keepRows: number
   successColumn: string | null
   copyToSheetId: string | null
@@ -93,8 +98,10 @@ export const webhooksAPI = {
     api.delete(`/sheets/${sheetId}/webhook/token`, noServerToast).then(r => r.data),
 
   // Auto-delete on or changed (null clears the success column or the copy); off.
-  setAutoDelete: (sheetId: string, a: { keepRows: number; successColumn: string | null; copyToSheetId: string | null }):
-    Promise<{ source: WebhookSource }> =>
+  setAutoDelete: (sheetId: string, a: {
+    mode: 'actions_finish' | 'rules'; where: WhereItem[] | null; keepRows: number; successColumn: string | null;
+    copyToSheetId: string | null
+  }): Promise<{ source: WebhookSource }> =>
     api.put(`/sheets/${sheetId}/webhook/auto-delete`, a, noServerToast).then(r => r.data),
 
   removeAutoDelete: (sheetId: string): Promise<{ source: WebhookSource }> =>

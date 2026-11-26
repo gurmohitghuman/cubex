@@ -394,7 +394,7 @@ export const SheetPage: React.FC = () => {
         drawerOpen={modals.showWebhookDrawer}
         onCloseDrawer={() => modals.setShowWebhookDrawer(false)}
         autoDedupe={sheetData?.data.autoDedupe ?? null} onAutoDedupe={modals.openAutoDedupe}
-        columns={columnOps.columnHeaders} sheets={table?.sheets ?? []}
+        columns={columnOps.columnHeaders} columnTypes={sheetData?.data.columnTypes ?? {}} sheets={table?.sheets ?? []}
         sheetId={activeSheet?.id ?? null}
         rowCount={totalDisplayedRows}
         onColumnsChanged={() => { if (activeSheet) void silentReloadRef.current(activeSheet.id) }}

@@ -44,6 +44,11 @@ export const hookRoutes = (): RouteDoc[] => [
     description: 'What a call leaves out stays; null clears success_column or copy_to_sheet_id. Rows can be copied '
       + 'to another sheet first. Deleted rows do not go to the trash.',
     body: z.object({
+      mode: z.enum(['actions_finish', 'rules']).optional()
+        .describe('actions_finish (default): rows leave once every auto-run column has run on them. rules: once '
+          + 'they pass where.'),
+      where: z.array(z.record(z.string(), z.unknown())).nullable().optional()
+        .describe('mode rules: the rules a row must pass, in the where language of read_rows. null clears them.'),
       keep_rows: z.number().int().optional().describe('The newest rows that always stay, 0 to 100000. Default 100.'),
       success_column: z.string().nullable().optional().describe('A row leaves only once this column has a result.'),
       copy_to_sheet_id: z.string().nullable().optional().describe('Rows are copied to this sheet before they leave.'),

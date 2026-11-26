@@ -1,4 +1,5 @@
 import { db } from './db';
+import { mapViewColumns, renameTo } from './views/refs';
 
 // Webhook ↔ column lifecycle cascades, called from the column rename/delete routes
 // (sheets-columns-order.ts / sheets-columns-mutate.ts). A webhook's columns are
@@ -18,7 +19,9 @@ export function isWebhookRawColumn(sheetId: string, userId: string, columnName: 
 
 // On column RENAME: keep webhook column references in sync. Updates the mapped
 // column name in webhook_mappings, the raw marker name in webhook_sources, and
-// auto-delete's success column (services/webhook-auto-delete.ts).
+// auto-delete's success column and rules (services/webhook-auto-delete.ts), as a
+// saved view's filter follows it (services/view-columns.ts). A deleted column is
+// left in the rules: auto-delete pauses on it, since dropping a rule would match more.
 // Call INSIDE the rename transaction (like the http_column_associations updates).
 export function renameWebhookColumnRefs(
   sheetId: string, userId: string, oldName: string, newName: string,
@@ -36,6 +39,17 @@ export function renameWebhookColumnRefs(
     `UPDATE webhook_auto_delete SET success_column = ?, updated_at = datetime('now')
        WHERE sheet_id = ? AND user_id = ? AND success_column = ?`,
   ).run(newName, sheetId, userId, oldName);
+  const rules = db.prepare(`SELECT source_id, where_json FROM webhook_auto_delete
+    WHERE sheet_id = ? AND user_id = ? AND where_json IS NOT NULL`).all(sheetId, userId) as
+    Array<{ source_id: string; where_json: string }>;
+  for (const r of rules) {
+    const mapped = mapViewColumns({ empty_filter: null, column_filters: null, row_filter: r.where_json },
+      renameTo(oldName, newName)).row_filter;
+    if (typeof mapped === 'string' && mapped !== r.where_json) {
+      db.prepare("UPDATE webhook_auto_delete SET where_json = ?, updated_at = datetime('now') WHERE source_id = ?")
+        .run(mapped, r.source_id);
+    }
+  }
 }
 
 // On column DELETE: drop any webhook_mappings that targeted it (the column + its
