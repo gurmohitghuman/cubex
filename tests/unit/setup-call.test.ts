@@ -198,13 +198,11 @@ for (let i = 0; i < 100 && db.prepare('SELECT 1 FROM setup_calls WHERE id = ?').
 check('purged: the call is not found', getSetupCall(uid, call.id) === null
   && !db.prepare('SELECT 1 FROM tables WHERE hidden = 1').get())
 check('Settings\' spend still names a removed call\'s spend as a call\'s', await callSpend(), await spendLines())
-db.prepare("UPDATE call_sheets SET created_at = datetime('now', '-91 days')").run()
+db.prepare("UPDATE call_sheets SET created_at = datetime('now', '-400 days')").run()
+db.prepare("UPDATE enrichment_calls SET created_at = datetime('now', '-400 days') WHERE sheet_id = ?").run(sheetOfCall)
 await sweepSetupCalls()
-check('a removed call\'s sheet is kept while a spend window reaches its spend',
+check('a removed call\'s sheet is kept past every spend window: the usage history has no window',
   !!db.prepare('SELECT 1 FROM call_sheets WHERE sheet_id = ?').get(sheetOfCall))
-db.prepare("UPDATE enrichment_calls SET created_at = datetime('now', '-91 days') WHERE sheet_id = ?").run(sheetOfCall)
-await sweepSetupCalls()
-check('and dropped once none can', !db.prepare('SELECT 1 FROM call_sheets WHERE sheet_id = ?').get(sheetOfCall))
 
 // An orphan working table (a restart between the table and the run, or an upload link never used) goes once no
 // upload link can still be filling it: kept at 2 hours (a link used at its 15th minute may take 70 minutes to

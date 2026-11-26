@@ -24,8 +24,8 @@ const figureCells = (f: UsageFigures) => [String(f.runs), String(f.cells), Strin
   money(f.cost_per_cell_usd)];
 const line = (cells: Array<string | null>) => cells.map(escapeCsvCell).join(',');
 const yes = (v: boolean) => (v ? 'yes' : '');
-const sheetOf = (r: { sheet_name: string | null; sheet_deleted: boolean }) =>
-  (r.sheet_deleted ? 'Deleted sheet' : r.sheet_name);
+const sheetOf = (r: { sheet_name: string | null; sheet_deleted: boolean; call?: true }) =>
+  (r.call ? 'A call without a sheet' : r.sheet_deleted ? 'Deleted sheet' : r.sheet_name);
 
 const HEADS: Record<UsageGroupBy, string[]> = {
   column: ['Sheet', 'Column', 'Deleted', 'On sample rows', 'Kind', ...FIGURE_HEADS, 'Last run (UTC)'],

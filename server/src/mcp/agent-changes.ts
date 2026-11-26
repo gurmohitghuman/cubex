@@ -93,6 +93,12 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
       },
       {
         change: 'changed',
+        tools: ['get_usage'],
+        summary: 'get_usage lists what a call without a sheet ran as call: true, with sheet_id and sheet_name null, '
+          + 'not as a deleted sheet; by column every call adds up in one row.',
+      },
+      {
+        change: 'changed',
         tools: ['manage_sheet_webhook'],
         summary: 'manage_sheet_webhook takes set_auto_delete and auto_delete_off: a webhook sheet keeps its newest '
           + 'keep_rows rows and deletes older ones once they are finished, not to the trash.',

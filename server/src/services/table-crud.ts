@@ -25,7 +25,7 @@ export type CreateTableOutcome =
 // the add-sheet route seeds a starter grid; seeding here would change
 // import/onboarding semantics app-wide. hidden: a setup call's working table
 // (services/setup-call.ts), hidden from the first moment, never listed; its
-// sheet is kept in call_sheets (migration 075) for Settings' spend card.
+// sheet is kept in call_sheets (migration 075) for the usage history and Settings' spend card.
 export function createTable(userId: string, rawName: unknown, opts: { hidden?: boolean } = {}): CreateTableOutcome {
   const validationErr = validateTableName(rawName);
   if (validationErr) return { fail: 'bad_request', message: validationErr };

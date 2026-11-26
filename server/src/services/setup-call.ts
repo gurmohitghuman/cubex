@@ -10,7 +10,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
 import {
-  CALL_SHEETS_PRUNE_ROWS, SETUP_CALL_KEEP_HOURS, SETUP_CALL_MAX_ITEMS, SETUP_CALL_ORPHAN_HOURS, SETUP_CALL_SWEEP_MS,
+  SETUP_CALL_KEEP_HOURS, SETUP_CALL_MAX_ITEMS, SETUP_CALL_ORPHAN_HOURS, SETUP_CALL_SWEEP_MS,
 } from '../lib/constants-setups';
 import { sheetBusyWith } from '../lib/sheet-busy';
 import type { SetupSpec } from '../lib/setups/spec';
@@ -30,7 +30,6 @@ import { parseCellMap, txnFailMessage } from './data-plane-shared';
 import { trashTable } from './trash-sheets';
 import { purgeTrashItems } from './trash-purge';
 import { MAX_ROWS_PER_SHEET } from '../lib/constants';
-import { ENRICH_SPEND_WINDOWS } from '../lib/constants-enrich';
 import { estimateSetupCall } from './setup-call-estimate';
 import { cancelStepRuns } from './setup-run-control';
 import { cancelRun } from './run-lifecycle';
@@ -194,22 +193,13 @@ async function stopStalePaused(keep: string): Promise<void> {
   }
 }
 
-// A call's sheet stays in call_sheets (Settings' spend card names its spend) until the sheet is gone and the longest
-// spend window can't reach its spend. A slice a sweep.
-const CALL_SHEETS_KEEP_DAYS = Math.max(...ENRICH_SPEND_WINDOWS);
-function pruneCallSheets(): void {
-  db.prepare(`DELETE FROM call_sheets WHERE rowid IN (SELECT c.rowid FROM call_sheets c
-      WHERE c.created_at < datetime('now', ?) AND NOT EXISTS (SELECT 1 FROM sheets s WHERE s.id = c.sheet_id)
-      AND NOT EXISTS (SELECT 1 FROM enrichment_calls e WHERE e.sheet_id = c.sheet_id
-        AND e.created_at >= datetime('now', ?))
-    LIMIT ${CALL_SHEETS_PRUNE_ROWS})`).run(`-${CALL_SHEETS_KEEP_DAYS} days`, `-${CALL_SHEETS_KEEP_DAYS} days`);
-}
+// A call's sheet stays in call_sheets after its working table goes: the usage history (kept as long as run_usage,
+// with no window) and Settings' spend card name its spend as a call's. One small row a call, fewer than its runs.
 
 // The sweep: calls paused too long are stopped; then the working tables of calls (setup and enrichment calls)
 // finished SETUP_CALL_KEEP_HOURS ago, and of calls that never started, are removed. Returns how many it removed.
 export async function sweepSetupCalls(): Promise<number> {
   await stopStalePaused(`-${SETUP_CALL_KEEP_HOURS} hours`);
-  pruneCallSheets();
   const due = db.prepare(`SELECT c.user_id, c.table_id FROM setup_calls c JOIN setup_runs r ON r.id = c.id
       WHERE r.status IN ('done', 'failed', 'cancelled') AND r.updated_at <= datetime('now', ?)
     UNION ALL
