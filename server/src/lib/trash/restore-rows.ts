@@ -116,12 +116,13 @@ export function restoreSlice(
       { restore_at: number | null; restored: number };
     const list = picks ? JSON.stringify(picks) : null;
     // A slice takes as many as fit half of HEAVY_SLICE_BYTES (each written twice: into the rows, out of the
-    // trash), read first. Picked rows go in one transaction with the batch's end, all of them.
-    const sizes = picks ? null : db.prepare(`SELECT octet_length(data) FROM trash_rows WHERE item_id = ?
-      ORDER BY seq LIMIT ?`).pluck().all(itemId, limit) as number[];
+    // trash), read first; picked rows the same way.
+    const sizes = db.prepare(`SELECT octet_length(data) FROM trash_rows WHERE item_id = ?
+      AND (? IS NULL OR seq IN (SELECT value FROM json_each(?))) ORDER BY seq LIMIT ?`).pluck()
+      .all(itemId, list, list, limit) as number[];
     const rows = db.prepare(`SELECT seq, row_index, row_id, data FROM trash_rows WHERE item_id = ?
       AND (? IS NULL OR seq IN (SELECT value FROM json_each(?))) ORDER BY seq LIMIT ?`)
-      .all(itemId, list, list, sizes ? withinBytes(sizes, HEAVY_SLICE_BYTES / 2) : limit) as TrashRow[];
+      .all(itemId, list, list, withinBytes(sizes, HEAVY_SLICE_BYTES / 2)) as TrashRow[];
     if (rows.length === 0) return;
     const insert = db.prepare('INSERT INTO rows (id, sheet_id, user_id, row_index, data) VALUES (?, ?, ?, ?, ?)');
     const idTaken = db.prepare('SELECT 1 FROM rows WHERE id = ?').pluck();

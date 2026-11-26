@@ -25,6 +25,8 @@ export interface TrashItem {
   table_name: string; sheet_name: string | null; how: TrashHow; via: string; token_name: string | null;
   row_count: number; bytes: number; columns: string; row_generation: number | null; top_index: number | null;
   state: TrashState; restore_at: number | null; restored: number; deleted_at: string; seq_high: number;
+  // Rows picked from it while they go back (seqs, JSON; migration 077), else null.
+  restore_picks: string | null;
   // A column (migration 054): its name and place, its setup and what referred to it (JSON), and a restore's
   // name and counts.
   column_name: string | null; column_position: number | null; column_setup: string | null;

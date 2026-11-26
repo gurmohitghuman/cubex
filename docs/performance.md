@@ -103,6 +103,7 @@ A row holding an API answer can be 16 to 200 KB, and SQLite writes a changed row
 | Delete 300 rows in the grid, or 500 with `delete_rows` (100 KB) | 14,740 and 24,556 pages, 97 MB of WAL | 1,936 and 1,939 pages | 305 and 509 ms | 24 and 26 ms |
 | Take an import out again (16 KB) | 20,393 pages | 2,112 pages | 100 ms | 23 ms |
 | Rows into the trash, or back (100 KB) | 12,292 pages | 1,946 pages | 72 to 88 ms | 16 to 20 ms |
+| 500 rows picked from the trash, back (100 KB) | 24,592 pages, 97 MB of WAL | 1,939 pages | 444 ms | 44 ms |
 | Empty the trash (100 KB) | 29,410 pages, 116 MB of WAL | 1,946 pages | 165 ms | 14 ms |
 | Remove duplicates (100 KB) | 12,294 pages | 1,948 pages | 67 ms | 39 ms |
 | Webhook auto-delete (100 KB) | 12,295 pages | 1,962 pages | 107 ms | 49 ms |
