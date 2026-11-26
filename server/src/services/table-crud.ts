@@ -1,4 +1,4 @@
-// Table create/rename/delete: ONE implementation for the UI routes
+// Table create/rename/star/delete: ONE implementation for the UI routes
 // (routes/tables.ts), /api/v1 (routes/api-v1-tables.ts) and the MCP
 // manage_table tool. Callers map failures to their own status codes.
 // Invariants preserved: per-user name uniqueness (conflict check + UNIQUE-
@@ -10,6 +10,7 @@ import { validateTableName } from '../lib/table-validation';
 import { trashTable } from './trash-sheets';
 import { normalizeNameSpacing } from '../lib/name-safety';
 import { createDefaultView } from './view-store';
+import { noteTableOpened } from '../lib/table-opened';
 
 export type TableCrudFail = {
   fail: 'conflict' | 'not_found' | 'bad_request';
@@ -92,6 +93,30 @@ export function deleteTable(userId: string, tableId: string): DeleteTableOutcome
   const out = trashTable(userId, tableId);
   if ('fail' in out) return out;
   return { ok: { deleted: true, trashId: out.ok.trashId } };
+}
+
+export type StarTableOutcome = { ok: { id: string; name: string; starred: boolean } } | TableCrudFail;
+
+// Starred or not (migration 064): the home's Favorites tab lists it, and GET /v1/tables and list_tables say so.
+// updated_at stays as it was: starring changes nothing in the table, and the home sorts by it.
+export function setTableStarred(userId: string, tableId: string, starred: unknown): StarTableOutcome {
+  if (typeof starred !== 'boolean') return { fail: 'bad_request', message: 'starred must be true or false.' };
+  const row = db.prepare(
+    `UPDATE tables SET starred = ? WHERE id = ? AND user_id = ? AND trash_id IS NULL AND hidden = 0
+     RETURNING id, name`,
+  ).get(starred ? 1 : 0, tableId, userId) as { id: string; name: string } | undefined;
+  if (!row) return { fail: 'not_found', message: 'Table not found' };
+  return { ok: { id: row.id, name: row.name, starred } };
+}
+
+// The user opened the table in the app (routes/tables.ts): the home's Recent tab lists it, newest first. The time
+// is written when the write lock is free (lib/table-opened.ts), never holding the server's thread for it. Only the
+// app sets it: an agent reading a table hasn't opened it. false: no such table of theirs.
+export function markTableOpened(userId: string, tableId: string): boolean {
+  if (!db.prepare('SELECT 1 FROM tables WHERE id = ? AND user_id = ? AND trash_id IS NULL AND hidden = 0')
+    .get(tableId, userId)) return false;
+  noteTableOpened(userId, tableId);
+  return true;
 }
 
 export const tableFailHttpStatus = (f: TableCrudFail): number =>

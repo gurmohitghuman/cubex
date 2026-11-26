@@ -206,6 +206,8 @@ test('the dashboard: Enter on a row\'s ⋯ opens its menu, Enter on an entry act
   await actions.focus()
   await page.keyboard.press('Enter')
   await expect(page.locator(MENU)).toBeVisible()
+  await expect.poll(() => focusedText(page)).toMatch(/^Open/)
+  await page.keyboard.press('ArrowDown')
   await expect.poll(() => focusedText(page)).toMatch(/^Rename/)
   await page.keyboard.press('Enter')
   await expect(page.getByRole('heading', { name: 'Rename Table' })).toBeVisible()

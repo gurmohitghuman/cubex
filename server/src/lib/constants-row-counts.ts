@@ -15,3 +15,7 @@ export const ROW_COUNT_API_WAIT_MS = 2_000;
 // The home's wait for the counts it showed as updating (GET /api/tables/row-counts) answers by this time at most,
 // well under the 65 s keep-alive, as the sheet's change poll does; the home then asks again for those still counted.
 export const ROW_COUNT_HOLD_MS = 20_000;
+// The home's wait for its Runs column (GET /api/tables/runs) answers by this time at most when no run starts, ends,
+// pauses or resumes, under axios's 30 s timeout and the 65 s keep-alive; it checks the runs every HOME_RUNS_CHECK_MS.
+export const HOME_RUNS_HOLD_MS = 25_000;
+export const HOME_RUNS_CHECK_MS = 1_000;
