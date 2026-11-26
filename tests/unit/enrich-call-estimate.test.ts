@@ -3,8 +3,8 @@
 // the repo's mock (tests/mock-treg, started here and stopped by its PID) and one tool with no known price beside it:
 //   - it is a pure read: every table's row count and SQLite's change count stay as they were, for an estimate and
 //     for a start refused up front (max_cost_usd, no known price, today's limit, the treg balance, the token's cap);
-//   - its numbers are the estimate on a working table holding the same items (what call_enrichment's estimate gave
-//     when it made one): a waterfall and a single tool, items missing an input or empty, items that reuse a found
+//   - its numbers are the estimate on a working table holding the same items (what an items call's estimate
+//     gave when it made one): a waterfall and a single tool, items missing an input or empty, items that reuse a found
 //     answer for the same inputs, a "status" field, a tool with no known price, today's limit and the treg balance.
 import fs from 'node:fs'
 import net from 'node:net'
@@ -111,7 +111,7 @@ async function tableFor(toolId: string, raw: Item[], fields?: string[], hidden =
   return { tool: found.ok, tableId: t.ok.id, sheetId: t.ok.sheetId, args }
 }
 
-// The estimate as call_enrichment made it before: on a hidden working table holding the items, then removed.
+// The estimate as an items call made it before: on a hidden working table holding the items, then removed.
 async function onATable(toolId: string, items: Item[], fields?: string[]) {
   const t = await tableFor(toolId, items, fields)
   const out = await tokenStartEnrichmentRun(caller, { ...t.args, estimate_only: true })

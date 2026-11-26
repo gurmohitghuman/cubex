@@ -25,12 +25,16 @@ export const getEnrichment = open({
 
 const range = obj({ low: num, high: num });
 // Started: run_id. With estimate_only: the estimate, and nothing started.
+// With items (mcp/enrich-items.ts): an estimate (estimate_only, estimate), or run_id, run_type, items,
+// status_column and output_columns; changed is [].
 export const runEnrichment = open({
-  run_id: opt(str), run_type: opt(str), saved: opt(bool), status_column: str, output_columns: strs,
-  destination_sheet_id: opt(nul(str)), rows_in_scope: opt(num), rows_to_process: opt(num), test_rows: nul(num),
-  max_cost_per_row_usd: nul(num).describe('null: the tool has no listed price, so no cap is sent'),
-  spend_limit_usd: nul(num).describe('null: no listed price, so no run limit'),
-  daily_limit: info('The account\'s daily enrichment limit'),
+  run_id: opt(str), run_type: opt(str), saved: opt(bool), status_column: opt(str), output_columns: opt(strs),
+  destination_sheet_id: opt(nul(str)), rows_in_scope: opt(num), rows_to_process: opt(num), test_rows: opt(nul(num)),
+  max_cost_per_row_usd: opt(nul(num)).describe('null: the tool has no listed price, so no cap is sent'),
+  spend_limit_usd: opt(nul(num)).describe('null: no listed price, so no run limit'),
+  daily_limit: opt(info('The account\'s daily enrichment limit')),
+  items: opt(num).describe('With items: how many it runs on'),
+  estimate: opt(info('With items: what it would cost')),
   estimate_only: opt(bool), estimated_cost_usd: opt(nul(range)), per_row_usd: opt(nul(range)),
   price_known: opt(bool), reuse: opt(info('Rows answered at $0 from earlier lookups')),
   providers_on: opt(nul(strs).describe('null: a tool with one provider')),

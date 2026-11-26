@@ -1,12 +1,12 @@
-// A saved setup called like a function on 1-SETUP_CALL_MAX_ITEMS items, without a sheet: one implementation for
-// /api/v1 (routes/api-v1-setup-calls.ts) and MCP (mcp/tools-setup-calls.ts). The items become the rows of a hidden
-// working table (tables.hidden, migration 067: never listed or counted), one column per setup input, and the setup
-// runs there through applySetup, as on any sheet: its ceiling, its step runs, pause, resume and stop
-// (control_setup_run), the run-finished webhook (kind "setup"). The call's id is the setup run's, so polling and
-// the webhook name one id. An estimate makes no working table: it is a pure read (setup-call-estimate.ts). A start
-// refused removes the working table at once; a started call's table goes SETUP_CALL_KEEP_HOURS after it finishes
-// (the sweep below), its results with it, and a call paused that long is stopped first. Auto-run is never turned
-// on there (ApplyInput.call). The working table goes through the trash, purged at once and never listed.
+// A saved setup called like a function on 1-SETUP_CALL_MAX_ITEMS items, without a sheet: one implementation for /api/v1
+// (routes/api-v1-setup-calls.ts) and MCP (apply_setup with items, mcp/setup-items.ts). The items become the rows of a
+// hidden working table (tables.hidden, migration 067: never listed or counted), one column per setup input, and the
+// setup runs there through applySetup, as on any sheet: its ceiling, its step runs, pause, resume and stop
+// (control_setup_run), the run-finished webhook (kind "setup"). The call's id is the setup run's, so polling and the
+// webhook name one id. An estimate makes no working table: it is a pure read (setup-call-estimate.ts). A start refused
+// removes the working table at once; a started call's table goes SETUP_CALL_KEEP_HOURS after it finishes (the sweep
+// below), its results with it, and a call paused that long is stopped first. Auto-run is never turned on there
+// (ApplyInput.call). The working table goes through the trash, purged at once and never listed.
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
 import {

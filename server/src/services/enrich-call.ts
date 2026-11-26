@@ -1,4 +1,4 @@
-// One enrichment tool called on 1-ENRICH_CALL_MAX_ITEMS items without a sheet (MCP call_enrichment, REST POST
+// One enrichment tool called on 1-ENRICH_CALL_MAX_ITEMS items without a sheet (MCP run_enrichment with items, REST POST
 // /api/v1/enrichments/:toolId/calls). The items become the rows of a hidden working table (setup-call.ts), one
 // column per tool input, and the tool runs there through run_enrichment's own start (enrich-token-run.ts): every
 // input mapped to its column, every output field (or those asked for) to a column of its name. Priced first, on

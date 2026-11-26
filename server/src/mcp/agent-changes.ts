@@ -42,6 +42,40 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
     version: 'v0.8.47',
     changes: [
       {
+        change: 'renamed',
+        tools: ['call_setup'],
+        replaced_by: 'apply_setup',
+        summary: 'call_setup is apply_setup with items instead of sheet_id: a saved setup run on 1-100 items without a '
+          + 'sheet, like a function.',
+        details: 'Send apply_setup the same setup_id, items and choices with no sheet_id: estimate_only still defaults '
+          + 'to true, and the answer is the same setup_call.',
+      },
+      {
+        change: 'renamed',
+        tools: ['get_setup_call'],
+        replaced_by: 'get_setup_run',
+        summary: 'get_setup_call is get_setup_run: a call on items answers there, with its results paged as before.',
+        details: 'Pass the call\'s id as setup_run_id (it was setup_call_id); wait_seconds, results_from and limit '
+          + 'work as before.',
+      },
+      {
+        change: 'renamed',
+        tools: ['call_enrichment'],
+        replaced_by: 'run_enrichment',
+        summary: 'call_enrichment is run_enrichment with items instead of sheet_id: one enrichment tool on 1-1,000 '
+          + 'items without a sheet.',
+        details: 'Send run_enrichment the same tool_id, items, fields, max_cost_usd, allow_unpriced and webhook_id '
+          + 'with no sheet_id: estimate_only still defaults to true with items (on a sheet it stays false).',
+      },
+      {
+        change: 'changed',
+        tools: ['apply_setup', 'get_setup_run', 'run_enrichment'],
+        summary: 'apply_setup and run_enrichment take items instead of sheet_id, and get_setup_run answers a call on '
+          + 'items with each item\'s outputs.',
+        details: 'get_setup_run also takes wait_seconds, for any setup run. With items, the arguments only a sheet '
+          + 'takes (inputs, names, first_rows; column_name, outputs and the rest) are refused by name.',
+      },
+      {
         change: 'server',
         summary: 'transfer_rows with a move takes rows holding at most 16 MB a call (a copy still 32 MB): a move '
           + 'past it is refused, naming both caps, and nothing moves.',

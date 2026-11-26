@@ -110,14 +110,11 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   save_setup: write('Save columns as a setup', false, false),
   delete_setup: write('Delete a setup (permanent)', true, true),
   // Adds columns and starts their runs, which spend (AI, enrichments) or send requests. An estimate changes nothing.
-  apply_setup: write('Use a setup on a sheet', true, false, true),
+  apply_setup: write('Use a setup on a sheet or items', true, false, true),
   // Starts the chosen columns' reruns, which spend (AI, enrichments, waterfalls) or send requests.
   // An estimate changes nothing.
   run_columns: write('Run chosen columns on chosen rows', true, false, true),
   get_setup_run: read('Get a setup run'),
-  call_setup: write('Call a setup on items', false, false, true),
-  get_setup_call: read('Get a setup call'),
-  call_enrichment: write('Call an enrichment on items', false, false, true),
   manage_run_schedule: write('Manage run schedules', true, false, true),
   control_setup_run: write('Pause, resume or stop a setup run', true, false, true),
   list_setup_versions: read("List or compare a sheet's setup versions"),

@@ -1,10 +1,13 @@
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/server';
-import { MAX_COLUMN_RUN_COLUMNS, MAX_COLUMN_RUN_ROW_IDS, MAX_SETUP_TEST_ROWS } from '../lib/constants-setups';
+import {
+  MAX_COLUMN_RUN_COLUMNS, MAX_COLUMN_RUN_ROW_IDS, MAX_SETUP_TEST_ROWS, SETUP_CALL_KEEP_HOURS, SETUP_CALL_MAX_ITEMS,
+} from '../lib/constants-setups';
 import { RUN_SPEND_LIMIT_MAX_USD } from '../lib/constants';
 import { applySetup } from '../services/setup-apply';
 import { applyInputOf } from '../services/setup-apply-input';
-import { getSetupRun, sheetSetupRuns } from '../services/setup-run-store';
+import { sheetSetupRuns } from '../services/setup-run-store';
+import { SETUP_ITEMS, applySetupOnItems, setupRunAnswer } from './setup-items';
 import { controlSetupRun } from '../services/setup-run-control';
 import { runColumns } from '../services/column-run';
 import { COLUMN_RUN_MODES, columnRunInputOf } from '../services/column-run-input';
@@ -20,15 +23,18 @@ import { GUIDE_POINTER } from './guides/guide';
 
 const names = z.record(z.string(), z.string());
 
-// Using a saved setup on a sheet (services/setup-apply.ts, setup-runner.ts):
-// apply_setup, get_setup_run, control_setup_run; and run_columns, which runs
+// Using a saved setup on a sheet (services/setup-apply.ts, setup-runner.ts), or on items without one
+// (setup-items.ts): apply_setup, get_setup_run, control_setup_run; and run_columns, which runs
 // a sheet's own run columns on chosen rows as a setup run (services/column-run.ts).
 export function registerSetupRunTools(server: McpServer, ctx: McpAuthCtx): void {
   registerTool(server, 'apply_setup', {
     description:
       'Build a saved setup\'s columns (list_setups) on a sheet and fill them, each step once the columns it reads '
-      + 'are filled: a whole chain of columns on another sheet (for one column, use its own tool). For items without '
-      + 'a sheet, use call_setup. '
+      + 'are filled: a whole chain of columns on another sheet (for one column, use its own tool). '
+      + `ITEMS: with items instead of sheet_id it runs on 1-${SETUP_CALL_MAX_ITEMS} items without a sheet, like a `
+      + 'function, for a script or another app: each item is an object keyed by the setup\'s input names. It returns '
+      + 'a setup_call, and get_setup_run with its id answers each item\'s outputs by column once it finishes. For more '
+      + 'items, create_upload_link with setup_id calls it on a file\'s rows. '
       + 'COSTS MONEY: AI steps call your model per row, enrichments spend your treg balance, HTTP API '
       + 'steps send a request per row; clean and formula steps are free. '
       + 'ESTIMATE_ONLY DEFAULTS TO TRUE: the first call prices each step and starts nothing; tell the user, then '
@@ -37,11 +43,12 @@ export function registerSetupRunTools(server: McpServer, ctx: McpAuthCtx): void 
       + 'Saved keys in its requests need the "secrets" scope. COST CEILING: max_cost_usd refuses to start (nothing '
       + 'is created) when the estimate\'s high end, plus one row\'s most for each AI step, is above it, or when a '
       + 'step has no known price unless allow_unpriced is true. Returns a setup_run '
-      + 'with each step\'s run_id (get_run_status '
-      + 'works on those); follow it with get_setup_run.'
+      + 'with each step\'s run_id (get_run_status works on those); follow it with get_setup_run. '
+      + `A call on items: results are kept ${SETUP_CALL_KEEP_HOURS} hours after it finishes.`
       + capRunToolNote(ctx.spend ?? null) + ` ${GUIDE_POINTER}`,
     inputSchema: z.object({
-      sheet_id: z.string().describe(SHEET_ID),
+      sheet_id: z.string().optional().describe(`${SHEET_ID}; or items instead`),
+      items: SETUP_ITEMS.optional(),
       setup_id: z.string().describe('The setup (list_setups)'),
       inputs: names.optional()
         .describe('{ "<setup input>": "<column of this sheet>" }; an input left out reads the column of its name'),
@@ -58,9 +65,12 @@ export function registerSetupRunTools(server: McpServer, ctx: McpAuthCtx): void 
       allow_unpriced: lenientBoolean().optional()
         .describe('With max_cost_usd: start even when a step has no known price (default false)'),
     }).strict(),
-  }, async ({ sheet_id, setup_id, ...a }) => {
+  }, async ({ sheet_id, setup_id, items, ...a }) => {
     const denied = missingScope(ctx, 'run');
     if (denied) return denied;
+    if (items && sheet_id) return err('Pass sheet_id or items, not both.');
+    if (items) return applySetupOnItems(ctx, setup_id, items, a);
+    if (!sheet_id) return err('Pass sheet_id (fill a sheet) or items (items without a sheet).');
     const input = applyInputOf(a, 'mcp');
     if ('fail' in input) return err(input.message);
     const out = await applySetup(ctx.userId, sheet_id, setup_id, input, { hasSecretsScope: ctx.scopes.has('secrets') });
@@ -114,30 +124,36 @@ export function registerSetupRunTools(server: McpServer, ctx: McpAuthCtx): void 
 
   registerTool(server, 'get_setup_run', {
     description:
-      'Where a setup being used on a sheet (or a run_columns run) is: running, paused, done, failed or cancelled, '
-      + 'the layer it\'s on, '
+      'Where a setup being used on a sheet (or a run_columns run, or a call on items) is: running, paused, done, '
+      + 'failed or cancelled, the layer it\'s on, '
       + 'and each step\'s state, run_id and note (why it failed, or that its auto-run wasn\'t turned on), and the '
       + 'choices it was used with. Pass setup_run_id, or sheet_id for the sheet\'s latest ones (with setup_id, '
-      + 'that setup\'s). Read-only. Next: control_setup_run, or apply_setup again to carry it on.',
+      + 'that setup\'s). A call on items (apply_setup with items), once it has finished, also answers each item\'s '
+      + `outputs by column (results), ${SETUP_CALL_MAX_ITEMS} items a page: pass next_from as results_from for the `
+      + 'next page. With wait_seconds it answers when the run finishes or the time is up, so you poll less. '
+      + 'Read-only. Next: control_setup_run, or apply_setup again to carry it on. '
+      + GUIDE_POINTER,
     inputSchema: z.object({
-      setup_run_id: z.string().optional().describe('One setup run (apply_setup returned it)'),
+      setup_run_id: z.string().optional().describe('One setup run, or a call (apply_setup returned it)'),
       sheet_id: z.string().optional().describe('Or the sheet: its 5 latest setup runs'),
       setup_id: z.string().optional().describe('With sheet_id: only this setup\'s runs'),
+      wait_seconds: z.number().int().min(0).max(25).optional()
+        .describe('With setup_run_id: wait up to this many seconds for it to finish'),
+      results_from: z.number().int().min(0).optional().describe('A call\'s first item of the page (next_from)'),
+      limit: z.number().int().min(1).max(SETUP_CALL_MAX_ITEMS).optional()
+        .describe(`A call's items in the page (default ${SETUP_CALL_MAX_ITEMS})`),
     }).strict(),
-  }, async ({ setup_run_id, sheet_id, setup_id }) => {
+  }, async ({ setup_run_id, sheet_id, setup_id, wait_seconds, results_from, limit }) => {
     const denied = missingScope(ctx, 'read');
     if (denied) return denied;
-    if (setup_run_id) {
-      const run = getSetupRun(ctx.userId, setup_run_id);
-      return run ? ok(run) : err('Setup run not found');
-    }
+    if (setup_run_id) return setupRunAnswer(ctx, setup_run_id, wait_seconds, { from: results_from, limit });
     if (sheet_id) return ok({ setup_runs: sheetSetupRuns(ctx.userId, sheet_id, 5, setup_id) });
     return err('Pass setup_run_id or sheet_id.');
   });
 
   registerTool(server, 'control_setup_run', {
     description:
-      'Pause, resume or cancel a setup being used on a sheet, or a setup call (call_setup): the runs of the steps '
+      'Pause, resume or cancel a setup being used on a sheet, or a call on items: the runs of the steps '
       + 'working now follow, and no further step starts. Cancelling keeps the columns and values made so far. '
       + "Resume is refused while a step's AI run is paused at its spend limit (pause_reason spend_limit), which a "
       + "setup can't raise: cancel it and call apply_setup again with a higher max_cost_usd, which carries on where "
