@@ -39,6 +39,19 @@ export const CHANGES_RECORDED_AFTER = 'v0.8.12';
 // Newest first.
 export const AGENT_CHANGES: ReleaseChanges[] = [
   {
+    version: 'v0.8.46',
+    changes: [
+      {
+        change: 'server',
+        summary: 'transfer_rows with a move takes rows holding at most 16 MB a call (a copy still 32 MB): a move '
+          + 'past it is refused, naming both caps, and nothing moves.',
+        details: 'A move writes each row three times in its one transaction (into the other sheet, into the trash '
+          + 'and out of the source), so 32 MB of rows passed the database\'s room. Move fewer rows a call: a where '
+          + 'on a range, or row_ids in parts.',
+      },
+    ],
+  },
+  {
     version: 'v0.8.45',
     changes: [
       {
