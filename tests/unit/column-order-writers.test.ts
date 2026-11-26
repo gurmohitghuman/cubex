@@ -127,7 +127,8 @@ check('a call is followed across files whatever separators the paths name them w
     return typeof calls === 'string' ? calls : calls.map(c => `${c.getSourceFile().fileName}:${c.getStart()}`)
   }
   const found = seen(decl)
-  assert.ok(Array.isArray(found) && found.length > 0 && found.every(c => c.startsWith(caller)), String(found))
+  // rows-transfer.ts among them (auto-delete's copy calls it too, services/webhook-auto-delete-move.ts).
+  assert.ok(Array.isArray(found) && found.some(c => c.startsWith(caller)), String(found))
   assert.deepEqual(seen(backslashed), found)
   assert.deepEqual(seen(mixed), found)
   assert.equal(bindsFrom(path.win32.normalize(caller), name, decl), true, 'a caller named with "\\"')

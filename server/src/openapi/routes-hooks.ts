@@ -38,6 +38,22 @@ export const hookRoutes = (): RouteDoc[] => [
     scope: 'write', summary: 'Senders no longer need a token: anyone with the URL can add rows again.',
   }),
   op({
+    method: 'put', path: '/sheets/{id}/webhook/auto-delete', operationId: 'setSheetWebhookAutoDelete',
+    tag: 'webhook', scope: 'write',
+    summary: 'Keep the newest rows; older ones the webhook added are deleted once their auto-run columns ran.',
+    description: 'What a call leaves out stays; null clears success_column or copy_to_sheet_id. Rows can be copied '
+      + 'to another sheet first. Deleted rows do not go to the trash.',
+    body: z.object({
+      keep_rows: z.number().int().optional().describe('The newest rows that always stay, 0 to 100000. Default 100.'),
+      success_column: z.string().nullable().optional().describe('A row leaves only once this column has a result.'),
+      copy_to_sheet_id: z.string().nullable().optional().describe('Rows are copied to this sheet before they leave.'),
+    }),
+  }),
+  op({
+    method: 'delete', path: '/sheets/{id}/webhook/auto-delete', operationId: 'removeSheetWebhookAutoDelete',
+    tag: 'webhook', scope: 'write', summary: 'Turn auto-delete off. Rows already gone stay gone.',
+  }),
+  op({
     method: 'delete', path: '/sheets/{id}/webhook', operationId: 'deleteSheetWebhook', tag: 'webhook',
     scope: 'write', summary: 'Delete the webhook and its kept events. Its columns and rows stay.',
   }),

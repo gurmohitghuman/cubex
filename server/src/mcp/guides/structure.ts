@@ -2,6 +2,7 @@
 // guide holds).
 import { MAX_VIEWS_PER_SHEET } from '../../lib/constants-filters';
 import { SHEET_TEST_MAX_ROWS, SHEET_TEST_ROWS } from '../../lib/constants';
+import { AUTO_DELETE_KEEP_DEFAULT } from '../../lib/constants-webhook-auto-delete';
 import type { ToolGuide } from './guide';
 
 const RETRY_WORDS = 'idempotency_key makes a retry safe: the same key and arguments within 24 hours answer as the '
@@ -53,6 +54,11 @@ export const STRUCTURE_GUIDES: Record<string, ToolGuide> = {
       'turn_off: events get 404 and add nothing until turn_on. add_field: json_path (like $.email or $.plan.name) '
         + 'and column, a new column each event fills, as text (default) or as json. remove_field: field_id; its '
         + 'column and values stay. remove_token: no token needed.',
+      `set_auto_delete: what you leave out stays as it was (at first: ${AUTO_DELETE_KEEP_DEFAULT} rows kept, no `
+        + 'success column, no copy); null clears success_column or copy_to_sheet_id. The answer\'s auto_delete says '
+        + 'paused (why no row leaves until you act) and waiting (a paused auto-run or run the rows wait for). '
+        + 'copy_to_sheet_id can\'t be a test copy (manage_sheet test) or a sheet being tested; when a test starts on '
+        + 'it later, rows wait until that test ends and waiting says so. auto_delete_off: rows already gone stay gone.',
       'manage_table or manage_sheet create with webhook true makes a sheet with one.',
     ],
   },

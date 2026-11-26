@@ -203,14 +203,17 @@ export function refuseChangesWhileBusy(allowed: BusyAllowed[]) {
 }
 
 // A sheet's webhook's own controls (services/sheet-webhook.ts): turning it on or off, a new URL, a token made or
-// removed, the webhook deleted. They change only its record, never rows or columns, so they go through while the
-// sheet is busy: a sort or an import must not keep its owner from cutting off a leaked URL while events still add
-// rows. Setting one up and adding or removing a field change its columns, so they wait. The path is the sheet
-// routers' own (/webhook…).
+// removed, auto-delete set or turned off, the webhook deleted. They change only its record, never rows or columns,
+// so they go through while the sheet is busy: a sort or an import must not keep its owner from cutting off a leaked
+// URL while events still add rows (auto-delete's sweep itself waits while the sheet is busy). Setting one up and
+// adding or removing a field change its columns, so they wait. The path is the sheet routers' own (/webhook…).
+const AUTO_DELETE_PATH = '/webhook/auto-delete';
 export const webhookControl = (req: Request): boolean =>
   (req.method === 'PATCH' && req.path === '/webhook')
   || (req.method === 'POST' && (req.path === '/webhook/rotate' || req.path === '/webhook/token'))
-  || (req.method === 'DELETE' && (req.path === '/webhook' || req.path === '/webhook/token'));
+  || (req.method === 'PUT' && req.path === AUTO_DELETE_PATH)
+  || (req.method === 'DELETE' && (req.path === '/webhook' || req.path === '/webhook/token'
+    || req.path === AUTO_DELETE_PATH));
 
 // Where an appended row goes: one past the last row, and never inside a range
 // a running operation has reserved. Call inside the transaction that inserts.

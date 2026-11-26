@@ -1,9 +1,9 @@
 // Two findings of #145's audit (2026-11-25). A field can't be added on a column the webhook already owns, even
 // when a CSV replace has taken it off the sheet (services/webhook-mapping-add.ts): its marker (each event stamps
 // it) and a column a field of it fills (the one-field-a-column index used to answer 500) are refused in words.
-// And the webhook's own controls go through REST's busy guard and the app's real sheets router while a sort holds
-// the sheet (lib/sheet-busy.ts webhookControl), so a leaked URL can be cut off mid-import, while setting one up and
-// adding or removing a field still get 409 busy.
+// And the webhook's own controls (auto-delete's too) go through REST's busy guard and the app's real sheets router
+// while a sort holds the sheet (lib/sheet-busy.ts webhookControl), so a leaked URL can be cut off mid-import, while
+// setting one up and adding or removing a field still get 409 busy.
 import assert from 'node:assert/strict'
 import type { AddressInfo } from 'node:net'
 import express from 'express'
@@ -72,7 +72,8 @@ await check("REST, a busy sheet: the webhook's controls go through; its columns'
   const sorting = withSheetBusy(sid, 'sort', () => new Promise<void>(r => { release = r }))
   try {
     for (const [method, path] of [['PATCH', '/webhook'], ['POST', '/webhook/rotate'], ['POST', '/webhook/token'],
-      ['DELETE', '/webhook/token'], ['DELETE', '/webhook']]) {
+      ['DELETE', '/webhook/token'], ['PUT', '/webhook/auto-delete'], ['DELETE', '/webhook/auto-delete'],
+      ['DELETE', '/webhook']]) {
       assert.equal(await status(method, path), 200, `${method} ${path}`)
     }
     for (const [method, path] of [['POST', '/webhook'], ['POST', '/webhook/fields'],
@@ -116,6 +117,11 @@ await check("the app, a busy sheet: the webhook's controls go through and change
       assert.ok(state()!.auth_token_hash)
       assert.equal(await call('DELETE', '/webhook/token'), 200, 'remove token')
       assert.equal(state()!.auth_token_hash, null)
+      const autoDelete = db.prepare('SELECT keep_rows FROM webhook_auto_delete WHERE source_id = ?').pluck()
+      assert.equal(await call('PUT', '/webhook/auto-delete', { keepRows: 5 }), 200, 'auto-delete on')
+      assert.equal(autoDelete.get(src), 5)
+      assert.equal(await call('DELETE', '/webhook/auto-delete'), 200, 'auto-delete off')
+      assert.equal(autoDelete.get(src), undefined)
       const fields = db.prepare('SELECT COUNT(*) FROM webhook_mappings WHERE source_id = ?').pluck()
       const had = fields.get(src)
       assert.equal(await call('POST', '/webhook/mappings', { jsonPath: '$.w', columnName: 'W' }), 409, 'add field')

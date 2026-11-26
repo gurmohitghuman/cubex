@@ -21,6 +21,7 @@ import { startLookupLoop } from '../services/lookup-host';
 import { startAutoDedupeLoop } from '../services/auto-dedupe-checks';
 import { startRunHookLoop } from '../services/run-hooks-dispatch';
 import { startTrashLoop } from '../services/trash-purge';
+import { startWebhookAutoDeleteLoop } from '../services/webhook-auto-delete-sweep';
 import { startReleaseCheckLoop } from '../services/release-check';
 import { resumeAiVisibilityChecks } from '../services/ai-visibility-check';
 import { resumeHiringChecks } from '../services/hiring-check-watch';
@@ -67,6 +68,8 @@ export const startBackground = (recovered?: RecoveredRuns) => {
   startRunHookLoop();
   // The trash: what was kept long enough goes for good, in slices; the change log is pruned (services/trash-purge.ts).
   startTrashLoop();
+  // Auto-delete on webhook sheets: finished rows past the newest kept leave (services/webhook-auto-delete-sweep.ts).
+  startWebhookAutoDeleteLoop();
   // The release check: the latest release on GitHub, at most once a day (services/release-check.ts).
   startReleaseCheckLoop();
   startQueue()
