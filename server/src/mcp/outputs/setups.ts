@@ -52,6 +52,11 @@ export const callSetup = obj({
   makes: opt(strs).describe('The columns it would make'), items: opt(num),
 });
 export const getSetupCall = setupCall;
+// One enrichment tool called on items (tools-enrich-calls.ts): an estimate, or the run it started.
+export const callEnrichment = obj({
+  estimate_only: opt(bool), estimate: opt(info('What it would cost, as run_enrichment estimates it')),
+  run_id: opt(str), run_type: opt(str), items: opt(num), status_column: opt(str), output_columns: opt(strs),
+});
 // estimate_only (its default): estimate. Started: setup_run.
 export const runColumns = obj({
   setup_run: opt(setupRun), estimate: opt(info('What it would cost, by column')), changed,

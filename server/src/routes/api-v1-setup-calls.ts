@@ -13,6 +13,8 @@ import { scanCsvFile, CsvHeaderCollisionError } from '../lib/csv-import-parse';
 import { importCsv } from '../services/csv-import';
 import { MAX_CSV_UPLOAD_BYTES } from '../lib/constants';
 import { csvUploadMiddleware } from './sheets-shared';
+import { callEnrichment } from '../services/enrich-call';
+import { ceilingArgsOf } from '../lib/cost-ceiling';
 
 const router = express.Router();
 
@@ -90,6 +92,30 @@ router.post('/setups/:setupId/calls/file', requireScope('run'), csvUploadMiddlew
       if ('fail' in out) return sendFail(res, out);
       return res.status(201).json(out.ok);
     } finally { remove(); }
+  }));
+
+// { items, fields, estimate_only (default false), max_cost_usd, allow_unpriced, webhook_id }: one enrichment tool on
+// items without a sheet (services/enrich-call.ts). 200 with the estimate, 202 with the run (GET /v1/http-runs/:id
+// and its /results answer for it), 409 with over_ceiling when it could pass a limit.
+router.post('/enrichments/:toolId/calls', requireScope('run'),
+  guarded('POST /v1/enrichments/:toolId/calls', async (req, res) => {
+    const b = body(req);
+    if (b.estimate_only !== undefined && typeof b.estimate_only !== 'boolean') {
+      return res.status(400).json({ error: 'estimate_only must be true or false.' });
+    }
+    if (b.fields !== undefined && !(Array.isArray(b.fields) && b.fields.every(f => typeof f === 'string'))) {
+      return res.status(400).json({ error: 'fields must be an array of field names.' });
+    }
+    const ceiling = ceilingArgsOf(b.max_cost_usd, b.allow_unpriced);
+    if ('error' in ceiling) return res.status(400).json({ error: ceiling.error });
+    const caller = { userId: req.userId!, tokenId: req.accessTokenId!, scopes: req.tokenScopes ?? new Set<string>() };
+    const out = await callEnrichment(caller, {
+      toolId: req.params.toolId, items: b.items, fields: b.fields as string[] | undefined,
+      estimateOnly: b.estimate_only === true, ...ceiling,
+      webhookId: typeof b.webhook_id === 'string' ? b.webhook_id : null,
+    });
+    if ('fail' in out) return sendFail(res, out);
+    return res.status('run_id' in out.ok ? 202 : 200).json(out.ok);
   }));
 
 // ?results_from=&limit=: a page of a finished call's items (next_from says where the next starts).

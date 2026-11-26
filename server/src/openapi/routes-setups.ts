@@ -101,6 +101,18 @@ export const setupRoutes = (): RouteDoc[] => [
     responses: { 201: 'Started: the setup_call.' },
   }),
   op({
+    method: 'post', path: '/enrichments/{toolId}/calls', operationId: 'callEnrichment', tag: 'enrich', scope: 'run',
+    summary: 'Run one enrichment tool on 1-1,000 items without a sheet, or price that first.',
+    description: "Same as MCP's call_enrichment, but estimate_only defaults to false here. Refused (409, over_ceiling) "
+      + "instead of pausing halfway when it could pass max_cost_usd, today's daily limit, the treg balance or the "
+      + "token's cap. GET /http-runs/{id} and its /results answer for the run; row_index is the item.",
+    body: toolBody('call_enrichment', {
+      omit: ['tool_id', 'estimate_only'],
+      extend: { estimate_only: z.boolean().optional().describe('true prices it and starts nothing. Default false.') },
+    }),
+    responses: { 200: 'The estimate.', 202: 'Started: the run_id.' },
+  }),
+  op({
     method: 'get', path: '/setup-calls/{callId}', operationId: 'getSetupCall', tag: 'setups', scope: 'read',
     summary: "A setup call: its status, and once it has finished its items' outputs, a page at a time.",
     query: z.object({

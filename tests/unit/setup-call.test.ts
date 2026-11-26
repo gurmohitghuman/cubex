@@ -17,6 +17,7 @@ import overviewMod from '../../server/src/services/workspace-overview'
 import trashMod from '../../server/src/services/trash-read'
 import runSharedMod from '../../server/src/services/run-shared'
 import spendMod from '../../server/src/services/enrich-spend'
+import constMod from '../../server/src/lib/constants'
 import type { SetupSpec } from '../../server/src/lib/setups/spec'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
@@ -24,6 +25,7 @@ const { insertSetup } = libMod as typeof import('../../server/src/services/setup
 const { callSetup, getSetupCall, sweepSetupCalls, STALE_PAUSE } =
   callMod as typeof import('../../server/src/services/setup-call')
 const { enrichSpend } = spendMod as typeof import('../../server/src/services/enrich-spend')
+const { ENRICH_SPEND_TOP_COLUMNS } = constMod as typeof import('../../server/src/lib/constants')
 const { listTablesWithSheets } = readMod as typeof import('../../server/src/services/workspace-read')
 const { workspaceOverview } = overviewMod as typeof import('../../server/src/services/workspace-overview')
 const { listTrash } = trashMod as typeof import('../../server/src/services/trash-read')
@@ -145,6 +147,16 @@ const callSpend = async () => {
 }
 check('Settings\' spend: a call\'s spend is one line for calls, a deleted sheet\'s stays apart', await callSpend(),
   await spendLines())
+// More columns spending more than the calls than the card lists: the calls' line is still listed, after them, and
+// "more columns" counts only columns.
+const bigger = Array.from({ length: ENRICH_SPEND_TOP_COLUMNS + 1 }, () => uuid())
+for (const id of bigger) ledger.run(id, uid, uuid(), 'Bigger', 100_000)
+const crowded = await enrichSpend(uid, 30)
+check('a call\'s line is listed past the top columns, never as one of the more columns',
+  crowded.columns.length === ENRICH_SPEND_TOP_COLUMNS + 1 && crowded.columns.filter(c => c.call).length === 1
+  && crowded.columns[ENRICH_SPEND_TOP_COLUMNS].call === true && crowded.otherColumns === 2
+  && Math.abs(crowded.otherUsd - 0.105) < 1e-9 && Math.abs(crowded.totalUsd - 2.135) < 1e-9, crowded)
+db.prepare('DELETE FROM enrichment_calls WHERE id IN (SELECT value FROM json_each(?))').run(JSON.stringify(bigger))
 
 // A start takes a slot of the token's run-start window (an estimate doesn't): a full window refuses it before
 // any working table is made.

@@ -33,6 +33,7 @@ import { MAX_ROWS_PER_SHEET } from '../lib/constants';
 import { ENRICH_SPEND_WINDOWS } from '../lib/constants-enrich';
 import { estimateSetupCall } from './setup-call-estimate';
 import { cancelStepRuns } from './setup-run-control';
+import { cancelRun } from './run-lifecycle';
 
 // What a call takes besides its items: apply_setup's choices that make sense without a sheet.
 export type CallInput = Pick<ApplyInput, 'models' | 'estimateOnly' | 'webhookId' | 'maxCostUsd' | 'allowUnpriced'>;
@@ -52,11 +53,12 @@ const applyInputOf = (input: CallInput): ApplyInput => ({
   maxCostUsd: input.maxCostUsd ?? null, allowUnpriced: input.allowUnpriced, firstRows: null, call: true,
 });
 
-// The items, checked: an array of 1 to SETUP_CALL_MAX_ITEMS objects keyed by the setup's input names, each value a
-// string, number, boolean or null (a cell). An item may leave inputs out (they read as empty).
-function itemsOf(raw: unknown, inputs: string[]): Array<Record<string, string>> | string {
-  if (!Array.isArray(raw) || raw.length === 0 || raw.length > SETUP_CALL_MAX_ITEMS) {
-    return `items must be an array of 1 to ${SETUP_CALL_MAX_ITEMS} objects, each keyed by the setup's inputs`
+// The items, checked: an array of 1 to `max` objects keyed by the inputs of `what` (the setup, or the tool for an
+// enrichment call), each value a string, number, boolean or null (a cell). An item may leave inputs out (empty).
+export function itemsOf(raw: unknown, inputs: string[], max = SETUP_CALL_MAX_ITEMS, what = 'setup'):
+  Array<Record<string, string>> | string {
+  if (!Array.isArray(raw) || raw.length === 0 || raw.length > max) {
+    return `items must be an array of 1 to ${max} objects, each keyed by the ${what}'s inputs`
       + (inputs.length ? ` (${inputs.map(n => `"${n}"`).join(', ')})` : '') + '.';
   }
   const known = new Set(inputs);
@@ -70,7 +72,7 @@ function itemsOf(raw: unknown, inputs: string[]): Array<Record<string, string>> 
     if ('error' in parsed) return `Item ${i}: ${parsed.error}.`;
     const unknown = Object.keys(parsed.cells).find(k => !known.has(k));
     if (unknown !== undefined) {
-      return `Item ${i} has "${unknown.slice(0, 50)}", which isn't an input of this setup`
+      return `Item ${i} has "${unknown.slice(0, 50)}", which isn't an input of this ${what}`
         + (inputs.length ? ` (its inputs: ${inputs.map(n => `"${n}"`).join(', ')}).` : ' (it has none).');
     }
     out.push(parsed.cells);
@@ -162,7 +164,8 @@ const orphanSeconds = (): number =>
   Math.ceil((FILE_LINK_TTL_MINUTES * 60_000 + receiveBackstopMs()) / 1000) + SETUP_CALL_ORPHAN_HOURS * 3600;
 
 // A call paused SETUP_CALL_KEEP_HOURS ago (by hand, or at a limit, the token's cap or its ceiling) and not resumed
-// since is stopped, as control_setup_run's cancel stops it; its results are then kept as any finished call's.
+// since is stopped, as control_setup_run's (or, for an enrichment call, control_run's) cancel stops it; its results
+// are then kept as any finished call's.
 export const STALE_PAUSE = `Paused for more than ${SETUP_CALL_KEEP_HOURS} hours, so it was stopped.`;
 async function stopStalePaused(keep: string): Promise<void> {
   const stale = db.prepare(`SELECT c.id FROM setup_calls c JOIN setup_runs r ON r.id = c.id
@@ -174,6 +177,19 @@ async function stopStalePaused(keep: string): Promise<void> {
     if (stop.run(STALE_PAUSE, id, keep).changes === 0) continue;
     try { await cancelStepRuns(loadSetupRun(id)!); } catch (err) {
       console.error(`Setup call ${id}'s runs couldn't all be stopped:`, err);
+    }
+  }
+  // An enrichment call is its run. Why it stopped is written only while it is still paused that long, and the
+  // cancel's own flip follows with nothing awaited between, so a resume meanwhile keeps it going.
+  const runs = db.prepare(`SELECT c.id, c.user_id FROM enrichment_item_calls c JOIN http_runs r ON r.id = c.id
+    WHERE r.status = 'paused' AND r.updated_at <= datetime('now', ?)`).all(keep) as
+    Array<{ id: string; user_id: string }>;
+  const why = db.prepare(`UPDATE http_runs SET error_message = ? WHERE id = ? AND status = 'paused'
+    AND updated_at <= datetime('now', ?)`);
+  for (const r of runs) {
+    if (why.run(STALE_PAUSE, r.id, keep).changes === 0) continue;
+    try { await cancelRun('http', r.id, r.user_id); } catch (err) {
+      console.error(`Enrichment call ${r.id} couldn't be stopped:`, err);
     }
   }
 }
@@ -189,17 +205,21 @@ function pruneCallSheets(): void {
     LIMIT ${CALL_SHEETS_PRUNE_ROWS})`).run(`-${CALL_SHEETS_KEEP_DAYS} days`, `-${CALL_SHEETS_KEEP_DAYS} days`);
 }
 
-// The sweep: calls paused too long are stopped; then the working tables of calls finished SETUP_CALL_KEEP_HOURS ago,
-// and of calls that never started, are removed. Returns how many working tables it removed.
+// The sweep: calls paused too long are stopped; then the working tables of calls (setup and enrichment calls)
+// finished SETUP_CALL_KEEP_HOURS ago, and of calls that never started, are removed. Returns how many it removed.
 export async function sweepSetupCalls(): Promise<number> {
   await stopStalePaused(`-${SETUP_CALL_KEEP_HOURS} hours`);
   pruneCallSheets();
   const due = db.prepare(`SELECT c.user_id, c.table_id FROM setup_calls c JOIN setup_runs r ON r.id = c.id
       WHERE r.status IN ('done', 'failed', 'cancelled') AND r.updated_at <= datetime('now', ?)
     UNION ALL
+    SELECT c.user_id, c.table_id FROM enrichment_item_calls c JOIN http_runs r ON r.id = c.id
+      WHERE r.status IN ('completed', 'failed', 'cancelled') AND r.updated_at <= datetime('now', ?)
+    UNION ALL
     SELECT t.user_id, t.id FROM tables t WHERE t.hidden = 1 AND t.trash_id IS NULL
-      AND t.created_at <= datetime('now', ?) AND NOT EXISTS (SELECT 1 FROM setup_calls c WHERE c.table_id = t.id)`)
-    .all(`-${SETUP_CALL_KEEP_HOURS} hours`, `-${orphanSeconds()} seconds`) as
+      AND t.created_at <= datetime('now', ?) AND NOT EXISTS (SELECT 1 FROM setup_calls c WHERE c.table_id = t.id)
+      AND NOT EXISTS (SELECT 1 FROM enrichment_item_calls c WHERE c.table_id = t.id)`)
+    .all(`-${SETUP_CALL_KEEP_HOURS} hours`, `-${SETUP_CALL_KEEP_HOURS} hours`, `-${orphanSeconds()} seconds`) as
     Array<{ user_id: string; table_id: string }>;
   const sheetOf = db.prepare('SELECT id FROM sheets WHERE table_id = ?').pluck();
   for (const d of due) {

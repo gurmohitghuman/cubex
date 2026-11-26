@@ -5,6 +5,8 @@
 // read. A big run is counted for ENRICH_REUSE_COUNT_MS at most, a page at a
 // time with other requests let in between; what it counted by then is a floor
 // ("at least"), so an estimate that prices the other rows stays an upper bound.
+// An enrichment call's items are counted the same way in memory (at most
+// ENRICH_CALL_MAX_ITEMS, all at once), as its working table would hold them.
 import { db } from '../lib/db';
 import { ENRICH_REUSE_COUNT_MS } from '../lib/constants';
 import { parseRowData } from '../lib/sql-rows';
@@ -17,6 +19,7 @@ import { rowFilterSql, type RowFilterSql } from './enrich-rows-filter';
 import { prepareEnrichmentStart, seedPlanFor, type PreparedStart } from './enrich-run-prepare';
 import type { RunFail } from './run-shared';
 import type { EnrichRunInput } from '../lib/enrich-run-input';
+import type { EstimateRowsFrom } from './run-estimate-rows';
 
 const PAGE = 500;
 
@@ -24,18 +27,23 @@ const PAGE = 500;
 // (all of them when complete); days: the account's setting.
 export interface ReuseCount { rows: number; checked: number; complete: boolean; days: number }
 
-export interface ReuseCountJob {
-  sheetId: string; plan: SeedPlan; rowFilter: RowFilterSql;
-  targets: number[] | null;   // selected rows
+export type ReuseCountJob = {
+  plan: SeedPlan;
   limit: number;              // the most rows the run takes (its test rows, else the rows in scope)
-}
+} & (
+  | { sheetId: string; rowFilter: RowFilterSql; targets: number[] | null }   // targets: selected rows
+  | { sheetId: null; rows: Array<Record<string, string>> }                   // a call's items, in the order sent
+);
 
-// The rows a prepared start would take (services/enrich-run-prepare.ts).
+// The rows a prepared start would take (services/enrich-run-prepare.ts), on a sheet or a call's items.
 export function reuseJobFor(
-  userId: string, sheetId: string, input: EnrichRunInput, p: PreparedStart,
+  userId: string, from: EstimateRowsFrom, input: EnrichRunInput, p: PreparedStart,
 ): ReuseCountJob {
+  const plan = seedPlanFor(input, p);
+  if (from.sheetId === null) return { sheetId: null, rows: from.items.rows, plan, limit: p.upperBound };
+  const { sheetId } = from;
   return {
-    sheetId, plan: seedPlanFor(input, p), rowFilter: rowFilterSql(sheetId, userId, input.rows.mode),
+    sheetId, plan, rowFilter: rowFilterSql(sheetId, userId, input.rows.mode),
     targets: input.rows.mode === 'selected' ? input.rows.rowIndexes : null, limit: p.upperBound,
   };
 }
@@ -51,6 +59,20 @@ export async function countReusable(
   if (!since || job.limit <= 0) return out;
   // A run reading the raw part only reuses an answer that kept it whole.
   const whole = readsRaw(answerPathsOf(job.plan.config));
+  // One row, in row order: checked when the run takes it, counted when it would reuse an answer.
+  const tally = (rowIndex: number, data: Record<string, string>, stale: boolean) => {
+    if (seedVerdict(data, job.plan, stale) !== 'run') return;
+    out.checked++;
+    const req = rowRequest(job.plan.config, { rowIndex, rowId: null, data }, job.plan.columns);
+    if ('built' in req && hasReusable(userId, reuseKeyOf(job.plan.config, req.built), since, whole)) out.rows++;
+  };
+  if (job.sheetId === null) {
+    for (const [i, data] of job.rows.entries()) {
+      if (out.checked >= job.limit) break;
+      tally(i, data, false);
+    }
+    return out;
+  }
   const f = job.rowFilter;
   // Selected rows are read by their numbers, the rest a page at a time from the top.
   const targets = job.targets ? [...new Set(job.targets)].sort((a, b) => a - b) : null;
@@ -80,11 +102,7 @@ export async function countReusable(
     }
     for (const r of rows) {
       if (out.checked >= job.limit) return out;
-      const data = parseRowData(r.data);
-      if (seedVerdict(data, job.plan, r.stale === 1) !== 'run') continue;
-      out.checked++;
-      const req = rowRequest(job.plan.config, { rowIndex: r.row_index, rowId: null, data }, job.plan.columns);
-      if ('built' in req && hasReusable(userId, reuseKeyOf(job.plan.config, req.built), since, whole)) out.rows++;
+      tally(r.row_index, parseRowData(r.data), r.stale === 1);
     }
     if (last || out.checked >= job.limit) return out;
     if (Date.now() >= deadline || stop?.()) return { ...out, complete: false };
@@ -99,5 +117,5 @@ export async function reuseCountFor(
   const prepared = await prepareEnrichmentStart(userId, sheetId, input);
   if ('fail' in prepared) return prepared;
   if (stop?.()) return { ok: { rows: 0, checked: 0, complete: false, days: getReuseDays(userId) } };
-  return { ok: await countReusable(userId, reuseJobFor(userId, sheetId, input, prepared.ok), undefined, stop) };
+  return { ok: await countReusable(userId, reuseJobFor(userId, { sheetId }, input, prepared.ok), undefined, stop) };
 }

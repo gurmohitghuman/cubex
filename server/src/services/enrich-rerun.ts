@@ -44,7 +44,7 @@ async function rerunReuse(
   const input = rerunInput(choices, req.rows, null, req.rowGeneration, null);
   const prepared = await prepareEnrichmentStart(userId, sheetId, input);
   if ('fail' in prepared) return null;
-  return countReusable(userId, reuseJobFor(userId, sheetId, input, prepared.ok));
+  return countReusable(userId, reuseJobFor(userId, { sheetId }, input, prepared.ok));
 }
 
 export async function rerunEnrichmentColumn(
