@@ -12,6 +12,7 @@ import { getSheetColumns, verifySheetOwnership } from '../lib/sql-helpers';
 import { countOf, logSheetChange } from '../lib/change-log';
 import type { WebhookSourceFull } from '../lib/webhook-service';
 import { activeSetupRuns } from './sheet-runs';
+import { TEST_COPY_REFUSED, testedTarget } from './webhook-auto-delete-move';
 
 export interface AutoDeleteRow {
   source_id: string; user_id: string; sheet_id: string; mode: string; keep_rows: number;
@@ -51,6 +52,10 @@ const sheetName = (sheetId: string, userId: string): string | null =>
 // A paused auto-run column holds the rows it hasn't run, and a paused run keeps auto-delete out of the sheet:
 // rows wait with nothing wrong in auto-delete, so it isn't a pause of its own, but the panel says so.
 function waitingFor(row: AutoDeleteRow): string | null {
+  if (row.copy_to_sheet_id !== null && testedTarget(row.copy_to_sheet_id, row.user_id) === 'tested') {
+    return `Changes are being tested on "${sheetName(row.copy_to_sheet_id, row.user_id)}", where rows are copied: `
+      + 'rows wait until that test is applied or discarded.';
+  }
   const paused = db.prepare(`SELECT status_column FROM autorun_columns WHERE sheet_id = ? AND user_id = ?
     AND enabled = 1 AND paused_reason IS NOT NULL ORDER BY status_column LIMIT 1`).pluck()
     .get(row.sheet_id, row.user_id) as string | undefined;
@@ -125,6 +130,13 @@ function check(
     if (typeof copyTo !== 'string') return bad('copy_to_sheet_id is a sheet id.');
     if (copyTo === src.sheet_id) return bad('Rows can\'t be copied to the sheet they leave.');
     if (!verifySheetOwnership(copyTo, src.user_id)) return bad('The sheet to copy rows to was not found.');
+    const tested = testedTarget(copyTo, src.user_id);
+    if (tested === 'test_copy') return bad(TEST_COPY_REFUSED);
+    // A destination kept from before waits out a test begun since (the sweep says so); a new one is refused.
+    if (tested === 'tested' && copyTo !== was?.copy_to_sheet_id) {
+      return bad(`Rows can't be copied into "${sheetName(copyTo, src.user_id)}" while changes are tested on it. `
+        + 'Apply or discard that test first, or pick another sheet.');
+    }
     if (copiesBack(src.sheet_id, copyTo, src.user_id)) {
       return bad(`"${sheetName(copyTo, src.user_id)}" has auto-delete copying its rows back here.`);
     }

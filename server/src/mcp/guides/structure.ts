@@ -57,7 +57,8 @@ export const STRUCTURE_GUIDES: Record<string, ToolGuide> = {
       `set_auto_delete: what you leave out stays as it was (at first: ${AUTO_DELETE_KEEP_DEFAULT} rows kept, no `
         + 'success column, no copy); null clears success_column or copy_to_sheet_id. The answer\'s auto_delete says '
         + 'paused (why no row leaves until you act) and waiting (a paused auto-run or run the rows wait for). '
-        + 'auto_delete_off: rows already gone stay gone.',
+        + 'copy_to_sheet_id can\'t be a test copy (manage_sheet test) or a sheet being tested; when a test starts on '
+        + 'it later, rows wait until that test ends and waiting says so. auto_delete_off: rows already gone stay gone.',
       'manage_table or manage_sheet create with webhook true makes a sheet with one.',
     ],
   },
