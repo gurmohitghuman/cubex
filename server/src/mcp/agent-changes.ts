@@ -39,7 +39,7 @@ export const CHANGES_RECORDED_AFTER = 'v0.8.12';
 // Newest first.
 export const AGENT_CHANGES: ReleaseChanges[] = [
   {
-    version: 'v0.8.46',
+    version: 'v0.8.47',
     changes: [
       {
         change: 'renamed',
