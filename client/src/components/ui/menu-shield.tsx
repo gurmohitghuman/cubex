@@ -28,12 +28,14 @@ const TABBABLE = 'input:not([disabled]), select:not([disabled]), textarea:not([d
   + 'a[href], [tabindex]:not([tabindex="-1"])'
 const inField = (el: Element) => !!el.closest("[data-menu-field]") || el.matches("input, textarea, select")
 
-function newShield(pressed: React.MutableRefObject<boolean>): HTMLDivElement {
+// A press on the shield closes the menu itself: Radix starts listening for presses outside a menu only a moment
+// after it opens (a timer), so on a busy page it can miss a press made right away.
+function newShield(pressed: React.MutableRefObject<boolean>, close: () => void): HTMLDivElement {
   const el = document.createElement("div")
   el.setAttribute("data-menu-shield", "")
   el.setAttribute("aria-hidden", "true")
   el.className = "fixed inset-0 z-50"
-  el.addEventListener("pointerdown", e => { pressed.current = true; e.preventDefault() })
+  el.addEventListener("pointerdown", e => { pressed.current = true; e.preventDefault(); close() })
   el.addEventListener("mousedown", stopDefault)
   el.addEventListener("contextmenu", stopDefault)
   // Not passive, so they can stop a scroll.
@@ -50,17 +52,29 @@ export function MenuRoot({
   const shown = open ?? own
   const pressed = React.useRef(false)
   const shield = React.useRef<HTMLDivElement | null>(null)
+  // The latest close, for the shield made when the menu opened.
+  const closeRef = React.useRef(() => {})
   // In <body> before the menu's content: React runs a parent's layout effects after its children's, and the
   // content's portal comes in a render later (and `under` keeps the order otherwise).
   React.useLayoutEffect(() => {
     if (!shown) return
     pressed.current = false
-    const el = newShield(pressed)
+    const el = newShield(pressed, () => closeRef.current())
     document.body.appendChild(el)
     shield.current = el
     return () => { el.remove(); shield.current = null }
   }, [shown])
-  const change = React.useCallback((next: boolean) => { setOwn(next); onOpenChange?.(next) }, [onOpenChange])
+  // Whether the menu is open as far as its owner was told: the shield's close and then Radix's own, for one press,
+  // tell it once.
+  const told = React.useRef(shown)
+  told.current = shown
+  const change = React.useCallback((next: boolean) => {
+    if (told.current === next) return
+    told.current = next
+    setOwn(next)
+    onOpenChange?.(next)
+  }, [onOpenChange])
+  closeRef.current = () => change(false)
   const state = React.useMemo<MenuState>(() => ({
     pressed,
     close: () => change(false),
@@ -84,7 +98,8 @@ export function MenuRoot({
 }
 
 // For DropdownMenuContent, around the menu's own handlers: a close by the shield, or by Tab, puts focus on the
-// button that opened the menu (found by aria-controls while it is open, and kept).
+// button that opened the menu (found by aria-controls while it is open, and kept). An Escape Radix didn't handle closes
+// it too (onKeyDown).
 export function useMenuContent(
   ref: React.ForwardedRef<HTMLDivElement>,
   own: { onCloseAutoFocus?: (e: Event) => void; onKeyDown?: React.KeyboardEventHandler<HTMLDivElement> },
@@ -115,6 +130,15 @@ export function useMenuContent(
   }
   const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     own.onKeyDown?.(e)
+    // An Escape nothing handled closes the menu. Radix closes it on Escape from a listener on the document, and marks
+    // the key as handled when it does; but it works out whether the menu is the top layer when the menu renders, and
+    // a menu just opened renders before it counts itself, so it drops the Escape pressed in that moment: on a busy
+    // page, or Enter then Escape at once (radix-ui/primitives PR #4270, not released; dismissable-layer 1.1.11).
+    if (e.key === "Escape" && !e.defaultPrevented && menu) {
+      e.preventDefault()
+      menu.close()
+      return
+    }
     if (e.defaultPrevented || !tab(e) || !menu || (e.target instanceof Element && inField(e.target))) return
     e.preventDefault()
     menu.close()
