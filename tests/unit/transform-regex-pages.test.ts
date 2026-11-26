@@ -20,6 +20,7 @@ import walMod from '../../server/src/lib/wal-checkpointer'
 import walConstMod from '../../server/src/lib/constants-wal'
 import { watchWhile } from './loop-watch'
 import { sizeWalLikeAServer, sqliteWriteProbe, walGrowth } from './sqlite-write-probe'
+import { caughtUp } from './transform-to-end'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { transformColumn } = transformMod as typeof import('../../server/src/services/column-transform')
@@ -180,6 +181,7 @@ async function main() {
     async () => {
     const cells = Array.from({ length: TRANSFORM_PAGE_ROWS * 2 + 7 }, (_, i) => (i % 3 ? `${i} | B2B` : 'none'))
     const id = sheet(cells)
+    await caughtUp()
     const out = await extract(id, '^(\\d+) \\|')
     assert.ok('ok' in out && out.ok.updated === cells.length, JSON.stringify(out))
     assert.deepEqual(targets(id), cells.map(c => applyCellOp('regex_extract', c, { pattern: '^(\\d+) \\|' })))
@@ -188,6 +190,7 @@ async function main() {
 
 async function changedUnder(changes: number) {
   const id = sheet(['1 x', '2 x', '3 x'])
+  await caughtUp()
   let left = changes, n = 0
   afterWorkerRead = () => {
     if (left-- > 0) db.prepare(`UPDATE rows SET data = json_set(data, '$.S', ?) WHERE sheet_id = ? AND row_index = 1`)
