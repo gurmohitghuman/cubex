@@ -12,7 +12,7 @@ import { createSampleTable } from '../services/sample-table';
 import { homeCounts, homeCountsWhenMade, liveSheets } from '../services/table-row-counts';
 import { homeRuns, homeRunsWhenChanged } from '../services/table-runs';
 import { acquireCountWait, acquireRunsWait } from '../lib/long-poll-holds';
-import { ROW_COUNT_HOLD_MS } from '../lib/constants-row-counts';
+import { HOME_RUNS_CHECK_MS, HOME_RUNS_HOLD_MS, ROW_COUNT_HOLD_MS } from '../lib/constants-row-counts';
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -20,14 +20,18 @@ router.use(authenticateToken);
 // GET /: the user's tables with their sheet ids and rows, counted nothing on the request (lib/row-counts.ts): a
 // table whose rows changed since they were last counted answers that count with row_count_updating, and the home
 // then waits for the new one (GET /row-counts). runs: its runs going now and paused (services/table-runs.ts), left
-// out when it has none; the home then follows them (GET /runs).
+// out when it has none; the home then follows them (GET /runs). updated_at: when the table or one of its live sheets
+// last changed (every write to a sheet touches its updated_at; the table's own moves only on a rename or a restore).
 router.get('/', (req: AuthRequest, res) => {
   try {
     // Explicit client columns (no user_id) — this row is spread into the response
     // below, so `SELECT *` would leak the internal user_id.
     const tables = db.prepare(
-      `SELECT id, name, created_at, updated_at FROM tables WHERE user_id = ? AND trash_id IS NULL AND hidden = 0
-       ORDER BY created_at DESC`,
+      `SELECT t.id, t.name, t.created_at, MAX(t.updated_at, COALESCE((SELECT MAX(s.updated_at) FROM sheets s
+         WHERE s.table_id = t.id AND s.user_id = t.user_id AND s.trash_id IS NULL AND s.test_of IS NULL),
+         t.updated_at)) AS updated_at
+       FROM tables t WHERE t.user_id = ? AND t.trash_id IS NULL AND t.hidden = 0
+       ORDER BY t.created_at DESC`,
     ).all(req.userId!) as Array<{ id: string; name: string; created_at: string; updated_at: string }>;
     const sheets = liveSheets(req.userId!);
     const counts = homeCounts(req.userId!, sheets);
@@ -73,19 +77,18 @@ router.get('/row-counts', async (req: AuthRequest, res) => {
 // GET /runs?since=<key>: every table's runs going now and paused once they differ from `since` (the key the last
 // answer gave; none: answers at once), checked once a second and held up to RUNS_HOLD_MS. 429 with Retry-After when
 // the account already holds MAX_RUNS_WAITS_PER_USER of these (other tabs of the home). Leaving lets go at once.
-const RUNS_HOLD_MS = 25_000;
-const RUNS_CHECK_MS = 1_000;
 router.get('/runs', async (req: AuthRequest, res) => {
   const release = acquireRunsWait(req.userId!);
   if (!release) {
-    res.set('Retry-After', String(RUNS_HOLD_MS / 1000));
+    res.set('Retry-After', String(HOME_RUNS_HOLD_MS / 1000));
     return res.status(429).json({ error: 'Too many home pages are open. Close one, then reload this page.' });
   }
   let closed = false;
   res.on('close', () => { closed = true; release(); });
   const since = typeof req.query.since === 'string' ? req.query.since : null;
   try {
-    const runs = await homeRunsWhenChanged(req.userId!, since, Date.now() + RUNS_HOLD_MS, RUNS_CHECK_MS, () => closed);
+    const runs = await homeRunsWhenChanged(req.userId!, since, Date.now() + HOME_RUNS_HOLD_MS, HOME_RUNS_CHECK_MS,
+      () => closed);
     if (!closed) res.json(runs);
   } catch (error) {
     console.error('Get runs error:', error);

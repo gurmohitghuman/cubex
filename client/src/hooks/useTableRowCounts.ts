@@ -41,7 +41,8 @@ export function useTableRowCounts(tables: Table[], setTables: Dispatch<SetStateA
         if (!counts.some(c => c.row_count_updating)) return
       }
     })()
-    return () => stop.abort()
+    // A wait that ends while it waits out a 429 isn't refused any more: the next one starts with the spinner.
+    return () => { stop.abort(); setRefused(false) }
   }, [waiting, setTables])
   return refused && waiting
 }
