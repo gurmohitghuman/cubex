@@ -1,12 +1,13 @@
 import express from 'express';
-import { db } from '../lib/db';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { UUID_PATTERN } from '../lib/constants';
-import { listSheets, getSheetForClient, getTableForClient, listTestSheets } from '../lib/sheet-crud-helpers';
+import {
+  listSheets, getSheetForClient, getTableForClient, listTablesForClient, listTestSheets,
+} from '../lib/sheet-crud-helpers';
 import { sheetListKey } from '../lib/sheet-list-key';
 import { getTrashDays } from '../lib/trash/store';
 import {
-  createTable, renameTable, deleteTable, type TableCrudFail,
+  createTable, renameTable, deleteTable, markTableOpened, setTableStarred, type TableCrudFail,
 } from '../services/table-crud';
 import { createSampleTable } from '../services/sample-table';
 import { homeCounts, homeCountsWhenMade, liveSheets } from '../services/table-row-counts';
@@ -20,15 +21,12 @@ router.use(authenticateToken);
 // GET /: the user's tables with their sheet ids and rows, counted nothing on the request (lib/row-counts.ts): a
 // table whose rows changed since they were last counted answers that count with row_count_updating, and the home
 // then waits for the new one (GET /row-counts). runs: its runs going now and paused (services/table-runs.ts), left
-// out when it has none; the home then follows them (GET /runs).
+// out when it has none; the home then follows them (GET /runs). starred and last_opened_at: the home's Favorites
+// and Recent tabs (migration 064).
 router.get('/', (req: AuthRequest, res) => {
   try {
-    // Explicit client columns (no user_id) — this row is spread into the response
-    // below, so `SELECT *` would leak the internal user_id.
-    const tables = db.prepare(
-      `SELECT id, name, created_at, updated_at FROM tables WHERE user_id = ? AND trash_id IS NULL AND hidden = 0
-       ORDER BY created_at DESC`,
-    ).all(req.userId!) as Array<{ id: string; name: string; created_at: string; updated_at: string }>;
+    // Explicit client columns (no user_id): each row is spread into the response below.
+    const tables = listTablesForClient(req.userId!);
     const sheets = liveSheets(req.userId!);
     const counts = homeCounts(req.userId!, sheets);
     const runs = homeRuns(req.userId!, sheets);
@@ -158,6 +156,31 @@ router.put('/:id', (req: AuthRequest, res) => {
   } catch (error) {
     console.error('Update table error:', error);
     res.status(500).json({ error: 'Failed to update table' });
+  }
+});
+
+// PUT /:id/starred {starred}: the home's star (Favorites lists the starred tables). Answers the table.
+router.put('/:id/starred', (req: AuthRequest, res) => {
+  try {
+    const result = setTableStarred(req.userId!, req.params.id, req.body?.starred);
+    if ('fail' in result) return res.status(uiFailStatus(result)).json({ error: result.message });
+    res.json(getTableForClient(req.params.id, req.userId!));
+  } catch (error) {
+    console.error('Star table error:', error);
+    res.status(500).json({ error: 'Couldn\'t star the table. Try again.' });
+  }
+});
+
+// POST /:id/opened: the table page says the user opened the table (once its first rows show), and the home's Recent
+// tab lists it first. Answers at once; the time is written when the write lock is free (lib/table-opened.ts). The
+// app's own call, never /v1 or MCP.
+router.post('/:id/opened', (req: AuthRequest, res) => {
+  try {
+    if (!markTableOpened(req.userId!, req.params.id)) return res.status(404).json({ error: 'Table not found' });
+    res.status(204).end();
+  } catch (error) {
+    console.error('Mark table opened error:', error);
+    res.status(500).json({ error: 'Couldn\'t note that the table was opened.' });
   }
 });
 

@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ArrowDown, ArrowUp, ExternalLink, Loader2, MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, ExternalLink, Loader2, MoreHorizontal, Pencil, Star, Trash2 } from 'lucide-react'
 import { CubeLogo } from '@/components/CubeLogo'
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
@@ -11,17 +11,22 @@ import { sortTables, type SortKey, type TableSort, useTableSort } from './tableS
 const formatDate = (s: string) =>
   new Date(s).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
 
-// One column template for the header and every row, so each cell sits in the same track. The name takes what is
-// left; Updated shows from 768 px and Created from 1024 px, so a phone keeps the name, rows and runs.
-const COLS = 'grid-cols-[minmax(0,1fr)_5.5rem_6.5rem_2.5rem] '
-  + 'md:grid-cols-[minmax(0,1fr)_6.5rem_7.5rem_7.5rem_2.5rem] '
-  + 'lg:grid-cols-[minmax(0,1fr)_7rem_8rem_8rem_8rem_2.5rem]'
+// One column template (and gap) for the header and every row, so each cell sits in the same track. The name takes
+// what is left, then the star. Runs shows from 640 px, Last opened and Updated from 1024 px, Created from 1280 px:
+// a phone keeps the name (about 110 px of it at 390), the star, the rows and the ⋯ menu, and the name keeps room at
+// 768 px beside the open sidebar.
+const COLS = 'grid-cols-[minmax(0,1fr)_1.75rem_4.5rem_2rem] gap-x-2 '
+  + 'sm:grid-cols-[minmax(0,1fr)_1.75rem_5.5rem_6.5rem_2.5rem] sm:gap-x-4 '
+  + 'lg:grid-cols-[minmax(0,1fr)_1.75rem_6rem_7rem_6.5rem_6.5rem_2.5rem] '
+  + 'xl:grid-cols-[minmax(0,1fr)_1.75rem_6.5rem_7.5rem_7rem_7rem_7rem_2.5rem]'
 
 const HEADERS: Array<{ key: SortKey; label: string; className?: string }> = [
-  { key: 'name', label: 'Name' }, { key: 'rows', label: 'Rows' }, { key: 'runs', label: 'Runs' },
-  { key: 'updated', label: 'Updated', className: 'hidden md:flex' },
-  { key: 'created', label: 'Created', className: 'hidden lg:flex' },
+  { key: 'rows', label: 'Rows' }, { key: 'runs', label: 'Runs', className: 'hidden sm:flex' },
+  { key: 'opened', label: 'Last opened', className: 'hidden lg:flex' },
+  { key: 'updated', label: 'Updated', className: 'hidden lg:flex' },
+  { key: 'created', label: 'Created', className: 'hidden xl:flex' },
 ]
+const NAME_HEADER: typeof HEADERS[number] = { key: 'name', label: 'Name' }
 
 // "2 running, 1 paused", or nothing while the table has no runs.
 const runsText = (t: Table): string | null => {
@@ -35,6 +40,10 @@ interface TablesTableProps {
   tables: Table[]
   onRename: (table: Table) => void
   onDelete: (table: Table) => void
+  // The star: in or out of Favorites, shown at once.
+  onStar: (table: Table) => void
+  // The Recent tab: its own sort, the tables opened last first until a header is clicked.
+  recent?: boolean
   // The row counts are shown as they are while the home waits for a slot to count them (no spinner).
   countsPlain?: boolean
 }
@@ -55,23 +64,28 @@ const SortHeader: React.FC<{ h: typeof HEADERS[number]; sort: TableSort; onSort:
   )
 }
 
-// The home's list of tables: the page's width, sorted by a header's click (newest updated first until then).
-export const TablesTable: React.FC<TablesTableProps> = ({ tables, onRename, onDelete, countsPlain }) => {
+// The home's list of tables: the page's width, sorted by a header's click (newest updated first until then, or on
+// Recent the last opened first).
+export const TablesTable: React.FC<TablesTableProps> = (
+  { tables, onRename, onDelete, onStar, recent, countsPlain },
+) => {
   const navigate = useNavigate()
-  const [sort, onSort] = useTableSort()
+  const [sort, onSort] = useTableSort(recent)
   const shown = useMemo(() => sortTables(tables, sort), [tables, sort])
 
   return (
     <div className="w-full rounded-lg border border-gray-200 tabular-nums" data-testid="tables-list">
-      <div className={`grid ${COLS} meta-label h-10 items-center gap-x-4 rounded-t-lg border-b border-gray-200
+      <div className={`grid ${COLS} meta-label h-10 items-center rounded-t-lg border-b border-gray-200
         bg-gray-50 px-4`}>
+        <SortHeader h={NAME_HEADER} sort={sort} onSort={onSort} />
+        <div><span className="sr-only">Favorite</span></div>
         {HEADERS.map(h => <SortHeader key={h.key} h={h} sort={sort} onSort={onSort} />)}
         <div />
       </div>
 
-      {/* Rows: the whole row opens the table, by Enter too. The ⋯ menu and the runs link stop the click there, and
-          Enter opens it only from the row itself: the keys of its ⋯ button and its menu reach the row through
-          React too. */}
+      {/* Rows: the whole row opens the table, by Enter too. The star, the ⋯ menu and the runs link stop the click
+          there, and Enter opens it only from the row itself: the keys of its buttons and its menu reach the row
+          through React too. */}
       {shown.map((table) => {
         const runs = runsText(table)
         const sheets = table.sheets?.length ?? 0
@@ -85,7 +99,7 @@ export const TablesTable: React.FC<TablesTableProps> = ({ tables, onRename, onDe
             data-table-id={table.id}
             onClick={() => navigate(`/table/${table.id}`)}
             onKeyDown={(e) => { if (e.key === 'Enter' && e.target === e.currentTarget) navigate(`/table/${table.id}`) }}
-            className={`group grid ${COLS} h-14 cursor-pointer items-center gap-x-4 border-b border-gray-100 px-4
+            className={`group grid ${COLS} h-14 cursor-pointer items-center border-b border-gray-100 px-4
               transition-colors last:border-b-0 hover:bg-gray-50 focus:bg-gray-50 focus:outline-none`}
           >
             <div className="flex min-w-0 items-center gap-3">
@@ -97,6 +111,16 @@ export const TablesTable: React.FC<TablesTableProps> = ({ tables, onRename, onDe
                 </span>
               )}
             </div>
+
+            <button type="button" onClick={(e) => { e.stopPropagation(); onStar(table) }}
+              aria-pressed={!!table.starred} data-testid="table-star" data-table-id={table.id}
+              aria-label={table.starred ? `Remove ${table.name} from Favorites` : `Add ${table.name} to Favorites`}
+              title={table.starred ? 'Remove from Favorites' : 'Add to Favorites'}
+              className="flex h-7 w-7 items-center justify-center rounded hover:bg-gray-100 focus:outline-none
+                focus-visible:ring-2 focus-visible:ring-gray-300">
+              <Star className={`h-4 w-4 ${table.starred ? 'fill-gray-900 text-gray-900'
+                : 'text-gray-300 group-hover:text-gray-400'}`} />
+            </button>
 
             {/* Updating: the last count, while the server counts the rows again (they changed since). */}
             <div
@@ -110,7 +134,7 @@ export const TablesTable: React.FC<TablesTableProps> = ({ tables, onRename, onDe
               {counting && <Loader2 className="h-3 w-3 animate-spin" aria-label="Updating" />}
             </div>
 
-            <div className="min-w-0 text-xs">
+            <div className="hidden min-w-0 text-xs sm:block">
               {runs && table.runs && (
                 <Link to={`/table/${table.id}/${table.runs.sheet_id}`} onClick={(e) => e.stopPropagation()}
                   data-testid="table-runs" data-table-id={table.id} title="Open the sheet with the runs"
@@ -123,8 +147,11 @@ export const TablesTable: React.FC<TablesTableProps> = ({ tables, onRename, onDe
               )}
             </div>
 
-            <div className="hidden text-xs text-gray-500 md:block">{formatDate(table.updated_at)}</div>
-            <div className="hidden text-xs text-gray-500 lg:block">{formatDate(table.created_at)}</div>
+            <div className="hidden text-xs text-gray-500 lg:block" data-testid="table-opened">
+              {table.last_opened_at ? formatDate(table.last_opened_at) : ''}
+            </div>
+            <div className="hidden text-xs text-gray-500 lg:block">{formatDate(table.updated_at)}</div>
+            <div className="hidden text-xs text-gray-500 xl:block">{formatDate(table.created_at)}</div>
 
             <div className="flex justify-end">
               <DropdownMenu>

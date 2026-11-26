@@ -85,7 +85,25 @@ const SHEET_CLIENT_COLUMNS =
    sort_state, empty_filter, column_filters, row_filter, active_view_id,
    default_ai_model, default_ai_concurrency, row_generation, data_version,
    ${ADDING_ROWS_SQL} AS adding_rows`;
-const TABLE_CLIENT_COLUMNS = `id, name, created_at, updated_at`;
+const TABLE_CLIENT_COLUMNS = `id, name, created_at, updated_at, starred, last_opened_at`;
+
+// A table as the app and the API show it (no user_id). starred: stored 0 or 1 (migration 064), shown as true or
+// false; last_opened_at: when the user last opened it in the app, null until then.
+export interface TableClientRow {
+  id: string; name: string; created_at: string; updated_at: string; starred: boolean; last_opened_at: string | null;
+}
+type StoredTableRow = Omit<TableClientRow, 'starred'> & { starred: number };
+const tableForClient = (r: StoredTableRow): TableClientRow => ({ ...r, starred: r.starred === 1 });
+
+// The user's tables, newest first, for the home (routes/tables.ts), GET /v1/tables and list_tables: never one in
+// the trash or a setup call's hidden working table.
+export function listTablesForClient(userId: string): TableClientRow[] {
+  const rows = db.prepare(
+    `SELECT ${TABLE_CLIENT_COLUMNS} FROM tables WHERE user_id = ? AND trash_id IS NULL AND hidden = 0
+     ORDER BY created_at DESC`,
+  ).all(userId) as StoredTableRow[];
+  return rows.map(tableForClient);
+}
 
 // A table's sheets as the app and the API list them (SHEET_CLIENT_COLUMNS).
 export type SheetListRow = { id: string; table_id: string; name: string; position: number; [k: string]: unknown };
@@ -116,10 +134,11 @@ export function getSheetForClient(sheetId: string, userId: string): unknown {
 
 // One table in the client-facing shape (no user_id), for create/rename/get
 // responses. Scoped by userId. Callers add `sheets` / `row_count` as needed.
-export function getTableForClient(tableId: string, userId: string): unknown {
-  return db.prepare(
+export function getTableForClient(tableId: string, userId: string): TableClientRow | undefined {
+  const row = db.prepare(
     `SELECT ${TABLE_CLIENT_COLUMNS} FROM tables WHERE id = ? AND user_id = ? AND trash_id IS NULL`,
-  ).get(tableId, userId);
+  ).get(tableId, userId) as StoredTableRow | undefined;
+  return row && tableForClient(row);
 }
 
 // True if another sheet in the table already uses this name (case-insensitive).

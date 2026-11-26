@@ -36,6 +36,12 @@ export const tablesAPI = {
     api.post('/tables/sample', {}, { ...noServerToast, timeout: SAMPLE_CREATE_TIMEOUT_MS }).then(res => res.data),
   update: (id: string, name: string): Promise<Table> =>
     api.put(`/tables/${id}`, { name }, noServerToast).then(res => res.data),
+  // The home's star: a starred table is under Favorites.
+  star: (id: string, starred: boolean): Promise<Table> =>
+    api.put(`/tables/${id}/starred`, { starred }, noServerToast).then(res => res.data),
+  // The table page opened the table: the home's Recent lists it first. Quiet: nothing to tell the user if it fails.
+  opened: (id: string): Promise<void> =>
+    api.post(`/tables/${id}/opened`, {}, noServerToast).then(() => undefined),
   // The table goes to the trash (trash: null when Settings keeps nothing).
   delete: (id: string): Promise<{ trash: TrashRef | null }> =>
     api.delete(`/tables/${id}`, noServerToast).then(res => res.data),

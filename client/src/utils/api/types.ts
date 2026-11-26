@@ -24,6 +24,9 @@ export interface Table {
   row_count_updating?: boolean
   // GET /tables: its runs going now (running counts pending ones) and paused; left out when it has none.
   runs?: TableRuns
+  // The home's Favorites (the star) and Recent (when the user last opened it here; null until then).
+  starred?: boolean
+  last_opened_at?: string | null
   sheets?: Sheet[]
   // Tab-list fingerprint from GET /tables/:id; seeds the change-poll's tab check.
   sheets_key?: string | null

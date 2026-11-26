@@ -55,7 +55,7 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   remove_duplicates: write('Remove duplicate rows (to the trash)', true, true),
   // Rows it later removes go to the trash; the same call again changes nothing.
   set_auto_dedupe: write('Keep one row per key as rows arrive', true, true),
-  manage_table: write('Create, rename or delete a table (to the trash)', true, false),
+  manage_table: write('Create, rename, star or delete a table (to the trash)', true, false),
   manage_sheet_webhook: write("Set up or change a sheet's incoming webhook", true, false),
   manage_sheet: write('Create, rename, copy, delete, reorder or test sheets (to the trash)', true, false),
   import_csv: write('Import a CSV', true, false),
