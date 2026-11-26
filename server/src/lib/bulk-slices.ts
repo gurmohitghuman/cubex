@@ -1,3 +1,4 @@
+// Over 200 lines: one runner, its WAL bounds and the WAL's state at its start and end, read top to bottom.
 // Bulk writers (each caller of asBulkWriter, below: undo, the trash, a run's clear, sorts, imports, dedupe, formulas,
 // answer fields, auto-run, list results, hiring summaries, sheet copies, run rewrites, pruning) write in slices whose
 // WAL is copied back on the checkpoint worker's thread, as transform_column's pages are. A checkpoint ends in disk
@@ -11,6 +12,10 @@
 //   WAL_PAUSE_RETRY_MS later at the soonest.
 // - The pause comes sooner when one more slice as big as the job's biggest so far would take the WAL past
 //   WAL_BULK_ROOM_SHARE of journal_size_limit (big rows make big slices); before the first, at the ask mark.
+// - The WAL is read again once the writer holds its slice turn: writers that found room together then wait for
+//   turns, and each one's slice went in after the others' (five writers: the pause and five slices, about 67 MB).
+//   Past the pause by then, the turn goes back and the writer waits for room first, so the WAL passes a writer's
+//   pause by that writer's slice at most, however many run. Not while a reader holds the frames, nor past `until`.
 // - Each slice is one transaction, `step` inside it (its own run flat in it: oneTransaction, lib/slices.ts; a
 //   nested one would be a savepoint, slow), committed with SQLite's own checkpoint off and taken in turn with the
 //   worker's write that starts the WAL over (lib/wal-turn.ts): it never starts the WAL over itself, which syncs the
@@ -84,6 +89,11 @@ function walRoomFrames(): number {
   const page = db.pragma('page_size', { simple: true }) as number;
   return Math.floor((WAL_BULK_ROOM_SHARE * (limit > 0 ? limit : DB_WAL_SIZE_LIMIT)) / (page + 24));
 }
+// Whether the WAL is at `b`'s pause with frames still to copy back (lib/wal-checkpointer.ts walRoom waits then).
+function pastPause(b: WalBounds): boolean {
+  const s = walState();
+  return !!s && s.log >= b.pause && s.checkpointed < s.log;
+}
 // `b`, its pause brought forward so a slice of `biggest` frames (0: none written yet) still fits in `room`.
 function fitted(b: WalBounds, room: number, biggest: number): WalBounds {
   const pause = Math.max(0, Math.min(b.pause, biggest === 0 ? b.ask : room - biggest));
@@ -110,19 +120,25 @@ export async function asBulkWriter<T>(work: (w: BulkWriter) => Promise<T>, until
   const writer: BulkWriter = {
     lastFrames: () => last,
     async slice<T>(step: () => T): Promise<T> {
-      const onWorker = checkpointsOnWorker();
-      // The worker couldn't start, or stopped twice: checkpoints run here from now on.
-      if (!onWorker && release) { release(); release = null; }
-      const bounds = fitted(onWorker ? BULK : ON_THIS_THREAD, room, biggest);
-      if (Date.now() >= askAfter && await walRoom(until, bounds) === 'held') {
-        askAfter = Date.now() + WAL_PAUSE_RETRY_MS;
+      let done: () => void;
+      for (;;) {
+        const onWorker = checkpointsOnWorker();
+        // The worker couldn't start, or stopped twice: checkpoints run here from now on.
+        if (!onWorker && release) { release(); release = null; }
+        const bounds = fitted(onWorker ? BULK : ON_THIS_THREAD, room, biggest);
+        if (Date.now() >= askAfter && await walRoom(until, bounds) === 'held') {
+          askAfter = Date.now() + WAL_PAUSE_RETRY_MS;
+        }
+        // A turn of its own. After a wait, this goes on in the turn that read the worker's answer, and a yield
+        // after the slice would come back in that same turn: two slices back to back, nothing served between
+        // (about 100 ms at once undoing 200,000 rows with three formulas).
+        await yieldToRequests();
+        // One slice a turn of the event loop, whichever writer's (lib/slice-turn.ts).
+        done = await takeSliceTurn();
+        // Room again in the turn: other writers' slices went in while this one waited for it (above).
+        if (Date.now() < askAfter || Date.now() >= until || !pastPause(bounds)) break;
+        done();
       }
-      // A turn of its own. After a wait, this goes on in the turn that read the worker's answer, and a yield
-      // after the slice would come back in that same turn: two slices back to back, nothing served between
-      // (about 100 ms at once undoing 200,000 rows with three formulas).
-      await yieldToRequests();
-      // One slice a turn of the event loop, whichever writer's (lib/slice-turn.ts).
-      const done = await takeSliceTurn();
       const tx = db.transaction(() => { walTurnCheck(); return step(); });
       let out: T;
       try {
