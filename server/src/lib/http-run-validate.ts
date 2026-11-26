@@ -26,6 +26,8 @@ export interface HttpColumnValidation {
   sanitizedMappingColumns?: string[];
 }
 
+type CheckExisting = boolean | { except: readonly string[] };
+
 export function validateHttpRunColumns(
   sheetId: string,
   userId: string,
@@ -35,7 +37,17 @@ export function validateHttpRunColumns(
   // reuses (preview never creates columns; a rerun targets existing columns), or
   // for these columns only (a new setup for a column keeps its own columns, named
   // exactly as they are: another spelling of one is a second column, and clashes).
-  checkExisting: boolean | { except: readonly string[] },
+  checkExisting: CheckExisting,
+): HttpColumnValidation {
+  return validateRunColumnsOn(() => getSheetColumns(sheetId, userId), responseMapping, master, checkExisting);
+}
+
+// The same against the given columns (an enrichment call priced on its items, without a sheet).
+export function validateRunColumnsOn(
+  existingColumns: () => string[],
+  responseMapping: ResponseMapping[] | undefined,
+  master: string | undefined,
+  checkExisting: CheckExisting,
 ): HttpColumnValidation {
   const mappings = Array.isArray(responseMapping) ? responseMapping : [];
 
@@ -103,7 +115,7 @@ export function validateHttpRunColumns(
   // existing-but-empty column the old json_extract data-probe would miss.
   if (checkExisting) {
     const own = new Set(checkExisting === true ? [] : checkExisting.except);
-    const existing = getSheetColumns(sheetId, userId);
+    const existing = existingColumns();
     const toCreate = sanitizedMaster
       ? [sanitizedMaster, ...sanitizedMappingColumns]
       : sanitizedMappingColumns;

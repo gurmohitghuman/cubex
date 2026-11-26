@@ -1,12 +1,13 @@
 // One enrichment tool called on 1-ENRICH_CALL_MAX_ITEMS items without a sheet (MCP call_enrichment, REST POST
 // /api/v1/enrichments/:toolId/calls). The items become the rows of a hidden working table (setup-call.ts), one
 // column per tool input, and the tool runs there through run_enrichment's own start (enrich-token-run.ts): every
-// input mapped to its column, every output field (or those asked for) to a column of its name. Priced first;
-// refused before anything runs when the estimate's high end is over max_cost_usd, today's daily limit left, the
-// treg balance or the token's cap, or the tool has no known price (unless allow_unpriced). A start gets a spend
-// limit of that high end, so it never pauses halfway on a limit. The call is the run: get_run_status and
-// get_run_results (an item's number is its row_index) answer for it, control_run stops it, and its run webhook is
-// an enrichment run's. Its working table goes as a setup call's does (sweepSetupCalls).
+// input mapped to its column, every output field (or those asked for) to a column of its name. Priced first, on
+// the items in memory (enrich-call-estimate.ts: an estimate writes nothing); refused before anything is made when
+// the estimate's high end is over max_cost_usd, today's daily limit left, the treg balance or the token's cap, or
+// the tool has no known price (unless allow_unpriced). A start gets a spend limit of that high end, so it never
+// pauses halfway on a limit. The call is the run: get_run_status and get_run_results (an item's number is its
+// row_index) answer for it, control_run stops it, and its run webhook is an enrichment run's. Its working table
+// goes as a setup call's does (sweepSetupCalls).
 import { db } from '../lib/db';
 import { ENRICH_CALL_MAX_ITEMS } from '../lib/constants-setups';
 import { MAX_ROWS_PER_SHEET, TREG_TOOL_ID_PATTERN } from '../lib/constants';
@@ -18,6 +19,7 @@ import { appendRows } from './rows-write';
 import { txnFailMessage } from './data-plane-shared';
 import { itemsOf, removeWorkingTable } from './setup-call';
 import { tokenStartEnrichmentRun, type TokenEnrichArgs } from './enrich-token-run';
+import { estimateEnrichCall } from './enrich-call-estimate';
 import { readTokenSpend } from './token-spend';
 import type { RunFail } from './run-shared';
 import type { TokenCaller } from './run-start-token';
@@ -37,6 +39,7 @@ export type EnrichCallOutcome =
 const STATUS = 'Status';
 const bad = (message: string): RunFail => ({ fail: 'bad_request', message });
 
+// What a refusal reads of the estimate (enrich-call-estimate.ts).
 type Estimate = {
   price_known: boolean; estimated_cost_usd: { low: number; high: number } | null; may_pass_daily_limit: boolean;
   may_pass_balance?: boolean; daily_limit: { remaining_usd: number | null };
@@ -98,34 +101,39 @@ export async function callEnrichment(c: TokenCaller, input: EnrichCallInput): Pr
   if (used.length === 0) return bad('No item has any of the tool\'s inputs.');
 
   const cols = callColumns(used, fields);
+  // The working table's columns and rows, as a start makes them: priced in memory first.
+  const columns = [...cols.input.values()];
+  const rows = items.map(it => Object.fromEntries(Object.entries(it).map(([k, v]) => [cols.input.get(k) ?? k, v])));
+  const args = {
+    tool_id: input.toolId, column_name: cols.status,
+    inputs: Object.fromEntries(used.map(n => [n, cols.input.get(n)!])),
+    outputs: fields.map(f => ({ field: f, column_name: f })),
+    ...(input.maxCostPerRowUsd != null ? { max_cost_per_row_usd: input.maxCostPerRowUsd } : {}),
+    ...(input.webhookId ? { webhook_id: input.webhookId } : {}),
+  };
+  const priced = await estimateEnrichCall(c, tool, args, { columns, rows });
+  if ('fail' in priced) return priced;
+  const est = priced.ok;
+  const { status_column: _s, ...estimate } = est;
+  if (input.estimateOnly) return { ok: { estimate_only: true, estimate } };
+  const no = callRefusal(est, input, c);
+  if (no) return { fail: 'over_ceiling', message: no, estimate };
+
   const made = withoutChangeLog(() => createTable(c.userId, `Enrichment call ${uuidv4()}`, { hidden: true }));
   if ('fail' in made) return bad(made.message);
   const { id: tableId, sheetId } = made.ok;
   let started = false;
   try {
-    for (const name of cols.input.values()) {
+    for (const name of columns) {
       const added = withoutChangeLog(() => addSheetColumn(sheetId, c.userId, name, { seedEmptyRow: false }));
       if ('fail' in added) return bad(added.error);
     }
-    const rows = items.map(it => Object.fromEntries(Object.entries(it).map(([k, v]) => [cols.input.get(k) ?? k, v])));
     const appended = withoutChangeLog(() => appendRows(sheetId, c.userId, rows));
     if ('fail' in appended) return bad(txnFailMessage(appended, MAX_ROWS_PER_SHEET));
-    const args: TokenEnrichArgs = {
-      sheet_id: sheetId, tool_id: input.toolId, column_name: cols.status,
-      inputs: Object.fromEntries(used.map(n => [n, cols.input.get(n)!])),
-      outputs: fields.map(f => ({ field: f, column_name: f })),
-      ...(input.maxCostPerRowUsd != null ? { max_cost_per_row_usd: input.maxCostPerRowUsd } : {}),
-      ...(input.webhookId ? { webhook_id: input.webhookId } : {}),
-    } as TokenEnrichArgs;
-    const priced = await tokenStartEnrichmentRun(c, { ...args, estimate_only: true });
-    if ('fail' in priced) return priced;
-    const est = priced.ok as unknown as Estimate & Record<string, unknown>;
-    const { status_column: _s, ...estimate } = est;
-    if (input.estimateOnly) return { ok: { estimate_only: true, estimate } };
-    const no = callRefusal(est, input, c);
-    if (no) return { fail: 'over_ceiling', message: no, estimate };
     const high = est.estimated_cost_usd?.high;
-    const out = await tokenStartEnrichmentRun(c, { ...args, ...(high ? { spend_limit_usd: high } : {}) });
+    const out = await tokenStartEnrichmentRun(c, {
+      ...args, sheet_id: sheetId, ...(high ? { spend_limit_usd: high } : {}),
+    } as TokenEnrichArgs);
     if ('fail' in out) return out;
     const runId = (out.ok as { run_id: string }).run_id;
     db.prepare('INSERT INTO enrichment_item_calls (id, user_id, table_id, sheet_id, items) VALUES (?, ?, ?, ?, ?)')
