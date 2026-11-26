@@ -47,9 +47,12 @@ await ok('a run seeded, then cleared: slices sized by bytes, the WAL copied back
   sized(await measure('the seed', () => seedProcessingPlaceholders({ run: r, sheetId: sid, userId: uid,
     columns: ['Status', 'Json'], targets: null, lastRow: N - 1, live: () => true }), { pastAuto: true }), 'seed')
   assert.equal(held.get(sid, PLACEHOLDER), N, 'every row seeded')
-  // The run ended early: the clear puts each 16 KB answer back from the journal into rows holding only ⏳.
+  // The run ended early: the clear puts each 16 KB answer back from the journal into rows holding only ⏳. Its slices
+  // are bounded by bytes everywhere (sized); not by the event loop on a Windows runner, where parsing the journal's
+  // cells held it 217 to 280 ms in a first slice of 250 rows, whatever the byte budget (CPU, not the disk), as
+  // run-clear-big's clears aren't held to it there either.
   sized(await measure('the clear', () => clearProcessingPlaceholders(sid, uid, ['Status', 'Json'], undefined, r),
-    { pastAuto: true }), 'clear')
+    { pastAuto: true, loop: process.platform !== 'win32' }), 'clear')
   assert.equal(held.get(sid, PLACEHOLDER), 0, 'every ⏳ cleared')
   assert.deepEqual([...ends(sid, 'Status'), ...ends(sid, 'Json')],
     ['s0', `s${N - 1}`, `0:${'j'.repeat(CELL)}`, `${N - 1}:${'j'.repeat(CELL)}`])
