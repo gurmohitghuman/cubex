@@ -12,6 +12,7 @@ import bulkMod from '../../server/src/lib/bulk-slices'
 import watchMod from '../../server/src/lib/wal-watch'
 import { bulkWalKit } from './bulk-wal-kit'
 import { transactionLine, type TransactionRecord } from './sqlite-write-probe'
+import { passed } from './ends-on-its-own'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { WAL_BULK_ROOM_SHARE } = constMod as typeof import('../../server/src/lib/constants')
@@ -134,4 +135,4 @@ await ok('a writer outside the runner all through a job: past the room only whil
 await closeWalCheckpointer()
 if (failures > 0) { console.error(`${failures} bulk-wal-outside assertion(s) failed`); process.exit(1) }
 console.log('All bulk-wal-outside assertions passed.')
-process.exit(0)
+passed()

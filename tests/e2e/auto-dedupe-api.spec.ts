@@ -30,6 +30,10 @@ test('auto-dedupe: a webhook delivery whose key is already there is not kept', a
   const on = await api.put(`/api/sheets/${sheetId}/auto-dedupe`, { data: { column: 'Email', match: 'email' } })
   expect(on.status()).toBe(200)
   expect((await on.json()).autoDedupe).toMatchObject({ column: 'Email', match: 'email', keep: 'oldest' })
+  // The keys are built in the background, later on a fresh server (its worker starts first). A delivery before
+  // then is kept and checked once they are (auto-dedupe.test.ts); this case is the one refused as it arrives.
+  await expect.poll(async () => (await (await api.get(`/api/sheets/${sheetId}/auto-dedupe`)).json()).autoDedupe?.state,
+    { timeout: 20_000 }).toBe('on')
 
   const anon = await pwRequest.newContext()
   const send = (email: string) => anon.post(url.startsWith('/') ? `${BASE}${url}` : url,

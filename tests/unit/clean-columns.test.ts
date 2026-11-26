@@ -13,6 +13,7 @@ import followMod from '../../server/src/services/clean-follow'
 import markMod from '../../server/src/lib/autorun-mark'
 import recMod from '../../server/src/lib/clean-columns'
 import entryMod from '../../server/src/services/autorun-entry'
+import { passed } from './ends-on-its-own'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { startCleanColumn } = colMod as typeof import('../../server/src/services/clean-column')
@@ -159,5 +160,5 @@ async function main() {
 main().then(() => {
   if (failures > 0) { console.error(`\n${failures} assertion(s) failed.`); process.exit(1) }
   console.log('\nAll clean column assertions passed.')
-  process.exit(0)
+  passed()
 }, err => { console.error(err); process.exit(1) })

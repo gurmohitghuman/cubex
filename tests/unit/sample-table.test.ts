@@ -15,6 +15,7 @@ import draftMod from '../../server/src/lib/ai-drafts'
 import promptMod from '../../server/src/lib/prompt'
 import setupMod from '../../server/src/lib/sample/setup'
 import leadsMod from '../../server/src/lib/sample/leads'
+import { passed } from './ends-on-its-own'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { createSampleTable, isSampleSheet, sampleCapProblem } =
@@ -127,5 +128,5 @@ async function main() {
 main().then(() => {
   if (failures) { console.log(`\n${failures} failure(s)`); process.exit(1) }
   console.log('\nAll sample table assertions passed.')
-  process.exit(0)
+  passed()
 }).catch(e => { console.error(e); process.exit(1) })

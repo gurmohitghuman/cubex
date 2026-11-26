@@ -6,6 +6,7 @@
 // object's setter dropped it) in a rule's scan, its seeding and a rerun's
 // kept-out rows. Rows holding their keys read what they did.
 import { v4 as uuid } from 'uuid'
+import { passed } from './ends-on-its-own'
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 
@@ -106,4 +107,4 @@ const taken = await chooseRerunTargets(sid, uid, 'Out', () => true, {}, rule)
 check('a rerun takes a kept-out row once its "__proto__" passes the rule', taken.join() === '0', taken)
 
 console.log(failures === 0 ? '\ncell inherited members: all passed' : `\ncell inherited members: ${failures} FAILED`)
-process.exit(failures === 0 ? 0 : 1)
+if (failures === 0) passed(); else process.exit(1)

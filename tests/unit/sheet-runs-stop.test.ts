@@ -15,6 +15,7 @@ import runsMod from '../../server/src/services/sheet-runs'
 import wordsMod from '../../server/src/lib/run-stop-words'
 import busyMod from '../../server/src/lib/sheet-busy'
 import manageMod from '../../server/src/mcp/tools-run-manage'
+import { passed } from './ends-on-its-own'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { stopSheetRuns } = stopMod as typeof import('../../server/src/services/sheet-runs-stop')
@@ -178,6 +179,6 @@ async function main() {
 
   if (failures) { console.error(`${failures} failure(s)`); process.exit(1) }
   console.log('sheet-runs-stop: all passed')
-  process.exit(0)
+  passed()
 }
 main().catch(e => { console.error(e); process.exit(1) })

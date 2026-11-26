@@ -11,6 +11,7 @@ import net from 'node:net'
 import { spawn } from 'node:child_process'
 import type { AddressInfo } from 'node:net'
 import { v4 as uuid } from 'uuid'
+import { passed } from './ends-on-its-own'
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
@@ -164,6 +165,7 @@ for (const [label, extra, says] of [
 }
 
 openRouter.close()
+treg.kill()
 if (failures > 0) { console.error(`${failures} setup-call-estimate check(s) failed`); process.exit(1) }
 console.log('setup-call-estimate: all assertions passed')
-process.exit(0)
+passed()

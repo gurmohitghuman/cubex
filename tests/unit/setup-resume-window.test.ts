@@ -15,6 +15,7 @@ import path from 'node:path'
 import { createRequire } from 'node:module'
 import type { AddressInfo } from 'node:net'
 import { v4 as uuid } from 'uuid'
+import { passed } from './ends-on-its-own'
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 // The provider's model list, empty: a resume reads it first, and nothing here goes out.
@@ -194,4 +195,4 @@ await ok('a setup resumed during a sweep, after an older setup\'s turn: its run 
 stand.close()
 if (failures) { console.log(`${failures} failed`); process.exit(1) }
 console.log('all passed')
-process.exit(0)
+passed()

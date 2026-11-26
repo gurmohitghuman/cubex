@@ -23,7 +23,8 @@ are stopped. On a slow machine, give more with `UNIT_FILE_TIMEOUT_S=600 npm run 
 `$env:UNIT_FILE_TIMEOUT_S='600'; npm run test:unit; Remove-Item Env:UNIT_FILE_TIMEOUT_S`.
 
 CI splits the unit tests over 3 runners on each platform, each taking every third file of the sorted list.
-`UNIT_SHARD=2/3 npm run test:unit` runs the same files as the second runner.
+`UNIT_SHARD=2/3 npm run test:unit` runs the same files as the second runner, or in PowerShell
+`$env:UNIT_SHARD='2/3'; npm run test:unit; Remove-Item Env:UNIT_SHARD`.
 
 The end-to-end suite needs Playwright: run `npm install --no-save @playwright/test`, then `npx playwright install chromium`.
 

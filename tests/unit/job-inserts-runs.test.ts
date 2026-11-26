@@ -15,6 +15,7 @@ import { createRequire } from 'node:module'
 import type { AddressInfo } from 'node:net'
 import { v4 as uuid } from 'uuid'
 import type * as SidequestTypes from 'sidequest'
+import { passed } from './ends-on-its-own'
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'job-inserts-runs-'))
@@ -155,4 +156,4 @@ await Sidequest.stop()
 server.close()
 if (failures) { console.log(`${failures} failed`); process.exit(1) }
 console.log('all passed')
-process.exit(0)
+passed()

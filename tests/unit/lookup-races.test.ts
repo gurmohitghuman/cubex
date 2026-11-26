@@ -12,6 +12,7 @@ import kindMod from '../../server/src/services/lookup-kind'
 import sortMod from '../../server/src/services/sheet-sort'
 import sourceMod from '../../server/src/services/lookup-source'
 import maintainMod from '../../server/src/services/lookup-maintain'
+import { passed } from './ends-on-its-own'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { startLookupColumn } = colMod as typeof import('../../server/src/services/lookup-column')
@@ -77,6 +78,6 @@ async function main() {
   check('contains: a trigram that came later is matched', cells(L, 'Found')[0] === 'Yes', cells(L, 'Found'))
 
   console.log(failures === 0 ? '\nlookup races: all passed' : `\nlookup races: ${failures} FAILED`)
-  process.exit(failures === 0 ? 0 : 1)
+  if (failures === 0) passed(); else process.exit(1)
 }
 main().catch(e => { console.error(e); process.exit(1) })

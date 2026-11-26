@@ -3,6 +3,7 @@
 // key hashed after a space; contains text cut without splitting a character;
 // characters counted as code points; FTS strings quoted.
 import normMod from '../../server/src/lib/lookup/normalize'
+import { passed } from './ends-on-its-own'
 const { lookupValue, lookupKey, lookupText, containsTooShort, trigramsOf, ftsString } =
   normMod as typeof import('../../server/src/lib/lookup/normalize')
 
@@ -36,4 +37,4 @@ check('trigrams are distinct and in code points', JSON.stringify(trigramsOf('aaa
 check('FTS strings double their quotes', ftsString('say "hi"') === '"say ""hi"""')
 
 console.log(failures === 0 ? '\nlookup normalize: all passed' : `\nlookup normalize: ${failures} FAILED`)
-process.exit(failures === 0 ? 0 : 1)
+if (failures === 0) passed(); else process.exit(1)

@@ -10,6 +10,7 @@
 //   - preview rows say who paid and their tokens, with notes for an unpriced own-key row and a fall back.
 import assert from 'node:assert/strict'
 import { endsWithin, OUT, PRICED, startStandIn, world } from './ai-spend-kit'
+import { passed } from './ends-on-its-own'
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 
@@ -156,4 +157,4 @@ void OUT
 stand.close()
 w.done()
 console.log('ai-run-costs-payer: ok')
-process.exit(0)
+passed()

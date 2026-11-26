@@ -6,6 +6,7 @@ import http from 'node:http'
 import type { AddressInfo } from 'node:net'
 import assert from 'node:assert/strict'
 import { v4 as uuid } from 'uuid'
+import { passed } from './ends-on-its-own'
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 
@@ -64,4 +65,4 @@ assert.ok(bodies[0].includes(Buffer.from([0x61, 0xC2, 0x85, 0x62])))
 assert.deepEqual(db.prepare(`SELECT json_extract(data, ?) FROM rows WHERE sheet_id = ? ORDER BY row_index`)
   .pluck().all(`$."${OUT}"`, sid), [ANSWER, ANSWER])
 console.log('ai-prompt-c1: all assertions passed')
-process.exit(0)
+passed()

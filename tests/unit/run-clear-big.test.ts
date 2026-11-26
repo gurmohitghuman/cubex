@@ -14,7 +14,11 @@
 // still takes 50 to 80 ms now and then with no checkpoint running, as on main, and the loop held up to 85 ms. The
 // 100 ms and 5 s are proven on Linux; on Windows the loop hold and the longest transaction are still printed.
 // On Linux and Windows no commit of a clear begins while the worker's checkpoint runs: writers wait for it
-// (lib/wal-checkpointer.ts). On the Linux runner commits made meanwhile held the loop 103 to 128 ms three times.
+// (lib/wal-checkpointer.ts). On the Linux runner commits made meanwhile held the loop 103 to 128 ms three times. The
+// clear's commits are the writes made in turn with the worker (lib/wal-turn.ts), as every bulk slice is. The stop's own
+// writes (each run's status as it is cancelled, the change log) don't take turns, by design: with 4 runs stopped, the
+// checkpoint one clear asked for can be running when the next run is cancelled (3 such on a Windows runner, all
+// cancelRun's). So the stop of 4 begins with a checkpoint held running, and the clears' commits still wait for it.
 import assert from 'node:assert/strict'
 import { performance } from 'node:perf_hooks'
 import { v4 as uuid } from 'uuid'
@@ -29,10 +33,21 @@ const { kickDerivedFollow } = await import('../../server/src/services/derived-fo
 const { onFollowQueued } = await import('../../server/src/lib/autorun-kick')
 const { PLACEHOLDER_CLEAR_BACK_ROWS } = await import('../../server/src/lib/constants')
 const { stopSheetRuns } = await import('../../server/src/services/sheet-runs-stop')
-const { checkpointAsked, closeWalCheckpointer, walCheckpointerIdle } =
-  await import('../../server/src/lib/wal-checkpointer')
+const { checkpointAsked, checkpointInBackground, closeWalCheckpointer, setCheckpointDelayForTests,
+  walCheckpointerIdle } = await import('../../server/src/lib/wal-checkpointer')
+const { setBeforeTurnWriteForTests, takeWalTurnStats } = await import('../../server/src/lib/wal-turn')
 console.error = () => {}
-const probe = sqliteWriteProbe(db, process.env.DB_PATH!, checkpointAsked)
+// A transaction is flagged when it is a write in turn (above) begun while a checkpoint asked of the worker had yet to
+// answer: the hook runs just before such a write's transaction begins.
+// turnWrites: how many there were, so a clear that stopped going through the turn can't pass by flagging none.
+let inTurn = false
+let turnWrites = 0
+setBeforeTurnWriteForTests(() => { inTurn = true; turnWrites++ })
+const probe = sqliteWriteProbe(db, process.env.DB_PATH!, () => {
+  const turn = inTurn
+  inTurn = false
+  return turn && checkpointAsked()
+})
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
 const WINDOWS = process.platform === 'win32'
@@ -67,14 +82,24 @@ async function running(sid: string, column: string): Promise<string> {
   return id
 }
 // `stop` until the sheet's runs are cleared, watched: how long, the event loop's longest stretch, the
-// transactions, and how many data_version values a grid polling every 5 ms would have seen meanwhile.
-async function watched(sid: string, stop: () => Promise<unknown>) {
+// transactions, and how many data_version values a grid polling every 5 ms would have seen meanwhile. holdMs: a
+// checkpoint is running that long on the worker as `stop` begins (asked once the watch's threads are up, so the hold
+// isn't spent starting them), and where writers wait for one, some of the clear's did.
+async function watched(sid: string, stop: () => Promise<unknown>, holdMs = 0) {
   await walCheckpointerIdle()
   probe.reset()
   const seen = new Set([version.get(sid)])
   const poll = setInterval(() => seen.add(version.get(sid)), 5)
   const watch = loopWatch(probe.records)
   await watch.ready
+  turnWrites = 0
+  takeWalTurnStats()
+  if (holdMs > 0) {
+    // The delay is read as the checkpoint is asked: only this one is held.
+    setCheckpointDelayForTests(holdMs)
+    void checkpointInBackground()
+    setCheckpointDelayForTests(0)
+  }
   const t0 = performance.now()
   let ms = 0
   let watchedLoop: LoopWatched
@@ -89,11 +114,16 @@ async function watched(sid: string, stop: () => Promise<unknown>) {
   const w = probe.read()
   const overlapping = probe.records().filter(r => r.checkpointing).length
   console.log(`      ${(ms / 1000).toFixed(1)} s, ${heldText(watchedLoop)}, ${w.transactions} `
-    + `transactions (longest ${w.longestTransactionMs.toFixed(0)} ms, ${overlapping} while a checkpoint ran), `
+    + `transactions (longest ${w.longestTransactionMs.toFixed(0)} ms, ${overlapping} of the clear's while a `
+    + 'checkpoint ran), '
     + `${seen.size} data_version values seen`)
   const inside = watchedLoop.inside.map(transactionLine).join(' | ')
   console.log(`        in the stretch this thread held longest: ${inside || 'no transaction'}`)
+  const waits = takeWalTurnStats().checkpointWaits
+  console.log(`        ${turnWrites} writes in turn, ${waits} of them waited for a checkpoint`)
+  assert.ok(turnWrites > 0, 'the clear\'s writes went through the WAL turn')
   if (WAITS) assert.equal(overlapping, 0, 'commits of the clear begun while a checkpoint ran')
+  if (WAITS && holdMs > 0) assert.ok(waits > 0, 'a write waited for the held checkpoint')
   return { ms, loopMs: watchedLoop.ownMs, seen: seen.size }
 }
 
@@ -177,7 +207,8 @@ await ok(`Stop all of 4 runs over earlier answers on a sorted sheet of ${N} rows
   // Row indexes far from storage order, as a sort leaves them: a step coprime with N.
   addRows(sid, i => (i * 7_919) % N, i => ({ Name: `n${i}`, ...Object.fromEntries(columns.map(c => [c, `${c}${i}`])) }))
   for (const c of columns) await running(sid, c)
-  const m = await watched(sid, () => stopSheetRuns(uid, sid))
+  // Held long enough that the stop's first writes come while it runs, on a slow runner too.
+  const m = await watched(sid, () => stopSheetRuns(uid, sid), 1_500)
   assert.equal(held.get(sid, PLACEHOLDER), 0, 'every ⏳ cleared')
   const back = db.prepare(`SELECT COUNT(*) FROM rows WHERE sheet_id = ? AND json_extract(data, '$.D') = 'D' || substr(
     json_extract(data, '$.Name'), 2)`).pluck().get(sid)

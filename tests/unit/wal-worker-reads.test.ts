@@ -17,6 +17,7 @@ import walMod from '../../server/src/lib/wal-checkpointer'
 import slicesMod from '../../server/src/lib/slices'
 import { LOOP_LIMIT_MS } from './bulk-wal-kit'
 import { stallWatch } from './stall-watch'
+import { passed } from './ends-on-its-own'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { checkpointInBackground, closeWalCheckpointer } =
@@ -113,4 +114,4 @@ other.close()
 await closeWalCheckpointer()
 if (failures > 0) { console.error(`${failures} wal-worker-reads assertion(s) failed`); process.exit(1) }
 console.log('All wal-worker-reads assertions passed.')
-process.exit(0)
+passed()
