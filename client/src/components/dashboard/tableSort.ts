@@ -9,7 +9,8 @@ export type HomeTab = 'all' | 'recent' | 'favorites'
 const TABS: HomeTab[] = ['all', 'recent', 'favorites']
 
 // Until a header is clicked: the tables changed most recently first, and on Recent the ones opened most recently
-// first. A header sorts A to Z by name and largest or newest first by the others; clicking it again turns it round.
+// first. A header sorts A to Z by name and largest or newest first by the others; clicking it again turns it round,
+// and a third time goes back to the tab's own order (on a narrow screen that order's header may be hidden).
 // Recent keeps its own sort apart from the other tabs'. Kept in this browser (localStorage) while it works.
 export const DEFAULT_SORT: TableSort = { key: 'updated', dir: 'desc' }
 export const RECENT_SORT: TableSort = { key: 'opened', dir: 'desc' }
@@ -51,12 +52,12 @@ export function useTableSort(recent = false): [TableSort, (key: SortKey) => void
   const [storeKey, fallback] = recent ? [RECENT_SORT_KEY, RECENT_SORT] : [SORT_KEY, DEFAULT_SORT]
   const [sort, setSort] = useState(() => remembered(storeKey, fallback))
   const onSort = useCallback((key: SortKey) => setSort(was => {
-    const next: TableSort = was.key === key
-      ? { key, dir: was.dir === 'asc' ? 'desc' : 'asc' }
-      : { key, dir: key === 'name' ? 'asc' : 'desc' }
+    const first: TableSort = { key, dir: key === 'name' ? 'asc' : 'desc' }
+    const next: TableSort = was.key !== key ? first
+      : was.dir === first.dir ? { key, dir: first.dir === 'asc' ? 'desc' : 'asc' } : fallback
     try { localStorage.setItem(storeKey, JSON.stringify(next)) } catch { /* sorted, not kept */ }
     return next
-  }), [storeKey])
+  }), [storeKey, fallback])
   return [sort, onSort]
 }
 

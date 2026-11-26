@@ -1,3 +1,4 @@
+// Over 200 lines: the home's cases, each a person's way through it (sidebar, list, runs, import, star and tabs).
 import { test, expect, type APIRequestContext, type Page } from '@playwright/test'
 import { authedApi, BASE, seedSheet } from './helpers'
 import { bearer, httpConfig, makeToken } from './api-v1-run-helpers'
@@ -163,6 +164,13 @@ test('the star and the tabs: Favorites lists the starred tables, Recent the open
     await expect(page).toHaveURL(new RegExp(`/table/${id}`))
     expect((await opened).status()).toBe(204)
   }
+  // The 204 says the open was noted; it is written once the write lock is free. The list is read once a page loads,
+  // so wait for both to be written first.
+  await expect.poll(async () => {
+    const list = await (await api.get('/api/tables')).json() as Array<{ id: string; last_opened_at: string | null }>
+    const at = (id: string) => list.find(t => t.id === id)?.last_opened_at ?? ''
+    return at(first) !== '' && at(second) > at(first)
+  }, { timeout: 15_000 }).toBe(true)
   await page.goto(`${BASE}/`)
   await tab('recent').click()
   await expect(names).toHaveText([`Second ${stamp}`, `First ${stamp}`], { timeout: 15_000 })
@@ -171,6 +179,12 @@ test('the star and the tabs: Favorites lists the starred tables, Recent the open
   // Recent's own sort: by name there leaves All's as it was.
   await page.getByTestId('sort-name').click()
   await expect(names).toHaveText([`First ${stamp}`, `Second ${stamp}`])
+  // Again turns it round; a third time goes back to Recent's own order, whose header a narrow screen doesn't show.
+  await page.getByTestId('sort-name').click()
+  await expect(page.getByTestId('sort-name')).toHaveAttribute('data-sort', 'desc')
+  await page.getByTestId('sort-name').click()
+  await expect(page.getByTestId('sort-opened')).toHaveAttribute('data-sort', 'desc')
+  await expect(names).toHaveText([`Second ${stamp}`, `First ${stamp}`])
   await tab('all').click()
   await expect(page.getByTestId('sort-updated')).toHaveAttribute('data-sort', 'desc')
 })

@@ -1,3 +1,4 @@
+// Over 200 lines: the home's and a table page's routes, each a thin call into its service.
 import express from 'express';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { UUID_PATTERN } from '../lib/constants';
@@ -73,8 +74,9 @@ router.get('/row-counts', async (req: AuthRequest, res) => {
 });
 
 // GET /runs?since=<key>: every table's runs going now and paused once they differ from `since` (the key the last
-// answer gave; none: answers at once), checked once a second and held up to HOME_RUNS_HOLD_MS. 429 with Retry-After when
-// the account already holds MAX_RUNS_WAITS_PER_USER of these (other tabs of the home). Leaving lets go at once.
+// answer gave; none: answers at once), checked once a second and held up to HOME_RUNS_HOLD_MS. 429 with
+// Retry-After when the account already holds MAX_RUNS_WAITS_PER_USER of these (other tabs of the home). Leaving
+// lets go at once.
 router.get('/runs', async (req: AuthRequest, res) => {
   const release = acquireRunsWait(req.userId!);
   if (!release) {

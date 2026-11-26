@@ -1,3 +1,4 @@
+// Over 200 lines: the star and the open over the app, REST and MCP, each refusal checked to change nothing.
 // A table's star and when it was last opened (migration 064; services/table-crud.ts), over the app, /api/v1 and
 // MCP. The home's list answers starred (false until starred) and last_opened_at (null until opened). PUT
 // /api/tables/:id/starred stars it and answers the table; POST /api/tables/:id/opened, the app's own call, answers at
