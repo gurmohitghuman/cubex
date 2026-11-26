@@ -8,14 +8,14 @@ import { call, mcpClient } from './helpers-mcp'
 // reports what the run holds on OpenRouter's in-flight budget at its concurrency.
 // No OpenRouter key is saved here, so its part says so instead of a figure.
 
-test('get_balances reads treg and OpenRouter on their own, and costs nothing', async () => {
+test('get_account balances reads treg and OpenRouter on their own, and costs nothing', async () => {
   const api = await authedApi()
   await freshTreg(api)
   await api.delete('/api/settings/openrouter-key')
   const token = await makeAccessToken(api, ['read'], 'e2e balances')
   const client = await mcpClient(token)
 
-  const b = await call(client, 'get_balances', {})
+  const b = await call(client, 'get_account', { action: 'balances' })
   expect(typeof b.treg.balance_usd).toBe('number')
   expect(typeof b.treg.on_hold_usd).toBe('number')
   expect(b.enrichment_daily_limit).toHaveProperty('limit_usd')
@@ -62,12 +62,12 @@ test("get_balances says when Cubex read OpenRouter's numbers", async () => {
   await api.delete('/api/settings/openrouter-key')
   const token = await makeAccessToken(api, ['read'], 'e2e balances checked')
   const client = await mcpClient(token)
-  expect((await call(client, 'get_balances', {})).openrouter.checked_at).toBeUndefined()
+  expect((await call(client, 'get_account', { action: 'balances' })).openrouter.checked_at).toBeUndefined()
   expect((await api.put('/api/settings/openrouter-key', { data: { apiKey: 'sk-or-v1-balances-e2e' } })).ok())
     .toBeTruthy()
   try {
     const before = Date.now()
-    const first = (await call(client, 'get_balances', {})).openrouter
+    const first = (await call(client, 'get_account', { action: 'balances' })).openrouter
     const at = Date.parse(first.checked_at)
     expect(at).toBeGreaterThanOrEqual(before - 1000)
     expect(at).toBeLessThanOrEqual(Date.now())

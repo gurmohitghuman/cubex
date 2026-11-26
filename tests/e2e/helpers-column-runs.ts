@@ -17,7 +17,7 @@ export async function twoColumns(rx: Receiver, client: Client, api: Api) {
   const { tableId, sheetId } = await sheetWith(api, null, SITES.map(s => ({ Website: `${s}.com` })))
   short(rx, '')
   const httpDone = async (runId: string) => expect.poll(async () =>
-    (await call(client, 'get_run_status', { run_type: 'http', run_id: runId })).status, { timeout: 30_000 })
+    (await call(client, 'get_run', { action: 'status', run_type: 'http', run_id: runId })).status, { timeout: 30_000 })
     .toBe('completed')
   const lookup = await call(client, 'run_http_enrichment', { sheet_id: sheetId, url: rx.url('/short/{{Website}}'),
     method: 'POST', master_column_name: 'Lookup', response_mapping: [{ json_path: '$.short', column_name: 'Short' }] })

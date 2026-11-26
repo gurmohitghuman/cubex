@@ -2,7 +2,7 @@ import { api } from './client'
 
 // The sheet's Usage view (server routes/sheets-usage.ts, services/usage.ts):
 // runs, cells run and what they cost, by column, day or run, over a range of
-// UTC days. Field names match /api/v1/usage and MCP get_usage.
+// UTC days. Field names match /api/v1/usage and MCP get_account (action usage).
 export type UsageGroupBy = 'column' | 'day' | 'run'
 export type UsageRangeName = 'this_week' | 'this_month' | 'last_week' | 'last_month' | 'custom'
 export type UsageKind = 'ai' | 'enrichment' | 'http' | 'waterfall' | 'preview' | 'assist' | 'mixed'

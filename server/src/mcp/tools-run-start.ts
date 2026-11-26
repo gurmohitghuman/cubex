@@ -25,7 +25,7 @@ import { GUIDE_POINTER } from './guides/guide';
 
 const idempotencyKeySchema = z.string().min(1).max(200).optional();
 const webhookIdSchema = z.string().optional()
-  .describe('A run webhook (list_run_webhooks) to notify when this run finishes; keep polling get_run_status');
+  .describe('A run webhook (list_run_webhooks) to notify when this run finishes; keep polling get_run (action status)');
 
 const targetRowIdsSchema = z.array(z.string()).min(1).max(MAX_ROWS_PER_SHEET).optional();
 
@@ -47,7 +47,7 @@ export function registerRunStartTools(server: McpServer, ctx: McpAuthCtx) {
         + 'The prompt names columns as /column_name: lowercase, each run of other characters as _ (an unknown one is '
         + 'refused with a suggestion). Model: model, else the sheet\'s default, else the account\'s (list_models). '
         + 'Ask first with estimate_only for the rows and the cost; with web_search its fees are usually most of it. '
-        + 'Returns run_id at once: poll get_run_status, then read_rows or get_run_results. '
+        + 'Returns run_id at once: poll get_run (action status), then read_rows or get_run (action results). '
         + 'COST CEILING: max_cost_usd refuses to start when the estimate\'s high end plus one row\'s most is above '
         + 'it, or the model has no known price unless allow_unpriced is true. It is also the run\'s hard spend '
         + 'limit; spend_limit_usd sets one without the check (with both, the lower one). A run at its limit pauses '
@@ -128,7 +128,7 @@ export function registerRunStartTools(server: McpServer, ctx: McpAuthCtx) {
         + 'JSONPath field into a column (the first match; an object or list as JSON text; filters are refused: map $ '
         + 'and read it with formula_column). JSON answers only; private and internal addresses are blocked; GET and '
         + 'HEAD answers are reused for 5 minutes. Returns run_id '
-        + 'at once: poll get_run_status, then read_rows or get_run_results. '
+        + 'at once: poll get_run (action status), then read_rows or get_run (action results). '
         + `estimate_only checks the URL and {{names}} without sending anything. ${GUIDE_POINTER}`,
       inputSchema: {
         sheet_id: z.string().describe(SHEET_ID),

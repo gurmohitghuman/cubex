@@ -53,7 +53,8 @@ export const fillRoutes = (): RouteDoc[] => [
   op({
     method: 'get', path: '/balances', operationId: 'getBalances', tag: 'enrich', scope: 'read',
     summary: 'The treg balance, the daily enrichment limit, and what OpenRouter reports for the saved key.',
-    description: "As MCP's get_balances. openrouter.checked_at is when Cubex read OpenRouter's numbers (a read is "
+    description: "As MCP's get_account with action balances. openrouter.checked_at is when Cubex read OpenRouter's "
+      + 'numbers (a read is '
       + `reused for ${OPENROUTER_BALANCE_CACHE_MS / 1000} seconds); they can lag behind runs that just finished, `
       + 'while access_token.spent_usd is live.',
   }),

@@ -73,7 +73,7 @@ async function main() {
     { status: 400, json: { error: AI_WORDS } }, 'REST: the same words')
   // Past the bound check: the run is unknown (MCP adds the next step, mcp/next-steps.ts).
   assert.equal(await answer({ run_type: 'http', run_id: noRun, action: 'rerun', concurrency: 120 }),
-    `HTTP run not found. No run has the run_id "${noRun}". list_runs lists a sheet's runs, newest first.`,
+    `HTTP run not found. No run has the run_id "${noRun}". get_run (action list) lists a sheet's runs, newest first.`,
     'MCP: an HTTP API rerun takes 120')
   assert.deepEqual(await rest(`/http-runs/${noRun}/rerun`, { concurrency: 120 }),
     { status: 404, json: { error: 'HTTP run not found' } }, 'REST: so does it')

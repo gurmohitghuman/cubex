@@ -20,7 +20,8 @@ export function registerRunWebhookTools(server: McpServer, ctx: McpAuthCtx): voi
       + 'sheet_id, status, finished_at). every_run true: told about every AI, HTTP, enrichment and setup run; false: '
       + 'only runs started with its id. Pass that id as webhook_id to run_ai_column, run_http_enrichment, '
       + 'run_enrichment, apply_setup or a control_run rerun to be told when that run ends instead of polling often. '
-      + 'Delivery isn\'t guaranteed, so get_run_status stays the source of truth. With webhook_id, also returns '
+      + 'Delivery isn\'t guaranteed, so get_run (action status) stays the source of truth. With webhook_id, also '
+      + 'returns '
       + 'that webhook\'s last 50 deliveries (state, response_code, error). Add or change them with '
       + 'manage_run_webhook, or in Settings, Run webhooks. Read-only.',
     inputSchema: z.object({

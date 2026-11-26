@@ -21,8 +21,8 @@ const LIST: Release[] = [
   { version: 'v0.8.13', changes: [{ change: 'removed', tools: ['ping_sheet'], summary: 'ping_sheet is gone.' },
     { change: 'added', tools: ['old_rows'], summary: 'New tool old_rows.' }] },
 ]
-const AFTER = 'After an update, get_version with since set to the version you last used lists every change for '
-  + 'agents after it. '
+const AFTER = 'After an update, get_account (action version) with since set to the version you last used lists '
+  + 'every change for agents after it. '
 
 async function main() {
   await check('since: the releases after it, oldest first; a note when it is older than the list', () => {
@@ -104,11 +104,11 @@ async function main() {
     }
   })
 
-  await check('get_version with since, in both eras; a bad since is a tool error', async () => {
+  await check('get_account\'s version with since, in both eras; a bad since is a tool error', async () => {
     for (const era of [modern, legacy]) {
       const ask = async (since: string) => JSON.parse((era === modern
-        ? await modern('tools/call', { name: 'get_version', arguments: { since } }, 'get_version')
-        : await legacy('tools/call', { name: 'get_version', arguments: { since } })).text).result
+        ? await modern('tools/call', { name: 'get_account', arguments: { action: 'version', since } }, 'get_account')
+        : await legacy('tools/call', { name: 'get_account', arguments: { action: 'version', since } })).text).result
       const answer = JSON.parse((await ask('v0.8.12')).content[0].text)
       // Every release in the file (all after v0.8.12), the added v99.0.0 last: oldest first.
       assert.deepEqual(answer.changes_since.releases.map((r: Release) => r.version),
@@ -125,7 +125,7 @@ async function main() {
   await check('server/discover: the instructions name the version, here not recorded', async () => {
     const { instructions } = JSON.parse((await modern('server/discover')).text).result
     assert.ok(instructions.startsWith('Cubex is a spreadsheet workspace. This server does not record its Cubex '
-      + 'version. After an update, get_version with since'), instructions.slice(0, 200))
+      + 'version. After an update, get_account (action version) with since'), instructions.slice(0, 200))
   })
   done()
 }

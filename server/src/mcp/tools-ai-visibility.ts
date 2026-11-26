@@ -19,7 +19,7 @@ export function registerAiVisibilityTool(server: McpServer, ctx: McpAuthCtx): vo
       'Check whether AI engines recommend a brand, and track it over time. action "create" (free, asks nothing) '
       + 'makes a table "AI visibility for <brand>" with a Questions sheet and a Cited sites sheet. '
       + 'action "ask" (run scope) asks every engine the questions not asked yet: PAID treg calls, one enrichment '
-      + 'run per engine (follow them with get_run_status, run type enrichment); the formula columns fill as '
+      + 'run per engine (follow them with get_run, action status, run_type enrichment); the formula columns fill as '
       + 'answers come. action "check_again" (weeks later) keeps a dated copy of both sheets, then asks every '
       + 'question again: also PAID. ask and check_again: '
       + 'estimate_only DEFAULTS TO TRUE and returns the cost; call again with estimate_only:false to start. '
@@ -29,7 +29,7 @@ export function registerAiVisibilityTool(server: McpServer, ctx: McpAuthCtx): vo
         .describe('create the table (free), ask the engines, check_again later, or set_brands (free)'),
       id: z.string().optional()
         .describe('ask, check_again, set_brands: the id create returned, or the table\'s Questions sheet id '
-          + '(list_tables)'),
+          + '(get_workspace)'),
       brand: z.string().optional().describe('create, set_brands: your brand, as answers would name it'),
       other_brands: z.array(z.string()).max(AI_VISIBILITY_MAX_COMPETITORS).optional()
         .describe('create, set_brands: competitors to look for in the answers (set_brands: replaces the list; '

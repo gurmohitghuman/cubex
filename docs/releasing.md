@@ -59,7 +59,7 @@ and the changelog link as the script wrote them.
 
 `server/src/mcp/agent-changes.ts` lists, release by release, what changed for AI agents that use
 Cubex over MCP: tools added, changed, removed or renamed, and changes to the server's answers. The
-MCP instructions show the running release's lines, `get_version` with `since` lists them, and a
+MCP instructions show the running release's lines, `get_account` (action `version`) with `since` lists them, and a
 call to a removed or renamed tool is told what replaced it ([MCP](mcp.md#after-an-update)).
 
 - **A change to a tool** adds its line under the next release: the one already listed after the

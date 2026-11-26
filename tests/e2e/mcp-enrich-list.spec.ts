@@ -28,7 +28,7 @@ test('MCP: test 5 rows, read the fields, add those rows, run the rest', async ()
   const { sheetId } = await seedCsv(api, companiesCsv(COMPANIES))
   const client = await mcpClient(await makeAccessToken(api, ['read', 'write', 'run'], 'e2e mcp list'))
 
-  const tool = await call(client, 'get_enrichment', { tool_id: 'treg.people.search' })
+  const tool = await call(client, 'find_enrichments', { action: 'get', tool_id: 'treg.people.search' })
   expect(tool.adds_rows).toBe(true)
   // Only the fields outside the results, which may fill the asking row.
   expect(tool.outputs.map((o: { field: string }) => o.field)).toEqual(['count', 'next_cursor'])
@@ -42,7 +42,7 @@ test('MCP: test 5 rows, read the fields, add those rows, run the rest', async ()
   })
   expect(est.rows_to_process).toBe(5)
   expect(est.list).toMatchObject({ destination: { new_sheet_name: 'People' }, adds_up_to_rows: 15, results_per_row: 3 })
-  expect((await call(client, 'list_tables', {})).tables[0].sheets).toHaveLength(1)
+  expect((await call(client, 'get_workspace', { all_tables: true })).tables[0].sheets).toHaveLength(1)
 
   const started = await call(client, 'run_enrichment', {
     sheet_id: sheetId, ...PEOPLE, test: true, list: { new_sheet_name: 'People', ...LIST },

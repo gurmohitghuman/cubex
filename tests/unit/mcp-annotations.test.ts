@@ -24,7 +24,7 @@ for (const name of registered) {
 for (const name of Object.keys(TOOL_ANNOTATIONS)) {
   assert.ok(registered.includes(name), `${name} in the table is a real tool`)
 }
-for (const name of ['list_tables', 'read_rows', 'export_csv', 'get_run_status']) {
+for (const name of ['get_workspace', 'read_rows', 'export_csv', 'get_run', 'get_account', 'find_enrichments']) {
   assert.equal(tools[name].annotations?.readOnlyHint, true, `${name} is read-only`)
 }
 for (const name of ['delete_rows', 'delete_column', 'manage_table', 'import_csv', 'create_upload_link']) {

@@ -139,7 +139,7 @@ export async function agentCheckHiring(userId: string, tokenId: string, id: unkn
     sheetId: rec.searches_sheet_id,
     ok: {
       ...hiringCheckJson(out.ok, hasCompanyFilters(companyFiltersOf(rec))),
-      next: 'The search is an enrichment run: follow it with get_run_status (run type enrichment), then '
+      next: 'The search is an enrichment run: follow it with get_run (action status, run_type enrichment), then '
         + 'hiring_signals action "get" shows the check done. Read Companies with read_rows (New roles > 0).',
     },
   };

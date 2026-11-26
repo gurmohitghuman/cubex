@@ -42,7 +42,8 @@ export function misplacedArgument(a: Record<string, unknown>): string | null {
 }
 
 // run_enrichment with items: one enrichment tool called on items without a sheet (services/enrich-call.ts). The
-// call is an enrichment run on a working table of its own: get_run_status and get_run_results answer for it.
+// call is an enrichment run on a working table of its own: get_run (action status) and get_run (action results) answer
+// for it.
 export async function runEnrichmentOnItems(ctx: McpAuthCtx, a: {
   tool_id: string; items: unknown; fields?: string[]; estimate_only?: boolean; max_cost_usd?: number;
   allow_unpriced?: boolean; webhook_id?: string;

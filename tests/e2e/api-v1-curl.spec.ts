@@ -152,7 +152,8 @@ test('MCP: run_http_enrichment takes curl; a $VARIABLE uses the saved key with t
   expect(r.saved_keys).toEqual([])
   let status = ''
   for (const until = Date.now() + 45_000; Date.now() < until && !['completed', 'failed'].includes(status);) {
-    status = (await call(client, 'get_run_status', { run_type: 'http', run_id: r.run_id, wait_seconds: 5 })).status
+    status = (await call(client, 'get_run', {
+      action: 'status', run_type: 'http', run_id: r.run_id, wait_seconds: 5 })).status
   }
   expect(status).toBe('completed')
   expect(storedConfig(r.run_id)).toContain('"X-Key":"{{E2E_CURL_KEY}}"')

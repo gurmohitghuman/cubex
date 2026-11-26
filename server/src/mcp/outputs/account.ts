@@ -1,5 +1,5 @@
-// What the model, version, guide, trash, history and saved-key tools answer (tools-models.ts, tools-version.ts,
-// tools-guide.ts, tools-trash.ts, tools-saved-keys.ts).
+// What the model, version, guide, trash, history and saved-key reads answer (tools-models.ts, tools-account.ts,
+// tools-guide.ts, tools-trash.ts, tools-sheet-history.ts).
 import { z } from 'zod';
 import { obj, open } from '../output-schema';
 import { bool, changed, info, nul, num, opt, str, strs } from './shared';

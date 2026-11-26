@@ -38,7 +38,7 @@ export function dryRunJson(v: DryRunView) {
     note: v.run.status === 'paused'
       ? 'It paused (see message): control_run resume or cancel it (run_type "waterfall"). Nothing was written.'
       : ended ? 'Nothing was written to the sheet. For 7 days a real run replays these answers at no cost.'
-        : 'Still running: read it with get_run_results (run_type "waterfall", status_filter "all").',
+        : 'Still running: read it with get_run (action results, run_type "waterfall", status_filter "all").',
     ...(v.run.notes?.length ? { notes: v.run.notes.map(snakeProviderField) } : {}),
   };
 }

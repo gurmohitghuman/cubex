@@ -31,7 +31,8 @@ export const companyFiltersOf = (r: HiringRecord): CompanyFilters =>
 export const sheetLive = (userId: string, id: string | null): boolean => !!id && !!db.prepare(`SELECT 1 FROM sheets
   WHERE id = ? AND user_id = ? AND trash_id IS NULL`).get(id, userId);
 
-// A table by its record's id, or by its Companies sheet's id (what list_tables shows); not one in the trash.
+// A table by its record's id, or by its Companies sheet's id (what get_workspace (all_tables) shows); not one in the
+// trash.
 export function hiringFor(userId: string, idOrSheet: unknown): HiringRecord | null {
   if (typeof idOrSheet !== 'string') return null;
   return (db.prepare(`SELECT h.* FROM hiring_signals h JOIN sheets s ON s.id = h.companies_sheet_id

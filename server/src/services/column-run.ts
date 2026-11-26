@@ -5,7 +5,7 @@
 // chosen column waits for that one's whole run (column-run-plan.ts). It is
 // either priced (estimateOnly: a pure read, column-run-estimate.ts) or started
 // as a setup run with no setup (setup-run-store.ts), followed and controlled
-// as one: get_setup_run, control_setup_run, the run webhook's kind 'setup'.
+// as one: get_run (action setup), control_setup_run, the run webhook's kind 'setup'.
 // With max_cost_usd, a start whose estimate could pass it (or that has a
 // column with no price, unless allow_unpriced) is refused and creates
 // nothing; each spending column then starts with what is left of it.

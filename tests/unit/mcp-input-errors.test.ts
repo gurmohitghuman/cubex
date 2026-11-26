@@ -15,7 +15,7 @@ const EVERY = ['2026-07-28', '2025-11-25', '2025-06-18', '2025-03-26', '2024-11-
 const NEXT = 'Send one of the versions in data.supported, newest first.'
 
 const schema = z.object({
-  sheet_id: z.string().describe('The sheet\'s id (list_tables lists them)'),
+  sheet_id: z.string().describe('The sheet\'s id (get_workspace lists them)'),
   limit: z.number().int().min(1).max(100).optional(),
   from: z.number().int().min(1).optional(),
   name: z.string().min(1).max(200).optional(),
@@ -33,7 +33,7 @@ const words = (args: unknown) => plainArgumentErrors(schema, args)
 
 async function main() {
   await check('a missing field says it is required, what it takes and what it is; a wrong type, what was sent', () => {
-    assert.deepEqual(words({}), ['sheet_id is required (text): The sheet\'s id (list_tables lists them).'])
+    assert.deepEqual(words({}), ['sheet_id is required (text): The sheet\'s id (get_workspace lists them).'])
     assert.deepEqual(words({ sheet_id: 5 }), ['sheet_id must be text, not 5.'])
     assert.deepEqual(words({ sheet_id: 's', name: ['a'] }), ['name must be text from 1 to 200 characters, not a list '
       + 'of 1.'])
@@ -73,7 +73,7 @@ async function main() {
     for (const send of [modern, legacy]) {
       for (const [args, text] of [
         [{ sheet_id: 5 }, 'sheet_id must be text, not 5.'],
-        [{}, 'sheet_id is required (text): The sheet\'s id (list_tables lists them).'],
+        [{}, 'sheet_id is required (text): The sheet\'s id (get_workspace lists them).'],
         [{ sheet_id: 's', limit: 0 }, 'limit must be a whole number from 1 to 100, not 0.'],
         [{ sheet_id: 's', max_chars_per_cell: 0 },
           'max_chars_per_cell: max_chars_per_cell must be an integer from 1 to 200000.'],

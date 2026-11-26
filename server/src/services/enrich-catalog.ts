@@ -1,6 +1,6 @@
 // Finding and describing enrichment tools: the drawer's search and "Popular"
-// list, the tool details for setup, and the MCP search_enrichments /
-// get_enrichment tools all come through here.
+// list, the tool details for setup, and the MCP find_enrichments (action search) /
+// find_enrichments (action get) tools all come through here.
 import { ENRICH_FEATURED, ENRICH_SEARCH_RESULTS, type FeaturedJob } from '../lib/constants';
 import { searchCatalog, getCatalogEndpoint, providerNames } from '../lib/treg-catalog';
 import { summarizeTool, normalizeTool, hiddenReason, type ToolSummary, type EnrichTool } from '../lib/enrich-tool';

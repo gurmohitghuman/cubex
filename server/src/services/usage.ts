@@ -3,7 +3,7 @@
 // Usage history: for each column (deleted ones too), each day or each run, the
 // runs, the cells they ran, what they cost (OpenRouter's charge, the user's
 // own provider key, treg's charges) and the cost per cell. One surface for the
-// app's Usage view, GET /api/v1/usage and MCP get_usage. It sums run_usage
+// app's Usage view, GET /api/v1/usage and MCP get_account (action usage). It sums run_usage
 // (migration 033: one small record per run, kept by triggers), never rows,
 // results or run configs, so a million-row sheet costs no more than its runs.
 // Each run counts on the day it started (UTC). Runs on a sheet's test copy count

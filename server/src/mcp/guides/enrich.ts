@@ -5,6 +5,22 @@ import type { ToolGuide } from './guide';
 import { ENRICH_ITEMS_TEXT } from './items';
 
 export const ENRICH_GUIDES: Record<string, ToolGuide> = {
+  find_enrichments: {
+    text: [
+      'search: Search treg.to\'s catalog of enrichment tools (work email, phone, person or company data, people or '
+        + 'companies lists, web search). No query: the popular jobs. Each tool has tool_id, kind (waterfall: treg asks '
+        + 'many providers in turn; single: one provider), its price, and adds_rows (its results become rows in '
+        + 'another sheet). needs_own_key: treg can\'t serve it on its own key, the team needs its own provider key at '
+        + 'treg.',
+      'get: One enrichment tool, ready for run_enrichment: its inputs (name, type, required; identity_sets lists the '
+        + 'inputs that are enough together; filter inputs narrow a search), its outputs (field names for '
+        + 'run_enrichment outputs; for a tool that adds rows, only the fields outside its results, which fill the '
+        + 'asking row; the results\' own fields come from real results), its price, and for a waterfall each provider '
+        + '(price, hit rate, the inputs it accepts, and with a treg key saved, access as treg\'s plan says: your_key '
+        + '(the team\'s own key), your_connection_metered, free, treg (treg\'s key), or null when the plan doesn\'t '
+        + 'say). The email finder also offers the verified_email preset.',
+    ],
+  },
   waterfall_column: {
     text: [
       'A value result_type can\'t read is no answer, and the next step runs. A row with none of a step\'s requires '

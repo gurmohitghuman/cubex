@@ -34,7 +34,8 @@ async function logsOf(fn: () => Promise<unknown>): Promise<string[]> {
 async function main() {
   await check('a batch is refused in either era, an empty one too: 400 with -32600, no id', async () => {
     const legacy = [{ jsonrpc: '2.0', id: 1, method: 'tools/list' },
-      { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'list_tables', arguments: {} } }]
+      { jsonrpc: '2.0', id: 2, method: 'tools/call',
+        params: { name: 'get_workspace', arguments: { all_tables: true } } }]
     const modern = legacy.map(m => ({ ...m, params: { ...m.params, _meta: META } }))
     for (const [batch, headers] of [[legacy, {}], [modern, headersFor('tools/list')], [[], {}]] as const) {
       const res = await post(batch, headers)

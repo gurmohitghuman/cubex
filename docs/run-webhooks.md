@@ -34,7 +34,7 @@ X-Cubex-Signature: sha256=5c0a...e19b
 | Field | What it is |
 |---|---|
 | `event` | `run.finished`, or `test` for a test notice (its other fields are `null`). |
-| `run_id` | The run. Read it with `get_run_status` (MCP) or `GET /api/v1/ai-runs/:id`, `GET /api/v1/http-runs/:id`; a setup or a column run (`run_columns`) with `get_setup_run` or `GET /api/v1/setup-runs/:id`. |
+| `run_id` | The run. Read it with `get_run` (action `status`) (MCP) or `GET /api/v1/ai-runs/:id`, `GET /api/v1/http-runs/:id`; a setup or a column run (`run_columns`) with `get_run` (action `setup`) or `GET /api/v1/setup-runs/:id`. |
 | `kind` | `ai`, `http`, `enrichment`, `waterfall` or `setup`. |
 | `sheet_id` | The sheet it ran on. |
 | `status` | `completed`, `failed` or `cancelled`. Completed means every row was processed, not that every row worked: the run's status tells you how many failed. |

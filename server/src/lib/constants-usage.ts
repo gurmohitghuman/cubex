@@ -3,7 +3,7 @@
 // page between other requests.
 export const USAGE_DEFAULT_ROWS = 200;
 export const USAGE_MAX_ROWS = 1_000;
-// An agent's page (MCP get_usage): smaller, so a read stays readable in its context.
+// An agent's page (MCP get_account (action usage)): smaller, so a read stays readable in its context.
 export const USAGE_MCP_MAX_ROWS = 200;
 export const USAGE_CSV_PAGE = 1_000;
 // The longest custom range, in days.

@@ -1,21 +1,20 @@
 // The guides of the tools that run setups (on a sheet or on items) and several columns at once (guide.ts says what
 // a guide holds).
 import type { ToolGuide } from './guide';
-import { GET_SETUP_RUN_GUIDE, SETUP_ITEMS_TEXT } from './items';
+import { SETUP_ITEMS_TEXT } from './items';
 
 export const SETUP_GUIDES: Record<string, ToolGuide> = {
   apply_setup: {
     text: [
       'A step whose columns this setup made before CARRIES THEM ON, filling only rows it hasn\'t done: call again '
-        + 'with the same inputs and names to fill new rows or finish a stopped run (get_setup_run shows the choices '
-        + 'a run used).',
+        + 'with the same inputs and names to fill new rows or finish a stopped run (get_run (action setup) shows the '
+        + 'choices a run used).',
       'Each started AI and enrichment step gets a spend limit within what is left of the ceiling (one with no known '
         + 'price runs without one).',
       ...SETUP_ITEMS_TEXT,
     ],
     spendCap: true,
   },
-  get_setup_run: GET_SETUP_RUN_GUIDE,
   run_columns: {
     text: [
       'A column reading another chosen column (also through formula, clean or lookup columns) waits for that one\'s '

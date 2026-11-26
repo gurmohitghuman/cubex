@@ -1,5 +1,6 @@
 // What a run's rows wait for, said from the database for the app (GET /api/ai/runs, /api/http/runs), /api/v1's run
-// summaries and MCP's get_run_status and list_runs: the run's own waiting_on (lib/run-waiting.ts), the run that
+// summaries and MCP's get_run (action status) and get_run (action list): the run's own waiting_on (lib/run-waiting.ts),
+// the run that
 // holds the column, read by its id, and the run's own counters. No row is read. Only a run that is running or
 // pending says it: one that ended, paused or was stopped waits for nothing.
 import { db } from '../lib/db';

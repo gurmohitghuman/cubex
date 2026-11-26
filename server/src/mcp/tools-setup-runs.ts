@@ -12,7 +12,10 @@ import { controlSetupRun } from '../services/setup-run-control';
 import { runColumns } from '../services/column-run';
 import { COLUMN_RUN_MODES, columnRunInputOf } from '../services/column-run-input';
 import { whereLike } from './where-schema';
-import { SHEET_ID, McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean } from './tool-helpers';
+import {
+  SHEET_ID, McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean, type ErrResult, type OkResult,
+} from './tool-helpers';
+import type { ToolAnswer } from './tool-outputs';
 import { changedOf, type Changed } from './changed';
 
 // A setup run's sheet and the columns its steps fill, with work going on.
@@ -24,7 +27,7 @@ import { GUIDE_POINTER } from './guides/guide';
 const names = z.record(z.string(), z.string());
 
 // Using a saved setup on a sheet (services/setup-apply.ts, setup-runner.ts), or on items without one
-// (setup-items.ts): apply_setup, get_setup_run, control_setup_run; and run_columns, which runs
+// (setup-items.ts): apply_setup, get_run (action setup), control_setup_run; and run_columns, which runs
 // a sheet's own run columns on chosen rows as a setup run (services/column-run.ts).
 export function registerSetupRunTools(server: McpServer, ctx: McpAuthCtx): void {
   registerTool(server, 'apply_setup', {
@@ -33,7 +36,8 @@ export function registerSetupRunTools(server: McpServer, ctx: McpAuthCtx): void 
       + 'are filled: a whole chain of columns on another sheet (for one column, use its own tool). '
       + `ITEMS: with items instead of sheet_id it runs on 1-${SETUP_CALL_MAX_ITEMS} items without a sheet, like a `
       + 'function, for a script or another app: each item is an object keyed by the setup\'s input names. It returns '
-      + 'a setup_call, and get_setup_run with its id answers each item\'s outputs by column once it finishes. For more '
+      + 'a setup_call, and get_run (action setup) with its id answers each item\'s outputs by column once it finishes. '
+      + 'For more '
       + 'items, create_upload_link with setup_id calls it on a file\'s rows. '
       + 'COSTS MONEY: AI steps call your model per row, enrichments spend your treg balance, HTTP API '
       + 'steps send a request per row; clean and formula steps are free. '
@@ -43,7 +47,7 @@ export function registerSetupRunTools(server: McpServer, ctx: McpAuthCtx): void 
       + 'Saved keys in its requests need the "secrets" scope. COST CEILING: max_cost_usd refuses to start (nothing '
       + 'is created) when the estimate\'s high end, plus one row\'s most for each AI step, is above it, or when a '
       + 'step has no known price unless allow_unpriced is true. Returns a setup_run '
-      + 'with each step\'s run_id (get_run_status works on those); follow it with get_setup_run. '
+      + 'with each step\'s run_id (get_run (action status) works on those); follow it with get_run (action setup). '
       + `A call on items: results are kept ${SETUP_CALL_KEEP_HOURS} hours after it finishes.`
       + capRunToolNote(ctx.spend ?? null) + ` ${GUIDE_POINTER}`,
     inputSchema: z.object({
@@ -59,7 +63,8 @@ export function registerSetupRunTools(server: McpServer, ctx: McpAuthCtx): void 
         .describe(`Test it on the top rows only (1-${MAX_SETUP_TEST_ROWS})`),
       estimate_only: lenientBoolean().optional().describe('Default true: price it, start nothing'),
       webhook_id: z.string().optional().describe(
-        'A run webhook (list_run_webhooks) to notify when the setup finishes, signed; poll get_setup_run anyway'),
+        'A run webhook (list_run_webhooks) to notify when the setup finishes, signed; poll get_run (action setup) '
+          + 'anyway'),
       max_cost_usd: z.number().positive().max(RUN_SPEND_LIMIT_MAX_USD).optional()
         .describe('Refuse to start when the estimate could cost more than this many dollars in all'),
       allow_unpriced: lenientBoolean().optional()
@@ -93,7 +98,7 @@ export function registerSetupRunTools(server: McpServer, ctx: McpAuthCtx): void 
       + 'column and starts nothing; tell the user, then call again with estimate_only:false. max_cost_usd refuses '
       + 'to start (nothing is created) when the estimate could pass it; once started, each AI, enrichment and '
       + 'waterfall column gets a spend limit from what is left. To change a column\'s setup use its own tool. '
-      + 'Returns a setup_run: follow it with get_setup_run; control_setup_run pauses, resumes or stops it.'
+      + 'Returns a setup_run: follow it with get_run (action setup); control_setup_run pauses, resumes or stops it.'
       + capRunToolNote(ctx.spend ?? null) + ` ${GUIDE_POINTER}`,
     inputSchema: z.object({
       sheet_id: z.string().describe(SHEET_ID),
@@ -122,35 +127,6 @@ export function registerSetupRunTools(server: McpServer, ctx: McpAuthCtx): void 
     return ok({ ...out.ok, changed: run ? setupChanged(ctx.userId, run) : [] });
   });
 
-  registerTool(server, 'get_setup_run', {
-    description:
-      'Where a setup being used on a sheet (or a run_columns run, or a call on items) is: running, paused, done, '
-      + 'failed or cancelled, the layer it\'s on, '
-      + 'and each step\'s state, run_id and note (why it failed, or that its auto-run wasn\'t turned on), and the '
-      + 'choices it was used with. Pass setup_run_id, or sheet_id for the sheet\'s latest ones (with setup_id, '
-      + 'that setup\'s). A call on items (apply_setup with items), once it has finished, also answers each item\'s '
-      + `outputs by column (results), ${SETUP_CALL_MAX_ITEMS} items a page: pass next_from as results_from for the `
-      + 'next page. With wait_seconds it answers when the run finishes or the time is up, so you poll less. '
-      + 'Read-only. Next: control_setup_run, or apply_setup again to carry it on. '
-      + GUIDE_POINTER,
-    inputSchema: z.object({
-      setup_run_id: z.string().optional().describe('One setup run, or a call (apply_setup returned it)'),
-      sheet_id: z.string().optional().describe('Or the sheet: its 5 latest setup runs'),
-      setup_id: z.string().optional().describe('With sheet_id: only this setup\'s runs'),
-      wait_seconds: z.number().int().min(0).max(25).optional()
-        .describe('With setup_run_id: wait up to this many seconds for it to finish'),
-      results_from: z.number().int().min(0).optional().describe('A call\'s first item of the page (next_from)'),
-      limit: z.number().int().min(1).max(SETUP_CALL_MAX_ITEMS).optional()
-        .describe(`A call's items in the page (default ${SETUP_CALL_MAX_ITEMS})`),
-    }).strict(),
-  }, async ({ setup_run_id, sheet_id, setup_id, wait_seconds, results_from, limit }) => {
-    const denied = missingScope(ctx, 'read');
-    if (denied) return denied;
-    if (setup_run_id) return setupRunAnswer(ctx, setup_run_id, wait_seconds, { from: results_from, limit });
-    if (sheet_id) return ok({ setup_runs: sheetSetupRuns(ctx.userId, sheet_id, 5, setup_id) });
-    return err('Pass setup_run_id or sheet_id.');
-  });
-
   registerTool(server, 'control_setup_run', {
     description:
       'Pause, resume or cancel a setup being used on a sheet, or a call on items: the runs of the steps '
@@ -159,7 +135,7 @@ export function registerSetupRunTools(server: McpServer, ctx: McpAuthCtx): void 
       + "setup can't raise: cancel it and call apply_setup again with a higher max_cost_usd, which carries on where "
       + 'it stopped.',
     inputSchema: z.object({
-      setup_run_id: z.string().describe('The setup run (get_setup_run)'),
+      setup_run_id: z.string().describe('The setup run (get_run (action setup))'),
       action: z.enum(['pause', 'resume', 'cancel']).describe('What to do with it'),
     }).strict(),
   }, async ({ setup_run_id, action }) => {
@@ -170,4 +146,17 @@ export function registerSetupRunTools(server: McpServer, ctx: McpAuthCtx): void 
     // A pause leaves the cells as they are; a resume goes on, a cancel clears its runs' ⏳ cells.
     return ok({ ...out.ok, changed: action === 'pause' ? [] : setupChanged(ctx.userId, out.ok) });
   });
+}
+
+// get_run's setup (tools-get-run.ts): a setup run (or a run_columns run, or a call on items) by setup_run_id, with
+// a finished call's results paged, waiting up to wait_seconds for it to finish; or a sheet's 5 latest setup runs.
+export async function setupRunRead(ctx: McpAuthCtx, a: {
+  setup_run_id?: string; sheet_id?: string; setup_id?: string; wait_seconds?: number; results_from?: number;
+  limit?: number;
+}): Promise<OkResult<ToolAnswer<'get_run'>> | ErrResult> {
+  if (a.setup_run_id) {
+    return setupRunAnswer(ctx, a.setup_run_id, a.wait_seconds, { from: a.results_from, limit: a.limit });
+  }
+  if (a.sheet_id) return ok({ setup_runs: sheetSetupRuns(ctx.userId, a.sheet_id, 5, a.setup_id) });
+  return err('setup needs setup_run_id or sheet_id.');
 }

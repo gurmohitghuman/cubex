@@ -35,7 +35,7 @@ test('AI column: save_only stores the setup, runs nothing, and refuses what only
   expect(detail(sheet, 'Summary (Output)').fill).toMatchObject({ run_status: 'saved', prompt: 'Summarize /val' })
   expect(sheet.active_runs).toEqual([])
   expect(cellsOf(sheetId)).toEqual(cells)
-  expect((await call(client, 'list_runs', { sheet_id: sheetId })).runs).toEqual([])
+  expect((await call(client, 'get_run', { action: 'list', sheet_id: sheetId })).runs).toEqual([])
 
   // Saved again with another prompt, from the app's route: the newest setup is the new one.
   const app = await api.post('/api/ai/run', { data: {
@@ -50,7 +50,7 @@ test('AI column: save_only stores the setup, runs nothing, and refuses what only
   expect(cellsOf(sheetId)).toEqual(cells)
 
   // History names the column and says nothing ran.
-  const history = await call(client, 'get_sheet_history', { sheet_id: sheetId })
+  const history = await call(client, 'get_sheet', { history: true, sheet_id: sheetId })
   const lines = history.changes.filter((c: any) => c.action === 'setup_saved')
   expect(lines).toHaveLength(2)
   expect(lines[0]).toMatchObject({ column: 'Summary (Output)', via: expect.any(String) })

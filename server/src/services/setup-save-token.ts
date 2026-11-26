@@ -24,7 +24,8 @@ const RUN_ONLY = ['target_row_ids', 'preview_rows', 'webhook_id', 'max_cost_usd'
   'spend_limit_usd', 'idempotency_key', 'auto_run', 'test', 'rows', 'where', 'use_sheet_filter', 'dry_run'];
 
 export const SAVED_NOTE = 'Saved as the column\'s setup. Nothing ran and nothing was billed: run_id is the setup\'s '
-  + 'record (get_run_status shows 0 rows). control_run rerun with it runs the column this way; so do auto-run and the '
+  + 'record (get_run (action status) shows 0 rows). control_run rerun with it runs the column this way; so do auto-run '
+  + 'and the '
   + 'column\'s next run. Cells, and which rows read out of date, stay as they are.';
 
 // true: save; false: a run (or an estimate) as before; or why the arguments can't go together.

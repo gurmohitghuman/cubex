@@ -1,4 +1,4 @@
-// Reading the changes file (mcp/agent-changes.ts): what get_version's since and GET /v1/version?since=
+// Reading the changes file (mcp/agent-changes.ts): what get_account (action version)'s since and GET /v1/version?since=
 // answer, the lines the MCP instructions carry for the running release, and what a call to a removed or
 // renamed tool is told (mcp/replaced-tools.ts).
 import { CUBEX_RELEASES_PAGE } from '../lib/constants';
@@ -14,7 +14,7 @@ export interface ChangesSince {
 }
 
 const SINCE_SHOWN = 40;
-// The running release's changes the instructions name; the rest are behind get_version.
+// The running release's changes the instructions name; the rest are behind get_account (action version).
 const NOTE_CHANGES = 3;
 
 const newer = (a: string, b: string) => compareVersions(parseTag(a)!, parseTag(b)!) > 0;
@@ -41,8 +41,8 @@ export function changesSince(since: unknown, list: ReleaseChanges[] = AGENT_CHAN
 
 // For the MCP instructions: the running release and what changed for agents in it, in a few lines.
 export function versionNote(running = runningBuild(), list: ReleaseChanges[] = AGENT_CHANGES): string {
-  const after = 'After an update, get_version with since set to the version you last used lists every change '
-    + 'for agents after it. ';
+  const after = 'After an update, get_account (action version) with since set to the version you last used lists '
+    + 'every change for agents after it. ';
   if (!running.version) {
     return (running.build ? `This server runs a Cubex build that is not a release (${running.build}). `
       : 'This server does not record its Cubex version. ') + after;

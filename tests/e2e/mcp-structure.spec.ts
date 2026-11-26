@@ -91,7 +91,7 @@ test('MCP structure: table + sheets + CSV import lifecycle, all over MCP', async
   expect(lastSheet.isError).toBe(true)
   expect(parseResult(lastSheet as any).error).toContain('at least one sheet')
   expect((await call('manage_table', { action: 'delete', table_id: table.id })).deleted).toBe(true)
-  expect((await call('list_tables', {})).tables.find((t: any) => t.id === table.id)).toBeUndefined()
+  expect((await call('get_workspace', { all_tables: true })).tables.find((t: any) => t.id === table.id)).toBeUndefined()
 
   await client.close()
 })

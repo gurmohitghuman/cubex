@@ -113,7 +113,7 @@ export function setTokenSpendCap(userId: string, tokenId: string, capMicro: numb
   return r.changes === 1 ? readTokenSpend(userId, tokenId)?.view ?? null : null;
 }
 
-// What an agent is told about its own token (GET /v1/me, get_balances): the
+// What an agent is told about its own token (GET /v1/me, get_account (action balances)): the
 // cap (null: none), spent and left, and that it is for life.
 export function tokenSpendFor(userId: string, tokenId: string): (SpendView & { note: string }) | null {
   const t = readTokenSpend(userId, tokenId);

@@ -62,7 +62,7 @@ test('list_runs finds a run id you no longer hold', async () => {
   const lostRunId = (await start.json()).run_id
 
   const listed = parseResult(await client.callTool({
-    name: 'list_runs', arguments: { sheet_id: sheetId },
+    name: 'get_run', arguments: { action: 'list', sheet_id: sheetId },
   }))
   expect(listed.count).toBeGreaterThan(0)
   const found = listed.runs.find((r: any) => r.id === lostRunId)
@@ -75,12 +75,12 @@ test('list_runs finds a run id you no longer hold', async () => {
   // A foreign/unknown sheet_id is an error, NOT a silent empty list that reads
   // as "no runs here".
   const foreign = parseResult(await client.callTool({
-    name: 'list_runs', arguments: { sheet_id: '00000000-0000-4000-8000-000000000000' },
+    name: 'get_run', arguments: { action: 'list', sheet_id: '00000000-0000-4000-8000-000000000000' },
   }))
   expect(foreign.error).toContain('not found')
 
   // Workspace-wide listing works without a sheet_id.
-  const all = parseResult(await client.callTool({ name: 'list_runs', arguments: {} }))
+  const all = parseResult(await client.callTool({ name: 'get_run', arguments: { action: 'list' } }))
   expect(all.count).toBeGreaterThan(0)
 
   await client.close()

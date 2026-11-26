@@ -335,7 +335,7 @@ Deleted rows, sheets and tables go to the trash (the trash can at the top of the
 
 In the trash, search by table, sheet or the access token that deleted something, then restore one item or several. A sheet or table comes back as it was, with its rows, columns, runs, views and webhook. Rows go back to their old places when the sheet hasn't been sorted or replaced since, otherwise to the end of the sheet, and columns they need that the sheet lost come back too. Look inside a batch of rows to find the ones you want by any column and restore only those, or download them as CSV. A deleted column's values aren't kept.
 
-**History**, in the **⋯** menu of a sheet's toolbar, lists what changed on it in the last 90 days: columns added, renamed and deleted, runs started, stopped and undone, auto-run, views, its webhook, and rows deleted, restored, imported or sorted, each with when and who: you in the app, an access token by name, or Cubex itself. Agents read the same with `get_sheet_history`, and use `list_trash` and `restore_from_trash`.
+**History**, in the **⋯** menu of a sheet's toolbar, lists what changed on it in the last 90 days: columns added, renamed and deleted, runs started, stopped and undone, auto-run, views, its webhook, and rows deleted, restored, imported or sorted, each with when and who: you in the app, an access token by name, or Cubex itself. Agents read the same with `get_sheet` with `history`, and use `list_trash` and `restore_from_trash`.
 
 ### Webhook
 

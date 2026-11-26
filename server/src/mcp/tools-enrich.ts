@@ -30,53 +30,48 @@ const money = () => z.number().positive();
 export const RUN_ENRICHMENT_DESCRIPTION =
   'Run a treg.to enrichment once per row: work emails, phones, person or company data, or lists whose results '
   + 'become rows in another sheet. For several sources in one column use waterfall_column. Find the tool with '
-  + 'search_enrichments, then read it with get_enrichment. '
+  + 'find_enrichments with action search, then read it with action get. '
   + 'COSTS MONEY: each row is a paid treg call on the user\'s treg balance (providers on the team\'s own keys '
   + 'bill the team). Call estimate_only:true first and tell the user the range; it creates nothing. '
   + 'max_cost_per_row_usd caps '
   + `each row and spend_limit_usd the run (it pauses there). ${DAILY_LIMIT_NOTE} `
-  + 'LIST JOBS (get_enrichment adds_rows:true) need list: run with test:true, wait for get_run_status to say '
+  + 'LIST JOBS (adds_rows:true in find_enrichments) need list: run with test:true, wait for get_run (action status) to '
+  + 'say '
   + 'completed, read the fields with get_list_fields, pick them with add_list_rows, then control_run rerun mode '
   + '"empty"; or pass list.fields. destination_auto_run lists the auto-runs the new rows set off there, and '
   + 'chained_auto_run this sheet\'s auto-runs that read what the run writes (HTTP ones send real requests). '
-  + 'Returns run_id at once: poll get_run_status (run_type "enrichment"). '
+  + 'Returns run_id at once: poll get_run (action status, run_type "enrichment"). '
   + 'ITEMS: with items instead of sheet_id it runs on items without a sheet, for a script or another app, and '
   + 'estimate_only DEFAULTS TO TRUE; refused before it starts, never halfway, when it could pass max_cost_usd, '
-  + 'the daily limit, the treg balance or the token\'s cap. get_run_results (status_filter all) gives each item, '
+  + 'the daily limit, the treg balance or the token\'s cap. get_run (action results, status_filter all) gives each '
+  + 'item, '
   + 'row_index being its place in items.';
 
 export function registerEnrichTools(server: McpServer, ctx: McpAuthCtx) {
-  registerTool(server, 'search_enrichments', {
+  // search (search_enrichments before) and get (get_enrichment before): treg.to's catalog, free.
+  registerTool(server, 'find_enrichments', {
     description:
-      'Search treg.to\'s catalog of enrichment tools (work email, phone, person or company data, people or '
-      + 'companies lists, web search). No query: the popular jobs. Each tool has tool_id, kind (waterfall: treg asks '
-      + 'many providers in turn; single: one provider), its price, and adds_rows (its results become rows in '
-      + 'another sheet). needs_own_key: treg can\'t serve it on its own key, the team needs its own provider key at '
-      + 'treg. Next: get_enrichment for its inputs and outputs, then run_enrichment (or a waterfall_column step).',
+      'treg.to\'s enrichment tools (work email, phone, person or company data, people or companies lists, web '
+      + 'search), free. search: tools matching query (none: the popular jobs), each with tool_id, kind (waterfall: '
+      + 'treg asks many providers in turn; single: one provider), its price, and adds_rows (its results become rows '
+      + 'in another sheet); needs_own_key: the team needs its own provider key at treg. get: one tool by tool_id, '
+      + 'ready for run_enrichment: its inputs, its outputs, its price and for a waterfall each provider. Next: '
+      + `run_enrichment with estimate_only: true, or a waterfall_column step. ${GUIDE_POINTER}`,
     inputSchema: {
-      query: z.string().max(200).optional().describe('What to find, e.g. "work email" or "company size"'),
+      action: z.enum(['search', 'get']).describe('search the catalog, or get one tool'),
+      query: z.string().max(200).optional().describe('search: what to find, e.g. "work email" or "company size"'),
+      tool_id: z.string().max(200).optional().describe('get: the tool (search lists them)'),
     },
-  }, async ({ query }) => {
+  }, async ({ action, query, tool_id }) => {
     const denied = missingScope(ctx, 'read');
     if (denied) return denied;
-    const out = await agentSearchTools(query ?? '');
-    return 'ok' in out ? ok(out.ok) : err(out.message);
-  });
-
-  registerTool(server, 'get_enrichment', {
-    description:
-      'One enrichment tool, ready for run_enrichment: its inputs (name, type, required; identity_sets lists the '
-      + 'inputs that are enough together; filter inputs narrow a search), its outputs (field names for '
-      + 'run_enrichment outputs; for a tool that adds rows, only the fields outside its results, which fill the '
-      + 'asking row; the results\' own fields come from real results), its price, '
-      + 'and for a waterfall each provider (price, hit rate, the inputs it accepts, and with a treg key saved, '
-      + 'access as treg\'s plan says: your_key (the team\'s own key), your_connection_metered, free, treg (treg\'s '
-      + 'key), or null when the plan doesn\'t say). The email finder also offers the verified_email preset. '
-      + 'Free. Next: run_enrichment with estimate_only:true.',
-    inputSchema: { tool_id: z.string().max(200).describe('The tool (search_enrichments lists them)') },
-  }, async ({ tool_id }) => {
-    const denied = missingScope(ctx, 'read');
-    if (denied) return denied;
+    if (action === 'search') {
+      if (tool_id !== undefined) return err('tool_id is for get: search takes query.');
+      const out = await agentSearchTools(query ?? '');
+      return 'ok' in out ? ok(out.ok) : err(out.message);
+    }
+    if (query !== undefined) return err('query is for search: get takes tool_id.');
+    if (!tool_id) return err('get needs tool_id.');
     const out = await agentGetTool(ctx.userId, tool_id);
     return 'ok' in out ? ok(out.ok) : err(out.message);
   });
@@ -88,7 +83,7 @@ export function registerEnrichTools(server: McpServer, ctx: McpAuthCtx) {
     inputSchema: z.object({
       sheet_id: z.string().optional().describe(`${SHEET_ID}; or items instead`),
       items: ENRICH_ITEMS.optional(),
-      tool_id: z.string().max(200).describe('The tool (search_enrichments lists them)'),
+      tool_id: z.string().max(200).describe('The tool (find_enrichments search lists them)'),
       column_name: z.string().max(200).optional()
         .describe('The status column (new, or an existing one with add_to_column); needed with sheet_id'),
       preset: z.enum(['verified_email']).optional()
@@ -98,7 +93,7 @@ export function registerEnrichTools(server: McpServer, ctx: McpAuthCtx) {
         .describe('Tool input -> a column name, {"column": name} or {"value": fixed}. treg works best with every '
           + 'identity input you have.'),
       outputs: z.array(z.object({
-        field: z.string().describe('A field from get_enrichment output_fields'),
+        field: z.string().describe('A field of find_enrichments get\'s output_fields'),
         column_name: z.string().describe('The new column it fills'),
       }).strict()).optional()
         .describe('The fields that become new columns. Optional for list jobs: there they fill the asking row '
@@ -158,7 +153,8 @@ export function registerEnrichTools(server: McpServer, ctx: McpAuthCtx) {
         }).strict()).optional().describe('Columns each added row gets: [{from, to}] or [{to, value}]'),
         dedupe_path: z.string().optional().describe('Skip a result whose value here was added before'),
         items_path: z.string().max(500).optional()
-          .describe('A single tool only: add the rows from another list of its answer (get_enrichment other_lists)'),
+          .describe('A single tool only: add the rows from another list of its answer '
+            + '(find_enrichments get\'s other_lists)'),
       }).strict().optional().describe('List jobs only: where the results go as rows'),
       auto_run: z.object({
         enabled: lenientBoolean().describe('true keeps the column filling'),
@@ -171,7 +167,8 @@ export function registerEnrichTools(server: McpServer, ctx: McpAuthCtx) {
       idempotency_key: z.string().min(1).max(200).optional()
         .describe('A retry with the same key and arguments returns the first run_id'),
       webhook_id: z.string().optional()
-        .describe('A run webhook (list_run_webhooks) to notify when the run finishes; poll get_run_status anyway'),
+        .describe('A run webhook (list_run_webhooks) to notify when the run finishes; poll get_run (action status) '
+          + 'anyway'),
       ...ITEMS_FIELDS,
     }).strict(),
   }, async args => {

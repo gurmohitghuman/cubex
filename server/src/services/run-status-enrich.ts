@@ -1,5 +1,5 @@
-// What the programmatic run reads (MCP get_run_status, list_runs and
-// get_run_results; GET /api/v1/http-runs/:id, /runs and /results) add for an
+// What the programmatic run reads (MCP get_run (action status), get_run (action list) and
+// get_run (action results); GET /api/v1/http-runs/:id, /runs and /results) add for an
 // enrichment run: the tool, what it cost (the run's ledger total), its limits
 // and why it paused, and for a list job where its rows go. Per row: what the
 // row cost, who found it, and on request the stored answer whose paths

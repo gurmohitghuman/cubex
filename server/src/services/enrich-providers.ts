@@ -2,7 +2,7 @@
 // provider that keeps answering 429. Counted as each answer arrives (a call
 // treg ran is billed whether or not its row is written), never for a replay
 // (its calls were counted when they ran). The counters live in
-// enrich_run_providers (migration 023), so get_run_status reads a few rows.
+// enrich_run_providers (migration 023), so get_run (action status) reads a few rows.
 //
 // The cool-down only changes the X-Treg-Route-Exclude header of the run's next
 // waterfall calls, never their Idempotency-Key (built from the column's own

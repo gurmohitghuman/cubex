@@ -37,11 +37,12 @@ export function registerRunUndoTool(server: McpServer, ctx: McpAuthCtx) {
       + 'bills again. A run '
       + 'still going can\'t be undone (control_run cancel first). '
       + `Each run once, for ${UNDO_KEEP_DAYS} days after it `
-      + 'started. Pass run_type and run_id (list_runs, get_sheet\'s column_details), or sheet_id and column for '
+      + 'started. Pass run_type and run_id (get_run (action list), get_sheet\'s column_details), or sheet_id and '
+      + 'column for '
       + `that column's newest run. ${GUIDE_POINTER}`,
     inputSchema: {
       run_type: z.enum(['ai', 'http', 'enrichment', 'waterfall']).optional().describe('With run_id: the run\'s kind'),
-      run_id: z.string().optional().describe('The run to undo (list_runs)'),
+      run_id: z.string().optional().describe('The run to undo (get_run (action list))'),
       sheet_id: z.string().optional().describe('With column: undo that column\'s newest run that can be undone.'),
       column: z.string().optional().describe('A column the run fills (its main column or any of its outputs).'),
       dry_run: z.boolean().optional()
@@ -59,7 +60,7 @@ export function registerRunUndoTool(server: McpServer, ctx: McpAuthCtx) {
       }
       const kind = kindOf(run_type, run_id, ctx.userId);
       view = kind ? undoViewOf(ctx.userId, kind, run_id) : null;
-      if (!view) return err('Run not found. list_runs shows the runs of a sheet.');
+      if (!view) return err('Run not found. get_run (action list) shows the runs of a sheet.');
     } else {
       if (!sheet_id || !column) return err('Pass run_type and run_id, or sheet_id and column.');
       if (!verifySheetOwnership(sheet_id, ctx.userId)) return err('Sheet not found');

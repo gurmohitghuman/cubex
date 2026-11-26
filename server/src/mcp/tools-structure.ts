@@ -41,7 +41,7 @@ export function registerStructureTools(server: McpServer, ctx: McpAuthCtx) {
         + 'but NOT run: it costs money, so run it (the answer says how) only after the user agrees.',
       inputSchema: {
         action: z.enum(['create', 'rename', 'delete', 'create_sample']).describe('What to do'),
-        table_id: z.string().optional().describe('rename, delete: the table (list_tables)'),
+        table_id: z.string().optional().describe('rename, delete: the table (get_workspace)'),
         name: z.string().optional().describe('Required for create/rename'),
         webhook: lenientBoolean().optional()
           .describe('create: true gives its first sheet an incoming webhook (manage_sheet_webhook)'),
@@ -95,7 +95,7 @@ export function registerStructureTools(server: McpServer, ctx: McpAuthCtx) {
         + `${TEST_WORDS} ${GUIDE_POINTER}`,
       inputSchema: {
         action: z.enum(['create', 'rename', 'copy', 'delete', 'reorder', ...TEST_ACTIONS]).describe('What to do'),
-        table_id: z.string().describe('The table (list_tables)'),
+        table_id: z.string().describe('The table (get_workspace)'),
         sheet_id: z.string().optional()
           .describe('Required for rename/copy/delete and the test actions (the sheet or its test copy)'),
         name: z.string().optional().describe('create and copy: optional; rename: required'),

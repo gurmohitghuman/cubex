@@ -1,7 +1,7 @@
 // The least spend limit an AI run with one can go on with, in micro-dollars
 // as its worker counts them (services/ai-spend-gate.ts). A resume is checked
 // against it (services/ai-run-limit.ts); the app's "Raise the spend limit"
-// dialog, get_run_status and GET /v1/ai-runs/:id (resume_least_usd) show it.
+// dialog, get_run (action status) and GET /v1/ai-runs/:id (resume_least_usd) show it.
 import { db } from '../lib/db';
 import { micro } from '../lib/cost-ceiling';
 import { runSpentUsd } from './ai-spend-gate';

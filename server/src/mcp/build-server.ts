@@ -11,8 +11,7 @@ import { registerColumnTools } from './tools-columns';
 import { registerRunStartTools } from './tools-run-start';
 import { registerRunManageTools } from './tools-run-manage';
 import { registerRunUndoTool } from './tools-run-undo';
-import { registerRunStatusTool } from './tools-run-status';
-import { registerRunResultTools } from './tools-run-results';
+import { registerGetRunTool } from './tools-get-run';
 import { registerOverviewTool, registerWorkspaceTools } from './tools-workspace';
 import { registerStructureTools } from './tools-structure';
 import { registerImportTools } from './tools-import';
@@ -26,9 +25,7 @@ import { registerHiringTool } from './tools-hiring';
 import { registerSocialTool } from './tools-social';
 import { registerWaterfallTools } from './tools-waterfall';
 import { registerEnrichManageTools } from './tools-enrich-manage';
-import { registerBalanceTools } from './tools-balances';
-import { registerUsageTools } from './tools-usage';
-import { registerVersionTool } from './tools-version';
+import { registerAccountTool } from './tools-account';
 import { registerToolGuideTool } from './tools-guide';
 import { registerTrashTools } from './tools-trash';
 import { registerRunConditionTools } from './tools-run-conditions';
@@ -43,7 +40,6 @@ import { registerSetupVersionTools } from './tools-setup-versions';
 import { registerRunWebhookTools } from './tools-run-webhooks';
 import { registerSheetWebhookTools } from './tools-sheet-webhook';
 import { registerPromptStarterTools } from './tools-prompt-starters';
-import { registerSavedKeyTools } from './tools-saved-keys';
 import { registerViewTools } from './tools-views';
 import { MCP_LIST_CACHE_TTL_MS } from '../lib/api-v1-constants';
 import { refuseToolListCursor } from './list-cursor';
@@ -53,7 +49,7 @@ import { answerErrorsWithNextSteps } from './error-answers';
 import { serverInstructions } from './instructions';
 
 // The name and version every answer carries (serverInfo): the running release ("v0.8.12"), or the build
-// as the installer recorded it when it isn't a release, as get_version says (lib/cubex-version.ts);
+// as the installer recorded it when it isn't a release, as get_account (action version) says (lib/cubex-version.ts);
 // "unknown" for a build that doesn't record it (Docker, Coolify).
 function serverInfo(running: ReturnType<typeof runningBuild>) {
   return { name: 'cubex', version: running.version ?? running.build ?? 'unknown' };
@@ -96,10 +92,9 @@ export function registerAllTools(server: McpServer, ctx: McpAuthCtx) {
   registerColumnTools(server, ctx);
   registerRunStartTools(server, ctx);
   registerRunConditionTools(server, ctx);
-  registerRunStatusTool(server, ctx);
+  registerGetRunTool(server, ctx);
   registerRunManageTools(server, ctx);
   registerRunUndoTool(server, ctx);
-  registerRunResultTools(server, ctx);
   registerWorkspaceTools(server, ctx);
   registerStructureTools(server, ctx);
   registerImportTools(server, ctx);
@@ -111,9 +106,7 @@ export function registerAllTools(server: McpServer, ctx: McpAuthCtx) {
   registerAiVisibilityTool(server, ctx);
   registerHiringTool(server, ctx);
   registerSocialTool(server, ctx);
-  registerBalanceTools(server, ctx);
-  registerUsageTools(server, ctx);
-  registerVersionTool(server, ctx);
+  registerAccountTool(server, ctx);
   registerToolGuideTool(server, ctx);
   registerTrashTools(server, ctx);
   registerCleanTool(server, ctx);
@@ -127,7 +120,6 @@ export function registerAllTools(server: McpServer, ctx: McpAuthCtx) {
   registerRunWebhookTools(server, ctx);
   registerSheetWebhookTools(server, ctx);
   registerPromptStarterTools(server, ctx);
-  registerSavedKeyTools(server, ctx);
   registerViewTools(server, ctx);
   registerTransferTool(server, ctx);
   registerTransformTool(server, ctx);

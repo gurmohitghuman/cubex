@@ -4,7 +4,7 @@
 // That turns a recoverable situation into "start over".
 //
 // Returns the same RunSummary shape as get{Ai,Http}RunSummary so a caller can
-// hand any element straight to get_run_status / get_run_results / control_run.
+// hand any element straight to get_run (action status) / get_run (action results) / control_run.
 import { db } from '../lib/db';
 import { RunSummary, aiRunSummaryFromRow, httpRunSummaryFromRow } from './run-status';
 

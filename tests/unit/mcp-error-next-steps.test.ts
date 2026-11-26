@@ -61,20 +61,22 @@ async function main() {
 
   await check('an unknown sheet: a name sent as its id, in the trash, nothing close', async () => {
     await says('get_sheet', { sheet_id: 'leads' }, 'Sheet not found. No sheet has the sheet_id "leads". Close '
-      + 'matches: "Leads" (sheet_id "s-leads", table "CRM"). list_tables lists every table and sheet with their ids.')
+      + 'matches: "Leads" (sheet_id "s-leads", table "CRM"). get_workspace with all_tables lists every table and '
+      + 'sheet with their ids.')
     await says('read_rows', { sheet_id: 's-old' }, 'Sheet not found. It is sheet "Old leads" (table "CRM"), which is '
       + 'in the trash: restore_from_trash with trash_ids [7] brings it back.')
     await says('read_rows', { sheet_id: 'Payroll' }, 'Sheet not found. No sheet has the sheet_id "Payroll". '
-      + 'list_tables lists every table and sheet with their ids.')
+      + 'get_workspace with all_tables lists every table and sheet with their ids.')
   })
 
   await check('the sheet a transfer names that is unknown, and an unknown table, one in the trash', async () => {
     await says('transfer_rows', { source_sheet_id: 's-leads', destination_sheet_id: 'Leeds', operation: 'copy',
       selection: { all: true }, idempotency_key: 'k1' }, 'Source or destination sheet not found. No sheet has the '
-      + 'destination_sheet_id "Leeds". Close matches: "Leads" (sheet_id "s-leads", table "CRM"). list_tables lists '
-      + 'every table and sheet with their ids.')
+      + 'destination_sheet_id "Leeds". Close matches: "Leads" (sheet_id "s-leads", table "CRM"). get_workspace with '
+      + 'all_tables lists every table and sheet with their ids.')
     await says('manage_sheet', { action: 'create', table_id: 'crm', name: 'x' }, 'Table not found. No table has the '
-      + 'table_id "crm". Close matches: "CRM" (table_id "t-crm"). list_tables lists every table with its id.')
+      + 'table_id "crm". Close matches: "CRM" (table_id "t-crm"). get_workspace with all_tables lists every table '
+      + 'with its id.')
     await says('manage_sheet', { action: 'create', table_id: 't-old', name: 'x' }, 'Table not found. It is table '
       + '"Archive", which is in the trash: restore_from_trash with trash_ids [5] brings it back.')
   })
@@ -87,20 +89,22 @@ async function main() {
   })
 
   await check('an unknown run: one of another kind, a mistyped id, and an unknown setup', async () => {
-    await says('get_run_status', { run_type: 'enrichment', run_id: RUN }, `Enrichment run not found. run_id "${RUN}" `
+    await says('get_run', {
+      action: 'status', run_type: 'enrichment', run_id: RUN }, `Enrichment run not found. run_id "${RUN}" `
       + 'is an AI run: call again with run_type "ai".')
-    await says('get_run_status', { run_type: 'ai', run_id: RUN.slice(0, -1) }, 'Run not found. No run has the run_id '
-      + `"${RUN.slice(0, -1)}". Close matches: "${RUN}" (an AI run filling "Summary" on "Leads"). list_runs lists `
-      + 'a sheet\'s runs, newest first.')
+    await says('get_run', {
+      action: 'status', run_type: 'ai', run_id: RUN.slice(0, -1) }, 'Run not found. No run has the run_id '
+      + `"${RUN.slice(0, -1)}". Close matches: "${RUN}" (an AI run filling "Summary" on "Leads"). get_run (action `
+      + 'list) lists a sheet\'s runs, newest first.')
     await says('list_setups', { setup_id: 'Lead enrichment' }, 'Setup not found. No saved setup has the setup_id '
       + '"Lead enrichment". Close matches: "Lead enrichment" (setup_id "st-1"). list_setups lists the saved setups '
       + 'with their ids.')
   })
 
   await check('other unknown ids name the tool that lists them', async () => {
-    await says('get_setup_run', { setup_run_id: 'x' }, 'Setup run not found. A call on items is kept 24 hours after it '
-      + 'finishes. get_setup_run with sheet_id lists the '
-      + 'setup runs on a sheet.')
+    await says('get_run', {
+      action: 'setup', setup_run_id: 'x' }, 'Setup run not found. A call on items is kept 24 hours after it '
+      + 'finishes. get_run (action setup) with sheet_id lists the setup runs on a sheet.')
     await says('list_run_webhooks', { webhook_id: 'x' }, 'Run webhook not found. list_run_webhooks lists the '
       + 'webhooks with their ids.')
   })
@@ -118,8 +122,8 @@ async function main() {
       [{ sheet_id: 's-leads' }, 'Pass setup_run_id or sheet_id.'],
       [{}, 'Something went wrong handling that request. Please try again.'],
     ] as const) assert.equal(withNextStep(u, args, message), message)
-    assert.equal(withNextStep(u, { run_id: 'nope' }, 'Run not found. list_runs shows the runs of a sheet.'),
-      'Run not found. list_runs shows the runs of a sheet. No run has the run_id "nope".')
+    assert.equal(withNextStep(u, { run_id: 'nope' }, 'Run not found. get_run (action list) shows the runs of a sheet.'),
+      'Run not found. get_run (action list) shows the runs of a sheet. No run has the run_id "nope".')
     assert.equal(withNextStep(u, { sheet_id: 's-raw' }, 'Unknown column(s): Emial'),
       'Unknown column(s): Emial. get_sheet lists the sheet\'s columns.')
     assert.equal(withNextStep(u, {}, "This run references saved API key(s): k. Re-running it requires the 'secrets' "

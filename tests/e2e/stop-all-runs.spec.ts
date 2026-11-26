@@ -122,7 +122,8 @@ test('Stop all in the app: shown for a paused setup and a run, one click stops b
   const first = await call(client, 'run_http_enrichment', { sheet_id: a.sheetId, url: rx.url('/short/{{Website}}'),
     method: 'POST', master_column_name: 'Short lookup',
     response_mapping: [{ json_path: '$.short', column_name: 'Short' }] })
-  await expect.poll(async () => (await call(client, 'get_run_status', { run_type: 'http', run_id: first.run_id }))
+  await expect.poll(async () => (await call(client, 'get_run', {
+    action: 'status', run_type: 'http', run_id: first.run_id }))
     .status, { timeout: 30_000 }).toBe('completed')
   await call(client, 'formula_column', { sheet_id: a.sheetId, column: 'Label', formula: '{{Short}} + "!"' })
   const setup = await call(client, 'save_setup', { sheet_id: a.sheetId, name: 'Two steps', columns: ['Label'] })
@@ -161,7 +162,7 @@ test('Stop all in the app: shown for a paused setup and a run, one click stops b
   await shot(page, 'stop-all-toast')
   await expect(stopAll).toHaveCount(0)
   await expect(page.getByTestId('setup-run-chip')).toHaveCount(0, { timeout: 10_000 })
-  expect((await call(client, 'get_setup_run', { setup_run_id: run.id })).status).toBe('cancelled')
+  expect((await call(client, 'get_run', { action: 'setup', setup_run_id: run.id })).status).toBe('cancelled')
   expect((await (await api.get(`/api/http/jobs/${lookup}`)).json()).status).toBe('cancelled')
   await client.close()
   await api.dispose()
