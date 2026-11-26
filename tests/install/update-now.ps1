@@ -228,7 +228,8 @@ Press-Update "to the newer build $($newerSha.Substring(0, 7))"
 Wait-Updater
 if ((Get-Status).code -ne 0) { throw "The update ended with code $((Get-Status).code)." }
 # "local <short commit> <date>": the short commit as the installer's git abbreviated it.
-$kind, $short = (Get-Content -Raw (Join-Path $CubexHome 'app\.cubex-version')).Trim() -split '\s+'
+$words = @((Get-Content -Raw (Join-Path $CubexHome 'app\.cubex-version')).Trim() -split '\s+')
+$kind, $short = $words[0], $words[1]
 if ($kind -ne 'local' -or -not $short -or -not $newerSha.StartsWith($short)) { throw "Not on $newerSha`: $(Installed)" }
 Assert-AsBefore
 Installed
