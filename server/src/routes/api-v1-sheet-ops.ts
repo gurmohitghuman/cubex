@@ -105,7 +105,7 @@ router.post('/sheets/:id/remove-duplicates', dedupeScope, async (req: TokenAuthR
 
 // PUT /v1/sheets/:id/auto-dedupe {column, match?, phone_country?, keep?}: keep
 // one row per key as rows arrive (fields left out keep what the setting has);
-// DELETE turns it off. The same as MCP set_auto_dedupe; GET /v1/sheets/:id shows it.
+// DELETE turns it off. The same as MCP remove_duplicates' keep_doing; GET /v1/sheets/:id shows it.
 router.put('/sheets/:id/auto-dedupe', requireScope('write'), (req: TokenAuthRequest, res) => {
   try {
     const b = req.body as Record<string, unknown> | null;

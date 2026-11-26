@@ -37,18 +37,15 @@ test('MCP: discover tools, read and write a sheet end-to-end', async () => {
   const tools = (await client.listTools()).tools.map(t => t.name).sort()
   // Keep this list sorted: it's compared with toEqual.
   expect(tools).toEqual([
-    'add_column', 'add_enrichment_field', 'add_list_rows', 'ai_visibility', 'append_rows', 'apply_setup',
-    'check_run_condition', 'clean_column', 'control_run', 'control_setup_run', 'create_download_link',
-    'create_upload_link', 'delete_column', 'delete_rows', 'delete_setup', 'export_csv', 'find_enrichments',
-    'formula_column', 'get_account', 'get_list_fields', 'get_run', 'get_sheet', 'get_tool_guide', 'get_workspace',
-    'hiring_signals', 'import_csv', 'list_models', 'list_prompt_starters', 'list_run_webhooks',
-    'list_setup_versions', 'list_setups', 'list_trash', 'lookup_column', 'manage_run_schedule',
-    'manage_run_webhook', 'manage_setup_version', 'manage_sheet', 'manage_sheet_webhook', 'manage_table',
-    'manage_view', 'read_rows', 'remove_duplicates', 'rename_column', 'restore_from_trash', 'restore_setup_version',
-    'run_ai_column', 'run_columns', 'run_enrichment', 'run_http_enrichment', 'save_setup', 'set_auto_dedupe',
+    'add_column', 'ai_visibility', 'append_rows', 'apply_setup', 'check_run_condition', 'clean_column', 'control_run',
+    'delete_column', 'delete_rows', 'export_csv', 'file_link', 'find_enrichments', 'formula_column', 'get_account',
+    'get_list_fields', 'get_run', 'get_sheet', 'get_tool_guide', 'get_workspace', 'hiring_signals', 'import_csv',
+    'list_models', 'list_prompt_starters', 'list_run_webhooks', 'list_setup_versions', 'list_setups', 'list_trash',
+    'lookup_column', 'manage_run_schedule', 'manage_run_webhook', 'manage_setup', 'manage_setup_version',
+    'manage_sheet', 'manage_sheet_webhook', 'manage_table', 'manage_view', 'read_rows', 'remove_duplicates',
+    'rename_column', 'restore_from_trash', 'run_ai_column', 'run_columns', 'run_enrichment', 'run_http_enrichment',
     'set_auto_run', 'set_column_order', 'set_default_model', 'set_description', 'social_research', 'sort_sheet',
-    'transfer_rows', 'transform_column', 'undo_run', 'update_cells', 'waterfall_column', 'write_formula',
-    'write_run_condition',
+    'stored_answers', 'transfer_rows', 'transform_column', 'update_cells', 'waterfall_column', 'write_run_condition',
   ])
 
   // Discovery → read: resolve the seeded sheet, read its rows.

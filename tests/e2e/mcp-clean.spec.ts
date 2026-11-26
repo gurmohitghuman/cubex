@@ -274,7 +274,8 @@ test('clean_column options survive a setup saved and used on another sheet', asy
     name_input: 'first_name', column: 'Given' })
   await call(client, 'clean_column', { sheet_id: a.sheetId, source_column: 'Company', cleaner: 'company_name',
     the_company: 'keep', column: 'Firm' })
-  const setup = await call(client, 'save_setup', { sheet_id: a.sheetId, name: 'Names', columns: ['Given', 'Firm'] })
+  const setup = await call(client, 'manage_setup', { action: 'save', sheet_id: a.sheetId, name: 'Names',
+    columns: ['Given', 'Firm'] })
 
   const b = await sheetWith(api, a.tableId, [
     { First: 'Mr John', Company: 'THE CHRISTMAN COMPANY, INC.' }, { First: 'MARY ANN', Company: 'Acme Inc' },

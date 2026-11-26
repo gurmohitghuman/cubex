@@ -191,8 +191,8 @@ async function main() {
     assert.equal(a.changed[0].row_generation, versions(dest).row_generation)
   })
 
-  await check('set_auto_dedupe names its key column', async () => {
-    const a = await call('set_auto_dedupe', { sheet_id: dest, column: 'Company' })
+  await check('remove_duplicates\' keep_doing names its key column', async () => {
+    const a = await call('remove_duplicates', { sheet_id: dest, keep_doing: { column: 'Company' } })
     assert.deepEqual(a.changed.map(i => [i.sheet_id, i.columns, i.rows]), [[dest, ['Company'], 0]])
   })
 

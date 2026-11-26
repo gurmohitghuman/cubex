@@ -47,7 +47,8 @@ test('formula_column: preview, create, errors, change, refusals', async () => {
   const sheetId = await seedPeople(api)
   const client = await mcpClient(await makeAccessToken(api, ['read', 'write'], 'e2e formula'), 'e2e-formula')
   const tools = (await client.listTools()).tools.map(t => t.name)
-  expect(tools).toEqual(expect.arrayContaining(['formula_column', 'write_formula']))
+  expect(tools).toContain('formula_column')
+  expect(tools).not.toContain('write_formula')
 
   const preview = await call(client, 'formula_column',
     { sheet_id: sheetId, formula: WORK.replace('Response', 'response'), preview: true })

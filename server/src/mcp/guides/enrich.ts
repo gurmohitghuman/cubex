@@ -1,4 +1,4 @@
-// The guides of the enrichment, waterfall and auto-run tools (guide.ts says what a guide holds).
+// The guides of the enrichment, waterfall, stored answers and auto-run tools (guide.ts says what a guide holds).
 import { RUN_IF_HELP } from '../run-if-schema';
 import { saveOnlyHelp } from '../save-only-schema';
 import type { ToolGuide } from './guide';
@@ -42,6 +42,23 @@ export const ENRICH_GUIDES: Record<string, ToolGuide> = {
     ],
     fields: { run_if: RUN_IF_HELP, save_only: saveOnlyHelp('run_enrichment') },
     spendCap: true,
+  },
+  stored_answers: {
+    text: [
+      'add_column: Free: no treg calls and no requests. Find json_path in a stored answer: get_run (action results) '
+        + 'with include_answers:true shows them (paths start at the answer\'s root, e.g. '
+        + '$.output.company.linkedin_url or $.raw.location). Later runs of the column fill it too. It fills in the '
+        + 'background: its cells read "⏳ Processing..." and the sheet refuses other changes until done. A part of '
+        + 'an answer too big to keep, and columns that add rows to another sheet, are refused. Returns the column '
+        + 'and whether it is still filling: get_sheet\'s filling_columns says when it is done.',
+      'add_rows: Pick the fields to keep for a list job\'s results waiting for them (from get_list_fields), and add '
+        + 'those results as rows in the destination sheet, one row per result: free, the results are already paid '
+        + 'for. Each field becomes a column there (an existing column of that name is filled). dedupe_path (one of '
+        + 'the fields) skips a result whose value matches a row added before. The column keeps these fields, so '
+        + 'control_run rerun mode "empty" then runs the rest of the rows. Adding them costs nothing here, but '
+        + 'auto-runs on the destination sheet fill new rows there: auto_run lists them, as for append_rows.',
+      'Both need the write scope.',
+    ],
   },
   set_auto_run: {
     text: [

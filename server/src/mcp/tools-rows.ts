@@ -34,12 +34,12 @@ export function registerRowTools(server: McpServer, ctx: McpAuthCtx) {
     {
       description:
         `Add up to ${API_V1_MAX_APPEND_ROWS} rows at the end of a sheet, each as {column: value}. For a file, use `
-        + 'create_upload_link instead (the file never passes through your context); to copy rows from another '
-        + 'sheet, transfer_rows. The columns must exist (add_column first). Returns the new rows\' ids and '
-        + 'indexes, in the order given. With auto-dedupe on (set_auto_dedupe), a row whose key the sheet already '
-        + 'had says kept: false (it went to the trash) and auto_dedupe says what was not kept or replaced. When '
-        + 'auto-run is on, auto_run lists the columns that will fill the new rows on their own: an enrichment '
-        + 'spends treg credit (estimated_usd), an HTTP API column sends real requests (sends_requests). Tell the '
+        + 'file_link (action upload) instead (the file never passes through your context); to copy rows from another '
+        + 'sheet, transfer_rows. The columns must exist (add_column first). Returns the new rows\' ids and indexes, in '
+        + 'the order given. With auto-dedupe on (remove_duplicates keep_doing), a row whose key the sheet already had '
+        + 'says kept: false (it went to the trash) and auto_dedupe says what was not kept or replaced. When auto-run '
+        + 'is on, auto_run lists the columns that will fill the new rows on their own: an enrichment spends treg '
+        + 'credit (estimated_usd), an HTTP API column sends real requests (sends_requests). Tell the '
         + `user. ${GUIDE_POINTER}`,
       inputSchema: {
         sheet_id: z.string().describe(SHEET_ID),

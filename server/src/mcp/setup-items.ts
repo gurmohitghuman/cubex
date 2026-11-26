@@ -18,7 +18,7 @@ export const SETUP_ITEMS = z.array(z.record(z.string(), cell)).min(1).max(SETUP_
 const SHEET_ONLY = ['inputs', 'names', 'first_rows'] as const;
 
 // apply_setup with items: a saved setup called like a function on items, without a sheet (services/setup-call.ts).
-// Pause, resume and stop go through control_setup_run with the call's id; get_run (action setup) answers it.
+// Pause, resume and stop go through control_run with the call's id; get_run (action setup) answers it.
 export async function applySetupOnItems(
   ctx: McpAuthCtx, setupId: string, items: unknown, a: Record<string, unknown>,
 ) {

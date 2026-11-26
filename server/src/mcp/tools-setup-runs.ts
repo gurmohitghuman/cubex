@@ -27,7 +27,7 @@ import { GUIDE_POINTER } from './guides/guide';
 const names = z.record(z.string(), z.string());
 
 // Using a saved setup on a sheet (services/setup-apply.ts, setup-runner.ts), or on items without one
-// (setup-items.ts): apply_setup, get_run (action setup), control_setup_run; and run_columns, which runs
+// (setup-items.ts): apply_setup, get_run (action setup), control_run (setup_run_id); and run_columns, which runs
 // a sheet's own run columns on chosen rows as a setup run (services/column-run.ts).
 export function registerSetupRunTools(server: McpServer, ctx: McpAuthCtx): void {
   registerTool(server, 'apply_setup', {
@@ -38,7 +38,7 @@ export function registerSetupRunTools(server: McpServer, ctx: McpAuthCtx): void 
       + 'function, for a script or another app: each item is an object keyed by the setup\'s input names. It returns '
       + 'a setup_call, and get_run (action setup) with its id answers each item\'s outputs by column once it finishes. '
       + 'For more '
-      + 'items, create_upload_link with setup_id calls it on a file\'s rows. '
+      + 'items, file_link (action upload) with setup_id calls it on a file\'s rows. '
       + 'COSTS MONEY: AI steps call your model per row, enrichments spend your treg balance, HTTP API '
       + 'steps send a request per row; clean and formula steps are free. '
       + 'ESTIMATE_ONLY DEFAULTS TO TRUE: the first call prices each step and starts nothing; tell the user, then '
@@ -98,7 +98,8 @@ export function registerSetupRunTools(server: McpServer, ctx: McpAuthCtx): void 
       + 'column and starts nothing; tell the user, then call again with estimate_only:false. max_cost_usd refuses '
       + 'to start (nothing is created) when the estimate could pass it; once started, each AI, enrichment and '
       + 'waterfall column gets a spend limit from what is left. To change a column\'s setup use its own tool. '
-      + 'Returns a setup_run: follow it with get_run (action setup); control_setup_run pauses, resumes or stops it.'
+      + 'Returns a setup_run: follow it with get_run (action setup); control_run with its setup_run_id pauses, '
+      + 'resumes or stops it.'
       + capRunToolNote(ctx.spend ?? null) + ` ${GUIDE_POINTER}`,
     inputSchema: z.object({
       sheet_id: z.string().describe(SHEET_ID),
@@ -126,26 +127,19 @@ export function registerSetupRunTools(server: McpServer, ctx: McpAuthCtx): void 
     const run = 'setup_run' in out.ok ? out.ok.setup_run : undefined;
     return ok({ ...out.ok, changed: run ? setupChanged(ctx.userId, run) : [] });
   });
+}
 
-  registerTool(server, 'control_setup_run', {
-    description:
-      'Pause, resume or cancel a setup being used on a sheet, or a call on items: the runs of the steps '
-      + 'working now follow, and no further step starts. Cancelling keeps the columns and values made so far. '
-      + "Resume is refused while a step's AI run is paused at its spend limit (pause_reason spend_limit), which a "
-      + "setup can't raise: cancel it and call apply_setup again with a higher max_cost_usd, which carries on where "
-      + 'it stopped.',
-    inputSchema: z.object({
-      setup_run_id: z.string().describe('The setup run (get_run (action setup))'),
-      action: z.enum(['pause', 'resume', 'cancel']).describe('What to do with it'),
-    }).strict(),
-  }, async ({ setup_run_id, action }) => {
-    const denied = missingScope(ctx, 'run');
-    if (denied) return denied;
-    const out = await controlSetupRun(ctx.userId, setup_run_id, action, ctx.scopes.has('secrets'));
-    if (!('ok' in out)) return err(out.message);
-    // A pause leaves the cells as they are; a resume goes on, a cancel clears its runs' ⏳ cells.
-    return ok({ ...out.ok, changed: action === 'pause' ? [] : setupChanged(ctx.userId, out.ok) });
-  });
+// control_run's pause, resume and cancel of a setup run (control_setup_run before v0.8.47): the runs of the steps
+// working now follow, and no further step starts. Cancelling keeps the columns and values made so far. Its action
+// is exported for REST's body (openapi/routes-setups.ts), which stays what control_setup_run took.
+export const SETUP_RUN_CONTROL_INPUT = {
+  action: z.enum(['pause', 'resume', 'cancel']).describe('What to do with it'),
+};
+export async function setupRunControl(ctx: McpAuthCtx, setupRunId: string, action: 'pause' | 'resume' | 'cancel') {
+  const out = await controlSetupRun(ctx.userId, setupRunId, action, ctx.scopes.has('secrets'));
+  if (!('ok' in out)) return err(out.message);
+  // A pause leaves the cells as they are; a resume goes on, a cancel clears its runs' ⏳ cells.
+  return ok({ ...out.ok, changed: action === 'pause' ? [] : setupChanged(ctx.userId, out.ok) });
 }
 
 // get_run's setup (tools-get-run.ts): a setup run (or a run_columns run, or a call on items) by setup_run_id, with

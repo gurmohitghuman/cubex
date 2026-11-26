@@ -126,7 +126,8 @@ await ok('the delete records every reference it cleans, and still cleans each as
     ['http_field', 'column "Enrich"', 'the HTTP API column "Enrich" wrote its field $.email here',
       'run_http_enrichment on "Enrich", writing its field $.email into "Email"'],
     ['list_field', 'sheet "Accounts", column "People"', 'the list enrichment "People" in "Accounts" put one of its '
-      + `fields in this column`, `add_list_rows (sheet ${b}, column "People") with a field into "Email"`],
+      + `fields in this column`, `stored_answers with action add_rows (sheet ${b}, column "People") with a field into `
+      + '"Email"'],
     ['ai_output', 'column "Research"', 'the AI column "Research" wrote one of its outputs here',
       'run_ai_column on "Research" with "Email" in output_columns'],
     ['lookup_into', 'sheet "Contacts", column "Known"', 'the lookup column "Known" in "Contacts" matched rows on this '
@@ -136,8 +137,8 @@ await ok('the delete records every reference it cleans, and still cleans each as
     ['webhook_mapping', `webhook "${hook}"`, 'put the field $.email of each event in this column',
       "Map the field to it again in the sheet's webhook settings (only in the app)."],
     ['auto_dedupe', 'auto-dedupe', 'kept one row per value of this column (the oldest), and is off now',
-      'set_auto_dedupe with column "Email"'],
-    ['undo', 'undo_run', 'undoing the run that wrote this column no longer puts its cells back',
+      'remove_duplicates with keep_doing { column: "Email" }'],
+    ['undo', 'run undo', 'undoing the run that wrote this column no longer puts its cells back',
       'Nothing to set up: those undos leave this column as it is.'],
   ])
   // What doesn't come back stays as the delete left it; the formula's auto-run goes on once the sweep looks.

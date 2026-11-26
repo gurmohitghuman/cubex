@@ -81,7 +81,8 @@ async function main() {
   console.log(`tools/list: ${modernList.tools.length} tools, ${modernList.chars} characters`)
 
   await check('every tool has a title, hints, a description, described inputs and an open outputSchema', () => {
-    assert.ok(modernList.tools.length >= 60, `only ${modernList.tools.length} tools listed`)
+    // Fewer MCP tools' plan takes the list to 49: a floor under it, so an empty or cut list still fails.
+    assert.ok(modernList.tools.length >= 45, `only ${modernList.tools.length} tools listed`)
     assert.deepEqual(problems(modernList.tools), [])
   })
 

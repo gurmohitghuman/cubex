@@ -1,6 +1,6 @@
 // /v1 run undo: GET /{ai,http}-runs/:id/undo says what undoing the run would
 // do (or how far an undo got), POST undoes it, over the same services as the
-// app's column menu and MCP undo_run (services/run-undo*.ts). An enrichment's
+// app's column menu and MCP control_run's undo (services/run-undo*.ts). An enrichment's
 // or a waterfall's run is an HTTP run. GET /sheets/:id/undo?column= finds a
 // column's newest run that can still be undone. Undo writes cells: 'write'.
 import express from 'express';

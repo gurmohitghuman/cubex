@@ -37,8 +37,9 @@ export const RUN_ENRICHMENT_DESCRIPTION =
   + `each row and spend_limit_usd the run (it pauses there). ${DAILY_LIMIT_NOTE} `
   + 'LIST JOBS (adds_rows:true in find_enrichments) need list: run with test:true, wait for get_run (action status) to '
   + 'say '
-  + 'completed, read the fields with get_list_fields, pick them with add_list_rows, then control_run rerun mode '
-  + '"empty"; or pass list.fields. destination_auto_run lists the auto-runs the new rows set off there, and '
+  + 'completed, read the fields with get_list_fields, pick them with stored_answers (action add_rows), then '
+  + 'control_run rerun mode "empty"; or pass list.fields. destination_auto_run lists the auto-runs the new rows '
+  + 'set off there, and '
   + 'chained_auto_run this sheet\'s auto-runs that read what the run writes (HTTP ones send real requests). '
   + 'Returns run_id at once: poll get_run (action status, run_type "enrichment"). '
   + 'ITEMS: with items instead of sheet_id it runs on items without a sheet, for a script or another app, and '

@@ -1,4 +1,4 @@
-// "Write it with AI" in the Formula dialog, /api/v1 and MCP write_formula: a
+// "Write it with AI" in the Formula dialog, /api/v1 and MCP formula_column's from_words: a
 // formula from plain words with ONE call to the sheet's model (the one an
 // "Only run if" rule is written with), which sees the column names and what
 // the first rows hold (lib/formula-prompt.ts). The formula is then previewed

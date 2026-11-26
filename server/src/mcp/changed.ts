@@ -18,12 +18,8 @@ export const WITHOUT_CHANGED: Record<string, string> = {
   manage_view: 'a saved view: filters and hidden columns, no data',
   manage_run_webhook: 'a webhook setting',
   manage_run_schedule: 'a schedule setting; each firing is a column run, followed with get_run (action setup)',
-  save_setup: 'the setup library',
-  delete_setup: 'the setup library',
-  manage_setup_version: 'the setup library',
-  create_upload_link: 'a link; the import happens later, over HTTP',
-  create_download_link: 'a link',
-  write_formula: 'writes no data: it answers a formula',
+  manage_setup: 'the setup library',
+  file_link: 'a link; an upload\'s import happens later, over HTTP',
   write_run_condition: 'writes no data: it answers a rule',
 };
 

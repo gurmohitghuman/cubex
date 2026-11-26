@@ -37,7 +37,7 @@ export function registerWorkspaceTools(server: McpServer, ctx: McpAuthCtx) {
       description:
         'Export sheet rows as CSV text. The CSV comes back IN YOUR CONTEXT, so a wide or long sheet is EXPENSIVE: '
         + 'always pass columns and where. Use it only when you need CSV itself (to hand on or save as it is); to '
-        + 'reason over data, read_rows is cheaper and pages; for a file of any size, create_download_link. '
+        + 'reason over data, read_rows is cheaper and pages; for a file of any size, file_link (action download). '
         + `At most ${MCP_EXPORT_MAX_CHARS.toLocaleString('en-US')} characters come back: past that the answer says `
         + 'truncated: true and rest says how to get the others. Values are escaped against spreadsheet formula '
         + `injection. Read-only. ${GUIDE_POINTER}`,
@@ -68,7 +68,7 @@ export function registerWorkspaceTools(server: McpServer, ctx: McpAuthCtx) {
           row_count: result.rowCount, matching_rows: result.matchingRows, truncated: true,
           rest: `Only the first ${result.rowCount} of ${result.matchingRows ?? 'the'} matching rows fit. `
             + 'Page through the rest with read_rows (same columns/where), or save everything as a file '
-            + 'with create_download_link.',
+            + 'with file_link (action download).',
         });
       }
       // rowCount comes from the builder (matched rows), NOT from counting lines:

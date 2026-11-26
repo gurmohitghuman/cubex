@@ -162,7 +162,7 @@ export function agentRunBody(
   if (list && list.fields === null && f.test !== true) {
     return {
       error: 'A job that adds rows needs the fields to keep, and they come from real results: run it with '
-        + 'test: true first, then read the fields (get_list_fields) and pick them (add_list_rows).',
+        + 'test: true first, then read the fields (get_list_fields) and pick them (stored_answers, action add_rows).',
     };
   }
   if (a.email !== undefined && preset !== 'verified_email') return { error: 'email needs preset verified_email.' };

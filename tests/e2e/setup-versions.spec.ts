@@ -100,13 +100,15 @@ test('REST and MCP: save, compare, restore without running, then the next run us
     expect(refused.status()).toBe(403)
     expect((await refused.json()).error).toMatch(/'run' scope/)
     await writer.dispose()
-    const dry = await call(client, 'restore_setup_version', { sheet_id: sheetId, version_id: version.id })
+    const dry = await call(client, 'manage_setup_version', { action: 'restore', sheet_id: sheetId,
+      version_id: version.id })
     expect(dry.dry_run).toBe(true)
     expect((await details(sheetId)).has('Domain')).toBe(false)
 
     // The Call column's requests go to /v1; another spec's leftovers may reach other paths.
     const hitsBefore = rx.hitsOn('/v1').length
-    const done = await call(client, 'restore_setup_version', { sheet_id: sheetId, version_id: version.id,
+    const done = await call(client, 'manage_setup_version', { action: 'restore', sheet_id: sheetId,
+      version_id: version.id,
       dry_run: false })
     expect(done.saved_before).toMatchObject({ name: 'Before restoring: Launch', auto: true })
     expect(done.message).toMatch(/^Restored\. 1 column added back \(empty\), 3 columns set up as they were\. /)
@@ -174,9 +176,10 @@ test("a request reading a saved key: restoring it needs the 'secrets' scope", as
     // The comparison names the header, never its value.
     const compared = await call(client, 'list_setup_versions', { sheet_id: sheetId, version_id: saved.version.id })
     expect(JSON.stringify(compared)).not.toContain('secret-value-123')
-    expect(await callError(client, 'restore_setup_version', { sheet_id: sheetId, version_id: saved.version.id,
+    expect(await callError(client, 'manage_setup_version', { action: 'restore', sheet_id: sheetId,
+      version_id: saved.version.id,
       dry_run: false })).toMatch(/needs the 'secrets' scope/)
-    const ok = await call(await mcpClient(secretToken), 'restore_setup_version', { sheet_id: sheetId,
+    const ok = await call(await mcpClient(secretToken), 'manage_setup_version', { action: 'restore', sheet_id: sheetId,
       version_id: saved.version.id, dry_run: false })
     expect(ok.nothing).toBe(false)
   } finally {

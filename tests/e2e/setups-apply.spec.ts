@@ -30,7 +30,7 @@ test('a setup used on another sheet: priced, matched, run in order, auto-run on'
     formula: '{{Domain}} + "-" + {{Post id}}' })
   await call(client, 'clean_column', { sheet_id: a.sheetId, source_column: 'Name', cleaner: 'person_name',
     column: 'Clean name' })
-  const setup = await call(client, 'save_setup', { sheet_id: a.sheetId, name: 'Domain flow',
+  const setup = await call(client, 'manage_setup', { action: 'save', sheet_id: a.sheetId, name: 'Domain flow',
     columns: ['Label', 'Clean name'] })
   expect([...setup.inputs].sort()).toEqual(['Name', 'Website'])
 
@@ -84,7 +84,7 @@ test('a setup used on another sheet: priced, matched, run in order, auto-run on'
   expect(await column(api, c.sheetId, 'Post id')).toEqual(['1', '', ''])
   const cAutorun = JSON.stringify((await getSheet(api, c.sheetId)).data.autorun ?? {})
   for (const col of ['Lookup', 'Domain', 'Label', 'Clean name']) expect(cAutorun).not.toContain(`"${col}"`)
-  expect(await callError(client, 'control_setup_run', { setup_run_id: test1.setup_run.id, action: 'pause' }))
+  expect(await callError(client, 'control_run', { setup_run_id: test1.setup_run.id, action: 'pause' }))
     .toContain('done')
 
   // Used again on every row: the steps carry on, the HTTP API step only on the rows the test left.
@@ -119,7 +119,8 @@ test('a setup used on another sheet: priced, matched, run in order, auto-run on'
   await expect.poll(async () => (await call(secretClient, 'get_run', {
     action: 'status', run_type: 'http', run_id: k.run_id }))
     .status, { timeout: 30_000 }).toBe('completed')
-  const keyedSetup = await call(client, 'save_setup', { sheet_id: a.sheetId, name: 'Keyed', columns: ['User id'],
+  const keyedSetup = await call(client, 'manage_setup', { action: 'save', sheet_id: a.sheetId, name: 'Keyed',
+    columns: ['User id'],
     include_upstream: false })
   expect(keyedSetup.keys).toEqual(['setup_e2e_key'])
   expect(await callError(client, 'apply_setup', { sheet_id: c.sheetId, setup_id: keyedSetup.id }))

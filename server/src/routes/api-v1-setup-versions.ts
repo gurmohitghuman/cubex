@@ -62,7 +62,7 @@ router.delete(`${BASE}/:versionId`, requireScope('write'), guarded(`DELETE /v1${
   return reply(res, 'ok' in out ? { ok: { ok: true } } : out);
 }));
 
-// Body: { dry_run? }. A dry run by default, as MCP's restore_setup_version: only
+// Body: { dry_run? }. A dry run by default, as MCP manage_setup_version's restore: only
 // dry_run false (or "false") restores. The app restores through its own route.
 router.post(`${BASE}/:versionId/restore`, requireScope('read'), guarded(`POST /v1${BASE}/:versionId/restore`,
   async (req, res) => {

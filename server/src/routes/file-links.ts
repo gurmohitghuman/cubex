@@ -1,5 +1,5 @@
 // PUBLIC, UNAUTHENTICATED: the one-time links an MCP agent gets from
-// create_upload_link and create_download_link (lib/file-links.ts). Mounted in
+// file_link's upload and download (lib/file-links.ts). Mounted in
 // index.ts with no auth; the token in the path IS the capability, as with
 // webhooks. Cheap rejections come first, any link that is unknown, used,
 // expired or whose access token is gone gets the same 404, and an upload's body
@@ -134,7 +134,7 @@ router.get('/download/:token', async (req, res) => {
     if (!await responseTurn(res)) return;
     const link = findFileLink(token, 'download');
     if (!link) return notFound(res);
-    // format: 'jsonl' for JSON lines (create_download_link format); a link from before has none: CSV.
+    // format: 'jsonl' for JSON lines (file_link download's format); a link from before has none: CSV.
     const options = linkOptions<{ columns: string[]; where: WhereItem[]; saved: WhereItem[]; format: string }>(link);
     const jsonl = options.format === 'jsonl';
     const plan = planSheetExport(link.sheet_id, link.user_id, options);

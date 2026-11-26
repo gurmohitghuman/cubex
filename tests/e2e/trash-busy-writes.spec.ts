@@ -32,7 +32,7 @@ test('an upload link imports nothing into a sheet deleted while the file uploade
   const v1 = await pwRequest.newContext({ baseURL: BASE, extraHTTPHeaders: { Authorization: `Bearer ${token}` } })
   const rows = async () => (await (await v1.get(`/api/v1/sheets/${sheetId}/rows`)).json()).rows
   const before = await rows()
-  const link = await call(client, 'create_upload_link', { sheet_id: sheetId })
+  const link = await call(client, 'file_link', { action: 'upload', sheet_id: sheetId })
 
   const file = Buffer.from('val,extra\nnew1,x\nnew2,y\n')
   const put = http.request(link.upload_url, {

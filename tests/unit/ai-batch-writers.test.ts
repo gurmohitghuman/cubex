@@ -1,4 +1,4 @@
-// write_formula and write_run_condition (MCP) and their REST routes,
+// formula_column's from_words and write_run_condition (MCP) and their REST routes,
 // POST /api/v1/sheets/:id/formula-columns/write and .../run-conditions/generate,
 // refuse a ":batch" model before anything is sent (services/run-condition-ai.ts
 // writerModel), named or saved as the sheet's default, in the words every other
@@ -68,15 +68,17 @@ async function main() {
       { isError?: boolean; content: Array<{ text: string }> }
     return { isError: res.isError === true, json: JSON.parse(res.content[0].text) }
   }
-  const writers: Array<[string, string, object]> = [
-    ['write_formula', 'formula-columns/write', { words: 'the name in capitals' }],
-    ['write_run_condition', 'run-conditions/generate', { text: 'the name is Ada' }],
+  // Each writer's MCP tool and arguments, then its REST route and body (REST's formula body says words).
+  const writers: Array<[string, object, string, object]> = [
+    ['formula_column', { from_words: 'the name in capitals' }, 'formula-columns/write',
+      { words: 'the name in capitals' }],
+    ['write_run_condition', { text: 'the name is Ada' }, 'run-conditions/generate', { text: 'the name is Ada' }],
   ]
   const both = async (model: string | undefined, expected: string) => {
-    for (const [name, path, ask] of writers) {
-      const args = model === undefined ? ask : { ...ask, model }
-      assert.deepEqual(await tool(name, args), { isError: true, json: { error: expected } }, name)
-      assert.deepEqual(await rest(path, args), { status: 400, json: { error: expected } }, path)
+    for (const [name, ask, path, body] of writers) {
+      const withModel = (o: object) => (model === undefined ? o : { ...o, model })
+      assert.deepEqual(await tool(name, withModel(ask)), { isError: true, json: { error: expected } }, name)
+      assert.deepEqual(await rest(path, withModel(body)), { status: 400, json: { error: expected } }, path)
     }
   }
 

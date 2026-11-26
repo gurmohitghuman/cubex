@@ -1,3 +1,4 @@
+// Over 200 lines: one route list per area of the REST document, and this area has the most routes.
 // /api/v1 routes: clean, formula and lookup columns, enrichments, waterfalls,
 // AI visibility and hiring tables (api-v1-clean.ts, api-v1-formula.ts, api-v1-lookup.ts,
 // api-v1-enrich.ts, api-v1-waterfall.ts, api-v1-ai-visibility.ts, api-v1-hiring.ts).
@@ -8,7 +9,9 @@ import {
 import { ENGINES } from '../lib/ai-visibility/engines';
 import { op, type RouteDoc } from './route-doc';
 import { hiringFilterFields } from './hiring-fields';
-import { toolBody } from './tool-schemas';
+import { actionBody, toolBody } from './tool-schemas';
+import { FORMULA_INPUT, WRITE_FORMULA_INPUT } from '../mcp/tools-formula';
+import { ADD_COLUMN_INPUT, ADD_ROWS_INPUT } from '../mcp/tools-enrich-manage';
 import {
   ENRICH_LIST_MAX_ITEMS, HIRING_DEFAULT_PER_SEARCH, HIRING_DEFAULT_POSTED_DAYS, HIRING_MAX_POSTED_DAYS,
   HIRING_MAX_ROLES, OPENROUTER_BALANCE_CACHE_MS,
@@ -37,13 +40,13 @@ export const fillRoutes = (): RouteDoc[] => [
   op({
     method: 'post', path: '/sheets/{id}/formula-columns', operationId: 'formulaColumn', tag: 'filled',
     scope: 'write', summary: 'Fill a column for free with a JavaScript formula worked out from each row.',
-    body: toolBody('formula_column', { omit: ['sheet_id'], strict: true }), responses: filled,
+    body: actionBody('formula_column', FORMULA_INPUT, { omit: ['sheet_id'], strict: true }), responses: filled,
   }),
   op({
     method: 'post', path: '/sheets/{id}/formula-columns/write', operationId: 'writeFormula', tag: 'filled',
     scope: 'run', summary: 'Have the AI model write a formula from plain words. Nothing is saved.',
     description: "One small call to the sheet's model, which costs money.",
-    body: toolBody('write_formula', { omit: ['sheet_id'] }),
+    body: actionBody('formula_column', WRITE_FORMULA_INPUT, { omit: ['sheet_id'] }),
   }),
   op({
     method: 'post', path: '/sheets/{id}/lookup-columns', operationId: 'lookupColumn', tag: 'filled',
@@ -83,7 +86,7 @@ export const fillRoutes = (): RouteDoc[] => [
   op({
     method: 'post', path: '/sheets/{id}/enrichment-fields', operationId: 'addEnrichmentField', tag: 'enrich',
     scope: 'write', summary: "Add a column from an enrichment's stored answers. It fills in the background.",
-    body: toolBody('add_enrichment_field', { omit: ['sheet_id'], strict: true }),
+    body: actionBody('stored_answers', ADD_COLUMN_INPUT, { omit: ['sheet_id'], strict: true }),
     responses: { 202: 'The column is filling.' },
   }),
   op({
@@ -94,7 +97,7 @@ export const fillRoutes = (): RouteDoc[] => [
   op({
     method: 'post', path: '/sheets/{id}/enrichment-list-fields', operationId: 'addListRows', tag: 'enrich',
     scope: 'write', summary: "Add a list job's waiting results as rows, with the fields picked.",
-    body: toolBody('add_list_rows', { omit: ['sheet_id'], strict: true }),
+    body: actionBody('stored_answers', ADD_ROWS_INPUT, { omit: ['sheet_id'], strict: true }),
   }),
   op({
     method: 'put', path: '/sheets/{id}/enrichment-auto-run', operationId: 'setAutoRun', tag: 'enrich',

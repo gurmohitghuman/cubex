@@ -51,7 +51,7 @@ test('an upload link, read_rows and a download link keep C1 byte for byte; fix_e
   const client = await mcpClient(token, 'e2e-garbled')
   const http = await pwRequest.newContext()
 
-  const link = await call(client, 'create_upload_link', { sheet_id: sheetId })
+  const link = await call(client, 'file_link', { action: 'upload', sheet_id: sheetId })
   const up = await http.put(link.upload_url,
     { data: Buffer.from(CSV, 'utf8'), headers: { 'Content-Type': 'text/csv' } })
   expect(up.status()).toBe(201)
@@ -82,7 +82,7 @@ test('an upload link, read_rows and a download link keep C1 byte for byte; fix_e
   escapedOnTheWire(await appRead.body())
   expect((await getSheet(api, sheetId)).data.rows.slice(1).map((r: Row) => r.data.Name)).toEqual(VALUES)
 
-  const download = await call(client, 'create_download_link', { sheet_id: sheetId })
+  const download = await call(client, 'file_link', { action: 'download', sheet_id: sheetId })
   const got = await http.get(download.download_url)
   expect(got.status()).toBe(200)
   const want = ['"val","Name","Note"', '"v0","",""', ...VALUES.map((v, i) => `"","${v}","${NOTES[i]}"`)].join('\r\n')

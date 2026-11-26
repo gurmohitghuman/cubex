@@ -13,11 +13,9 @@ export const SETUP_ITEMS_TEXT = [
   'With items, Cubex runs the setup on a working table of its own that you never see: not in the app, get_workspace, '
     + 'get_workspace or the trash. Each step runs as it would on a sheet, and auto-run is never turned on there. '
     + 'What its enrichments spend shows in Settings as "A call without a sheet".',
-  'The call\'s id is a setup run\'s id: get_run (action setup) answers it, control_setup_run pauses, resumes or '
-    + 'cancels it, '
-    + 'a run webhook named with webhook_id reports it as kind "setup" with that id as run_id, and get_run (action '
-    + 'status) '
-    + 'works on each step\'s run_id.',
+  'The call\'s id is a setup run\'s id: get_run (action setup) answers it, control_run with it as setup_run_id '
+    + 'pauses, resumes or cancels it, a run webhook named with webhook_id reports it as kind "setup" with that id as '
+    + 'run_id, and get_run (action status) works on each step\'s run_id.',
   `A call left paused for ${SETUP_CALL_KEEP_HOURS} hours is stopped (cancelled), and its results are then kept `
     + `${SETUP_CALL_KEEP_HOURS} hours too. Then its working table is deleted and get_run (action setup) answers not `
     + `found.`,
@@ -32,8 +30,8 @@ export const GET_SETUP_RUN_GUIDE: ToolGuide = {
       + 'output: it reads null, and the item\'s status says so (error, running, condition_not_met, no_result, '
       + 'done, or not_run when nothing was made), with error naming the column that failed and why.',
     `Results come ${SETUP_CALL_MAX_ITEMS} items at a time (limit, up to ${SETUP_CALL_MAX_ITEMS}): next_from is `
-      + 'where the next page starts (pass it as results_from), null after the last. create_download_link with '
-      + 'setup_call_id (instead of sheet_id) saves every item\'s inputs and outputs as a CSV.',
+      + 'where the next page starts (pass it as results_from), null after the last. file_link (action download) '
+      + 'with setup_run_id (instead of sheet_id) saves every item\'s inputs and outputs as a CSV.',
     `Results are kept ${SETUP_CALL_KEEP_HOURS} hours after the call finishes (keep_until). A call left paused for `
       + `${SETUP_CALL_KEEP_HOURS} hours is stopped: its status is cancelled and error_message says why.`,
     'With wait_seconds it answers when the run finishes, pauses or resumes, or the time is up.',

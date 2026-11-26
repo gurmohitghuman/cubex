@@ -103,7 +103,8 @@ async function main() {
       }
       const old = await post({ jsonrpc: '2.0', id: 8, method: 'tools/list', params: {} },
         { 'mcp-protocol-version': '2025-06-18' })
-      assert.equal(JSON.parse(old.text).result.tools.length > 60, true)
+      // The whole list (fewer MCP tools' plan takes it to 49), not a refusal.
+      assert.equal(JSON.parse(old.text).result.tools.length >= 45, true)
     })
 
   await check('a body naming a version Cubex doesn\'t speak: the SDK\'s -32022, with the same next step', async () => {

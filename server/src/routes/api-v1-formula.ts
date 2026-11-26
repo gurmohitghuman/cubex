@@ -2,7 +2,7 @@
 // over the service the MCP tool uses (services/formula-agent.ts), so the two
 // surfaces can't drift. A new formula column answers 201, a changed one or a
 // preview 200; the body is the same as the tool's answer. POST
-// /v1/sheets/:id/formula-columns/write is write_formula (services/formula-ai.ts).
+// /v1/sheets/:id/formula-columns/write is formula_column's from_words (services/formula-ai.ts).
 import express from 'express';
 import { requireScope, TokenAuthRequest } from '../middleware/access-token-auth';
 import { runFailHttpStatus } from '../services/run-shared';

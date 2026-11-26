@@ -38,10 +38,10 @@ export const STRUCTURE_GUIDES: Record<string, ToolGuide> = {
         + `${SHEET_TEST_MAX_ROWS} rows. The copy's clean, formula and lookup columns work the new rows out as they `
         + 'arrive; nothing paid runs.',
       'apply_test: the copy\'s setup becomes the sheet\'s, the sheet\'s old setup is kept as a setup version '
-        + '(list_setup_versions), and each sample row\'s newest result made by the column as it is now, from the '
-        + 'same inputs, goes back to that row (kept as one finished $0 run, so undo_run can take it back); nothing '
-        + 'runs. apply says what it did, or would do on a dry run. Refused while a run is going on the copy; a column '
-        + 'whose request reads saved API keys needs the secrets scope.',
+        + '(list_setup_versions), and each sample row\'s newest result made by the column as it is now, from the same '
+        + 'inputs, goes back to that row (kept as one finished $0 run, so control_run\'s undo can take it back); '
+        + 'nothing runs. apply says what it did, or would do on a dry run. Refused while a run is going on the copy; a '
+        + 'column whose request reads saved API keys needs the secrets scope.',
       'discard_test deletes the copy with its rows and runs, and the sheet stays as it was. Either way the sheet '
         + 'takes changes again and the webhook deliveries it kept are added in the order they arrived. While a test '
         + 'ends, get_sheet\'s test says state "ending". The copy is never in get_workspace.',

@@ -77,13 +77,14 @@ test('an HTTP API column: REST undoes the newest run, skipping an edited cell; M
 
   // MCP: the column's newest run that can still be undone is now the first.
   const client = await mcpClient(token)
-  const dry = await call(client, 'undo_run', { sheet_id: sheetId, column: 'OK', dry_run: true })
+  const dry = await call(client, 'control_run', { action: 'undo', sheet_id: sheetId, column: 'OK', dry_run: true })
   expect(dry).toMatchObject({ run_id: first, can_undo: true, rows: 3 })
-  const out = await call(client, 'undo_run', { sheet_id: sheetId, column: 'OK' })
+  const out = await call(client, 'control_run', { action: 'undo', sheet_id: sheetId, column: 'OK' })
   expect(out.message).toMatch(/^Undone: 5 cells back as they were before the run; 1 cell changed since stayed/)
   expect(await column(sheetId, 'OK')).toEqual(['', 'mine', ''])
   expect(await column(sheetId, 'Call')).toEqual(['', '', ''])
-  expect(await callError(client, 'undo_run', { sheet_id: sheetId, column: 'OK' })).toMatch(/no run that can/)
+  expect(await callError(client, 'control_run', { action: 'undo', sheet_id: sheetId,
+    column: 'OK' })).toMatch(/no run that can/)
   const history = await (await v1.get(`/api/v1/sheets/${sheetId}/history`)).json()
   const lines = (history.changes as Array<{ action: string; summary: string }>).filter(c => c.action === 'run_undone')
   expect(lines.map(l => l.summary)).toEqual([
@@ -92,7 +93,7 @@ test('an HTTP API column: REST undoes the newest run, skipping an edited cell; M
   ])
 })
 
-test('an HTTP API run whose main column was deleted: undo_run reads column null, undoes the rest', async () => {
+test('an HTTP API run whose main column was deleted: an undo reads column null, undoes the rest', async () => {
   const { sheetId } = await sheetWith('Name\nAda\nBo\n')
   rx.on('/gone', { status: 200, body: '{"ok":"yes"}' })
   const start = await v1.post(`/api/v1/sheets/${sheetId}/http-runs`, { data: {
@@ -104,9 +105,9 @@ test('an HTTP API run whose main column was deleted: undo_run reads column null,
   await waitForTerminal(v1, `/api/v1/http-runs/${runId}`)
   const client = await mcpClient(token)
   await call(client, 'delete_column', { sheet_id: sheetId, column: 'Main' })
-  const dry = await call(client, 'undo_run', { run_type: 'http', run_id: runId, dry_run: true })
+  const dry = await call(client, 'control_run', { action: 'undo', run_type: 'http', run_id: runId, dry_run: true })
   expect(dry).toMatchObject({ run_id: runId, column: null, can_undo: true })
-  const out = await call(client, 'undo_run', { run_type: 'http', run_id: runId })
+  const out = await call(client, 'control_run', { action: 'undo', run_type: 'http', run_id: runId })
   expect(out).toMatchObject({ run_id: runId, column: null, state: 'undone', restored: 2, gone: 2 })
   expect(await column(sheetId, 'Answer')).toEqual(['', ''])
   await client.close()
@@ -157,7 +158,7 @@ test('an AI column: "Undo last run" in its menu asks first, then empties what th
   }
 })
 
-test('a waterfall: undo_run takes back its result, "Answered by" and step cells', async () => {
+test('a waterfall: control_run\'s undo takes back its result, "Answered by" and step cells', async () => {
   test.setTimeout(90_000)
   const { sheetId } = await sheetWith('Name,Website\nMaya Chen,stripe.com\nLee Park,acme.com\n')
   const client = await mcpClient(token)
@@ -171,7 +172,7 @@ test('a waterfall: undo_run takes back its result, "Answered by" and step cells'
   const before = await rowsOf(api, sheetId)
   expect(before[0]['Work email']).toBe('maya.chen@stripe.com')
   expect(before[0]['Work email (Answered by)']).toBe('Guess')
-  const out = await call(client, 'undo_run', { run_type: 'waterfall', run_id: run.run_id })
+  const out = await call(client, 'control_run', { action: 'undo', run_type: 'waterfall', run_id: run.run_id })
   expect(out).toMatchObject({ state: 'undone', skipped: 0, gone: 0 })
   const after = await rowsOf(api, sheetId)
   for (const row of after) {

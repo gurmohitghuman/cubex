@@ -15,7 +15,8 @@ import { DIGITS_TEXT } from '../lib/digits-text';
 import { whereSchema } from '../mcp/where-schema';
 import { MAX_CHARS_PER_CELL_HELP } from '../mcp/query-schema';
 import { op, type RouteDoc } from './route-doc';
-import { toolBody } from './tool-schemas';
+import { actionBody, toolBody } from './tool-schemas';
+import { AUTO_DEDUPE_INPUT, REMOVE_DUPLICATES_INPUT } from '../mcp/tools-dedupe';
 
 const cells = z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()]))
   .describe(`{column: value}, up to ${API_V1_MAX_PATCH_CELLS} columns. Columns must exist; null clears a cell.`);
@@ -139,12 +140,14 @@ export const rowRoutes = (): RouteDoc[] => [
     method: 'post', path: '/sheets/{id}/remove-duplicates', operationId: 'removeDuplicates', tag: 'rows',
     scope: 'read', scopeNote: 'Removing (dry_run false) needs write.',
     summary: 'Find duplicate rows, and remove them when dry_run is false.',
-    body: toolBody('remove_duplicates', { omit: ['sheet_id'], strict: true }),
+    body: actionBody('remove_duplicates', REMOVE_DUPLICATES_INPUT, { omit: ['sheet_id'], strict: true }),
   }),
   op({
     method: 'put', path: '/sheets/{id}/auto-dedupe', operationId: 'setAutoDedupe', tag: 'rows', scope: 'write',
     summary: 'Keep one row per key as rows arrive. Fields left out keep what the setting has.',
-    body: toolBody('set_auto_dedupe', { pick: ['column', 'match', 'phone_country', 'keep'], strict: true }),
+    body: actionBody('remove_duplicates', AUTO_DEDUPE_INPUT, {
+      pick: ['column', 'match', 'phone_country', 'keep'], strict: true,
+    }),
   }),
   op({
     method: 'delete', path: '/sheets/{id}/auto-dedupe', operationId: 'turnOffAutoDedupe', tag: 'rows',

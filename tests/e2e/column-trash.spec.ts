@@ -190,7 +190,7 @@ test('MCP: delete_column, list_trash and restore_from_trash, with what did not c
   const client = await mcpClient(await makeToken(api, ['read', 'write'], 'e2e column trash mcp'))
   const { sheetId } = await csvSheet('Email,Name\nann@acme.com,Ann\nbo@beta.io,Bo\n')
   await call(client, 'manage_view', { sheet_id: sheetId, action: 'create', name: 'Slim', hidden_columns: ['Email'] })
-  await call(client, 'set_auto_dedupe', { sheet_id: sheetId, column: 'Email' })
+  await call(client, 'remove_duplicates', { sheet_id: sheetId, keep_doing: { column: 'Email' } })
   const out = await call(client, 'delete_column', { sheet_id: sheetId, column: 'Email' })
   expect(out.deleted).toBe(true)
   const id = out.trash.trash_id as number
@@ -209,7 +209,7 @@ test('MCP: delete_column, list_trash and restore_from_trash, with what did not c
     cells_restored: 2 })
   expect(results[0].restored.references_dropped.map((r: { where: string; redo: string }) => [r.where, r.redo]))
     .toEqual([['view "Slim"', 'manage_view with action "change", view "Slim" and "Email (restored)" in hidden_columns'],
-      ['auto-dedupe', 'set_auto_dedupe with column "Email (restored)"']])
+      ['auto-dedupe', 'remove_duplicates with keep_doing { column: "Email (restored)" }']])
   const history = await call(client, 'get_sheet', { history: true, sheet_id: sheetId, column: 'Email (restored)' })
   expect(history.changes[0].summary).toBe('Restored the column "Email" as "Email (restored)" from the trash (2 cells '
     + 'back)')

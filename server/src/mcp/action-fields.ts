@@ -6,6 +6,8 @@ export interface ActionFields<F extends string> { needs?: readonly F[]; may?: re
 export function actionFieldsProblem<A extends string, F extends string>(
   action: A, given: Partial<Record<F, unknown>>, takes: Record<A, ActionFields<F>>,
 ): string | null {
+  // The schema refuses any other action; a handler called past it (a test) gets the same answer.
+  if (!Object.prototype.hasOwnProperty.call(takes, action)) return `action must be ${Object.keys(takes).join(', ')}.`;
   const { needs = [], may = [] } = takes[action];
   const all = [...needs, ...may];
   const extra = (Object.keys(given) as F[]).filter(f => given[f] !== undefined && !all.includes(f));

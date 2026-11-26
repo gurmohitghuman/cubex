@@ -1,8 +1,9 @@
+// Over 200 lines: a call's whole life (its working table, start, results and clean-up) in one place.
 // A saved setup called like a function on 1-SETUP_CALL_MAX_ITEMS items, without a sheet: one implementation for /api/v1
 // (routes/api-v1-setup-calls.ts) and MCP (apply_setup with items, mcp/setup-items.ts). The items become the rows of a
 // hidden working table (tables.hidden, migration 067: never listed or counted), one column per setup input, and the
 // setup runs there through applySetup, as on any sheet: its ceiling, its step runs, pause, resume and stop
-// (control_setup_run), the run-finished webhook (kind "setup"). The call's id is the setup run's, so polling and the
+// (control_run), the run-finished webhook (kind "setup"). The call's id is the setup run's, so polling and the
 // webhook name one id. An estimate makes no working table: it is a pure read (setup-call-estimate.ts). A start refused
 // removes the working table at once; a started call's table goes SETUP_CALL_KEEP_HOURS after it finishes (the sweep
 // below), its results with it, and a call paused that long is stopped first. Auto-run is never turned on there
@@ -163,8 +164,8 @@ const orphanSeconds = (): number =>
   Math.ceil((FILE_LINK_TTL_MINUTES * 60_000 + receiveBackstopMs()) / 1000) + SETUP_CALL_ORPHAN_HOURS * 3600;
 
 // A call paused SETUP_CALL_KEEP_HOURS ago (by hand, or at a limit, the token's cap or its ceiling) and not resumed
-// since is stopped, as control_setup_run's (or, for an enrichment call, control_run's) cancel stops it; its results
-// are then kept as any finished call's.
+// since is stopped, as control_run's cancel stops it (by setup_run_id, or for an enrichment call by run_id); its
+// results are then kept as any finished call's.
 export const STALE_PAUSE = `Paused for more than ${SETUP_CALL_KEEP_HOURS} hours, so it was stopped.`;
 async function stopStalePaused(keep: string): Promise<void> {
   const stale = db.prepare(`SELECT c.id FROM setup_calls c JOIN setup_runs r ON r.id = c.id

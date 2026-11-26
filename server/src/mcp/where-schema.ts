@@ -1,5 +1,5 @@
 // The `where` every row-selecting tool takes (read_rows, export_csv,
-// create_download_link, transfer_rows, transform_column, manage_view) and read_rows'
+// file_link, transfer_rows, transform_column, manage_view) and read_rows'
 // include_status. read_rows' where names every operator and group, and its guide
 // (mcp/guides) describes them in full; the other tools take the same schema and
 // point there, so tools/list carries it once (lib/row-filter/where.ts;

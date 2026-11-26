@@ -1,14 +1,16 @@
 // Every MCP tool's readOnlyHint and destructiveHint (server/src/mcp/tool-annotations.ts)
 // against what the tool does, with the tools called as an agent calls them:
 //   - read-only exactly when the read scope is enough: every other tool refuses
-//     a read-only token first. create_download_link is the one exception: it
-//     only reads the sheet, but the link it makes is a credential, so it says
-//     it changes something (mcp-annotations.test.ts);
+//     a read-only token first (file_link with its upload: its download only
+//     reads the sheet, but the link it makes is a credential, so it says it
+//     changes something too, mcp-annotations.test.ts);
 //   - a read-only tool writes nothing to the database, called on real data;
 //   - a tool that says it only adds (destructiveHint false) leaves every row,
 //     cell and column already there as it was; a name already taken is refused
-//     or the restored item gets a new one.
-// mcp-tool-hints-writes.test.ts: append_rows and add_list_rows can replace a row, and
+//     or the restored item gets a new one; and the actions that only add or only
+//     read in tools that also change (manage_setup's save, stored_answers'
+//     add_column, file_link's download) do the same.
+// mcp-tool-hints-writes.test.ts: append_rows and stored_answers' add_rows can replace a row, and
 // the two AI writers change nothing in the sheet.
 import assert from 'node:assert/strict'
 import { toolHintsKit } from './mcp-tool-hints-kit'
@@ -21,10 +23,12 @@ globalThis.fetch = async () => { throw new Error('no network in this test') }
 const ALL = ['read', 'write', 'run', 'secrets'] as const
 const READ_ONLY_TOKEN = ['read'] as const
 // Both preview by default (dry_run true), which reads only; dry_run false is the write.
+// file_link's download needs only read; its upload needs write.
 const WRITE_ARGS: Record<string, Record<string, unknown>> = {
-  remove_duplicates: { dry_run: false }, restore_setup_version: { dry_run: false },
+  remove_duplicates: { dry_run: false }, manage_setup_version: { action: 'restore', dry_run: false },
+  file_link: { action: 'upload' },
 }
-const SCOPE_EXCEPTIONS = ['create_download_link']
+const SCOPE_EXCEPTIONS: string[] = []
 
 async function main() {
   const people = sheet('People', ['Name', 'Email', 'Fit', 'Fit score'], [
@@ -112,26 +116,29 @@ async function main() {
     assert.deepEqual(after.rows.filter(r => r.sheet_id !== s), before.rows.filter(r => r.sheet_id !== s))
   })
 
-  await check('create_download_link changes no row, cell, column or setup', async () => {
-    assert.equal(hints.create_download_link.destructiveHint, false)
+  // The tools these actions are part of take the stricter hint (an upload in replace mode, a setup's delete, rows
+  // that replace a row): each of these actions still only reads or only adds.
+  await check('file_link\'s download changes no row, cell, column or setup', async () => {
+    assert.equal(hints.file_link.destructiveHint, true)
     const before = snapshot()
-    assert.doesNotMatch(await call('create_download_link', { sheet_id: people }, ALL), /^ERROR/)
+    assert.doesNotMatch(await call('file_link', { action: 'download', sheet_id: people }, ALL), /^ERROR/)
     assert.deepEqual(snapshot(), before)
   })
 
-  await check('save_setup and add_enrichment_field only add: a taken name is refused', async () => {
-    const first = await call('save_setup', { sheet_id: people, name: 'Fit check', columns: ['Fit'] }, ALL)
+  await check('manage_setup\'s save and stored_answers\' add_column only add: a taken name is refused', async () => {
+    const save = { action: 'save', sheet_id: people, name: 'Fit check', columns: ['Fit'] }
+    const first = await call('manage_setup', save, ALL)
     assert.doesNotMatch(first, /^ERROR/)
     const setups = () => db.prepare('SELECT id, name, updated_at FROM setups WHERE user_id = ?').all(uid)
     const kept = setups()
-    assert.match(await call('save_setup', { sheet_id: people, name: 'Fit check', columns: ['Fit'] }, ALL), /^ERROR/)
+    assert.match(await call('manage_setup', save, ALL), /^ERROR/)
     assert.deepEqual(setups(), kept)
     const before = snapshot()
-    const clash = await call('add_enrichment_field',
-      { sheet_id: people, column: 'Fit', json_path: '$.score', column_name: 'Name' }, ALL)
+    const clash = await call('stored_answers',
+      { action: 'add_column', sheet_id: people, column: 'Fit', json_path: '$.score', column_name: 'Name' }, ALL)
     assert.match(clash, /^ERROR.*A column named \\"Name\\" already exists/)
     assert.deepEqual(snapshot(), before)
-    for (const name of ['save_setup', 'add_enrichment_field']) assert.equal(hints[name].destructiveHint, false, name)
+    for (const name of ['manage_setup', 'stored_answers']) assert.equal(hints[name].destructiveHint, true, name)
   })
 
   void tid

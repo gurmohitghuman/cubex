@@ -1,3 +1,4 @@
+// Over 200 lines: the plumbing every MCP tool shares (results, scopes, the busy-sheet rule, registerTool).
 // Shared plumbing for Cubex's MCP tools. Every tool handler closes over the
 // request's authenticated context (built per-request in routes/mcp.ts — the
 // transport is stateless, the Bearer token is the identity) and returns its
@@ -169,11 +170,13 @@ const RUNS_WHILE_SHEET_BUSY = new Set([
   // delete answered.
   'list_trash',
   // Making a link doesn't touch the sheet; using it checks for busy then.
-  'create_upload_link', 'create_download_link',
+  'file_link',
   // Its get reads; every other action refuses a busy sheet itself (mcp/tools-sheet-webhook.ts).
   'manage_sheet_webhook',
-  // Only cancel_all names a sheet, and stopping its runs is allowed while it is
+  // cancel_all names a sheet, and stopping its runs is allowed while it is
   // busy: a run still writing its placeholders is what holds it (as /runs/stop).
+  // undo names one too: its dry run only reads, and an undo takes the sheet's
+  // busy hold itself, refusing a busy sheet in these words (services/run-undo.ts).
   'control_run',
 ]);
 
