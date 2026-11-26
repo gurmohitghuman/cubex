@@ -23,8 +23,8 @@ const figureCells = (f: UsageFigures) => [String(f.runs), String(f.cells), Strin
   money(f.ai_cost_usd), money(f.provider_cost_usd), money(f.enrichment_cost_usd), money(f.total_cost_usd),
   money(f.cost_per_cell_usd)];
 const line = (cells: Array<string | null>) => cells.map(escapeCsvCell).join(',');
-const sheetOf = (r: { sheet_name: string | null; sheet_deleted: boolean }) =>
-  (r.sheet_deleted ? 'Deleted sheet' : r.sheet_name);
+const sheetOf = (r: { sheet_name: string | null; sheet_deleted: boolean; call?: true }) =>
+  (r.call ? 'A call without a sheet' : r.sheet_deleted ? 'Deleted sheet' : r.sheet_name);
 
 const HEADS: Record<UsageGroupBy, string[]> = {
   column: ['Sheet', 'Column', 'Deleted', 'Kind', ...FIGURE_HEADS, 'Last run (UTC)'],

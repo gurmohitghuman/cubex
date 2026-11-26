@@ -67,7 +67,8 @@ export const ACCOUNT_GUIDES: Record<string, ToolGuide> = {
         + 'total_cost_usd and cost_per_cell_usd. Days are UTC and a run counts on the day it started. AI previews '
         + 'and AI helpers (write_formula, write_run_condition) count too, as kind preview or assist. Totals cover '
         + 'the whole range; rows_total says how many rows there are (GET /api/v1/usage with format=csv has every '
-        + 'row). Deleted columns and sheets are included (column_deleted, sheet_deleted).',
+        + 'row). Deleted columns and sheets are included (column_deleted, sheet_deleted). A call without a sheet '
+        + '(call_setup, call_enrichment) is call: true with no sheet: by column, every call adds up in one row.',
     ],
   },
   list_saved_keys: {
