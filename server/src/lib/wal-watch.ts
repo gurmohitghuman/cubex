@@ -11,8 +11,11 @@
 // last answer left it (a reader holding it: the same ask would answer the same) isn't asked about again.
 // SQLite's own checkpoint then waits for the bulk writers' room on every connection (lib/wal-room.ts): this one now,
 // and those opened after in the threads and the processes the server starts, which find the mark the watch leaves in
-// the environment (lib/db.ts). It stays on as a backstop: a watch that can't keep up (the event loop held, a worker
-// that never answers) leaves the WAL bounded by the room, as while a bulk job runs. While a bulk writer runs the
+// the environment (lib/db.ts) once the worker has answered ready (walWatchReady: the job queue waits for it before it
+// forks its process, queue.ts), so a worker that can't start never leaves threads at the room. It stays on as a
+// backstop: a watch that can't keep up (the event loop held) leaves the WAL bounded by the room, as while a bulk job
+// runs; a worker stuck inside a checkpoint holds SQLite's checkpoint lock, so nothing bounds the WAL until it
+// answers (as before this watch). While a bulk writer runs the
 // watch asks nothing: the writer asks at its own marks before each slice (lib/bulk-slices.ts), and asking at 2,000
 // would multiply its checkpoints, each a few disk syncs. With no worker (it couldn't start, or stopped twice) the
 // watch asks nothing either, since its checkpoints would copy every thread's frames on this one's event loop: this
@@ -22,12 +25,18 @@ import { isMainThread } from 'worker_threads';
 import { db } from './db';
 import { DB_PATH } from './db-path';
 import { DB_AUTO_CHECKPOINT_FRAMES, WAL_WATCH_MS, WAL_WATCHED_ENV } from './constants';
-import { checkpointInBackground, checkpointsOnWorker, walState, type WalState } from './wal-checkpointer';
+import {
+  checkpointInBackground, checkpointsOnWorker, startWalCheckpointer, walState, type WalState,
+} from './wal-checkpointer';
 import { walRoomFrames } from './wal-room';
 
 let timer: NodeJS.Timeout | null = null;
 // Set by stopWalWatch: a bulk writer starting after it (at shutdown) doesn't start the watch again.
 let stopped = false;
+// Whether the watch ever ran, and whether the worker answered ready (the mark goes in the environment only then).
+let started = false;
+let confirmed = false;
+let ready: Promise<void> | null = null;
 let bulkWriters = 0;
 // What this connection's own checkpoint was last set to by the watch (0: not yet).
 let ownMark = 0;
@@ -54,7 +63,7 @@ export function watchWal(): void {
     const onWorker = checkpointsOnWorker();
     setOwnMark(onWorker);
     if (!onWorker) { delete process.env[WAL_WATCHED_ENV]; return; }
-    process.env[WAL_WATCHED_ENV] = DB_PATH;
+    if (confirmed) process.env[WAL_WATCHED_ENV] = DB_PATH;
     if (bulkWriters > 0) return;
     const s = walState();
     if (!s || s.log < DB_AUTO_CHECKPOINT_FRAMES) return;
@@ -66,16 +75,27 @@ export function watchWal(): void {
 }
 
 // Starts the watch for this process, once: on the main thread only (a worker thread's writers are watched by the
-// server's). Never keeps the process running.
+// server's). Never keeps the process running. The worker is started now; the mark goes in the environment once it
+// answers ready.
 export function startWalWatch(): void {
   if (timer || stopped || !isMainThread) return;
-  process.env[WAL_WATCHED_ENV] = DB_PATH;
+  started = true;
   setOwnMark(checkpointsOnWorker());
+  ready = startWalCheckpointer().then(up => {
+    confirmed = up;
+    if (up && !stopped) process.env[WAL_WATCHED_ENV] = DB_PATH;
+    else if (!stopped) setOwnMark(false);
+  }, () => { /* couldn't start: logged there, and checked again at each look */ });
   timer = setInterval(watchWal, WAL_WATCH_MS);
   timer.unref();
 }
 
-// At shutdown, and in tests: no more looks, and SQLite's own checkpoint back at DB_AUTO_CHECKPOINT_FRAMES here.
+// Once the watch knows whether the worker is up (the mark in the environment or not): what starts a thread or a
+// process that must inherit it waits for this (queue.ts).
+export const walWatchReady = (): Promise<void> => ready ?? Promise.resolve();
+
+// At shutdown, and in tests: no more looks, and SQLite's own checkpoint back at DB_AUTO_CHECKPOINT_FRAMES here, once
+// no bulk writer runs (one still writing during the stop's grace keeps its room until it ends: bulkWriterRunning).
 // Threads and processes started after it check for themselves again.
 export function stopWalWatch(): void {
   stopped = true;
@@ -84,8 +104,9 @@ export function stopWalWatch(): void {
   timer = null;
   ownMark = 0;
   leftAs = null;
+  confirmed = false;
   delete process.env[WAL_WATCHED_ENV];
-  db.pragma(`wal_autocheckpoint = ${DB_AUTO_CHECKPOINT_FRAMES}`);
+  if (bulkWriters === 0) db.pragma(`wal_autocheckpoint = ${DB_AUTO_CHECKPOINT_FRAMES}`);
 }
 
 // A bulk writer starting (lib/bulk-slices.ts): the watch asks nothing until the answer is called (in a finally).
@@ -100,6 +121,7 @@ export function bulkWriterRunning(): () => void {
     }
     ended = true;
     bulkWriters = Math.max(0, bulkWriters - 1);
+    if (stopped && started && bulkWriters === 0) db.pragma(`wal_autocheckpoint = ${DB_AUTO_CHECKPOINT_FRAMES}`);
   };
 }
 // Tests only: how many run now.

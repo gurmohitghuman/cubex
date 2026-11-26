@@ -21,7 +21,7 @@ const { DB_AUTO_CHECKPOINT_FRAMES, WAL_WATCH_MS, WAL_WATCHED_ENV } =
   constMod as typeof import('../../server/src/lib/constants')
 const { checkpointAsked, closeWalCheckpointer, setCheckpointWorkerFileForTests, takeWalCheckpointerStats,
   walCheckpointerIdle, walState } = walMod as typeof import('../../server/src/lib/wal-checkpointer')
-const { bulkWriterRunning, startWalWatch, stopWalWatch, watchWal } =
+const { bulkWriterRunning, startWalWatch, stopWalWatch, walWatchReady, watchWal } =
   watchMod as typeof import('../../server/src/lib/wal-watch')
 const { walRoomFrames } = roomMod as typeof import('../../server/src/lib/wal-room')
 
@@ -65,6 +65,8 @@ function onAThread<T>(body: string): Promise<T> {
 }
 
 startWalWatch()
+// The mark goes in the environment once the worker answered ready (what forks a process waits for this too).
+await walWatchReady()
 const room = walRoomFrames(db)
 
 await ok('started: SQLite\'s own checkpoint waits for the room here and on a connection a thread opens after',
@@ -117,7 +119,9 @@ await ok('light writes here, with gaps: the worker copies them back and starts t
 await ok('a stream with no gap: copied back on the worker, started over there once it ends, nothing on this thread',
   async () => {
     const { w, k } = await writeHere(room + 3000, 0)
-    assert.ok(k.checkpoints >= 2 && k.onThisThread === 0, JSON.stringify(k))
+    // How many checkpoints depends on the disk: one can be all, when the stream reaches the room and SQLite's own
+    // checkpoint there (the backstop) does the rest, and the worker starts the WAL over once the stream ends.
+    assert.ok(k.checkpoints >= 1 && k.onThisThread === 0, JSON.stringify(k))
     assert.equal(w.checkpoints, 0, 'checkpoints run on this connection')
     const s = walState()!
     assert.ok(s.log < DB_AUTO_CHECKPOINT_FRAMES, `the WAL ended at ${JSON.stringify(s)}`)
@@ -199,8 +203,12 @@ await ok('no worker (its file can\'t load): SQLite\'s own here back at 2,000, th
     assert.equal(process.env[WAL_WATCHED_ENV], process.env.DB_PATH)
   })
 
-await ok('stopped: SQLite\'s own back at 2,000 here, the mark gone from the environment', async () => {
+await ok('stopped while a bulk writer runs: its room kept until it ends, then 2,000 here; the mark gone', async () => {
+  const ended = bulkWriterRunning()
   stopWalWatch()
+  assert.equal(auto(), room, 'the room kept for the bulk writer still running (the stop\'s grace)')
+  assert.equal(process.env[WAL_WATCHED_ENV], undefined)
+  ended()
   assert.equal(auto(), DB_AUTO_CHECKPOINT_FRAMES)
   assert.equal(process.env[WAL_WATCHED_ENV], undefined)
   const theirs = await onAThread<number>(`send(db.pragma('wal_autocheckpoint', { simple: true }))`)

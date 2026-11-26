@@ -134,6 +134,15 @@ async function runOne(): Promise<Checkpointed | null> {
   return r.log >= 0 ? { log: r.log, checkpointed: r.checkpointed, busy: r.busy === 1, startOver: r.startOver } : null;
 }
 
+// Starts the worker if it isn't up yet (the WAL watch at boot, lib/wal-watch.ts): true once it answered ready,
+// false when it couldn't start (checkpoints run on this thread from then on).
+export async function startWalCheckpointer(): Promise<boolean> {
+  if (worker) return true;
+  if (onMainThread) return false;
+  starting ??= start().finally(() => { starting = null; });
+  return (await starting) !== null;
+}
+
 // A checkpoint on the worker; callers while one runs share it (it copies what
 // the WAL held when it started).
 export function checkpointInBackground(): Promise<Checkpointed | null> {

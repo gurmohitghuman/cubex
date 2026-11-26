@@ -30,8 +30,9 @@ const AUTO: Entry[] = [
   { file: 'server/src/lib/db.ts', count: 2,
     why: 'the connection\'s setting, DB_AUTO_CHECKPOINT_FRAMES, or the room once the server\'s WAL watch runs' },
   { file: 'server/src/lib/slices.ts', count: 2, why: 'withoutAutoCheckpoint: off for one commit, then back' },
-  { file: 'server/src/lib/wal-watch.ts', count: 2,
-    why: 'the watch: the room while the worker checkpoints, DB_AUTO_CHECKPOINT_FRAMES without it or once stopped' },
+  { file: 'server/src/lib/wal-watch.ts', count: 3,
+    why: 'the watch: the room while the worker checkpoints, DB_AUTO_CHECKPOINT_FRAMES without it or once stopped '
+      + '(at the stop, or when the last bulk writer running at the stop ends)' },
 ]
 const NO_AUTO: Entry[] = [
   { file: 'server/src/lib/bulk-slices.ts', count: 2, why: 'the bulk writers\' slices, on either thread' },
