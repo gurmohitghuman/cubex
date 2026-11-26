@@ -25,9 +25,10 @@ export async function copyColumnKey(sheetId: string, userId: string, from: strin
   `);
   const [toPath, fromPath] = [jsonPath(to), jsonPath(from)];
   const rowIds = await sheetRowIds(sheetId, userId);
+  // Each row grows by the copied cell: half the bytes a slice may write.
   await eachRowIdSlice(rowIds, ids => {
     copy.run(toPath, fromPath, ids, sheetId, userId, fromPath);
-  });
+  }, { bytes: HEAVY_SLICE_BYTES / 2 });
   // Rows appended meanwhile (webhook deliveries) have rowids past every one
   // collected. Copy those last, synchronously: the caller switches the name in
   // the same tick, so no request can slip a row in between.

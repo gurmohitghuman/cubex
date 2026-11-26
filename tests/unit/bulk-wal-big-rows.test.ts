@@ -45,18 +45,21 @@ await ok('a run seeded, then cleared: slices sized by bytes, the WAL copied back
     VALUES (?,?,?,'{}','running','Status')`).run(id, sid, uid)
   const r = { kind: 'http' as const, id }
   sized(await measure('the seed', () => seedProcessingPlaceholders({ run: r, sheetId: sid, userId: uid,
-    columns: ['Status', 'Answer'], targets: null, lastRow: N - 1, live: () => true }), { pastAuto: true }), 'seed')
+    columns: ['Status', 'Json'], targets: null, lastRow: N - 1, live: () => true }), { pastAuto: true }), 'seed')
   assert.equal(held.get(sid, PLACEHOLDER), N, 'every row seeded')
-  sized(await measure('the clear', () => clearProcessingPlaceholders(sid, uid, ['Status', 'Answer'], undefined, r),
+  // The run ended early: the clear puts each 16 KB answer back from the journal into rows holding only ⏳.
+  sized(await measure('the clear', () => clearProcessingPlaceholders(sid, uid, ['Status', 'Json'], undefined, r),
     { pastAuto: true }), 'clear')
   assert.equal(held.get(sid, PLACEHOLDER), 0, 'every ⏳ cleared')
-  assert.deepEqual([...ends(sid, 'Status'), ...ends(sid, 'Answer')], ['s0', `s${N - 1}`, 'a0', `a${N - 1}`])
+  assert.deepEqual([...ends(sid, 'Status'), ...ends(sid, 'Json')],
+    ['s0', `s${N - 1}`, `0:${'j'.repeat(CELL)}`, `${N - 1}:${'j'.repeat(CELL)}`])
 })
 
 await ok('a column\'s key copied, then stripped: slices sized by bytes', async () => {
   const sid = big()
-  sized(await measure('the key copied', () => copyColumnKey(sid, uid, 'Answer', 'Reply'), { pastAuto: true }), 'copy')
-  assert.deepEqual(ends(sid, 'Reply'), ['a0', `a${N - 1}`])
+  // The big column's key: each row grows by its 16 KB cell.
+  sized(await measure('the key copied', () => copyColumnKey(sid, uid, 'Json', 'Reply'), { pastAuto: true }), 'copy')
+  assert.deepEqual(ends(sid, 'Reply'), ends(sid, 'Json'))
   recordPurge(sid, uid, 'Answer')
   sized(await measure('the key stripped', () => purgeColumnKey(sid, uid, 'Answer'), { pastAuto: true }), 'strip')
   assert.equal(db.prepare(`SELECT COUNT(*) FROM rows WHERE sheet_id = ? AND json_type(data, '$.Answer') IS NOT NULL`)

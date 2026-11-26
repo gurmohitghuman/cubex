@@ -27,6 +27,15 @@ export const keysWithinBytes = <K>(pairs: Array<[K, number | null]>, budget: num
 export const rangeBytes = (lo: number, hi: number): number => db.prepare(`SELECT IFNULL(SUM(octet_length(data)), 0)
   FROM rows WHERE rowid BETWEEN ? AND ?`).pluck().get(lo, hi) as number;
 
+// Each of `ids`' rows' bytes plus what run undo journal `undoId` kept of it, in `ids`' order: a ⏳ clear
+// (lib/placeholder-cells.ts) puts those old values back, so a row holding only ⏳ can grow by them.
+export function rowBytesWithKept(ids: ArrayLike<number>, idsJson: string, undoId: number): number[] {
+  const kept = new Map(db.prepare(`SELECT row_id, octet_length(cells) FROM run_undo_rows
+    WHERE undo_id = ? AND row_id IN (SELECT value FROM json_each(?))`).raw().all(undoId, idsJson) as Array<[
+    number, number | null]>);
+  return rowBytes(ids, idsJson).map((b, i) => b + (kept.get(ids[i]) ?? 0));
+}
+
 // Each of `ids`' rows' bytes, in `ids`' order (0 for a row gone).
 export function rowBytes(ids: ArrayLike<number>, idsJson: string): number[] {
   const got = new Map(db.prepare(`SELECT rowid, octet_length(data) FROM rows
