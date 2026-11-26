@@ -96,6 +96,15 @@ export function listSheets(tableId: string, userId: string): SheetListRow[] {
   ).all(tableId, userId) as SheetListRow[];
 }
 
+// The table's test copies (migration 070), in the same shape plus the sheet each tests: the app opens one by its
+// id (/table/:t/:copy) while its sheet's tab stays highlighted. Never in the tab list.
+export function listTestSheets(tableId: string, userId: string): Array<SheetListRow & { test_of: string }> {
+  return db.prepare(
+    `SELECT ${SHEET_CLIENT_COLUMNS}, test_of FROM sheets WHERE table_id = ? AND user_id = ? AND trash_id IS NULL
+       AND test_of IS NOT NULL ORDER BY position ASC`,
+  ).all(tableId, userId) as Array<SheetListRow & { test_of: string }>;
+}
+
 // One sheet in the client-facing shape, for create/rename responses that echo the
 // affected sheet. Scoped by userId (defense in depth — callers already verify
 // ownership, but never trust a bare id) and never `SELECT *`.

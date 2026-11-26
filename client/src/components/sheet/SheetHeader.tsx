@@ -6,7 +6,7 @@ import { CubeLogo } from '@/components/CubeLogo'
 import { SaveStatus } from '@/components/SaveStatus'
 import { SheetEnrichActions } from './SheetEnrichActions'
 import { SheetDataMenu, type ExportScope } from './toolbar/SheetDataMenu'
-import { SheetMoreMenu } from './toolbar/SheetMoreMenu'
+import { SheetMoreMenu, type TestEntry } from './toolbar/SheetMoreMenu'
 
 interface SheetHeaderProps {
   tableName: string | undefined
@@ -41,6 +41,7 @@ interface SheetHeaderProps {
   onSaveSetup: () => void
   onUseSetup: () => void
   onSetupVersions: () => void
+  testChanges?: TestEntry
   onAddAIColumn: () => void
   onAddEnrichment: () => void
   onAddHTTPColumn: () => void
@@ -79,6 +80,7 @@ export const SheetHeader: React.FC<SheetHeaderProps> = ({
   onSaveSetup,
   onUseSetup,
   onSetupVersions,
+  testChanges,
   onAddAIColumn,
   onAddEnrichment,
   onAddHTTPColumn,
@@ -196,7 +198,7 @@ export const SheetHeader: React.FC<SheetHeaderProps> = ({
               onExport={scope => onExport(scope, viewName)} onOpenWebhook={onOpenWebhook}
               onRemoveDuplicates={onRemoveDuplicates} onRunColumns={onRunColumns} />
             <SheetMoreMenu sheetId={sheetId ?? null} sheetName={sheetName ?? ''} onUseSetup={onUseSetup}
-              onSaveSetup={onSaveSetup} onSetupVersions={onSetupVersions} />
+              onSaveSetup={onSaveSetup} onSetupVersions={onSetupVersions} testChanges={testChanges} />
 
             {/* The data and setup menus apart from the one primary, AI Column and its column types. */}
             <div className="h-5 w-px bg-gray-200" aria-hidden="true" />
