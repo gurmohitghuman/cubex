@@ -15,6 +15,7 @@ import {
 // retained" state. A pruned delivery has payload='' and payload_bytes=0.
 
 const PRUNED = ''; // sentinel: payload dropped, row kept
+// A held delivery (lib/webhook-hold.ts) waits whole for its row: no step here touches one.
 
 // Mark a set of deliveries as pruned (clear payload + zero the byte count, keep
 // the row + metadata). status becomes 'pruned' so the raw-view can report it.
@@ -31,10 +32,10 @@ export function pruneDeliveries(sourceId: string): void {
   // holds a payload (payload_bytes > 0 == not already pruned).
   const overCount = db.prepare(
     `SELECT id FROM webhook_deliveries
-       WHERE source_id = ? AND payload_bytes > 0
+       WHERE source_id = ? AND payload_bytes > 0 AND status != 'held'
          AND id NOT IN (
            SELECT id FROM webhook_deliveries
-             WHERE source_id = ? AND payload_bytes > 0
+             WHERE source_id = ? AND payload_bytes > 0 AND status != 'held'
              ORDER BY received_at DESC, id DESC LIMIT ?
          )`,
   ).all(sourceId, sourceId, WEBHOOK_RAW_KEEP_COUNT) as Array<{ id: string }>;
@@ -44,7 +45,7 @@ export function pruneDeliveries(sourceId: string): void {
   // running sum exceeds the limit. Bounded by WEBHOOK_RAW_KEEP_COUNT rows.
   const retained = db.prepare(
     `SELECT id, payload_bytes FROM webhook_deliveries
-       WHERE source_id = ? AND payload_bytes > 0
+       WHERE source_id = ? AND payload_bytes > 0 AND status != 'held'
        ORDER BY received_at DESC, id DESC`,
   ).all(sourceId) as Array<{ id: string; payload_bytes: number }>;
   let sum = 0;
@@ -62,8 +63,8 @@ export function pruneDeliveries(sourceId: string): void {
   // are unaffected (rows.id ON DELETE SET NULL is on the deliveries side).
   db.prepare(
     `DELETE FROM webhook_deliveries
-       WHERE source_id = ? AND id NOT IN (
-         SELECT id FROM webhook_deliveries WHERE source_id = ?
+       WHERE source_id = ? AND status != 'held' AND id NOT IN (
+         SELECT id FROM webhook_deliveries WHERE source_id = ? AND status != 'held'
          ORDER BY received_at DESC, id DESC LIMIT ?
        )`,
   ).run(sourceId, sourceId, WEBHOOK_DELIVERY_KEEP_COUNT);

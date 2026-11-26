@@ -48,6 +48,8 @@ export function fanOutRunEvents(now = Date.now()): number {
     const modeOf = db.prepare(`SELECT json_type(config, '$.waterfall') = 'object' AS waterfall,
         json_type(config, '$.waterfall.dry') IS NOT NULL AS dry
       FROM http_runs WHERE id = ? AND user_id = ? AND json_valid(config)`);
+    // A run on a test's hidden copy (migration 070) notifies only the webhook it was started with.
+    const onCopy = db.prepare('SELECT 1 FROM sheets WHERE id = ? AND test_of IS NOT NULL').pluck();
     const full = new Set<string>();
     for (const e of events) {
       const mode = e.kind === 'http'
@@ -58,7 +60,8 @@ export function fanOutRunEvents(now = Date.now()): number {
         event: 'run.finished', run_id: e.run_id, kind, sheet_id: e.sheet_id, status: e.status,
         finished_at: e.finished_at,
       });
-      for (const hook of hooksOf.all(e.user_id, e.named_only, e.webhook_id) as string[]) {
+      const namedOnly = e.named_only || (onCopy.get(e.sheet_id) ? 1 : 0);
+      for (const hook of hooksOf.all(e.user_id, namedOnly, e.webhook_id) as string[]) {
         const over = (waiting.get(hook) as number) >= RUN_HOOK_MAX_WAITING;
         insert.run(uuidv4(), e.user_id, hook, e.run_id, kind, e.status, body, over ? 'failed' : 'pending', now,
           over ? `Not sent: ${RUN_HOOK_MAX_WAITING} notices were already waiting for this URL.` : null,
