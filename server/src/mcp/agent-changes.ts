@@ -83,6 +83,15 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
         details: 'Work in test.test_sheet_id with the usual tools; meanwhile the sheet answers busy to every change '
           + 'and its webhook deliveries wait (get_sheet\'s test). apply_test is a dry run unless dry_run is false.',
       },
+      {
+        change: 'changed',
+        tools: ['manage_sheet_webhook'],
+        summary: 'manage_sheet_webhook takes set_auto_delete and auto_delete_off: a webhook sheet keeps its newest '
+          + 'keep_rows rows and deletes older ones once they are finished, not to the trash.',
+        details: 'A row leaves once every auto-run column has run on it and, with success_column, once that has a '
+          + 'result; copy_to_sheet_id copies it to another sheet first. get\'s webhook has auto_delete, null while '
+          + 'off.',
+      },
     ],
   },
   {

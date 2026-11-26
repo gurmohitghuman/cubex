@@ -14,6 +14,8 @@ export * from './constants-curl';
 // HTTP column retries and the response code column; "run finished" webhooks.
 export * from './constants-http-retry';
 export * from './constants-run-hooks';
+// Auto-delete on a webhook sheet.
+export * from './constants-webhook-auto-delete';
 // Usage history, same split.
 export * from './constants-usage';
 // Waterfall columns, same split.
