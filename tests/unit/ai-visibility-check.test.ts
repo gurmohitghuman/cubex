@@ -26,6 +26,7 @@ import followMod from '../../server/src/services/derived-follow'
 import markMod from '../../server/src/lib/autorun-mark'
 import entryMod from '../../server/src/services/autorun-entry'
 import rowsMod from '../../server/src/services/rows-write'
+import { passed } from './ends-on-its-own'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const P = pureMod as typeof import('../../server/src/lib/ai-visibility/check')
@@ -323,6 +324,6 @@ async function main() {
   })
 
   console.log(failures === 0 ? '\nai visibility check: all passed' : `\nai visibility check: ${failures} FAILED`)
-  process.exit(failures === 0 ? 0 : 1)
+  if (failures === 0) passed(); else process.exit(1)
 }
 main().catch(e => { console.error(e); process.exit(1) })

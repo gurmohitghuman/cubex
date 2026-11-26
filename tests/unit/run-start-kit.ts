@@ -8,6 +8,7 @@ import path from 'node:path'
 import { createRequire } from 'node:module'
 import { v4 as uuid } from 'uuid'
 import { undoKit } from './run-undo-kit'
+import { passed } from './ends-on-its-own'
 
 export const queue = { err: null as Error | null, calls: [] as unknown[][] }
 const { Sidequest } = createRequire(path.resolve('server/src/queue.ts'))('sidequest')
@@ -165,5 +166,6 @@ export function finish(name: string): void {
     process.exitCode = 1
   } else {
     console.log(`All ${name} assertions passed.`)
+    passed()
   }
 }

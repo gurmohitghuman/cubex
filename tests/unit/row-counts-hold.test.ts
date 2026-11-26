@@ -5,6 +5,7 @@
 // The count is held after its first slice (lib/row-counts.ts setRowCountSlices), so the waits stay open.
 import assert from 'node:assert/strict'
 import type { AddressInfo } from 'node:net'
+import { passed } from './ends-on-its-own'
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 const express = (await import('express')).default
@@ -93,4 +94,4 @@ try {
 }
 if (failures) { console.log(`${failures} failed`); process.exit(1) }
 console.log('all passed')
-process.exit(0)
+passed()

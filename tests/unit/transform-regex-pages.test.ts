@@ -21,6 +21,7 @@ import walConstMod from '../../server/src/lib/constants-wal'
 import { watchWhile } from './loop-watch'
 import { sizeWalLikeAServer, sqliteWriteProbe, walGrowth } from './sqlite-write-probe'
 import { caughtUp } from './transform-to-end'
+import { passed } from './ends-on-its-own'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { transformColumn } = transformMod as typeof import('../../server/src/services/column-transform')
@@ -222,5 +223,5 @@ main()
   .finally(() => {
     if (failures) { console.log(`\n${failures} failure(s)`); process.exit(1) }
     console.log('All transform-regex-pages assertions passed.')
-    process.exit(0)
+    passed()
   })
