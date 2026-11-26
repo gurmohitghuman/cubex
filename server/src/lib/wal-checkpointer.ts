@@ -23,7 +23,8 @@
 // The next write on this thread then starts the WAL over, and syncs its header
 // here: that much of the wait stays on the event loop while degraded.
 // A worker that had started and stops is started once more. Used by
-// transform_column and the background bulk writers (lib/bulk-slices.ts).
+// transform_column, the background bulk writers (lib/bulk-slices.ts) and the
+// WAL watch, for every other write (lib/wal-watch.ts).
 import { Worker } from 'worker_threads';
 import { extname, join } from 'path';
 import { db } from './db';
@@ -131,6 +132,15 @@ async function runOne(): Promise<Checkpointed | null> {
   if (r.error && r.error !== 'stopped') console.error('A WAL checkpoint failed:', r.error);
   if (r.startOver === 'done') stats.restarts++;
   return r.log >= 0 ? { log: r.log, checkpointed: r.checkpointed, busy: r.busy === 1, startOver: r.startOver } : null;
+}
+
+// Starts the worker if it isn't up yet (the WAL watch at boot, lib/wal-watch.ts): true once it answered ready,
+// false when it couldn't start (checkpoints run on this thread from then on).
+export async function startWalCheckpointer(): Promise<boolean> {
+  if (worker) return true;
+  if (onMainThread) return false;
+  starting ??= start().finally(() => { starting = null; });
+  return (await starting) !== null;
 }
 
 // A checkpoint on the worker; callers while one runs share it (it copies what

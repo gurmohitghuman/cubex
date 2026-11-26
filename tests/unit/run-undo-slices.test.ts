@@ -19,7 +19,9 @@ const { startFormulaColumn, setFormulaColumnAutorun } = await import('../../serv
 const { formulaColumnFor } = await import('../../server/src/lib/formula-columns')
 const { startCleanColumn } = await import('../../server/src/services/clean-column')
 const { deleteUndoColumn } = await import('../../server/src/lib/run-undo/columns')
-const { autoCheckpointHolders } = await import('../../server/src/lib/bulk-slices')
+const { bulkWritersRunning, startWalWatch } = await import('../../server/src/lib/wal-watch')
+// As the server does at boot: SQLite's own checkpoint at the room from the start (lib/wal-watch.ts).
+startWalWatch()
 const { bulkWalKit } = await import('./bulk-wal-kit')
 console.error = () => {}
 // The undo measured on both OSes: enough rows for the WAL to reach the pause (WAL_BULK_PAUSE_FRAMES).
@@ -91,8 +93,8 @@ async function undo(sid: string, runId: string) {
     db.pragma = pragmaNow
   }
   assert.equal(journal('http', runId)!.state, 'undone')
-  // Its journal's rows are dropped in the background, a bulk writer too: back on once that ends.
-  while (autoCheckpointHolders() > 0) await new Promise(r => setTimeout(r, 5))
+  // Its journal's rows are dropped in the background, a bulk writer too: as it was once that ends.
+  while (bulkWritersRunning() > 0) await new Promise(r => setTimeout(r, 5))
   assert.equal(auto(), autoBefore, 'SQLite\'s own checkpoint is as it was')
   return { sizes, events }
 }
