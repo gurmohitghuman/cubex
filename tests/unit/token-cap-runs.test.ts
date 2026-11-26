@@ -11,6 +11,7 @@
 // user's own provider key on an AI helper's call, count.
 // Over 200 lines: one script over one token's runs; split, each part would rebuild them.
 import { v4 as uuid } from 'uuid'
+import { passed } from './ends-on-its-own'
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 
@@ -246,7 +247,7 @@ async function main() {
 
   if (failures > 0) { console.error(`${failures} token-cap-runs assertion(s) failed`); process.exit(1) }
   console.log('All token-cap-runs assertions passed.')
-  process.exit(0)
+  passed()
 }
 
 main().catch(error => { console.error(error); process.exit(1) })

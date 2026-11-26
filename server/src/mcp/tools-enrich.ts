@@ -18,6 +18,7 @@ import { saveOnlySchema } from './save-only-schema';
 import { McpAuthCtx, SHEET_ID, ok, err, missingScope, registerTool, lenientBoolean } from './tool-helpers';
 import { capRunToolNote } from '../lib/token-spend';
 import { GUIDE_POINTER } from './guides/guide';
+import { ENRICH_ITEMS, ITEMS_FIELDS, misplacedArgument, runEnrichmentOnItems } from './enrich-items';
 
 const input = z.union([
   z.string(), z.object({ column: z.string().describe('A column name') }).strict(),
@@ -38,7 +39,11 @@ export const RUN_ENRICHMENT_DESCRIPTION =
   + 'completed, read the fields with get_list_fields, pick them with add_list_rows, then control_run rerun mode '
   + '"empty"; or pass list.fields. destination_auto_run lists the auto-runs the new rows set off there, and '
   + 'chained_auto_run this sheet\'s auto-runs that read what the run writes (HTTP ones send real requests). '
-  + 'Returns run_id at once: poll get_run_status (run_type "enrichment").';
+  + 'Returns run_id at once: poll get_run_status (run_type "enrichment"). '
+  + 'ITEMS: with items instead of sheet_id it runs on items without a sheet, for a script or another app, and '
+  + 'estimate_only DEFAULTS TO TRUE; refused before it starts, never halfway, when it could pass max_cost_usd, '
+  + 'the daily limit, the treg balance or the token\'s cap. get_run_results (status_filter all) gives each item, '
+  + 'row_index being its place in items.';
 
 export function registerEnrichTools(server: McpServer, ctx: McpAuthCtx) {
   registerTool(server, 'search_enrichments', {
@@ -81,9 +86,11 @@ export function registerEnrichTools(server: McpServer, ctx: McpAuthCtx) {
     // Strict: an argument it doesn't know (estimateOnly, test_rows) is refused,
     // never dropped, so a misspelled estimate can't start a paid run.
     inputSchema: z.object({
-      sheet_id: z.string().describe(SHEET_ID),
+      sheet_id: z.string().optional().describe(`${SHEET_ID}; or items instead`),
+      items: ENRICH_ITEMS.optional(),
       tool_id: z.string().max(200).describe('The tool (search_enrichments lists them)'),
-      column_name: z.string().max(200).describe('The status column (new, or an existing one with add_to_column)'),
+      column_name: z.string().max(200).optional()
+        .describe('The status column (new, or an existing one with add_to_column); needed with sheet_id'),
       preset: z.enum(['verified_email']).optional()
         .describe('verified_email (the email finder only): check each address, find again until one passes'),
       add_to_column: lenientBoolean().optional().describe('Add to an enrichment column a run already made'),
@@ -159,16 +166,21 @@ export function registerEnrichTools(server: McpServer, ctx: McpAuthCtx) {
       }).strict().optional()
         .describe('Keep filling new rows (and rows whose inputs get filled) after this run, once a row; rows '
           + 'already in the sheet are not touched'),
-      estimate_only: lenientBoolean().optional().describe('Price it and create nothing (default false)'),
+      estimate_only: lenientBoolean().optional()
+        .describe('Price it and create nothing (default false on a sheet, true with items)'),
       idempotency_key: z.string().min(1).max(200).optional()
         .describe('A retry with the same key and arguments returns the first run_id'),
       webhook_id: z.string().optional()
         .describe('A run webhook (list_run_webhooks) to notify when the run finishes; poll get_run_status anyway'),
+      ...ITEMS_FIELDS,
     }).strict(),
-  }, async (args: TokenEnrichArgs) => {
+  }, async args => {
     const denied = missingScope(ctx, 'run');
     if (denied) return denied;
-    const r = await tokenStartEnrichmentRun(ctx, args);
+    const misplaced = misplacedArgument(args);
+    if (misplaced) return err(misplaced);
+    if (args.items) return runEnrichmentOnItems(ctx, { ...args, items: args.items });
+    const r = await tokenStartEnrichmentRun(ctx, args as TokenEnrichArgs);
     if ('fail' in r) return err(r.message);
     return ok({ ...r.ok, changed: r.changed ?? [] });
   });

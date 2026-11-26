@@ -7,6 +7,7 @@ import migMod from '../../server/src/db/migrate'
 import trashRowsMod from '../../server/src/services/trash-rows'
 import busyMod from '../../server/src/lib/sheet-busy'
 import { v4 as uuid } from 'uuid'
+import { passed } from './ends-on-its-own'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { deleteRowsToTrash } = trashRowsMod as typeof import('../../server/src/services/trash-rows')
@@ -27,7 +28,7 @@ export function trashKit(name: string) {
   const done = () => {
     if (failures > 0) { console.error(`${failures} ${name} assertion(s) failed`); process.exit(1) }
     console.log(`All ${name} assertions passed.`)
-    process.exit(0)
+    passed()
   }
   const idle = async (sid: string) => { while (sheetBusyWith(sid)) await new Promise(r => setTimeout(r, 5)) }
   const fixture = (n: number, columns = ['Email', 'Name'], table = tid) => {

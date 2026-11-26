@@ -10,6 +10,7 @@ import busyMod from '../../server/src/lib/sheet-busy'
 import deleteMod from '../../server/src/services/column-delete'
 import actionsMod from '../../server/src/services/trash-actions'
 import { v4 as uuid } from 'uuid'
+import { passed } from './ends-on-its-own'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { encrypt } = cryptoMod as typeof import('../../server/src/lib/crypto')
@@ -42,7 +43,7 @@ export function columnTrashKit(name: string) {
   const done = () => {
     if (failures > 0) { console.error(`${failures} ${name} assertion(s) failed`); process.exit(1) }
     console.log(`All ${name} assertions passed.`)
-    process.exit(0)
+    passed()
   }
   // Until the sheet has been free for 50 ms with no clean, formula or lookup fill of it left (a fill that
   // waits lets the sheet go, then takes it again).

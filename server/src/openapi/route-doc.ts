@@ -82,7 +82,7 @@ const PARAMS: Record<string, z.ZodType> = {
   'http-runs.id': id('The HTTP run id. Enrichment and waterfall runs are HTTP runs.'),
   'setups.setupId': id('The setup id.'),
   'setup-runs.runId': id('The setup run id.'),
-  'setup-calls.callId': id('The setup call id (call_setup returned it).'),
+  'setup-calls.callId': id('The setup call id (POST /setups/{setupId}/calls returned it).'),
   'run-schedules.id': id('The schedule id.'),
   'enrichments.toolId': id('The enrichment tool id, such as treg.people.email.find.'),
   'ai-visibility.id': id("The AI visibility table's id, or its Questions sheet id."),

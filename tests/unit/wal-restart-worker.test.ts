@@ -17,6 +17,7 @@ import migMod from '../../server/src/db/migrate'
 import walMod from '../../server/src/lib/wal-checkpointer'
 import sharedMod from '../../server/src/lib/wal-shared'
 import { sqliteWriteProbe, transactionLine } from './sqlite-write-probe'
+import { passed } from './ends-on-its-own'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { checkpointInBackground, closeWalCheckpointer, setCheckpointWorkerFileForTests, stopCheckpointWorkerForTests,
@@ -158,5 +159,5 @@ main()
   .finally(() => {
     if (failures) { console.log(`\n${failures} failure(s)`); process.exit(1) }
     console.log('All wal-restart-worker assertions passed.')
-    process.exit(0)
+    passed()
   })

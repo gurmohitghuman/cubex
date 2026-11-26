@@ -48,8 +48,8 @@ export function registerLinkTools(server: McpServer, ctx: McpAuthCtx) {
         + 'from any machine that can reach Cubex. '
         + 'Same header rules as import_csv; mode "replace" deletes all existing rows when the file arrives (to the '
         + `trash, restorable). The link works once and expires in ${FILE_LINK_TTL_MINUTES} minutes. Needs the write `
-        + 'scope. With setup_id instead of sheet_id, the rows are a setup call\'s items (call_setup): it starts once '
-        + 'the file is in, COSTS MONEY, and needs max_cost_usd and the run scope.'
+        + 'scope. With setup_id instead of sheet_id, the rows are a setup call\'s items (apply_setup with items): it '
+        + 'starts once the file is in, COSTS MONEY, and needs max_cost_usd and the run scope.'
         + (canWrite ? '' : ` ${NO_WRITE_NOTE}`) + ` ${GUIDE_POINTER}`,
       inputSchema: {
         sheet_id: z.string().optional().describe(`${SHEET_ID}. Or setup_id.`),

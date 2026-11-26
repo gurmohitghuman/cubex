@@ -15,21 +15,19 @@ import { sheetColumnDetails } from './column-details';
 import type { ColumnDetail } from '../lib/column-details';
 import { autoDedupeView, type AutoDedupeView } from './auto-dedupe-setting';
 import { apiSheetCounts, liveSheets } from './table-row-counts';
+import { listTablesForClient, type TableClientRow } from '../lib/sheet-crud-helpers';
 
 // row_count_updating: only when the sheet was still being counted after a change (services/table-row-counts.ts):
 // row_count is then its last count, which may be out of date.
 export interface SheetSummary {
   id: string; name: string; position: number; row_count: number; row_count_updating?: true;
 }
-export interface TableSummary {
-  id: string; name: string; created_at: string; updated_at: string; sheets: SheetSummary[];
-}
+// starred and last_opened_at (migration 064): the user starred it on the home (or an agent did), and when they last
+// opened it in the app, null until then: the tables the user works in.
+export interface TableSummary extends TableClientRow { sheets: SheetSummary[] }
 
 export async function listTablesWithSheets(userId: string): Promise<TableSummary[]> {
-  const tables = db.prepare(
-    `SELECT id, name, created_at, updated_at FROM tables WHERE user_id = ? AND trash_id IS NULL AND hidden = 0
-     ORDER BY created_at DESC`,
-  ).all(userId) as Array<{ id: string; name: string; created_at: string; updated_at: string }>;
+  const tables = listTablesForClient(userId);
   const sheets = liveSheets(userId);
   const counts = await apiSheetCounts(userId, sheets);
   const byTable = new Map<string, SheetSummary[]>();

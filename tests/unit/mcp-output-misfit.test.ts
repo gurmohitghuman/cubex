@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { Client } from '@modelcontextprotocol/client'
 import { InMemoryTransport, McpServer } from '@modelcontextprotocol/server'
 import schemaMod from '../../server/src/mcp/output-schema'
+import { passed } from './ends-on-its-own'
 const { STRICT_OUTPUT, obj, toolOutput } = schemaMod as typeof import('../../server/src/mcp/output-schema')
 
 let failures = 0
@@ -87,5 +88,5 @@ async function main() {
 
 main().then(() => {
   console.log(failures ? `\n${failures} FAILED` : '\nall passed')
-  process.exit(failures ? 1 : 0)
+  if (!failures) passed(); else process.exit(1)
 }, e => { console.log('FAIL', (e as Error).stack); process.exit(1) })

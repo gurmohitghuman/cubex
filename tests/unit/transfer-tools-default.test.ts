@@ -16,6 +16,7 @@ import migMod from '../../server/src/db/migrate'
 import tokenMod from '../../server/src/lib/access-token'
 import mcpMod from '../../server/src/mcp/build-server'
 import v1Mod from '../../server/src/routes/api-v1'
+import { passed } from './ends-on-its-own'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { generateAccessToken } = tokenMod as typeof import('../../server/src/lib/access-token')
@@ -95,5 +96,5 @@ main()
   .finally(() => {
     if (failures) { console.log(`\n${failures} failure(s)`); process.exit(1) }
     console.log('All transfer-tools-default assertions passed.')
-    process.exit(0)
+    passed()
   })

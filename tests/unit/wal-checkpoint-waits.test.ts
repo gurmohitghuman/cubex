@@ -25,6 +25,7 @@ import transformMod from '../../server/src/services/column-transform'
 import constMod from '../../server/src/lib/constants'
 import { heldText, loopWatch } from './bulk-wal-kit'
 import { sqliteWriteProbe, transactionLine, type TransactionRecord } from './sqlite-write-probe'
+import { passed } from './ends-on-its-own'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const w = walMod as typeof import('../../server/src/lib/wal-checkpointer')
@@ -249,4 +250,4 @@ await ok('the platform\'s own: on Windows and Linux; off (as on macOS), a writer
 await w.closeWalCheckpointer()
 if (failures > 0) { console.log(`${failures} wal-checkpoint-waits assertion(s) failed`); process.exit(1) }
 console.log('All wal-checkpoint-waits assertions passed.')
-process.exit(0)
+passed()

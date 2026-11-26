@@ -98,7 +98,8 @@ async function main() {
   })
 
   await check('other unknown ids name the tool that lists them', async () => {
-    await says('get_setup_run', { setup_run_id: 'x' }, 'Setup run not found. get_setup_run with sheet_id lists the '
+    await says('get_setup_run', { setup_run_id: 'x' }, 'Setup run not found. A call on items is kept 24 hours after it '
+      + 'finishes. get_setup_run with sheet_id lists the '
       + 'setup runs on a sheet.')
     await says('list_run_webhooks', { webhook_id: 'x' }, 'Run webhook not found. list_run_webhooks lists the '
       + 'webhooks with their ids.')

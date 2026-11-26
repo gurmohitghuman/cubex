@@ -4,6 +4,7 @@
 // after it is removed. By column every call adds up in one line; by run each run is a call's and keeps its column;
 // the CSV says "A call without a sheet". A sheet of the user's own, and a deleted one, read as before.
 import { v4 as uuid } from 'uuid'
+import { passed } from './ends-on-its-own'
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 
@@ -125,4 +126,4 @@ check('a test copy\'s run counts under its sheet, the calls still in one line', 
 
 if (failures > 0) { console.error(`${failures} usage-calls check(s) failed`); process.exit(1) }
 console.log('usage-calls: all assertions passed')
-process.exit(0)
+passed()

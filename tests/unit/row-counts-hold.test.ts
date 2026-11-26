@@ -1,9 +1,11 @@
 // The home's wait for its row counts over HTTP (GET /api/tables/row-counts, routes/tables.ts): an account holds at
-// most MAX_COUNT_WAITS_PER_USER of them, a 429 past that, and a page that leaves lets go of its slot at once, as the
-// sheet's change poll does. So leaving and opening the home again while its counts are made never meets the 429.
+// most MAX_COUNT_WAITS_PER_USER of them, a 429 past that (with Retry-After, the hold's length, by when one of them has
+// answered), and a page that leaves lets go of its slot at once, as the sheet's change poll does. So leaving and
+// opening the home again while its counts are made never meets the 429.
 // The count is held after its first slice (lib/row-counts.ts setRowCountSlices), so the waits stay open.
 import assert from 'node:assert/strict'
 import type { AddressInfo } from 'node:net'
+import { passed } from './ends-on-its-own'
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 const express = (await import('express')).default
@@ -62,7 +64,9 @@ try {
 
   const first = Array.from({ length: MAX_COUNT_WAITS_PER_USER }, wait)
   await until('the waits held', () => countWaitsOf(uid) === MAX_COUNT_WAITS_PER_USER)
-  assert.equal((await fetch(`${base}/row-counts`, { headers })).status, 429, 'one more than the account may hold')
+  const refused = await fetch(`${base}/row-counts`, { headers })
+  assert.equal(refused.status, 429, 'one more than the account may hold')
+  assert.equal(refused.headers.get('retry-after'), '20', 'ask again once one of them has answered: the hold\'s length')
 
   for (const w of first) w.page.abort()
   await until('the slots let go once the pages left', () => countWaitsOf(uid) === 0)
@@ -90,4 +94,4 @@ try {
 }
 if (failures) { console.log(`${failures} failed`); process.exit(1) }
 console.log('all passed')
-process.exit(0)
+passed()

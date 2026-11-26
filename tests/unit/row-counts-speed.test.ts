@@ -7,6 +7,7 @@
 // counts' writes to sheets.counted_rows don't grow it while the loop is watched.
 import assert from 'node:assert/strict'
 import { v4 as uuid } from 'uuid'
+import { passed } from './ends-on-its-own'
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 const { db } = await import('../../server/src/lib/db')
@@ -80,4 +81,4 @@ try {
 await closeWalCheckpointer()
 if (failures) { console.log(`${failures} failed`); process.exit(1) }
 console.log('all passed')
-process.exit(0)
+passed()
