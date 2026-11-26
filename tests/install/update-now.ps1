@@ -114,8 +114,9 @@ function Wait-Updater {
     }
     Start-Sleep -Seconds 2
   }
-  '--- update.log'; Get-Content (Join-Path $CubexHome 'update.log') -ErrorAction SilentlyContinue
-  throw "The update didn't end within 20 minutes."
+  "--- cubex status: $(& $Cli status 2>&1)"
+  '--- processes'; Get-Process node, powershell -ErrorAction SilentlyContinue | Format-Table Id, ProcessName, StartTime
+  throw "The update didn't end within 20 minutes, or Cubex isn't running after it."
 }
 
 Step 'The latest release, and the label for the build under test (the release before it)'
@@ -133,6 +134,22 @@ Step 'Install the commit under test from its checkout'
 & (Join-Path $Src 'install.ps1') --source $Src --port $Port --no-service --no-modify-path
 if ($LASTEXITCODE) { throw "install.ps1 exited $LASTEXITCODE." }
 Installed
+
+Step "A stand-in for GitHub's releases API that answers $Latest`: a runner's shared address hits its rate limit"
+# The release check asks RELEASE_CHECK_URL (an operator setting in config.env), as the e2e harness points it.
+$standinPort = [int]$Port + 1
+$standinJs = Join-Path $Work 'standin.js'
+[IO.File]::WriteAllText($standinJs, @'
+const [tag, port] = process.argv.slice(2)
+require('http').createServer((req, res) => {
+  res.setHeader('content-type', 'application/json')
+  res.end(JSON.stringify({ tag_name: tag, published_at: new Date().toISOString() }))
+}).listen(Number(port), '127.0.0.1')
+'@)
+$standin = Start-Process -FilePath (Join-Path $CubexHome 'node\node.exe') -PassThru -WindowStyle Hidden `
+  -ArgumentList "`"$standinJs`"", $Latest, "$standinPort"
+[IO.File]::AppendAllText((Join-Path $CubexHome 'config.env'),
+  "`r`nRELEASE_CHECK_URL=http://127.0.0.1:$standinPort/latest`r`n")
 
 Step "Label it $Label, following releases, and start it again"
 $sha = (& git -C $Src rev-parse --short HEAD).Trim()
@@ -204,3 +221,4 @@ Assert-AsBefore
 Installed
 ''; 'Update now works here: a failed update rolled back with the data, and the real one came through.'
 & $Cli stop
+Stop-Process -Id $standin.Id -ErrorAction SilentlyContinue

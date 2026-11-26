@@ -27,8 +27,10 @@ Set-Location $CubexHome
 Set-Content -Path (Join-Path $CubexHome 'update.lock') -Value $PID -Encoding ascii
 $code = 1
 try {
-  & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $CubexHome 'app\bin\cubex.ps1') update *> `
-    (Join-Path $CubexHome 'update.log')
+  # UTF-8 (with a byte order mark, as Windows PowerShell writes it): a plain *> redirect writes UTF-16, which the
+  # server reads as UTF-8 (lib/self-update.ts). Each line as it comes, so the page can show it.
+  & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $CubexHome 'app\bin\cubex.ps1') update *>&1 |
+    ForEach-Object { "$_" } | Out-File -FilePath (Join-Path $CubexHome 'update.log') -Encoding utf8
   $code = $LASTEXITCODE
 } finally {
   $status = [ordered]@{ code = $code; from = $From; to = $To; ended_at = (Get-Date).ToUniversalTime().ToString('o') }

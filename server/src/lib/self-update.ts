@@ -3,9 +3,11 @@
 // first. bin/cubex-update-run.sh (.ps1 on Windows), copied to the install folder, holds update.lock with its pid,
 // writes the update's output to update.log and, once the update ends, update-status.json with its exit code. The
 // server writes update-status.json first, with the versions, so a restart reads how it went:
-// - Linux under systemd (INVOCATION_ID, set for a unit's processes): a transient unit of its own (systemd-run
-//   --user), outside Cubex's cgroup, which stopping Cubex's unit ends whole. With no user manager to ask (a Cubex
-//   started from another service's shell, such as a CI runner's), it starts detached instead;
+// - Linux, Cubex running as its own systemd user service (its cgroup is that unit's): a transient unit of its own
+//   (systemd-run --user), outside Cubex's cgroup, which stopping Cubex's unit ends whole. The installer starts Cubex
+//   again through systemd, in Cubex's own unit. Started from any other unit (a CI runner's, another service's
+//   shell), Cubex is a plain background process that the installer starts again from inside the updater: a unit of
+//   the updater's own would stop it as the update ends, so it starts detached, as it also does with no user manager;
 // - macOS (a launchd login item, which stops Cubex's process group) and a plain background process: detached, in
 //   a session of its own;
 // - Windows: the script starts itself as a one-time scheduled task, or (no tasks) from a launcher that exits at
@@ -49,10 +51,19 @@ export function updateHow(): UpdateHow {
   return runningVersion().pinned ? 'pinned' : 'button';
 }
 
-// Pure: where the updater starts, from the platform and the server's environment.
-export function starterFor(platform: NodeJS.Platform, env: NodeJS.ProcessEnv): Starter {
+// Pure: where the updater starts, from the platform, the server's environment and, on Linux, its cgroups
+// (/proc/self/cgroup): a unit of its own only when Cubex runs in its own service's unit (bin/cubex-service.sh).
+export function starterFor(platform: NodeJS.Platform, env: NodeJS.ProcessEnv, cgroups: string | null = null): Starter {
   if (platform === 'win32') return 'windows';
-  return platform === 'linux' && env.INVOCATION_ID ? 'systemd' : 'detached';
+  const unit = `/${env.CUBEX_SERVICE_UNIT || 'cubex'}.service`;
+  const inUnit = (cgroups ?? '').split(/\r?\n/).some(line => line.trimEnd().endsWith(unit));
+  return platform === 'linux' && env.INVOCATION_ID && inUnit ? 'systemd' : 'detached';
+}
+
+// This server's starter (starterFor, from what it runs in).
+export function updaterStarter(): Starter {
+  const cgroups = process.platform === 'linux' ? read('/proc/self/cgroup') : null;
+  return starterFor(process.platform, process.env, cgroups);
 }
 
 const alive = (pid: number): boolean => {
@@ -70,7 +81,8 @@ export function lockHeld(text: string | null, now: number, isAlive: (pid: number
 
 // The update's last lines, its terminal colors dropped.
 function logTail(home: string): string {
-  const text = (read(file(home, 'update.log')) ?? '').replace(/\u001b\[[0-9;]*[A-Za-z]/g, '');
+  // Windows PowerShell writes UTF-8 with a byte order mark (bin/cubex-update-run.ps1).
+  const text = (read(file(home, 'update.log')) ?? '').replace(/^\uFEFF/, '').replace(/\u001b\[[0-9;]*[A-Za-z]/g, '');
   return text.split(/\r?\n/).filter(l => l.trim()).slice(-LOG_LINES).join('\n').slice(-LOG_CHARS);
 }
 
@@ -135,7 +147,7 @@ export function startUpdate(latest: string | null): { ok: UpdateRun } | StartFai
     fs.rmSync(file(home, 'update.log'), { force: true });
     fs.writeFileSync(file(home, 'update-status.json'),
       `${JSON.stringify({ from, to: latest, started_at: now.toISOString() })}\n`);
-    (startForTests ?? start)(starterFor(process.platform, process.env), home, script, from, latest);
+    (startForTests ?? start)(updaterStarter(), home, script, from, latest);
   } catch (error) {
     fs.rmSync(lock, { force: true });
     throw error;

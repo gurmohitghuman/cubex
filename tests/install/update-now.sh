@@ -107,8 +107,9 @@ updater_done() {
     fi
     sleep 2
   done
-  echo '--- update.log'; cat "$CUBEX_HOME/update.log" 2>/dev/null || true
-  fail "The update didn't end within 20 minutes."
+  echo "--- cubex status: $("$CLI" status 2>&1 || true)"
+  echo '--- processes'; ps -ef | grep -E '[n]ode|[c]ubex' | head -20 || true
+  fail "The update didn't end within 20 minutes, or Cubex isn't running after it."
 }
 
 step "The latest release, and the label for the build under test (the release before it)"
@@ -122,6 +123,21 @@ echo "Latest release: $LATEST. This build is labeled $LABEL."
 step "Install the commit under test from its checkout"
 bash "$SRC/install.sh" --source "$SRC" --port "$TEST_PORT" --no-service --no-modify-path
 installed
+
+step "A stand-in for GitHub's releases API that answers $LATEST: a runner's shared address hits its rate limit"
+# The release check asks RELEASE_CHECK_URL (an operator setting in config.env), as the e2e harness points it.
+STANDIN_PORT=$((TEST_PORT + 1))
+cat > "$WORK/standin.js" <<'JS'
+const [tag, port] = process.argv.slice(2)
+require('http').createServer((req, res) => {
+  res.setHeader('content-type', 'application/json')
+  res.end(JSON.stringify({ tag_name: tag, published_at: new Date().toISOString() }))
+}).listen(Number(port), '127.0.0.1')
+JS
+"$CUBEX_HOME/node/bin/node" "$WORK/standin.js" "$LATEST" "$STANDIN_PORT" &
+STANDIN=$!
+trap 'kill "$STANDIN" 2>/dev/null || true' EXIT
+printf '\nRELEASE_CHECK_URL=http://127.0.0.1:%s/latest\n' "$STANDIN_PORT" >> "$CUBEX_HOME/config.env"
 
 step "Label it $LABEL, following releases, and start it again"
 echo "$LABEL $(git -C "$SRC" rev-parse --short HEAD)" > "$CUBEX_HOME/app/.cubex-version"

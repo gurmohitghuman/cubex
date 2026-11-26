@@ -56,10 +56,21 @@ const run = (state: string) => {
   return id
 }
 
-await ok('the updater starts outside the service on each platform', () => {
-  assert.equal(su.starterFor('linux', { INVOCATION_ID: 'x' }), 'systemd')
-  assert.equal(su.starterFor('linux', {}), 'detached')
-  assert.equal(su.starterFor('darwin', { INVOCATION_ID: 'x' }), 'detached')
+await ok('the updater starts outside the service on each platform: a unit of its own only beside Cubex\'s own unit',
+  () => {
+  const own = '0::/user.slice/user-1000.slice/user@1000.service/app.slice/cubex.service\n'
+  const runner = '0::/system.slice/actions.runner.gurmohitghuman-cubex.runner.service\n'
+  assert.equal(su.starterFor('linux', { INVOCATION_ID: 'x' }, own), 'systemd')
+  assert.equal(su.starterFor('linux', { INVOCATION_ID: 'x' }, '1:name=systemd:/user.slice/cubex.service\r\n'),
+    'systemd', 'cgroup v1')
+  assert.equal(su.starterFor('linux', { INVOCATION_ID: 'x', CUBEX_SERVICE_UNIT: 'cubex-2' },
+    '0::/user.slice/cubex-2.service'), 'systemd', 'a unit named otherwise')
+  // Started from another unit (a CI runner's): the installer starts Cubex again from inside the updater, which a
+  // unit of the updater's own would stop as it ends.
+  assert.equal(su.starterFor('linux', { INVOCATION_ID: 'x' }, runner), 'detached')
+  assert.equal(su.starterFor('linux', { INVOCATION_ID: 'x' }, null), 'detached')
+  assert.equal(su.starterFor('linux', {}, own), 'detached')
+  assert.equal(su.starterFor('darwin', { INVOCATION_ID: 'x' }, own), 'detached')
   assert.equal(su.starterFor('win32', {}), 'windows')
 })
 
@@ -116,7 +127,7 @@ await ok('a start: the script copied, the versions kept, the lock taken; a secon
   assert.deepEqual({ state: out.ok.state, from: out.ok.from, to: out.ok.to }, { state: 'running', from: 'v0.8.46',
     to: 'v0.8.47' })
   const script = path.join(home, process.platform === 'win32' ? 'cubex-update-run.ps1' : 'cubex-update-run.sh')
-  assert.deepEqual(calls, [[su.starterFor(process.platform, process.env), home, script, 'v0.8.46', 'v0.8.47']])
+  assert.deepEqual(calls, [[su.updaterStarter(), home, script, 'v0.8.46', 'v0.8.47']])
   assert.ok(fs.existsSync(script))
   assert.match(fs.readFileSync(path.join(home, 'update.lock'), 'utf8'), /^starting /)
   assert.equal((su.startUpdate('v0.8.47') as any).fail, 'running')
@@ -135,6 +146,9 @@ await ok('how a run reads back: done, failed with its last lines, gone without a
   assert.equal(failed.code, 2)
   assert.ok(!failed.log.includes('\u001b') && failed.log.endsWith('the previous one is back.'), failed.log)
   assert.equal(failed.log.split('\n').length, 15)
+  // As Windows PowerShell writes it: UTF-8 with a byte order mark (bin/cubex-update-run.ps1).
+  put('update.log', '\uFEFFInstalling Cubex\r\nThe new version didn\'t start, so the previous one is back.\r\n')
+  assert.equal(su.updateRun()!.log, 'Installing Cubex\nThe new version didn\'t start, so the previous one is back.')
   put('update-status.json', '{"from":"v0.8.46","to":"v0.8.47","started_at":"x"}')
   put('update.lock', `${deadPid()}\n`)
   assert.deepEqual([su.updateRun()!.state, su.updateRun()!.code], ['failed', null])
