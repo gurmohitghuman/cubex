@@ -4,7 +4,8 @@
 // on the worker held 300 ms, the event loop never held 200 ms, the WAL under journal_size_limit) and no slice writes
 // much past HEAVY_SLICE_BYTES: rows into the trash and back, the trash emptied, a big column into the trash and
 // back, duplicates removed (a journaled chunk that doesn't fit keeps the rest); every row and cell ends where it
-// should. The row walk and an import's undo: bulk-wal-big-rows.test.ts.
+// should. Last, the trash emptied finds each slice's rows by rowid, not by walking the batch's whole index. The
+// row walk and an import's undo: bulk-wal-big-rows.test.ts.
 import assert from 'node:assert/strict'
 import { v4 as uuid } from 'uuid'
 import { columnTrashKit } from './column-trash-kit'
@@ -88,6 +89,34 @@ await ok('duplicates removed: slices sized by bytes, each journaled chunk kept u
   assert.ok(out && 'ok' in out && out.ok.removed === N / 2, JSON.stringify(out))
   assert.equal(rows(sid), N / 2)
   assert.equal(db.prepare('SELECT COUNT(*) FROM dedupe_chunks WHERE sheet_id = ?').pluck().get(sid), 0)
+})
+
+await ok('the trash emptied finds each slice\'s rows by rowid', async () => {
+  const sid = uuid()
+  db.prepare('INSERT INTO sheets (id,table_id,user_id,name,position,column_order) VALUES (?,?,?,?,0,?)')
+    .run(sid, tid, uid, `S_${sid.slice(0, 8)}`, JSON.stringify(['Email']))
+  const ins = db.prepare('INSERT INTO rows (id,sheet_id,user_id,row_index,data) VALUES (?,?,?,?,?)')
+  db.transaction(() => { for (let i = 0; i < 50; i++) ins.run(uuid(), sid, uid, i, `{"Email":"u${i}@x.co"}`) })
+    .immediate()
+  const id = (await trashRowRange(sid, uid, 0, 50, 'import')).trashId!
+  // The plan of each statement the purge prepares that deletes rows of trash_rows by rowid.
+  const plans: string[] = []
+  const prepare = db.prepare.bind(db)
+  ;(db as any).prepare = (sql: string) => {
+    if (/^DELETE FROM trash_rows WHERE rowid IN/.test(sql)) {
+      const params = Array((sql.match(/\?/g) ?? []).length).fill(null)
+      plans.push((prepare(`EXPLAIN QUERY PLAN ${sql}`).all(...params) as Array<{ detail: string }>)
+        .map(p => p.detail).join(' | '))
+    }
+    return prepare(sql)
+  }
+  try {
+    assert.deepEqual(purgeTrashItems(uid, [id]), [id])
+    assert.ok(await until(() => !item(id)), 'the item is gone')
+  } finally { (db as any).prepare = prepare }
+  assert.equal(kept(id), 0)
+  assert.ok(plans.length > 0, 'the purge deleted from trash_rows')
+  for (const p of plans) assert.match(p, /^SEARCH trash_rows USING INTEGER PRIMARY KEY \(rowid=\?\)/, p)
 })
 
 await closeWalCheckpointer()
