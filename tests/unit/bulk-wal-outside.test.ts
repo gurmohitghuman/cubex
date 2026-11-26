@@ -9,14 +9,16 @@ import migMod from '../../server/src/db/migrate'
 import constMod from '../../server/src/lib/constants'
 import walMod from '../../server/src/lib/wal-checkpointer'
 import bulkMod from '../../server/src/lib/bulk-slices'
+import watchMod from '../../server/src/lib/wal-watch'
 import { bulkWalKit } from './bulk-wal-kit'
 import { transactionLine, type TransactionRecord } from './sqlite-write-probe'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
-const { DB_AUTO_CHECKPOINT_FRAMES, WAL_BULK_ROOM_SHARE } = constMod as typeof import('../../server/src/lib/constants')
+const { WAL_BULK_ROOM_SHARE } = constMod as typeof import('../../server/src/lib/constants')
 const { checkpointAnswer, checkpointInBackground, closeWalCheckpointer, setCheckpointDelayForTests,
   walCheckpointerIdle } = walMod as typeof import('../../server/src/lib/wal-checkpointer')
-const { autoCheckpointHolders, runInCheckpointedSlices } = bulkMod as typeof import('../../server/src/lib/bulk-slices')
+const { runInCheckpointedSlices } = bulkMod as typeof import('../../server/src/lib/bulk-slices')
+const { bulkWritersRunning } = watchMod as typeof import('../../server/src/lib/wal-watch')
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 runMigrations()
@@ -54,9 +56,10 @@ const set = db.prepare(`UPDATE rows SET data = json_set(data, '$.N', ?)
   WHERE rowid IN (SELECT value FROM json_each(?))`)
 const count = (v: string) => db.prepare(`SELECT count(*) FROM rows WHERE sheet_id = ?
   AND json_extract(data, '$.N') = ?`).pluck().get(sid, v) as number
+// After the job: no runner counted, SQLite's own checkpoint still at the room (the job started the WAL watch).
 const back = () => {
-  assert.equal(auto(), DB_AUTO_CHECKPOINT_FRAMES, 'SQLite\'s own checkpoint is back on')
-  assert.equal(autoCheckpointHolders(), 0)
+  assert.equal(auto(), roomFor(sizeLimit), 'SQLite\'s own checkpoint')
+  assert.equal(bulkWritersRunning(), 0)
 }
 
 // A writer outside the runner (an import, say) on the API connection all through a job: 1,000 rows of 300 bytes

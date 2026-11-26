@@ -23,7 +23,8 @@
 // The next write on this thread then starts the WAL over, and syncs its header
 // here: that much of the wait stays on the event loop while degraded.
 // A worker that had started and stops is started once more. Used by
-// transform_column and the background bulk writers (lib/bulk-slices.ts).
+// transform_column, the background bulk writers (lib/bulk-slices.ts) and the
+// WAL watch, for every other write (lib/wal-watch.ts).
 import { Worker } from 'worker_threads';
 import { extname, join } from 'path';
 import { db } from './db';
