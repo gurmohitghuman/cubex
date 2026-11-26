@@ -24,7 +24,7 @@ import { transformPageFault } from './transform-page-fault'
 import { moved } from './transform-pass-words'
 import { heldText, loopWatch } from './loop-watch'
 import { sizeWalLikeAServer, sqliteWriteProbe, transactionLine, walGrowth } from './sqlite-write-probe'
-import { toTheEnd } from './transform-to-end'
+import { caughtUp, toTheEnd } from './transform-to-end'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { transformColumn } = transformMod as typeof import('../../server/src/services/column-transform')
@@ -70,6 +70,7 @@ async function movedFrom(id: string, before: number) {
   return dataVersion(id) > before
 }
 const stoppedOn = async (id: string) => {
+  await caughtUp()
   fault.arm(251)
   try { return await transformColumn(uid, again(id)) } finally { fault.disarm() }
 }
@@ -106,6 +107,7 @@ async function lockHolder(holdMs = 6500) {
 }
 // The lock is taken where the call first reads the WAL's size (or checkpoints) once its first page wrote a row.
 async function lockedAfterFirstPage(holder: Awaited<ReturnType<typeof lockHolder>>, id: string) {
+  await caughtUp()
   const [pragma, prepare] = [db.pragma, db.prepare]
   let armed = true, wrote = false
   db.prepare = ((sql: string) => {
