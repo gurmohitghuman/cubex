@@ -21,7 +21,8 @@ import { runInsertExtras } from '../lib/web-fetch-options';
 // meanwhile are still worked out); one turned on starts above the rows there.
 const KEEP = { keepFence: true };
 
-const forgetUsage = (runId: string) => db.prepare('DELETE FROM run_usage WHERE run_id = ?').run(runId);
+// A run record that ran nothing has no usage (also a test's results put back: services/sheet-test-results.ts).
+export const forgetUsage = (runId: string) => db.prepare('DELETE FROM run_usage WHERE run_id = ?').run(runId);
 
 // setup_only 3: a setup someone saved without running it (services/column-setup-save.ts).
 export const SETUP_SAVED = 3;

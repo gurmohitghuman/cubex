@@ -19,7 +19,8 @@ export interface InTrash { name: string; table?: string; trash_ids: number[] }
 
 export const liveSheets = (userId: string): SheetNamed[] => db.prepare(`
   SELECT s.id, s.name, t.name AS "table" FROM sheets s JOIN tables t ON t.id = s.table_id
-  WHERE s.user_id = ? AND s.trash_id IS NULL AND t.trash_id IS NULL AND t.hidden = 0 ORDER BY s.rowid DESC LIMIT ?
+  WHERE s.user_id = ? AND s.trash_id IS NULL AND s.test_of IS NULL AND t.trash_id IS NULL AND t.hidden = 0
+  ORDER BY s.rowid DESC LIMIT ?
 `).all(userId, LOOK_AT) as SheetNamed[];
 
 export const liveTables = (userId: string): Named[] => db.prepare(

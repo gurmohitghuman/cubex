@@ -98,7 +98,8 @@ async function deleteInSlices(sql: string, params: unknown[], size: number): Pro
 
 // False when something still finishing on it (a restart's job) holds it, or a
 // long read (an export, a copy of its values) is still reading it: next sweep.
-async function purgeSheet(sheetId: string, userId: string, itemId: number | null): Promise<boolean> {
+// Also deletes a test's copy when the test ends (services/sheet-test-end.ts).
+export async function purgeSheet(sheetId: string, userId: string, itemId: number | null): Promise<boolean> {
   if (sheetHeld(sheetId)) return false;
   const name = db.prepare('SELECT name FROM sheets WHERE id = ?').pluck().get(sheetId) as string | undefined;
   if (name !== undefined) db.transaction(() => lookupsLoseSheet(sheetId, name)).immediate();
