@@ -1,0 +1,97 @@
+name: Update now
+
+# Settings' "Update now" for real (plans/settings-update-now.md's must-pass), on Linux, macOS and Windows runners.
+# tests/install/update-now.sh (update-now.ps1 on Windows) installs this commit from its checkout with the installer,
+# labels it the release before the latest and sets it to follow releases. Then, through the button's own request
+# with a session: an update to a build that doesn't start must put the version before back with the data as it was,
+# and the real update to the latest release must come through with the password and a sheet made before. An API
+# token is refused. Nothing is pushed or tagged.
+# On pull requests and pushes to main that touch the updater, the installers or this check; or by hand.
+
+on:
+  pull_request:
+    paths:
+      - install.sh
+      - install.ps1
+      - 'bin/**'
+      - server/src/lib/self-update.ts
+      - server/src/routes/settings-version.ts
+      - 'tests/install/**'
+      - .github/workflows/update-now.yml
+  push:
+    branches: [main]
+    paths:
+      - install.sh
+      - install.ps1
+      - 'bin/**'
+      - server/src/lib/self-update.ts
+      - server/src/routes/settings-version.ts
+      - 'tests/install/**'
+      - .github/workflows/update-now.yml
+  workflow_dispatch:
+
+concurrency:
+  group: update-now-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  unix:
+    name: Update now (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x64
+            os: ubuntu-latest
+          - name: macOS arm64
+            os: macos-latest
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    env:
+      CUBEX_HOME: ${{ runner.temp }}/cubex/home
+      CUBEX_BIN_DIR: ${{ runner.temp }}/cubex/bin
+      TEST_PORT: '3002'
+    steps:
+      # The whole history: the check clones this checkout for its build that doesn't start.
+      - uses: actions/checkout@v5
+        with:
+          path: src
+          fetch-depth: 0
+      - name: An update that rolls back, then the real one
+        run: bash src/tests/install/update-now.sh src
+      - name: What the updates said, and Cubex's log
+        if: always()
+        run: |
+          for f in update-status.json update.log; do echo "--- $f"; cat "$CUBEX_HOME/$f" 2>/dev/null || true; done
+          echo '--- cubex logs'; "$CUBEX_BIN_DIR/cubex" logs 2>/dev/null | tail -60 || true
+
+  windows:
+    name: Update now (Windows x64)
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      CUBEX_HOME: ${{ runner.temp }}\cubex
+      TEST_PORT: '3002'
+      # A runner's window is elevated; a background-process install from one is allowed here, as install-windows.yml
+      # allows it.
+      CUBEX_ALLOW_ELEVATED: '1'
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          path: src
+          fetch-depth: 0
+      - name: An update that rolls back, then the real one
+        run: .\src\tests\install\update-now.ps1 src
+      - name: What the updates said, and Cubex's log
+        if: always()
+        run: |
+          foreach ($f in 'update-status.json', 'update.log') {
+            "--- $f"; Get-Content (Join-Path $env:CUBEX_HOME $f) -ErrorAction SilentlyContinue
+          }
+          '--- cubex logs'; & (Join-Path $env:CUBEX_HOME 'bin\cubex.cmd') logs 2>$null | Select-Object -Last 60
