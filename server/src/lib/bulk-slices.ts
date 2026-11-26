@@ -135,8 +135,16 @@ export async function asBulkWriter<T>(work: (w: BulkWriter) => Promise<T>, until
         await yieldToRequests();
         // One slice a turn of the event loop, whichever writer's (lib/slice-turn.ts).
         done = await takeSliceTurn();
-        // Room again in the turn: other writers' slices went in while this one waited for it (above).
-        if (Date.now() < askAfter || Date.now() >= until || !pastPause(bounds)) break;
+        // Room again in the turn: other writers' slices went in while this one waited for it (above). A read that
+        // throws gives the turn back first: held, every bulk writer would wait for it until a restart.
+        let again: boolean;
+        try {
+          again = Date.now() >= askAfter && Date.now() < until && pastPause(bounds);
+        } catch (err) {
+          done();
+          throw err;
+        }
+        if (!again) break;
         done();
       }
       const tx = db.transaction(() => { walTurnCheck(); return step(); });
