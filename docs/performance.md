@@ -105,7 +105,7 @@ A row holding an API answer can be 16 to 200 KB, and SQLite writes a changed row
 | Empty the trash (100 KB) | 29,410 pages, 116 MB of WAL | 1,946 pages | 165 ms | 14 ms |
 | Remove duplicates (100 KB) | 12,294 pages | 1,948 pages | 67 ms | 39 ms |
 
-Before, the WAL grew past its 64 MB limit; now it stays under 54 MB. Each job took the same time or less. The size check costs about 0.3 ms a slice of small rows, about 0.05 s over a million rows.
+Before, the WAL grew past its 64 MB limit; now it stays under 54 MB. Each job took the same time or less. The size check costs about 0.3 ms a slice of small rows. On a sheet of 1,000,000 rows and 10 columns it took 0.5 to 1.3 ms a slice of 5,000 rows, 0.1 to 0.3 s over the whole sheet (it reads the same pages the slice then writes). A sheet whose rows sit before and after another sheet's reads each of its own rows' sizes instead, so the check never reads the other sheet's rows.
 
 ### The trash
 

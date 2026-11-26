@@ -1,6 +1,6 @@
 import { isMainThread } from 'worker_threads';
 import { db } from './db';
-import { HEAVY_SLICE_BYTES, HEAVY_SLICE_ROWS } from './constants';
+import { HEAVY_SLICE_BYTES, HEAVY_SLICE_ROWS, SLICE_SPAN_ROWIDS_PER_ROW } from './constants';
 import { rangeBytes, rowBytes, withinBytes } from './slice-bytes';
 import { runInSlices } from './slices';
 import { takeSliceTurn } from './slice-turn';
@@ -129,9 +129,13 @@ export async function eachRowIdSlice(
     if (i >= rowIds.length) return false;
     let ids = rowIds.subarray(i, Math.min(rowIds.length, i + size));
     let json = JSON.stringify(Array.from(ids));
-    if (budget !== false && rangeBytes(...spanOf(ids)) > budget) {
-      const fit = withinBytes(rowBytes(ids, json), budget);
-      if (fit < ids.length) { ids = ids.subarray(0, fit); json = JSON.stringify(Array.from(ids)); }
+    if (budget !== false) {
+      // Summed only while the span is mostly the slice's own rows (SLICE_SPAN_ROWIDS_PER_ROW).
+      const [lo, hi] = spanOf(ids);
+      if (hi - lo + 1 > SLICE_SPAN_ROWIDS_PER_ROW * ids.length || rangeBytes(lo, hi) > budget) {
+        const fit = withinBytes(rowBytes(ids, json), budget);
+        if (fit < ids.length) { ids = ids.subarray(0, fit); json = JSON.stringify(Array.from(ids)); }
+      }
     }
     const out = apply(json, ids);
     i += typeof out === 'number' ? Math.min(ids.length, Math.max(1, Math.floor(out))) : ids.length;
