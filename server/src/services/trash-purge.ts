@@ -88,7 +88,8 @@ async function purgeDue(): Promise<void> {
 async function purgeBatch(itemId: number): Promise<void> {
   const next = db.prepare(`SELECT rowid, octet_length(data) FROM trash_rows WHERE item_id = ? ORDER BY seq
     LIMIT ?`).raw();
-  const del = db.prepare('DELETE FROM trash_rows WHERE rowid IN (SELECT value FROM json_each(?)) AND item_id = ?');
+  // `+item_id`: found by rowid. Else SQLite walks the item's whole (item_id, seq) index every slice.
+  const del = db.prepare('DELETE FROM trash_rows WHERE rowid IN (SELECT value FROM json_each(?)) AND +item_id = ?');
   await runInCheckpointedSlices(() => {
     const ids = keysWithinBytes(next.all(itemId, TRASH_PURGE_BATCH_ROWS) as Array<[number, number]>,
       HEAVY_SLICE_BYTES);

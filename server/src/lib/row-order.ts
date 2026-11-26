@@ -1,6 +1,6 @@
 import { isMainThread } from 'worker_threads';
 import { db } from './db';
-import { HEAVY_SLICE_BYTES, HEAVY_SLICE_ROWS } from './constants';
+import { HEAVY_SLICE_BYTES, HEAVY_SLICE_ROWS, SLICE_SPAN_ROWIDS_PER_ROW } from './constants';
 import { rangeBytes, rowBytes, withinBytes } from './slice-bytes';
 import { runInSlices } from './slices';
 import { takeSliceTurn } from './slice-turn';
@@ -104,7 +104,8 @@ function spanOf(ids: Float64Array): [number, number] {
 // Calls `apply` with each slice of `rowIds` (`rows` of them: HEAVY_SLICE_ROWS
 // unless a caller whose slices do more per row asks for fewer, and no more than
 // fit `bytes` of row data: HEAVY_SLICE_BYTES unless a caller writes each row
-// twice, or false for one that doesn't rewrite the rows; lib/slice-bytes.ts) as a JSON array,
+// twice, or false for one that doesn't rewrite the rows; lib/slice-bytes.ts; `sizes` when a row grows by more than
+// it holds, as a ⏳ clear putting old values back) as a JSON array,
 // for a statement filtering on `rowid IN (SELECT value FROM json_each(?))`, one
 // slice per event-loop turn. `apply` returns false to stop early, or how many of
 // the slice's rows it took (at least one): the next slice starts after them.
@@ -120,7 +121,10 @@ function spanOf(ids: Float64Array): [number, number] {
 // every slice (about 0.1 s each at 1M rows) instead of looking rows up by rowid.
 export async function eachRowIdSlice(
   rowIds: Float64Array, apply: (idsJson: string, ids: Float64Array) => boolean | number | void,
-  opts: { rows?: number; checkpointed?: boolean; bytes?: number | false } = {},
+  opts: {
+    rows?: number; checkpointed?: boolean; bytes?: number | false;
+    sizes?: (ids: Float64Array, idsJson: string) => number[];
+  } = {},
 ): Promise<void> {
   const size = Math.max(1, Math.floor(opts.rows ?? HEAVY_SLICE_ROWS));
   const budget = opts.bytes ?? HEAVY_SLICE_BYTES;
@@ -129,9 +133,13 @@ export async function eachRowIdSlice(
     if (i >= rowIds.length) return false;
     let ids = rowIds.subarray(i, Math.min(rowIds.length, i + size));
     let json = JSON.stringify(Array.from(ids));
-    if (budget !== false && rangeBytes(...spanOf(ids)) > budget) {
-      const fit = withinBytes(rowBytes(ids, json), budget);
-      if (fit < ids.length) { ids = ids.subarray(0, fit); json = JSON.stringify(Array.from(ids)); }
+    if (budget !== false) {
+      // Summed only while the span is mostly the slice's own rows (SLICE_SPAN_ROWIDS_PER_ROW).
+      const [lo, hi] = spanOf(ids);
+      if (opts.sizes || hi - lo + 1 > SLICE_SPAN_ROWIDS_PER_ROW * ids.length || rangeBytes(lo, hi) > budget) {
+        const fit = withinBytes(opts.sizes ? opts.sizes(ids, json) : rowBytes(ids, json), budget);
+        if (fit < ids.length) { ids = ids.subarray(0, fit); json = JSON.stringify(Array.from(ids)); }
+      }
     }
     const out = apply(json, ids);
     i += typeof out === 'number' ? Math.min(ids.length, Math.max(1, Math.floor(out))) : ids.length;

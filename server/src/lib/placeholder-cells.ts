@@ -2,12 +2,13 @@ import { db } from './db';
 import { oneTransaction } from './slices';
 import { jsonPath } from './sql-rows';
 import { eachRowIdSlice, sheetRowIds } from './row-order';
+import { rowBytesWithKept } from './slice-bytes';
 import { CELL_HAS_VALUE_SQL, PLACEHOLDER } from './run-markers';
 import { journalSeed, type RunRef } from './run-undo/journal';
 import { clearBackFor, KEPT_EMPTY_SQL, KEPT_VALUE_SQL } from './run-undo/clear-back';
 import { derivedReaderCount, derivedReaderIds } from './autorun-mark';
 import { kickSpanReaders, tellDerivedSpan } from './derived-spans';
-import { HEAVY_SLICE_ROWS, PLACEHOLDER_CLEAR_BACK_ROWS } from './constants';
+import { HEAVY_SLICE_BYTES, HEAVY_SLICE_ROWS, PLACEHOLDER_CLEAR_BACK_ROWS } from './constants';
 import { sliceClock } from './slice-clock';
 import { FIRST_TIMED_PAGE, pageByTime } from '../services/derived-write';
 
@@ -48,7 +49,8 @@ export { PLACEHOLDER };
 // kicks them in the API process: lib/run-placeholders.ts; a run worker's
 // clear, a failed run's, leaves them to the auto-run sweep). A slice is
 // HEAVY_SLICE_ROWS rows, or fewer as fit HEAVY_SLICE_BYTES (lib/row-order.ts:
-// rows holding big cells). On the server's thread each slice commits with
+// rows holding big cells, counted with the old values the journal puts back:
+// a row holding only ⏳ grows by them). On the server's thread each slice commits with
 // SQLite's own checkpoint off, its WAL copied back on the checkpoint worker's
 // thread (lib/bulk-slices.ts); on a job thread it is checkpointed after it
 // when columns read these from the start (lib/row-order.ts). Journal lookups
@@ -113,7 +115,10 @@ export async function clearProcessingPlaceholders(
     });
     afterSlice?.();
     return took;
-  }, { rows: readers > 0 ? readRows : sliceRows(false), checkpointed: readers > 0 });
+  }, {
+    rows: readers > 0 ? readRows : sliceRows(false), checkpointed: readers > 0,
+    sizes: back && restoring > 0 ? (ids, json) => rowBytesWithKept(ids, json, back.undoId) : undefined,
+  });
   bump.run(sheetId, userId);
   // A run's clear kicks its readers once the run lets its columns go (lib/run-placeholders.ts).
   if (!run) kickSpanReaders(sheetId);
@@ -174,6 +179,7 @@ export async function seedProcessingPlaceholders(args: {
     });
     if (told) toldPage = pageByTime(took, sliceClock() - began);
     return took;
-  });
+  // Each row's old cells go into the journal as the row is rewritten: half the bytes a slice may write.
+  }, { bytes: HEAVY_SLICE_BYTES / 2 });
   return !stopped;
 }
