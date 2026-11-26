@@ -43,16 +43,21 @@ export interface SlicedDelete<F> {
 export async function deleteRowsInSlices<F>(
   sheetId: string, userId: string, pick: RowPick, opts: SlicedDelete<F>,
 ): Promise<{ ok: TrashedRows } | { refused: F } | { busy: string }> {
-  return withSheetBusy(sheetId, WHAT, async (): Promise<{ ok: TrashedRows } | { refused: F }> => {
+  return withSheetBusy(sheetId, WHAT, async (reserve): Promise<{ ok: TrashedRows } | { refused: F }> => {
     const start = db.transaction(() => {
       const refused = opts.check();
       if (refused !== null) return { refused };
       const rows = pickedRows(sheetId, userId, pick);
       const batch = rows.length === 0 ? null : openRowsBatch(sheetId, userId, opts.how, opts.continueId);
       if (batch?.earlier) db.prepare("UPDATE trash_items SET state = 'moving' WHERE id = ?").run(batch.item);
-      return { rows, batch };
-    }).immediate() as { refused: F } | { rows: Array<[number, number]>; batch: RowsBatch | null };
+      const top = db.prepare('SELECT MAX(row_index) FROM rows WHERE sheet_id = ? AND user_id = ?')
+        .pluck().get(sheetId, userId) as number | null;
+      return { rows, batch, floor: top === null ? 0 : top + 1 };
+    }).immediate() as { refused: F } | { rows: Array<[number, number]>; batch: RowsBatch | null; floor: number };
     if ('refused' in start) return start;
+    // Rows added while it goes (webhooks, append_rows, the grid's new rows) land above every row it may remove, as
+    // a duplicate removal's do: the last transaction's auto-run fence (autorunRowsRemoved) never passes over them.
+    reserve(start.floor);
     const { rows, batch } = start;
     const out: TrashedRows = { count: 0, indexes: [], trashId: null };
     if (rows.length === 0) return { ok: out };

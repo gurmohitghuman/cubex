@@ -16,6 +16,7 @@ const { sealLeftDeletes } = await import('../../server/src/services/trash-rows-s
 const { removeRows } = await import('../../server/src/lib/trash/move')
 const { insertTrashItem } = await import('../../server/src/lib/trash/store')
 const { HEAVY_SLICE_BYTES } = await import('../../server/src/lib/constants')
+const { nextRowIndex } = await import('../../server/src/lib/sheet-busy')
 const { closeWalCheckpointer } = await import('../../server/src/lib/wal-checkpointer')
 console.error = () => {}
 const { measure } = bulkWalKit()
@@ -99,6 +100,26 @@ await ok('delete_rows by ids: slices sized by bytes, into one batch, open tabs t
   assert.equal(item(id)!.state, 'kept')
   assert.ok(version(sid) > before, 'data_version moved')
   assert.deepEqual(lines(sid), ['Deleted 500 rows'])
+})
+
+// The last rows of a sheet deleted in slices: an append while it goes (a webhook) must land above all of them, or the
+// last transaction's auto-run fence passes over it (it would never be filled). Asked through the delete, including
+// while it waits for the worker's (held) checkpoint after its last slice.
+await ok('rows added while a sliced delete goes land above every row it may remove', async () => {
+  const sid = sheet(N, CELL)
+  const picked = ids(sid).slice(N - 300)
+  let lowest = Infinity
+  await measure('delete_rows of the last rows, appends asked meanwhile', async () => {
+    let settled = false
+    const going = deleteRowsByIdsSliced(sid, uid, picked).finally(() => { settled = true })
+    while (!settled) {
+      lowest = Math.min(lowest, nextRowIndex(sid, uid))
+      await new Promise(r => setTimeout(r, 2))
+    }
+    await going
+  })
+  assert.equal(rows(sid), N - 300)
+  assert.ok(lowest >= N, `an append meanwhile would have gone to ${lowest}, among the rows deleted`)
 })
 
 await ok('rows that fit one slice: one transaction, answered at once', async () => {
