@@ -38,6 +38,8 @@ test('a setup called on items: priced, run without a sheet, each item\'s outputs
   expect(await callError(client, 'apply_setup', { setup_id: setup.id, items, first_rows: 1 }))
     .toContain('first_rows go with sheet_id')
   expect(await callError(client, 'apply_setup', { setup_id: setup.id })).toContain('Pass sheet_id')
+  // The names v0.8.45 had, called from an older tool list: told what replaced them.
+  expect(await callError(client, 'call_setup', { setup_id: setup.id, items })).toContain('renamed to apply_setup')
 
   // Started: hidden while it runs, each item's outputs once it's done.
   const started = (await call(client, 'apply_setup', { setup_id: setup.id, items, estimate_only: false })).setup_call
@@ -119,6 +121,8 @@ test('a setup called on a file: an upload link and REST, results paged and downl
   expect(rest.results.map((r: any) => r.outputs['Clean name'])).toEqual(names.slice(100).map(n =>
     n.replace(/^p/, 'P')))
   expect(rest.next_from).toBeNull()
+  expect(await callError(client, 'get_setup_call', { setup_call_id: started.id }))
+    .toContain('renamed to get_setup_run')
   const dl = await call(client, 'create_download_link', { setup_call_id: started.id })
   const file = await (await api.get(dl.download_url)).text()
   expect(file.split('\n')[0]).toContain('Clean name')

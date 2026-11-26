@@ -29,6 +29,8 @@ test('an enrichment called on items: priced, refused over a ceiling, run without
   expect(est.estimate.rows_to_process).toBe(2)
   expect(est.run_id).toBeUndefined()
   expect(await tables()).toBe(before)
+  // The name v0.8.45 had, called from an older tool list: told what replaced it.
+  expect(await callError(client, 'call_enrichment', { tool_id: TOOL, items })).toContain('renamed to run_enrichment')
   expect(await callError(client, 'run_enrichment', { tool_id: TOOL, items, column_name: 'Email' }))
     .toContain('column_name go with sheet_id')
   expect(await callError(client, 'run_enrichment', { tool_id: TOOL, sheet_id: 'any', column_name: 'Email',

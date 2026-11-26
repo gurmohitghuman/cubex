@@ -39,6 +39,45 @@ export const CHANGES_RECORDED_AFTER = 'v0.8.12';
 // Newest first.
 export const AGENT_CHANGES: ReleaseChanges[] = [
   {
+    version: 'v0.8.46',
+    changes: [
+      {
+        change: 'renamed',
+        tools: ['call_setup'],
+        replaced_by: 'apply_setup',
+        summary: 'call_setup is apply_setup with items instead of sheet_id: a saved setup run on 1-100 items without a '
+          + 'sheet, like a function.',
+        details: 'Send apply_setup the same setup_id, items and choices with no sheet_id: estimate_only still defaults '
+          + 'to true, and the answer is the same setup_call.',
+      },
+      {
+        change: 'renamed',
+        tools: ['get_setup_call'],
+        replaced_by: 'get_setup_run',
+        summary: 'get_setup_call is get_setup_run: a call on items answers there, with its results paged as before.',
+        details: 'Pass the call\'s id as setup_run_id (it was setup_call_id); wait_seconds, results_from and limit '
+          + 'work as before.',
+      },
+      {
+        change: 'renamed',
+        tools: ['call_enrichment'],
+        replaced_by: 'run_enrichment',
+        summary: 'call_enrichment is run_enrichment with items instead of sheet_id: one enrichment tool on 1-1,000 '
+          + 'items without a sheet.',
+        details: 'Send run_enrichment the same tool_id, items, fields, max_cost_usd, allow_unpriced and webhook_id '
+          + 'with no sheet_id: estimate_only still defaults to true with items (on a sheet it stays false).',
+      },
+      {
+        change: 'changed',
+        tools: ['apply_setup', 'get_setup_run', 'run_enrichment'],
+        summary: 'apply_setup and run_enrichment take items instead of sheet_id, and get_setup_run answers a call on '
+          + 'items with each item\'s outputs.',
+        details: 'get_setup_run also takes wait_seconds, for any setup run. With items, the arguments only a sheet '
+          + 'takes (inputs, names, first_rows; column_name, outputs and the rest) are refused by name.',
+      },
+    ],
+  },
+  {
     version: 'v0.8.45',
     changes: [
       {
@@ -50,30 +89,28 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
           + 'it lists the tools that have one. No tool or argument changed.',
       },
       {
-        change: 'changed',
-        tools: ['apply_setup', 'get_setup_run'],
-        summary: 'apply_setup takes items instead of sheet_id: it runs a saved setup on 1-100 items without a sheet, '
-          + 'like a function, and get_setup_run with the call\'s id answers each item\'s outputs once it finishes.',
+        change: 'added',
+        tools: ['call_setup', 'get_setup_call'],
+        summary: 'call_setup runs a saved setup on 1-100 items without a sheet, like a function; get_setup_call '
+          + 'answers each item\'s outputs once it finishes.',
         details: 'Items are objects keyed by the setup\'s inputs; estimate_only defaults to true. The call id is a '
-          + 'setup run id, so control_setup_run pauses or cancels it. Results are kept 24 hours. get_setup_run takes '
-          + 'wait_seconds now.',
+          + 'setup run id: control_setup_run pauses or cancels it, a run webhook reports it as kind setup. Results '
+          + 'are kept 24 hours.',
       },
       {
-        change: 'changed',
-        tools: ['run_enrichment'],
-        summary: 'run_enrichment takes items instead of sheet_id: one enrichment tool on 1-1,000 items without a '
-          + 'sheet, refused up front instead of pausing halfway when it could pass max_cost_usd, the daily limit, the '
-          + 'treg balance or the token cap.',
-        details: 'With items, estimate_only defaults to true (on a sheet it stays false) and fields picks the output '
-          + 'fields. It answers a run_id: get_run_status and get_run_results answer for it, with row_index as the '
-          + 'item.',
+        change: 'added',
+        tools: ['call_enrichment'],
+        summary: 'call_enrichment runs one enrichment tool on 1-1,000 items without a sheet, refused up front instead '
+          + 'of pausing halfway when it could pass max_cost_usd, the daily limit, the treg balance or the token cap.',
+        details: 'It answers a run_id: get_run_status and get_run_results answer for it, with row_index as the '
+          + 'item. estimate_only defaults to true.',
       },
       {
         change: 'changed',
         tools: ['create_upload_link', 'create_download_link'],
         summary: 'create_upload_link takes setup_id (with max_cost_usd) instead of sheet_id: the file\'s rows become a '
           + 'setup call\'s items, and the call starts once the file is in.',
-        details: 'get_setup_run pages results with results_from and limit (next_from says where the next page '
+        details: 'get_setup_call pages results with results_from and limit (next_from says where the next page '
           + 'starts); create_download_link takes setup_call_id to save every item\'s inputs and outputs as a CSV.',
       },
       {
