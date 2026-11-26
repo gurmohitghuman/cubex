@@ -12,12 +12,14 @@ import constMod from '../../server/src/lib/constants'
 import walMod from '../../server/src/lib/wal-checkpointer'
 import bulkMod from '../../server/src/lib/bulk-slices'
 import turnMod from '../../server/src/lib/slice-turn'
+import watchMod from '../../server/src/lib/wal-watch'
 import { bulkWalKit } from './bulk-wal-kit'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { WAL_BULK_PAUSE_FRAMES, WAL_BULK_ROOM_SHARE } = constMod as typeof import('../../server/src/lib/constants')
 const { closeWalCheckpointer } = walMod as typeof import('../../server/src/lib/wal-checkpointer')
-const { autoCheckpointHolders, runInCheckpointedSlices } = bulkMod as typeof import('../../server/src/lib/bulk-slices')
+const { runInCheckpointedSlices } = bulkMod as typeof import('../../server/src/lib/bulk-slices')
+const { bulkWritersRunning } = watchMod as typeof import('../../server/src/lib/wal-watch')
 const { takeSliceTurn } = turnMod as typeof import('../../server/src/lib/slice-turn')
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
@@ -85,7 +87,7 @@ await ok('a read of the WAL that throws in the slice turn gives the turn back', 
   } finally {
     db.pragma = pragma
   }
-  assert.equal(autoCheckpointHolders(), 0)
+  assert.equal(bulkWritersRunning(), 0)
   const next = await Promise.race([takeSliceTurn(), new Promise<null>(r => setTimeout(() => r(null), 2_000))])
   assert.ok(next, 'the slice turn was never given back')
   next()

@@ -35,9 +35,16 @@ export const WAL_PAUSE_RETRY_MS = 25;
 export const WAL_CHECKPOINT_WAIT_MS = 30_000;
 
 // SQLite's own checkpoint (wal_autocheckpoint, lib/db.ts): it runs inside the commit that leaves the WAL at this
-// many frames or more, on that connection's thread. On the API connection it waits for the bulk writers' room
-// while one runs (lib/bulk-slices.ts), and is back at this value once the last one ends.
+// many frames or more, on that connection's thread. Once the server's WAL watch runs (lib/wal-watch.ts), it asks
+// the checkpoint worker at this many uncopied frames instead, and SQLite's own waits for the bulk writers' room on
+// every connection, a backstop: no commit copies the WAL back while the worker does.
 export const DB_AUTO_CHECKPOINT_FRAMES = 2000;
+// How often the WAL watch reads the WAL's size (SQLite's NOOP checkpoint: shared memory, no lock, no I/O). Light
+// writes (autosaves, webhooks, a run's results) add tens of frames a second, so it asks well before the room.
+export const WAL_WATCH_MS = 500;
+// Set by the WAL watch to the database's path (lib/wal-watch.ts): a connection opened in a thread or process the
+// server starts after it (a run's job, the lookup worker) leaves its checkpoints to the watch (lib/db.ts).
+export const WAL_WATCHED_ENV = 'CUBEX_WAL_WATCHED';
 // journal_size_limit (lib/db.ts): the WAL file is cut back to this size when it starts over.
 export const DB_WAL_SIZE_LIMIT = 64 * 1024 * 1024;
 // Sizing the WAL file at start (lib/wal-file.ts): skipped unless the disk has this much free beyond what it

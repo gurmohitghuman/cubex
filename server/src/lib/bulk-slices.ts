@@ -1,4 +1,3 @@
-// Over 200 lines: one runner, its WAL bounds and the WAL's state at its start and end, read top to bottom.
 // Bulk writers (each caller of asBulkWriter, below: undo, the trash, a run's clear, sorts, imports, dedupe, formulas,
 // answer fields, auto-run, list results, hiring summaries, sheet copies, run rewrites, pruning) write in slices whose
 // WAL is copied back on the checkpoint worker's thread, as transform_column's pages are. A checkpoint ends in disk
@@ -23,23 +22,26 @@
 // - After the last slice, what's left is copied back on the worker and the WAL started over before the job goes
 //   on (startedOver, below), so the next commit on this connection doesn't copy it back or start the WAL over;
 //   unless the job wrote few frames and the WAL holds fewer than SQLite's own checkpoint waits for (a short job).
-// - While any runs, SQLite's own checkpoint on the API connection waits for the job's room (holdAutoCheckpoint:
-//   WAL_BULK_ROOM_SHARE of journal_size_limit, about 14,600 frames at 64 MB) instead of DB_AUTO_CHECKPOINT_FRAMES.
-//   The WAL holds up to about 14,000 frames during a job, and at 2,000 any other commit there (an autosave, the
-//   job's own) would copy them back inside it. The job alone stays under the room (its pause is fitted to it). A
-//   writer outside the runner (API row writes) past it copies the WAL back in its own commit, as with no job (with
-//   SQLite's own checkpoint off the WAL grew while both went on), but copies nothing while the worker copies: the
-//   WAL holds the room and what such writers commit in one copy, on a slow disk past journal_size_limit.
+// - A job starts the WAL watch if nothing has (lib/wal-watch.ts; the server starts it at boot): SQLite's own
+//   checkpoint then waits for the job's room on every connection (lib/wal-room.ts: WAL_BULK_ROOM_SHARE of
+//   journal_size_limit, about 14,600 frames at 64 MB) instead of DB_AUTO_CHECKPOINT_FRAMES. The WAL holds up to
+//   about 14,000 frames during a job, and at 2,000 any other commit (an autosave, the job's own, a run's result)
+//   would copy them back inside it. While a job runs the watch asks nothing: the job asks at its own marks. The job
+//   alone stays under the room (its pause is fitted to it). A writer outside the runner (API row writes) past it
+//   copies the WAL back in its own commit, as with no job (with SQLite's own checkpoint off the WAL grew while both
+//   went on), but copies nothing while the worker copies: the WAL holds the room and what such writers commit in
+//   one copy, on a slow disk past journal_size_limit.
 // - No deadline by default: a background job waits for the worker as long as it takes. A writer with one passes
 //   `until`; past it, walRoom no longer waits and the slice is still written, in turn.
 // - With no worker (it couldn't start, or stopped twice) checkpoints run on this thread, as before:
-//   SQLite's own checkpoint goes back on and the bounds are the transform walk's, so none copies more back.
+//   SQLite's own checkpoint here goes back to DB_AUTO_CHECKPOINT_FRAMES (lib/wal-watch.ts) and the bounds are the
+//   transform walk's, so none copies more back.
 //   Off the main thread (the lookup worker loads some of these writers) slices are checkpointed there.
 import { isMainThread } from 'worker_threads';
 import { db } from './db';
 import {
-  DB_AUTO_CHECKPOINT_FRAMES, DB_WAL_SIZE_LIMIT, WAL_BULK_CHECKPOINT_FRAMES, WAL_BULK_PAUSE_FRAMES, WAL_BULK_ROOM_SHARE,
-  WAL_CHECKPOINT_FRAMES, WAL_PAUSE_FRAMES, WAL_PAUSE_RETRY_MS,
+  DB_AUTO_CHECKPOINT_FRAMES, WAL_BULK_CHECKPOINT_FRAMES, WAL_BULK_PAUSE_FRAMES, WAL_CHECKPOINT_FRAMES, WAL_PAUSE_FRAMES,
+  WAL_PAUSE_RETRY_MS,
 } from './constants';
 import { withoutAutoCheckpoint, yieldToRequests } from './slices';
 import {
@@ -47,48 +49,12 @@ import {
 } from './wal-checkpointer';
 import { inWalTurn, walTurnCheck } from './wal-turn';
 import { takeSliceTurn } from './slice-turn';
+import { walRoomFrames } from './wal-room';
+import { bulkWriterRunning, startWalWatch } from './wal-watch';
 
 const BULK: WalBounds = { ask: WAL_BULK_CHECKPOINT_FRAMES, pause: WAL_BULK_PAUSE_FRAMES };
 const ON_THIS_THREAD: WalBounds = { ask: WAL_CHECKPOINT_FRAMES, pause: WAL_PAUSE_FRAMES };
 
-let holders = 0;
-const auto = () => db.pragma('wal_autocheckpoint', { simple: true }) as number;
-const setAuto = (frames: number) => { db.pragma(`wal_autocheckpoint = ${frames}`); };
-
-// SQLite's own checkpoint on the API connection held at the job's room (walRoomFrames) until the answer is called
-// (in a finally): the first holder raises it, the last puts it back. Found changed with no holder, or released once
-// too often, it is logged and set right.
-export function holdAutoCheckpoint(): () => void {
-  if (holders === 0 && auto() !== DB_AUTO_CHECKPOINT_FRAMES) {
-    console.error(`SQLite's own WAL checkpoint was at ${auto()} with no bulk writer running; set back to `
-      + `${DB_AUTO_CHECKPOINT_FRAMES}.`);
-    setAuto(DB_AUTO_CHECKPOINT_FRAMES);
-  }
-  holders++;
-  setAuto(walRoomFrames());
-  let released = false;
-  return () => {
-    if (released) {
-      console.error('A bulk writer let go of SQLite\'s own WAL checkpoint twice; the second time is ignored.');
-      return;
-    }
-    released = true;
-    if (--holders < 0) {
-      console.error('Bulk writers holding SQLite\'s own WAL checkpoint fell below zero; counted as none.');
-      holders = 0;
-    }
-    if (holders === 0) setAuto(DB_AUTO_CHECKPOINT_FRAMES);
-  };
-}
-// Tests only: how many hold it now.
-export const autoCheckpointHolders = (): number => holders;
-
-// The frames the WAL may reach during a job: WAL_BULK_ROOM_SHARE of journal_size_limit (none set: lib/db.ts's).
-function walRoomFrames(): number {
-  const limit = db.pragma('journal_size_limit', { simple: true }) as number;
-  const page = db.pragma('page_size', { simple: true }) as number;
-  return Math.floor((WAL_BULK_ROOM_SHARE * (limit > 0 ? limit : DB_WAL_SIZE_LIMIT)) / (page + 24));
-}
 // Whether the WAL is at `b`'s pause with frames still to copy back (lib/wal-checkpointer.ts walRoom waits then).
 function pastPause(b: WalBounds): boolean {
   const s = walState();
@@ -110,10 +76,10 @@ export interface BulkWriter {
 // Runs `work` as a bulk writer (above), its slices made through the BulkWriter it is given.
 export async function asBulkWriter<T>(work: (w: BulkWriter) => Promise<T>, until = Infinity): Promise<T> {
   if (!isMainThread) return work(onThisThread);
-  let release: (() => void) | null = checkpointsOnWorker() ? holdAutoCheckpoint() : null;
+  startWalWatch();
   let askAfter = 0;
   let wrote = false;
-  const room = walRoomFrames();
+  const room = walRoomFrames(db);
   let biggest = 0;
   let written = 0;
   let last = 0;
@@ -122,10 +88,8 @@ export async function asBulkWriter<T>(work: (w: BulkWriter) => Promise<T>, until
     async slice<T>(step: () => T): Promise<T> {
       let done: () => void;
       for (;;) {
-        const onWorker = checkpointsOnWorker();
         // The worker couldn't start, or stopped twice: checkpoints run here from now on.
-        if (!onWorker && release) { release(); release = null; }
-        const bounds = fitted(onWorker ? BULK : ON_THIS_THREAD, room, biggest);
+        const bounds = fitted(checkpointsOnWorker() ? BULK : ON_THIS_THREAD, room, biggest);
         if (Date.now() >= askAfter && await walRoom(until, bounds) === 'held') {
           askAfter = Date.now() + WAL_PAUSE_RETRY_MS;
         }
@@ -167,18 +131,20 @@ export async function asBulkWriter<T>(work: (w: BulkWriter) => Promise<T>, until
       return out;
     },
   };
+  // Counted from here (nothing above throws past it), so the finally always ends it.
+  const ended = bulkWriterRunning();
   try {
     return await work(writer);
   } finally {
     try {
       if (wrote) await startedOver(until, written);
     } finally {
-      release?.();
+      ended();
     }
   }
 }
 
-// After the last slice, before SQLite's own checkpoint comes back on: the WAL copied back on the worker and
+// After the last slice, before the watch asks again: the WAL copied back on the worker and
 // started over after the job's last frame. Else the next commit on this connection copies the rest back inside it,
 // or starts the WAL over and syncs its new header there. A checkpoint already running when the job ended never saw
 // its last frames, and a reader can hold them a moment: tried again, WAL_PAUSE_RETRY_MS later, three tries at most.
