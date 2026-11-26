@@ -259,6 +259,27 @@ test.describe('on a phone', () => {
     await expect(page).toHaveURL(/\/dashboard$/)
   })
 
+  // The shield takes a tap's click (it comes once the finger lifts): closed on the press, the row under the finger
+  // would get the click and open its table.
+  test('a tap on another table\'s row while a ⋯ menu is open closes the menu and opens nothing', async ({ page }) => {
+    const api = await authedApi()
+    const name = `Second ${Date.now()}`
+    expect((await api.post('/api/tables', { data: { name } })).ok()).toBeTruthy()
+    await api.dispose()
+    await page.goto(`${BASE}/dashboard`)
+    const other = page.locator(DASH_ROW).filter({ hasText: name }).getByText(name)
+    await expect(other).toBeVisible({ timeout: 15_000 })
+    // The menu of a row other than the one tapped next.
+    await page.locator(DASH_ROW).filter({ hasNotText: name }).first().locator('button[aria-label="Table actions"]')
+      .tap()
+    await expect(page.locator(MENU)).toBeVisible()
+    const box = await other.boundingBox()
+    await page.touchscreen.tap(box!.x + box!.width / 2, box!.y + box!.height / 2)
+    await noMenu(page)
+    await page.waitForTimeout(300)
+    await expect(page).toHaveURL(/\/dashboard$/)
+  })
+
   test('a tap outside a menu closes it and does nothing else', async ({ page }) => {
     await page.getByTestId('data-menu').tap()
     await expect(page.locator(MENU)).toBeVisible()

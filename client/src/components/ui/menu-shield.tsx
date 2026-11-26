@@ -29,13 +29,23 @@ const TABBABLE = 'input:not([disabled]), select:not([disabled]), textarea:not([d
 const inField = (el: Element) => !!el.closest("[data-menu-field]") || el.matches("input, textarea, select")
 
 // A press on the shield closes the menu itself: Radix starts listening for presses outside a menu only a moment
-// after it opens (a timer), so on a busy page it can miss a press made right away.
+// after it opens (a timer), so on a busy page it can miss a press made right away. A finger closes it on its click
+// instead, as Radix does: a tap's click comes once the finger lifts and lands on whatever is under it then, so the
+// shield stays until it has taken that click (closed on the press, the row under the finger would open). Only a
+// finger that went down on the shield counts: the tap that opened the menu ends with its click on the shield too.
 function newShield(pressed: React.MutableRefObject<boolean>, close: () => void): HTMLDivElement {
   const el = document.createElement("div")
   el.setAttribute("data-menu-shield", "")
   el.setAttribute("aria-hidden", "true")
   el.className = "fixed inset-0 z-50"
-  el.addEventListener("pointerdown", e => { pressed.current = true; e.preventDefault(); close() })
+  let touched = false
+  el.addEventListener("pointerdown", e => {
+    pressed.current = true
+    e.preventDefault()
+    if (e.pointerType === "touch") touched = true
+    else close()
+  })
+  el.addEventListener("click", () => { if (touched) close() })
   el.addEventListener("mousedown", stopDefault)
   el.addEventListener("contextmenu", stopDefault)
   // Not passive, so they can stop a scroll.
