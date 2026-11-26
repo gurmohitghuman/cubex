@@ -50,7 +50,9 @@ function executeTransfer(
   if (replay) return 'conflict' in replay
     ? { fail: 'conflict', error: IDEMPOTENCY_CONFLICT_MESSAGE }
     : { ok: replay.replay, replayed: true, changed: replay.changed };
-  const owns = db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ? AND trash_id IS NULL');
+  // A test's hidden copy takes and gives no rows: they are linked to its sheet's (services/sheet-test-rows.ts).
+  const owns = db.prepare(`SELECT id FROM sheets WHERE id = ? AND user_id = ? AND trash_id IS NULL
+    AND test_of IS NULL`);
   if (!owns.get(request.sourceSheetId, userId) || !owns.get(request.destinationSheetId, userId)) {
     return { fail: 'not_found', error: 'Source or destination sheet not found.' };
   }

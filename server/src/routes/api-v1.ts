@@ -39,6 +39,7 @@ import setupsV1 from './api-v1-setups';
 import { runScheduleRoutes } from './run-schedules-routes';
 import viewsV1 from './api-v1-views';
 import setupVersionsV1 from './api-v1-setup-versions';
+import sheetTestV1 from './api-v1-sheet-test';
 import usageV1 from './api-v1-usage';
 import trashV1 from './api-v1-trash';
 import savedKeysV1 from './api-v1-saved-keys';
@@ -101,6 +102,8 @@ router.use(runScheduleRoutes('/run-schedules', requireScope));
 router.use(viewsV1);
 // Setup versions: a sheet's column setup kept by name, compared and restored (services/setup-version-*.ts).
 router.use(setupVersionsV1);
+// Tests of column changes on sample rows: a hidden copy, applied or discarded (services/sheet-test-*.ts).
+router.use(sheetTestV1);
 router.use(importV1);
 // Enrichment (Phase 2): AI/HTTP run starts, status/results reads, control.
 router.use(runsV1);

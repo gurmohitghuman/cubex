@@ -49,6 +49,15 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
         details: 'Read a tool\'s guide before its first paid or destructive call, and after a refusal. Without tool '
           + 'it lists the tools that have one. No tool or argument changed.',
       },
+      {
+        change: 'changed',
+        tools: ['manage_sheet', 'get_sheet'],
+        summary: 'manage_sheet tries column changes on sample rows: test copies a sheet\'s top rows and setup into a '
+          + 'hidden copy, apply_test makes the copy\'s setup the sheet\'s and puts the sample results back, '
+          + 'discard_test drops it.',
+        details: 'Work in test.test_sheet_id with the usual tools; meanwhile the sheet answers busy to every change '
+          + 'and its webhook deliveries wait (get_sheet\'s test). apply_test is a dry run unless dry_run is false.',
+      },
     ],
   },
   {

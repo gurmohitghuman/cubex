@@ -18,6 +18,7 @@ import { busyMessage, sheetBusyWith } from '../lib/sheet-busy';
 import type { ListInput } from '../lib/enrich-list-input';
 import type { ListCopy, ListField } from '../lib/enrich-list';
 import type { RunFail } from './run-shared';
+import { isTestCopy, LIST_ON_TEST_COPY } from './sheet-test-store';
 
 export interface DestPlan {
   tableId: string;
@@ -75,13 +76,15 @@ export function planListDest(
   const source = db.prepare('SELECT table_id FROM sheets WHERE id = ? AND user_id = ?')
     .get(sourceSheetId, userId) as { table_id: string } | undefined;
   if (!source) return { fail: 'not_found', message: 'Sheet not found' };
+  if (isTestCopy(sourceSheetId)) return bad(LIST_ON_TEST_COPY);
   const gone = input.copy.find(c => c.value === undefined && !sourceColumns.includes(c.from));
   if (gone) return bad(`The column "${gone.from}" isn't in this sheet anymore.`);
   let sheetId: string | null = null, newName: string | null = null, name: string;
   let have: string[] = [], types: Record<string, string> = {};
   if ('sheetId' in input.dest) {
-    const dest = db.prepare('SELECT id, name, table_id FROM sheets WHERE id = ? AND user_id = ? AND trash_id IS NULL')
-      .get(input.dest.sheetId, userId) as { id: string; name: string; table_id: string } | undefined;
+    const dest = db.prepare(`SELECT id, name, table_id FROM sheets WHERE id = ? AND user_id = ? AND trash_id IS NULL
+      AND test_of IS NULL`).get(input.dest.sheetId, userId) as
+      { id: string; name: string; table_id: string } | undefined;
     if (!dest) return bad('The sheet for the results was deleted. Pick another sheet.');
     if (dest.id === sourceSheetId) return bad('Pick another sheet for the results: rows here would run again.');
     if (dest.table_id !== source.table_id) return bad('Pick a sheet of this table for the results.');
