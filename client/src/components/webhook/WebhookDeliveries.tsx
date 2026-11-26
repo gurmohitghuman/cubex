@@ -60,6 +60,8 @@ function StatusBadge({ status }: { status: WebhookDelivery['status'] }) {
     duplicate: { label: 'not kept', cls: 'bg-gray-100 text-gray-600' },
     pruned: { label: 'pruned', cls: 'bg-gray-100 text-gray-500' },
     error: { label: 'error', cls: 'bg-red-100 text-red-700' },
+    // Came while the sheet was being tested on a copy: added when the test ends (server lib/webhook-hold.ts).
+    held: { label: 'waiting for the test', cls: 'bg-blue-100 text-blue-700' },
   }
   const s = map[status] ?? map.stored
   return <span className={`px-1.5 py-0.5 rounded text-[10px] ${s.cls}`}>{s.label}</span>
