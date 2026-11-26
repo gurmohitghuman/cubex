@@ -1,0 +1,391 @@
+{
+ "endpoint": {
+  "id": "treg.instagram.search.reels",
+  "provider": "treg",
+  "provider_display": "treg",
+  "name": "instagram.search.reels \u2014 routed: best of 4 providers, own keys first",
+  "summary": "Search Instagram reels by keyword \u2014 provider-native reel objects in `reels`",
+  "method": "POST",
+  "path": "/instagram.search.reels",
+  "scope": "",
+  "tier": "core",
+  "kind": "routed",
+  "domain": "search",
+  "call_template": "treg call treg.instagram.search.reels",
+  "cost": {
+   "type": "per_success",
+   "value": 0.0015,
+   "currency": "USD",
+   "per": 1,
+   "unit": "call",
+   "source": "inferred",
+   "confidence": "documented",
+   "checked": null,
+   "varies": true,
+   "note": "Not free: $0.0015\u2013$0.01476 per hit across 4 providers, 0% markup. A call also pays each provider tried before the hit that bills a miss (3 of 4 do), up to X-Treg-Route-Max-Cost (default $1); X-Treg-Route-Waterfall: 0 pays for one provider only",
+   "usd": 0.0015
+  },
+  "async": null,
+  "platform_eligible": true,
+  "platform_blocked": null,
+  "miss": {
+   "status": 200,
+   "means": "output.reels == []"
+  },
+  "status": null,
+  "status_note": null,
+  "superseded_by": null,
+  "verified": null,
+  "added": null,
+  "docs_url": "",
+  "has_example": false,
+  "input": {
+   "bodyType": "json",
+   "body": {
+    "q": {
+     "type": "string",
+     "required": false,
+     "note": "identity"
+    }
+   },
+   "note": "Send what you know; treg sends each provider only the fields it accepts ({q}). On a miss it tries the next provider, cheapest first. Options are X-Treg-Route-* headers, never body fields. The answer is {output, raw, _treg}; X-Treg-Served-By names the provider."
+  },
+  "routed_children": [
+   "anyapi.instagram.search.reels",
+   "justoneapi.x.instagram-search-reels-v1",
+   "scrapecreators.x.v2-instagram-reels-search",
+   "tikhub.x.instagram-v2-search-reels"
+  ],
+  "capability": "instagram.search.reels",
+  "capability_description": "Search reels by keyword",
+  "platform": "instagram",
+  "platform_label": "Instagram",
+  "observed": {
+   "samples": 72801,
+   "decided": 72745,
+   "ok_rate": 0.9899,
+   "p50_ms": null,
+   "p95_ms": null,
+   "last_ok_days": 0,
+   "hit_rate": null,
+   "hit_samples": 0
+  },
+  "wallet": {
+   "payable": false,
+   "reason": "routed",
+   "note": "a routed treg tool needs a treg account; sign in to call it"
+  }
+ },
+ "provider": {
+  "service": "treg",
+  "display_name": "treg"
+ },
+ "siblings": [
+  {
+   "id": "anyapi.instagram.search.reels",
+   "provider": "anyapi",
+   "provider_display": "AnyAPI",
+   "name": "Instagram Reels Search",
+   "scope": "any_account",
+   "kind": "data",
+   "cost": {
+    "type": "per_call",
+    "value": 0.0015,
+    "currency": "USD",
+    "unit": "call",
+    "reported_charge": {
+     "path": "costUsd",
+     "unit": "usd"
+    },
+    "usd": 0.0015
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-09-19",
+   "params": [
+    "fields",
+    "max_items",
+    "summary",
+    "jq",
+    "cursor",
+    "query"
+   ],
+   "observed": {
+    "samples": 196922,
+    "decided": 196073,
+    "ok_rate": 0.9964,
+    "p50_ms": 6397,
+    "p95_ms": 18564,
+    "last_ok_days": 0,
+    "hit_rate": 0.871,
+    "hit_samples": 195335
+   },
+   "reviews": {
+    "teams": 50,
+    "share": {
+     "useful": 0.55,
+     "partly": 0.31,
+     "not_useful": 0.14
+    }
+   }
+  },
+  {
+   "id": "justoneapi.x.instagram-search-reels-v1",
+   "provider": "justoneapi",
+   "provider_display": "Just One API",
+   "name": "Search Instagram Reels by keyword or hashtag",
+   "scope": "",
+   "kind": "data",
+   "cost": {
+    "type": "per_success",
+    "value": 0.1,
+    "currency": "CNY",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.01476
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "keyword",
+    "paginationToken"
+   ],
+   "observed": {
+    "samples": 437,
+    "decided": 437,
+    "ok_rate": 1.0,
+    "p50_ms": 3451,
+    "p95_ms": 17792,
+    "last_ok_days": 0,
+    "hit_rate": 0.0892,
+    "hit_samples": 437
+   }
+  },
+  {
+   "id": "scrapecreators.x.v2-instagram-reels-search",
+   "provider": "scrapecreators",
+   "provider_display": "ScrapeCreators",
+   "name": "Search Instagram reels by keyword",
+   "scope": "",
+   "kind": "data",
+   "cost": {
+    "type": "per_call",
+    "value": 1,
+    "currency": "credit",
+    "per": 1,
+    "unit": "call",
+    "reported_charge": {
+     "path": "credits_charged",
+     "unit": "credit"
+    },
+    "usd": 0.00188
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "query",
+    "date_posted",
+    "page"
+   ],
+   "observed": {
+    "samples": 61308,
+    "decided": 58506,
+    "ok_rate": 0.9908,
+    "p50_ms": 11883,
+    "p95_ms": 18394,
+    "last_ok_days": 0,
+    "hit_rate": 1.0,
+    "hit_samples": 57701
+   },
+   "reviews": {
+    "teams": 10,
+    "share": {
+     "useful": 0.48,
+     "partly": 0.52,
+     "not_useful": 0.0
+    }
+   }
+  },
+  {
+   "id": "tikhub.x.instagram-v2-search-reels",
+   "provider": "tikhub",
+   "provider_display": "TikHub",
+   "name": "Search Instagram reels by keyword",
+   "scope": "",
+   "kind": "data",
+   "cost": {
+    "type": "per_call",
+    "value": 0.002,
+    "currency": "USD",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.002
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "keyword",
+    "pagination_token"
+   ],
+   "observed": {
+    "samples": 12425,
+    "decided": 11571,
+    "ok_rate": 0.9992,
+    "p50_ms": 6979,
+    "p95_ms": 20629,
+    "last_ok_days": 0,
+    "hit_rate": 0.8192,
+    "hit_samples": 11557
+   },
+   "reviews": {
+    "teams": 0
+   }
+  }
+ ],
+ "related_capabilities": [
+  {
+   "endpoint_id": "treg.instagram.hashtag.posts",
+   "capability": "instagram.hashtag.posts",
+   "does": "List posts under a hashtag"
+  },
+  {
+   "endpoint_id": "treg.instagram.post.comments",
+   "capability": "instagram.post.comments",
+   "does": "List a post's comments"
+  },
+  {
+   "endpoint_id": "treg.instagram.post.detail",
+   "capability": "instagram.post.detail",
+   "does": "Get a post's content & stats"
+  },
+  {
+   "endpoint_id": "treg.instagram.search.users",
+   "capability": "instagram.search.users",
+   "does": "Search users by keyword"
+  },
+  {
+   "endpoint_id": "treg.instagram.user.posts",
+   "capability": "instagram.user.posts",
+   "does": "List a user's recent posts"
+  }
+ ],
+ "routing": {
+  "contract": {
+   "identity": [
+    [
+     "q"
+    ]
+   ],
+   "output": {
+    "reels": {
+     "type": "array",
+     "items": {
+      "type": "object"
+     },
+     "required": true
+    },
+    "count": {
+     "type": "integer"
+    },
+    "next_cursor": {
+     "type": "string"
+    }
+   },
+   "miss": "reels == []",
+   "derive": {}
+  },
+  "plan": [
+   {
+    "endpoint_id": "anyapi.instagram.search.reels",
+    "accepts": [
+     [
+      "q"
+     ]
+    ],
+    "usd": 0.0015,
+    "cost": {
+     "type": "per_call",
+     "usd": 0.0015
+    },
+    "hit_rate": 0.871,
+    "usd_per_hit": 0.001722158438576349,
+    "works": 0.9964
+   },
+   {
+    "endpoint_id": "scrapecreators.x.v2-instagram-reels-search",
+    "accepts": [
+     [
+      "q"
+     ]
+    ],
+    "usd": 0.00188,
+    "cost": {
+     "type": "per_call",
+     "value": 1,
+     "currency": "credit",
+     "usd": 0.00188
+    },
+    "hit_rate": 1.0,
+    "usd_per_hit": 0.00188,
+    "works": 0.9908
+   },
+   {
+    "endpoint_id": "tikhub.x.instagram-v2-search-reels",
+    "accepts": [
+     [
+      "q"
+     ]
+    ],
+    "usd": 0.002,
+    "cost": {
+     "type": "per_call",
+     "usd": 0.002
+    },
+    "hit_rate": 0.8192,
+    "usd_per_hit": 0.00244140625,
+    "works": 0.9992
+   },
+   {
+    "endpoint_id": "justoneapi.x.instagram-search-reels-v1",
+    "accepts": [
+     [
+      "q"
+     ]
+    ],
+    "usd": 0.01476,
+    "cost": {
+     "type": "per_success",
+     "value": 0.1,
+     "currency": "CNY",
+     "usd": 0.01476
+    },
+    "hit_rate": 0.0892,
+    "usd_per_hit": 0.01476,
+    "works": 1.0
+   }
+  ],
+  "also": [],
+  "max_cost_usd": 1.0,
+  "headers": {
+   "X-Treg-Route-Waterfall": "on by default: a miss tries the next provider; 0 = stop at the first miss",
+   "X-Treg-Route-Max-Cost": "USD ceiling for the whole call (default 1.00)",
+   "X-Treg-Route-Prefer": "provider[,\u2026], the name before an id's first dot (quickenrich), not an endpoint id",
+   "X-Treg-Route-Exclude": "provider[,\u2026], the name before an id's first dot (quickenrich), not an endpoint id",
+   "X-Treg-Route-Strict-Filters": "1 = never call a provider that cannot apply a filter you sent (answers 422, nothing charged); off by default \u2014 the answer names what was ignored in X-Treg-Ignored-Filters"
+  }
+ },
+ "call_template": "treg call treg.instagram.search.reels",
+ "example_response": null,
+ "hints": []
+}

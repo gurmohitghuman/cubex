@@ -6,7 +6,7 @@ import { CubeLogo } from '@/components/CubeLogo'
 import { SaveStatus } from '@/components/SaveStatus'
 import { SheetEnrichActions } from './SheetEnrichActions'
 import { SheetDataMenu, type ExportScope } from './toolbar/SheetDataMenu'
-import { SheetMoreMenu } from './toolbar/SheetMoreMenu'
+import { SheetMoreMenu, type TestEntry } from './toolbar/SheetMoreMenu'
 
 interface SheetHeaderProps {
   tableName: string | undefined
@@ -35,11 +35,13 @@ interface SheetHeaderProps {
   viewNarrows: boolean
   viewName: string
   onRemoveDuplicates: () => void
+  onRunColumns: () => void
   // Auto-dedupe is on: the Remove duplicates button says so.
   autoDedupeOn?: boolean
   onSaveSetup: () => void
   onUseSetup: () => void
   onSetupVersions: () => void
+  testChanges?: TestEntry
   onAddAIColumn: () => void
   onAddEnrichment: () => void
   onAddHTTPColumn: () => void
@@ -74,10 +76,11 @@ export const SheetHeader: React.FC<SheetHeaderProps> = ({
   onDeleteSelectedRows,
   onImport,
   onExport, viewNarrows, viewName,
-  onRemoveDuplicates, autoDedupeOn,
+  onRemoveDuplicates, onRunColumns, autoDedupeOn,
   onSaveSetup,
   onUseSetup,
   onSetupVersions,
+  testChanges,
   onAddAIColumn,
   onAddEnrichment,
   onAddHTTPColumn,
@@ -90,11 +93,12 @@ export const SheetHeader: React.FC<SheetHeaderProps> = ({
 }) => {
   return (
     <header className="bg-white border-b border-gray-200 flex-shrink-0">
-      <div className="px-6">
-        {/* One line at every width: the left side (the name, run controls) gives way and truncates,
-            the right side never wraps, and its labels fold into icons on narrow screens. */}
-        <div className="flex h-14 items-center justify-between gap-3">
-          <div className="flex min-w-0 flex-1 items-center gap-3">
+      <div className="px-4 sm:px-6">
+        {/* One line from sm up: the name gives way and truncates, the run controls sit after it, the right side
+            never wraps and its labels fold into icons. On a phone two rows: the name and its counts on the first,
+            the run controls and the menus on the second, so nothing lies over anything. */}
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-2 py-2 sm:h-14 sm:flex-nowrap sm:gap-x-3 sm:py-0">
+          <div className="flex min-w-0 items-center gap-3 max-sm:w-full">
             <Link
               to="/dashboard"
               className={
@@ -115,7 +119,9 @@ export const SheetHeader: React.FC<SheetHeaderProps> = ({
                 {columnCount} column{columnCount === 1 ? '' : 's'}
               </p>
             </div>
+          </div>
 
+          <div className="flex shrink-0 items-center gap-3">
             {canStopAll && (
               <div className="flex shrink-0 items-center gap-1">
                 {anyActiveRuns && (anyRunning ? (
@@ -148,6 +154,7 @@ export const SheetHeader: React.FC<SheetHeaderProps> = ({
             )}
             {autorunChip}
           </div>
+          <div className="flex-1" aria-hidden="true" />
 
           <div className="flex shrink-0 items-center gap-2">
             <SaveStatus status={saveStatus} onRetry={retrySave} />
@@ -189,9 +196,9 @@ export const SheetHeader: React.FC<SheetHeaderProps> = ({
             <SheetDataMenu hasRows={hasRows} columnCount={columnCount} isExporting={isExporting}
               viewNarrows={viewNarrows} viewName={viewName} autoDedupeOn={!!autoDedupeOn} onImport={onImport}
               onExport={scope => onExport(scope, viewName)} onOpenWebhook={onOpenWebhook}
-              onRemoveDuplicates={onRemoveDuplicates} />
+              onRemoveDuplicates={onRemoveDuplicates} onRunColumns={onRunColumns} />
             <SheetMoreMenu sheetId={sheetId ?? null} sheetName={sheetName ?? ''} onUseSetup={onUseSetup}
-              onSaveSetup={onSaveSetup} onSetupVersions={onSetupVersions} />
+              onSaveSetup={onSaveSetup} onSetupVersions={onSetupVersions} testChanges={testChanges} />
 
             {/* The data and setup menus apart from the one primary, AI Column and its column types. */}
             <div className="h-5 w-px bg-gray-200" aria-hidden="true" />

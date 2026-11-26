@@ -5,9 +5,12 @@ import { Drawer, DrawerHeader, DrawerBody } from '@/components/Drawer'
 import { useWebhook } from './useWebhook'
 import { WebhookStatus } from './WebhookStatus'
 import { WebhookEndpoint } from './WebhookEndpoint'
+import { WebhookToken } from './WebhookToken'
+import { WebhookAutoDelete } from './WebhookAutoDelete'
 import { WebhookMapping } from './WebhookMapping'
 import { WebhookDeliveries } from './WebhookDeliveries'
 import type { AutoDedupeView } from '@/utils/api'
+import type { ColumnType } from '@/utils/api/types'
 
 // Sheet-scoped webhook drawer (slide-over from the right). A webhook is a
 // persistent always-on source the user returns to — so this is a drawer with
@@ -16,6 +19,7 @@ import type { AutoDedupeView } from '@/utils/api'
 // creates/removes columns (marker + mapped columns).
 export function WebhookDrawer({
   isOpen, onClose, sheetId, rowCount, onColumnsChanged, onCreateNewTable, autorunOn, autoDedupe, onAutoDedupe,
+  columns = [], columnTypes = {}, sheets = [],
 }: {
   isOpen: boolean
   onClose: () => void
@@ -33,6 +37,10 @@ export function WebhookDrawer({
   // The sheet's auto-dedupe (null: off), and opening its settings.
   autoDedupe?: AutoDedupeView | null
   onAutoDedupe?: () => void
+  // The sheet's columns and the table's sheets, for auto-delete's success column and where it copies rows.
+  columns?: string[]
+  columnTypes?: Record<string, ColumnType>
+  sheets?: Array<{ id: string; name: string }>
 }) {
   const wh = useWebhook(sheetId, isOpen)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -71,11 +79,13 @@ export function WebhookDrawer({
             {autorunOn && (
               <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 px-3 py-2"
                 data-testid="webhook-autorun-warning">
-                Auto-run is on in this sheet. Anyone with this webhook URL can add rows, and each new row runs
-                the columns with auto-run on. Your daily limit and each column&apos;s daily cap limit the spend.
+                Auto-run is on in this sheet. Anyone with this webhook URL
+                {wh.source.tokenRequired ? ' and its token' : ''} can add rows, and each new row runs the columns
+                with auto-run on. Your daily limit and each column&apos;s daily cap limit the spend.
               </p>
             )}
             <WebhookEndpoint source={wh.source} onRotate={wh.rotate} rotating={wh.busy} />
+            {sheetId && <WebhookToken sheetId={sheetId} source={wh.source} onSource={wh.setSource} />}
             <WebhookMapping
               deliveries={wh.deliveries} mappings={wh.mappings}
               onPick={handleAddMapping} onDeleteMapping={handleDeleteMapping}
@@ -92,6 +102,10 @@ export function WebhookDrawer({
                   {autoDedupe ? 'Change it' : 'Set it up'}
                 </button>
               </p>
+            )}
+            {sheetId && (
+              <WebhookAutoDelete sheetId={sheetId} source={wh.source} onSource={wh.setSource} columns={columns}
+                columnTypes={columnTypes} sheets={sheets} />
             )}
             <WebhookDeliveries deliveries={wh.deliveries} />
           </>

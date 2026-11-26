@@ -46,21 +46,28 @@ export const capNoRoomMessage = (t: CapOf, perRowUsd: number): string => `The ac
 export const OVERSHOOT_NOTE = 'At the cap, new AI and enrichment runs, previews and AI helpers are refused, and '
   + 'running ones pause (resume them once the cap is raised; an auto-run goes on by itself). HTTP API runs cost '
   + 'nothing here and go on. Calls already in flight finish and count, so spend can pass the cap by those alone: '
-  + `an AI run has up to its concurrency of rows out at once (default ${DEFAULT_AI_CONCURRENCY}, at most `
-  + `${MAX_AI_CONCURRENCY}) and up to ${WORKER_POOL_SIZE} runs work at once; a preview runs up to ${PREVIEW_MAX_ROWS} `
-  + `rows, at most ${MAX_ACTIVE_PREVIEWS_PER_USER} previews at once; each AI helper makes one or two small calls. An `
-  + 'enrichment or waterfall run first holds room for its rows at their per-row cap, so it stops before the cap '
-  + '(one with no per-row cap stops once what was billed reaches it).';
+  + `an AI run's concurrency of rows (default ${DEFAULT_AI_CONCURRENCY}, at most ${MAX_AI_CONCURRENCY}) in each of `
+  + `up to ${WORKER_POOL_SIZE} runs, a preview's ${PREVIEW_MAX_ROWS} rows (at most ${MAX_ACTIVE_PREVIEWS_PER_USER} `
+  + 'previews), an AI helper\'s one or two small calls. An enrichment or waterfall run holds room for its rows at '
+  + 'their per-row cap, so it stops before the cap (with no per-row cap, once what was billed reaches it).';
 
-// What the agent-facing tools say (nothing without a cap): the cap and what
+// What the agent-facing text says (nothing without a cap): the cap and what
 // was left when the tool list was made. full: also what happens at the cap
-// and how far past it spend can go (the tools that start paid runs).
+// and how far past it spend can go (the server instructions); otherwise that
+// it is refused at the cap (the AI helper tools).
 export function capToolNote(view: SpendView | null, full: boolean): string {
+  const line = capRunToolNote(view);
+  if (!line) return '';
+  return full ? `${line} ${OVERSHOOT_NOTE}` : `${line} At the cap this is refused.`;
+}
+
+// The tools that start or resume paid runs: the cap and what was left. What happens at the cap (OVERSHOOT_NOTE)
+// is in their guides (mcp/guides/guide.ts) and in the server instructions.
+export function capRunToolNote(view: SpendView | null): string {
   if (!view || view.spend_cap_usd === null) return '';
-  const line = ` SPEND CAP: this access token may spend ${usd(view.spend_cap_usd)} in all on AI and enrichments `
+  return ` SPEND CAP: this access token may spend ${usd(view.spend_cap_usd)} in all on AI and enrichments `
     + `(for its whole life, not per month); ${usd(view.left_usd ?? 0)} was left when this tool list was loaded `
     + '(get_balances says what is left now).';
-  return full ? `${line} ${OVERSHOOT_NOTE}` : `${line} At the cap this is refused.`;
 }
 
 // A cap typed in Settings: dollars, 0 up to MAX_TOKEN_SPEND_CAP_USD, or null/'' for none. Kept in micro-USD.

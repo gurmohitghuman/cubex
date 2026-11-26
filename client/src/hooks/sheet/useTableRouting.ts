@@ -20,6 +20,9 @@ interface Args {
   loadSheetData: (sheetId: string) => Promise<void> | void
 }
 
+// The sheets a URL can open: the tabs, and the copies where column changes are being tried (never tabs).
+export const sheetsOf = (table: Table): Sheet[] => [...(table.sheets ?? []), ...(table.test_sheets ?? [])]
+
 // Which table and sheet the page shows: the table load per tableId, the first
 // sheet (or the URL's) once it loads, the URL's sheet on back/forward, and the
 // active sheet's data load whenever it changes.
@@ -51,7 +54,7 @@ export function useTableRouting(a: Args): void {
   useEffect(() => {
     if (!table?.sheets) return
     if (table.sheets.length > 0 && !activeSheet) {
-      const fromUrl = urlSheetId ? table.sheets.find(s => s.id === urlSheetId) : undefined
+      const fromUrl = urlSheetId ? sheetsOf(table).find(s => s.id === urlSheetId) : undefined
       setActiveSheet(fromUrl ?? table.sheets[0])
     }
     // A table with no sheets never picks an activeSheet, so the activeSheet
@@ -73,7 +76,7 @@ export function useTableRouting(a: Args): void {
   useEffect(() => {
     if (!urlSheetId || !table?.sheets || !activeSheet) return
     if (urlSheetId === activeSheet.id) return
-    const target = table.sheets.find(s => s.id === urlSheetId)
+    const target = sheetsOf(table).find(s => s.id === urlSheetId)
     if (target) void selectSheet(target)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [urlSheetId])

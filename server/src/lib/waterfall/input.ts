@@ -48,11 +48,13 @@ export interface WaterfallRunInput {
   // A dry run (writes nothing): the rows (by id; none: the first rows that can
   // run) and, to test one step alone, its id.
   dry: { rowIds: string[] | null; only: string | null } | null;
+  // Save the setup as the column's and run nothing (services/column-setup-save.ts).
+  saveOnly?: boolean;
 }
 
 const TOP = ['columnName', 'continueColumn', 'resultType', 'phone', 'inputs', 'steps', 'answeredBy',
   'hideStepColumns', 'rows', 'runIf', 'spendLimitUsd', 'concurrency', 'rateLimitRetries', 'fresh', 'noReuse',
-  'rowGeneration', 'dry'];
+  'rowGeneration', 'dry', 'saveOnly'];
 const MODES = new Set(['all', 'filter', 'selected']);
 const STATUSES = new Set<string>(ENRICH_ROWS_STATUSES);
 
@@ -192,6 +194,8 @@ export function parseWaterfallInput(body: unknown): { ok: WaterfallRunInput } | 
   }
   const dry = parseDry(body.dry);
   if ('error' in dry) return dry;
+  if (body.saveOnly !== undefined && typeof body.saveOnly !== 'boolean') return bad('saveOnly must be true or false.');
+  if (body.saveOnly === true && dry.ok) return bad('A dry run and saveOnly can\'t go together.');
   if (inputs.ok.length + steps.ok.length + 2 > MAX_COLUMNS_PER_SHEET) return bad('Too many inputs and steps.');
   return {
     ok: {
@@ -201,6 +205,7 @@ export function parseWaterfallInput(body: unknown): { ok: WaterfallRunInput } | 
       spendLimitUsd: (limit as number | null | undefined) ?? null, concurrency, rateLimitRetries,
       fresh: body.fresh === true,
       noReuse: body.noReuse === true, rowGeneration: (gen as number | null | undefined) ?? null, dry: dry.ok,
+      saveOnly: body.saveOnly === true,
     },
   };
 }

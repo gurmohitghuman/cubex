@@ -7,6 +7,9 @@ import type { LookupColumnView } from './lookup'
 import type { AutoDedupeView } from './dedupe'
 import type { AiVisibilityView } from './ai-visibility'
 import type { HiringView } from './hiring'
+import type { SocialView } from './social'
+import type { SheetTestView } from './sheet-test'
+
 export interface Table {
   id: string
   name: string
@@ -19,6 +22,9 @@ export interface Table {
   sheets?: Sheet[]
   // Tab-list fingerprint from GET /tables/:id; seeds the change-poll's tab check.
   sheets_key?: string | null
+  // GET /tables/:id: copies of its sheets where column changes are being tried (utils/api/sheet-test.ts). Opened by
+  // id, never shown as tabs: the tab of the sheet each tests stays highlighted.
+  test_sheets?: Sheet[]
 }
 
 export interface Sheet {
@@ -49,6 +55,8 @@ export interface Sheet {
   data_version?: number
   // A list enrichment is adding rows to this sheet: its tab shows a dot.
   adding_rows?: number
+  // A test's copy: the sheet it tests (utils/api/sheet-test.ts).
+  test_of?: string | null
 }
 
 // Authoritative per-column type, server-derived from run records (NOT guessed
@@ -92,6 +100,10 @@ export interface SheetData {
     aiVisibility?: AiVisibilityView | null
     // A hiring table's sheets: they show its banner, with Check again, above the grid.
     hiring?: HiringView | null
+    // A social research table's sheets: they show its guide, with Find posts, above the grid.
+    social?: SocialView | null
+    // A test of its column changes: the sheet shows read-only, its copy the test's banner.
+    test?: SheetTestView | null
   }
 }
 

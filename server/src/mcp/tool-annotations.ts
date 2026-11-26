@@ -36,6 +36,7 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   get_balances: read('Read balances', true),
   get_usage: read('Read usage and costs'),
   get_version: read('Read the Cubex version'),
+  get_tool_guide: read("Read a tool's guide"),
   list_trash: read('List the trash'),
   get_sheet_history: read("Read a sheet's change log"),
   // With auto-dedupe keeping the newest row per key, a row with a key the sheet has replaces the older row.
@@ -55,7 +56,8 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   // Rows it later removes go to the trash; the same call again changes nothing.
   set_auto_dedupe: write('Keep one row per key as rows arrive', true, true),
   manage_table: write('Create, rename or delete a table (to the trash)', true, false),
-  manage_sheet: write('Create, rename, copy, delete or reorder sheets (to the trash)', true, false),
+  manage_sheet_webhook: write("Set up or change a sheet's incoming webhook", true, false),
+  manage_sheet: write('Create, rename, copy, delete, reorder or test sheets (to the trash)', true, false),
   import_csv: write('Import a CSV', true, false),
   // A one-time link is not read-only (it is a credential for one transfer), so
   // careful clients ask first; open world, since the file moves outside Cubex.
@@ -97,6 +99,7 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   ai_visibility: write('AI visibility table (ask and check_again are paid)', true, false, true),
   // create and get are free; check (estimate_only false) starts a paid treg run and rewrites Companies' summary cells.
   hiring_signals: write('Find companies hiring (check is paid)', true, false, true),
+  social_research: write('Research social posts (find_posts is paid)', true, false, true),
   add_enrichment_field: write('Add a column from stored answers', false, false),
   // Lands rows like append_rows: auto-dedupe keeping the newest can replace a row already there.
   add_list_rows: write('Add list results as rows', true, false),
@@ -108,7 +111,14 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   delete_setup: write('Delete a setup (permanent)', true, true),
   // Adds columns and starts their runs, which spend (AI, enrichments) or send requests. An estimate changes nothing.
   apply_setup: write('Use a setup on a sheet', true, false, true),
+  // Starts the chosen columns' reruns, which spend (AI, enrichments, waterfalls) or send requests.
+  // An estimate changes nothing.
+  run_columns: write('Run chosen columns on chosen rows', true, false, true),
   get_setup_run: read('Get a setup run'),
+  call_setup: write('Call a setup on items', false, false, true),
+  get_setup_call: read('Get a setup call'),
+  call_enrichment: write('Call an enrichment on items', false, false, true),
+  manage_run_schedule: write('Manage run schedules', true, false, true),
   control_setup_run: write('Pause, resume or stop a setup run', true, false, true),
   list_setup_versions: read("List or compare a sheet's setup versions"),
   // Saves a version, renames one, or deletes one for good; the sheet itself never changes.
@@ -116,6 +126,7 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   // Puts columns' setups back (and gone columns, empty); nothing runs, but later runs and auto-run use it.
   restore_setup_version: write('Restore a setup version', true, true),
   list_run_webhooks: read('List run webhooks'),
+  list_prompt_starters: read('List prompt starters for an AI column'),
   // Names and where they're used; a value never leaves Settings.
   list_saved_keys: read('List saved API keys (names only)'),
   // Adds, changes or deletes where Cubex sends run notices; test sends one now (outside Cubex).

@@ -39,18 +39,18 @@ export type HistoryFrom = 'column' | 'prompt' | 'preview' | 'model';
 // run's anchor column ("<name> (Output)", or "(Status)" with output columns).
 // prompt, systemPrompt and outputs (output columns, 0 for one plain column):
 // what its runs and previews are found by (lib/ai-prompt-hash.ts), the prompt
-// as a start stores it.
+// as a start stores it. sheetId null: no sheet (a setup call's items), so no column.
 export interface HistoryScope {
-  sheetId: string; column: string | null; prompt: string; systemPrompt?: string | null; outputs?: number;
+  sheetId: string | null; column: string | null; prompt: string; systemPrompt?: string | null; outputs?: number;
 }
 
 // Each step's rows, in the order they are preferred; read only until one has enough.
 function steps(userId: string, model: string, scope: HistoryScope | null, web?: WebMatch) {
   const list: Array<[HistoryFrom, () => Row[]]> = [];
   const hash = scope ? promptHash(scope.prompt, scope.systemPrompt, scope.outputs ?? 0) : '';
-  if (scope?.column) {
-    const column = scope.column;
-    list.push(['column', () => finishedRows(columnRuns(userId, scope.sheetId, column, model, hash, web))]);
+  if (scope?.column && scope.sheetId !== null) {
+    const { column, sheetId } = scope;
+    list.push(['column', () => finishedRows(columnRuns(userId, sheetId, column, model, hash, web))]);
   }
   if (scope) {
     list.push(['prompt', () => finishedRows(promptRuns(userId, model, hash, web))]);

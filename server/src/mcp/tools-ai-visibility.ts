@@ -7,6 +7,7 @@ import {
 } from '../services/ai-visibility-agent';
 import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean } from './tool-helpers';
 import { changedOf, madeSheet } from './changed';
+import { GUIDE_POINTER } from './guides/guide';
 
 const ENGINE_IDS = ENGINES.map(e => e.id) as [string, ...string[]];
 
@@ -16,22 +17,13 @@ export function registerAiVisibilityTool(server: McpServer, ctx: McpAuthCtx): vo
   registerTool(server, 'ai_visibility', {
     description:
       'Check whether AI engines recommend a brand, and track it over time. action "create" (free, asks nothing) '
-      + 'makes a table "AI visibility for <brand>": a Questions sheet (per engine a column asking it, its answer, '
-      + 'and "You in <engine>": "1st of 4" = your place among the brands named, or "Not named"; "Named by": how '
-      + 'many engines name you; "Named first": the brand most engines name first) and a Cited sites sheet (every '
-      + 'source an answer cites, with "Your site"). Brands are matched as whole words, ignoring case and accents, '
-      + 'among brand and other_brands only. '
+      + 'makes a table "AI visibility for <brand>" with a Questions sheet and a Cited sites sheet. '
       + 'action "ask" (run scope) asks every engine the questions not asked yet: PAID treg calls, one enrichment '
       + 'run per engine (follow them with get_run_status, run type enrichment); the formula columns fill as '
-      + 'answers come. action "check_again" (weeks later) copies Questions and Cited sites, values only, into '
-      + 'sheets named with '
-      + 'the day they were asked, adds "Named by on <date>" and "Change since <date>" ("Up 2", "Down 1", "Same", '
-      + '"New"), then asks every question again: also PAID, and it notes answers under three weeks old (a change '
-      + 'then is mostly the usual variation). A stopped check is picked up by the next one. ask and check_again: '
+      + 'answers come. action "check_again" (weeks later) keeps a dated copy of both sheets, then asks every '
+      + 'question again: also PAID. ask and check_again: '
       + 'estimate_only DEFAULTS TO TRUE and returns the cost; call again with estimate_only:false to start. '
-      + 'action "set_brands" changes the brands and works every row out again (free). '
-      + 'Read the table with read_rows (group_by Named first, or Domain on Cited sites, for counts). Answers vary '
-      + 'between asks: compare totals, not one question.',
+      + `action "set_brands" changes the brands and works every row out again (free). ${GUIDE_POINTER}`,
     inputSchema: z.object({
       action: z.enum(['create', 'ask', 'check_again', 'set_brands'])
         .describe('create the table (free), ask the engines, check_again later, or set_brands (free)'),

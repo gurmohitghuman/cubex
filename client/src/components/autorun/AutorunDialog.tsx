@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Zap } from 'lucide-react'
 import { Modal } from '@/components/Modal'
+import { AutorunDelayField, delayOf, delayProblem } from './AutorunDelayField'
 import { autorunAPI, type EnrichDailyLimit } from '@/utils/api'
 import type { AutorunColumn, AutorunTargetInfo, SheetAutorun } from '@/utils/api/types-autorun'
 import { MoneyInput } from '@/components/enrich-modal/MoneyInput'
@@ -37,6 +38,7 @@ export const AutorunDialog: React.FC<Props> = ({ target, sheetId, current, hasWe
   const setRunIf = (r: string) => { touched.current = true; setRunIfKnown(true); setRunIfState(r) }
   const [capUsd, setCapUsd] = useState<number | null>(current?.dailyCapUsd ?? null)
   const [rowsText, setRowsText] = useState(String(current?.dailyRowCap ?? AUTORUN_HTTP_DEFAULT_DAILY_ROWS))
+  const [delayText, setDelayText] = useState(String(current?.startDelayS ?? 0))
   const [limit, setLimit] = useState<EnrichDailyLimit | null>(null)
   const [info, setInfo] = useState<AutorunTargetInfo | null>(null)
   const [saving, setSaving] = useState(false)
@@ -60,7 +62,7 @@ export const AutorunDialog: React.FC<Props> = ({ target, sheetId, current, hasWe
   const rowsProblem = http && !(Number.isInteger(rows) && rows >= 1 && rows <= AUTORUN_HTTP_MAX_DAILY_ROWS)
     ? `Rows a day must be a whole number from 1 to ${AUTORUN_HTTP_MAX_DAILY_ROWS.toLocaleString()}.` : null
   // "Only run if" can't read this column's own outputs: the server refuses that, and the rule box shows why.
-  const problem = rowsProblem
+  const problem = rowsProblem ?? delayProblem(delayText)
   const cap = capUsd ?? Math.min(AUTORUN_DEFAULT_DAILY_CAP_USD, limit?.limitUsd ?? AUTORUN_DEFAULT_DAILY_CAP_USD)
   const paused = current?.pausedReason ?? null
   // The team's own provider key bills the tool: no dollar cap, until treg prices it ('priced').
@@ -86,7 +88,7 @@ export const AutorunDialog: React.FC<Props> = ({ target, sheetId, current, hasWe
     void act(() => autorunAPI.save(sheetId, {
       // A rule read here replaces an older condition list (it came back as that rule).
       column: target.column, enabled: true, ...(runIfKnown ? { where: [], runIf } : {}),
-      ...(http ? { dailyRowCap: rows } : capBody),
+      ...(http ? { dailyRowCap: rows } : capBody), startDelayS: delayOf(delayText),
     }))
   }
 
@@ -148,6 +150,7 @@ export const AutorunDialog: React.FC<Props> = ({ target, sheetId, current, hasWe
             </p>
           </div>
         )}
+        <AutorunDelayField value={delayText} onChange={setDelayText} />
         {hasWebhook && (
           <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 px-3 py-2"
             data-testid="autorun-webhook">

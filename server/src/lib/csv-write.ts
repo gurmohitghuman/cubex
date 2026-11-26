@@ -1,4 +1,4 @@
-// Writing a sheet out as CSV a page of rows at a time, yielding to other
+// Writing a sheet out as CSV (or JSON lines: writeSheetJsonl) a page of rows at a time, yielding to other
 // requests between pages: the UI and /api/v1 downloads (lib/csv-export.ts) and
 // one-time download links (routes/file-links.ts). Same columns, escaping, row
 // order and line breaks as buildSheetCsv. escapeCsvCell neutralizes formula
@@ -35,20 +35,23 @@ export const csvLine = (columns: string[], data: Record<string, string>): string
 // sheet's last rows are deleted, though, the next rows added take their places
 // and are read. A row edited meanwhile is read as it is when reached. A row
 // deleted meanwhile is in the export if it was reached before, and not if after.
+// `ids`: each row's stable id, beside its data (JSON lines writes it).
 export async function eachPage(
-  sheetId: string, userId: string, apply: (rows: Array<string | null>) => boolean | Promise<boolean>,
+  sheetId: string, userId: string,
+  apply: (rows: Array<string | null>, ids: string[]) => boolean | Promise<boolean>,
   filter?: CompiledFilter,
 ): Promise<void> {
   const page = db.prepare(`
-    SELECT row_index, ${filter ? `CASE WHEN ${filter.sql} THEN data END` : 'data'} FROM rows
+    SELECT row_index, ${filter ? `CASE WHEN ${filter.sql} THEN data END` : 'data'}, id FROM rows
     WHERE sheet_id = ? AND user_id = ? AND row_index > ? AND row_index <= ? ORDER BY row_index LIMIT ?
   `).raw();
   const params = filter?.params ?? [];
   const last = (db.prepare('SELECT MAX(row_index) FROM rows WHERE sheet_id = ? AND user_id = ?').pluck()
     .get(sheetId, userId) as number | null) ?? Number.MIN_SAFE_INTEGER;
   for (let after = Number.MIN_SAFE_INTEGER; ;) {
-    const rows = page.all(...params, sheetId, userId, after, last, EXPORT_PAGE_ROWS) as Array<[number, string | null]>;
-    if (!(await apply(rows.map(r => r[1]))) || rows.length < EXPORT_PAGE_ROWS) return;
+    const rows = page.all(...params, sheetId, userId, after, last, EXPORT_PAGE_ROWS) as
+      Array<[number, string | null, string]>;
+    if (!(await apply(rows.map(r => r[1]), rows.map(r => r[2]))) || rows.length < EXPORT_PAGE_ROWS) return;
     after = rows[rows.length - 1][0];
     if (after >= last) return;
     await yieldToRequests();
@@ -71,6 +74,33 @@ export async function writeSheetCsv(
     const more = await write(chunk);
     chunk = '';
     return more;
+  }, plan.filter);
+  return rowCount;
+}
+
+// One row as a JSON line: its id and its cells, as read_rows answers a row ({ id, data }), so a column named "id"
+// can't clash with the row's own. Every exported column is in data, in the export's order, '' where the row has no
+// value (as the CSV's empty cell); a value keeps its JSON type. No formula quote: no spreadsheet opens JSON.
+export function jsonLine(columns: string[], id: string, data: Record<string, string>): string {
+  const cells: Record<string, unknown> = Object.create(null);
+  for (const col of columns) cells[col] = cellOf(data, col);
+  return JSON.stringify({ id, data: cells });
+}
+
+// The sheet as JSON lines: each page's matching rows as one chunk (no header line), handed to `write`, which says
+// whether to go on. The same pages, filter and row order as writeSheetCsv. Returns how many rows went out.
+export async function writeSheetJsonl(
+  sheetId: string, userId: string, plan: SheetExportPlan, write: (chunk: string) => Promise<boolean>,
+): Promise<number> {
+  let rowCount = 0;
+  await eachPage(sheetId, userId, async (rows, ids) => {
+    let chunk = '';
+    rows.forEach((json, i) => {
+      if (json === null) return;
+      chunk += jsonLine(plan.columns, ids[i], parseRowData(json)) + '\n';
+      rowCount++;
+    });
+    return chunk ? write(chunk) : true;
   }, plan.filter);
   return rowCount;
 }
@@ -100,5 +130,21 @@ function drained(res: Response): Promise<void> {
     const done = () => { res.off('drain', done); res.off('close', done); resolve(); };
     res.on('drain', done);
     res.on('close', done);
+  });
+}
+
+// A download's turn on its connection. Requests pipelined on one connection are answered in order (Node queues each
+// response until the ones before it end), so an export waits for its response to own the socket before it holds its
+// sheet: else a slow reader of an earlier download on the same connection held this sheet too, for as long as that
+// one took. False: the client left first (nothing is held or used up for it).
+export function responseTurn(res: Response): Promise<boolean> {
+  if (res.socket) return Promise.resolve(!res.destroyed);
+  const conn = res.req?.socket;
+  if (!conn || conn.destroyed) return Promise.resolve(false);
+  return new Promise(resolve => {
+    const ready = () => { conn.off('close', gone); resolve(!res.destroyed); };
+    const gone = () => { res.off('socket', ready); resolve(false); };
+    res.once('socket', ready);
+    conn.once('close', gone);
   });
 }

@@ -86,8 +86,9 @@ const call = (target: string, cursor?: string) => transformColumn(uid, { sheetId
 // limit (about 2 seconds) counts its wait for the worker's checkpoint and start-over, two disk syncs: on a disk
 // whose syncs stall (a Windows runner's took 88 ms where it takes 5 to 13), that wait can take the call's whole
 // time, and the call answers having only waited (no row written, its note saying so). That is the only early end
-// these cases take: what they check is which connection starts the WAL over, never a disk's speed. Its ask is
-// still with the worker then: its answer is awaited, so the case's numbers count it.
+// these cases take: what they check is which connection starts the WAL over, never a disk's speed. Its ask may
+// still be with the worker then: its answer is awaited before the next call, so the case's numbers count it (and
+// not the checkpoint the last call asks for once it has written, walSettle, as when no call waits).
 async function toTheEnd(target: string): Promise<number> {
   let updated = 0
   let cursor: string | undefined
@@ -95,11 +96,9 @@ async function toTheEnd(target: string): Promise<number> {
     const out = await call(target, cursor)
     assert.ok('ok' in out, JSON.stringify(out))
     updated += out.ok.updated
-    if (!out.ok.next_cursor) {
-      if (cursor) await walCheckpointerIdle()
-      return updated
-    }
+    if (!out.ok.next_cursor) return updated
     assert.ok(out.ok.updated === 0 && out.ok.note === TRANSFORM_WAITED_NOTE, JSON.stringify(out))
+    await walCheckpointerIdle()
     cursor = out.ok.next_cursor
   }
   assert.fail(`the pass into ${target} never ended`)

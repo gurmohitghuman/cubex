@@ -16,7 +16,7 @@ export function sheetListKey(tableId: string, userId: string): string | null {
   if (!table) return null;
   const sheets = db.prepare(
     `SELECT id, name, description, ${ADDING_ROWS_SQL} AS adding FROM sheets WHERE table_id = ? AND user_id = ?
-      AND trash_id IS NULL ORDER BY position, created_at`,
+      AND trash_id IS NULL AND test_of IS NULL ORDER BY position, created_at`,
   ).all(tableId, userId) as Array<{ id: string; name: string; description: string | null; adding: number }>;
   const h = createHash('sha1').update(table.name);
   // A tab's dot (rows being added to it) moves the key too.

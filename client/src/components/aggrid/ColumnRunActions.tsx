@@ -122,6 +122,11 @@ export const HTTPColumnActions: React.FC<HTTPActionsProps> = ({
       <DropdownMenuLabel>HTTP API Actions</DropdownMenuLabel>
       {!active && <RunControlItems columnId={columnId} counts={counts} setMenu={setMenu} actions={actions} />}
       {!active && <UndoRunItem columnId={columnId} setMenu={setMenu} actions={actions} />}
+      {!active && actions.onEditHTTPColumn && (
+        <DropdownMenuItem onClick={() => { actions.onEditHTTPColumn?.(columnId); setMenu(null) }} className={ITEM}>
+          ✏️ Edit HTTP API Column
+        </DropdownMenuItem>
+      )}
       {actions.onRunFirstRows && (
         <DropdownMenuItem onClick={() => { actions.onRunFirstRows?.('http', columnId); setMenu(null) }}
           className={ITEM}>

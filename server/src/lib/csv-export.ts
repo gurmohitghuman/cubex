@@ -8,7 +8,9 @@ import { db } from './db';
 import { getSheetColumns, parseRowData } from './sql-helpers';
 import { contentDispositionFilename, escapeCsvCell } from './csv-safety';
 import { withSheetRead } from './sheet-busy';
-import { csvLine, eachPage, responseWriter, writeSheetCsv, type SheetExportPlan } from './csv-write';
+import {
+  csvLine, eachPage, responseTurn, responseWriter, writeSheetCsv, writeSheetJsonl, type SheetExportPlan,
+} from './csv-write';
 // Reuses read_rows' filter (services/row-filter.ts) rather than a second
 // implementation, so `where` means exactly the same thing on both tools.
 // (lib -> services is the unusual direction; row-filter itself only depends on
@@ -137,16 +139,25 @@ export async function buildSheetCsv(
 // rows added past its last row meanwhile aren't in it (eachPage, lib/csv-write.ts);
 // writes wait for the client to drain, and a client that leaves stops it.
 // Sends headers and body itself and returns 'ok'; otherwise sends nothing.
+// format 'jsonl': the same rows as JSON lines (lib/csv-write.ts jsonLine), a .jsonl file.
+export type ExportFormat = 'csv' | 'jsonl';
+export const EXPORT_FORMATS: readonly ExportFormat[] = ['csv', 'jsonl'];
+export const exportContentType = (format: ExportFormat): string =>
+  (format === 'jsonl' ? 'application/x-ndjson; charset=utf-8' : 'text/csv; charset=utf-8');
+
 export async function streamSheetCsv(
-  sheetId: string, userId: string, res: Response, selection: ExportSelection = {},
-): Promise<'ok' | 'not_found' | 'empty' | { busy: string } | { invalid: string }> {
+  sheetId: string, userId: string, res: Response, selection: ExportSelection = {}, format: ExportFormat = 'csv',
+): Promise<'ok' | 'gone' | 'not_found' | 'empty' | { busy: string } | { invalid: string }> {
+  // Its turn on the connection first (responseTurn): the sheet is held only while this export can send, and the
+  // plan is the sheet as it is then (a column renamed while an earlier download had the connection).
+  if (!await responseTurn(res)) return 'gone';
   const plan = planSheetExport(sheetId, userId, selection);
   if ('fail' in plan) return plan.fail === 'not_found' ? 'not_found' : { invalid: plan.error };
   if (!db.prepare('SELECT 1 FROM rows WHERE sheet_id = ? AND user_id = ? LIMIT 1').get(sheetId, userId)) return 'empty';
   return withSheetRead(sheetId, async () => {
-    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', contentDispositionFilename(plan.sheetName, 'csv'));
-    await writeSheetCsv(sheetId, userId, plan, responseWriter(res));
+    res.setHeader('Content-Type', exportContentType(format));
+    res.setHeader('Content-Disposition', contentDispositionFilename(plan.sheetName, format));
+    await (format === 'jsonl' ? writeSheetJsonl : writeSheetCsv)(sheetId, userId, plan, responseWriter(res));
     res.end();
     return 'ok' as const;
   });

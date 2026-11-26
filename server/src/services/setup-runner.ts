@@ -12,18 +12,20 @@
 // the setup meanwhile starts nothing). A run that fails or is cancelled ends
 // the chain; rows that failed inside a run don't (they read as empty further
 // on). The last layer done, the setup's auto-runs are turned on (not after a test).
+// A column run (column-run.ts) goes the same way, each step one of the sheet's
+// run columns started through its own rerun (column-run-step.ts).
 import { db } from '../lib/db';
 import { isBusyMessage, sheetHeld } from '../lib/sheet-busy';
 import { heldWaitWords } from '../lib/run-held-words';
-import { mainColumn } from '../lib/setups/spec';
 import { startSetupStep } from './setup-step-start';
+import { startColumnStep } from './column-run-step';
 import { startAgainStep } from './setup-step-again';
 import { saveAutorunSettings } from './autorun-settings';
 import { entryFor } from './autorun-entry';
 import { cancelRun, pauseRun } from './run-lifecycle';
 import { adopt, holdPaused, progress, rowIndexes, runError } from './setup-step-state';
 import {
-  loadSetupRun, modesOf, planOf, saveSteps, setStatus, stepsOf, type SetupRunRow, type StepRecord,
+  loadSetupRun, modesOf, planOf, saveSteps, setStatus, stepCount, stepMain, stepsOf, type SetupRunRow, type StepRecord,
 } from './setup-run-store';
 import { withoutChangeLog } from '../lib/change-log';
 import { currentActor, runAs } from '../lib/actor';
@@ -60,7 +62,7 @@ const waitingAgain = (refill: boolean): StepRecord =>
 async function startStep(
   r: SetupRunRow, i: number, steps: StepRecord[],
 ): Promise<'waiting' | 'running' | 'done' | 'ended'> {
-  const plan = planOf(r), step = plan.spec.steps[i], main = mainColumn(step);
+  const plan = planOf(r), main = stepMain(plan, i);
   const gate = stepGate(r, i, steps);
   if ('refused' in gate) {
     saveSteps(r.id, steps);
@@ -70,10 +72,7 @@ async function startStep(
   const refill = !!steps[i].refill;
   steps[i] = refill ? { state: 'starting', refill: true } : { state: 'starting' };
   saveSteps(r.id, steps);
-  const opts = { rowIndexes: rowIndexes(r), allowSecrets: !!r.allow_secrets, spendLimitUsd: gate.limitUsd };
-  const out = modesOf(plan)[i] === 'again'
-    ? await startAgainStep(r.user_id, r.sheet_id, step, { ...opts, autoRun: !!r.auto_run, refill })
-    : await startSetupStep(r.user_id, r.sheet_id, step, opts);
+  const out = await startOne(r, plan, i, gate.limitUsd, refill);
   if ('wait' in out || ('fail' in out && (isBusyMessage(out.message) || out.held))) {
     // A column it reads that another run holds (RunFail.held): it waits for that column, saying so.
     const held = 'fail' in out ? out.held : undefined;
@@ -109,6 +108,20 @@ async function startStep(
   return 'ended';
 }
 
+// Step i's start: a column run's column, a setup's column carried on, or a setup's new column.
+function startOne(r: SetupRunRow, plan: ReturnType<typeof planOf>, i: number, limitUsd: number | null,
+  refill: boolean) {
+  if (plan.columns) {
+    return startColumnStep(r, plan.columns.steps[i], plan.columns,
+      { allowSecrets: !!r.allow_secrets, limitUsd });
+  }
+  const step = plan.spec.steps[i];
+  const opts = { rowIndexes: rowIndexes(r), allowSecrets: !!r.allow_secrets, spendLimitUsd: limitUsd };
+  return modesOf(plan)[i] === 'again'
+    ? startAgainStep(r.user_id, r.sheet_id, step, { ...opts, autoRun: !!r.auto_run, refill })
+    : startSetupStep(r.user_id, r.sheet_id, step, opts);
+}
+
 const running = new Set<string>();
 
 export async function advanceSetupRun(id: string): Promise<void> {
@@ -132,15 +145,17 @@ async function advance(id: string): Promise<void> {
     if (!r || r.status !== 'running') return;
     const plan = planOf(r), { spec, layers } = plan, modes = modesOf(plan);
     const steps = stepsOf(r);
-    const now = spec.steps.map((_, i) => i).filter(i => layers[i] === r.layer);
+    const now = Array.from({ length: stepCount(plan) }, (_, i) => i).filter(i => layers[i] === r.layer);
     if (now.length === 0) return finish(r, steps);
     let waiting = false;
     for (const i of now) {
-      const st = steps[i], step = spec.steps[i], main = mainColumn(step);
-      // A run carrying a column on is started again rather than adopted: its column's auto-run makes runs
-      // of its own, and a second start is safe (it waits for a run working there, takes only rows not done).
-      const rerun = modes[i] === 'again' && step.kind !== 'clean' && step.kind !== 'formula';
-      if (st.state === 'starting') steps[i] = (rerun ? null : adopt(r, step)) ?? waitingAgain(!!st.refill);
+      const st = steps[i], main = stepMain(plan, i);
+      const kind = plan.columns ? (plan.columns.steps[i].kind === 'ai' ? 'ai' : 'http') : spec.steps[i].kind;
+      // A setup's run carrying a column on is started again rather than adopted: its column's auto-run makes
+      // runs of its own, and a second start is safe (it waits for a run working there, takes only rows not
+      // done). A column run's step is adopted: started again, an "all" or out-of-date one would pay twice.
+      const rerun = !plan.columns && modes[i] === 'again' && kind !== 'clean' && kind !== 'formula';
+      if (st.state === 'starting') steps[i] = (rerun ? null : adopt(r, main, kind)) ?? waitingAgain(!!st.refill);
       if (steps[i].state === 'waiting') {
         // A fill, sort, import or export holds the sheet: try again next sweep.
         if (sheetHeld(r.sheet_id)) { waiting = true; continue; }
@@ -152,7 +167,7 @@ async function advance(id: string): Promise<void> {
         continue;
       }
       if (steps[i].state !== 'running') continue;
-      const p = progress(r, steps[i], step);
+      const p = progress(r, steps[i], main);
       if (p === 'working') { waiting = true; continue; }
       if (p === 'done') { steps[i] = { ...steps[i], state: 'done' }; continue; }
       // A column carried on that stopped following its columns meanwhile is filled again.

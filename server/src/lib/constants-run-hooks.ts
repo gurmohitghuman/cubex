@@ -1,4 +1,4 @@
-import { envInt } from './env-int';
+import { envMs } from './env-int';
 
 // "Run finished" webhooks (services/run-hooks-*.ts, docs/run-webhooks.md).
 // Guards, not quotas.
@@ -8,11 +8,11 @@ export const RUN_HOOK_URL_MAX_CHARS = 2000;
 // six times that (each with some jitter), unless the receiver's Retry-After asks
 // for longer (up to a minute).
 export const RUN_HOOK_TRIES = 3;
-export const RUN_HOOK_RETRY_BASE_MS = envInt('RUN_HOOK_RETRY_BASE_MS', 10_000);
+export const RUN_HOOK_RETRY_BASE_MS = envMs('RUN_HOOK_RETRY_BASE_MS', 10_000);
 // One try's whole deadline: connect, send, answer.
-export const RUN_HOOK_TIMEOUT_MS = envInt('RUN_HOOK_TIMEOUT_MS', 10_000);
+export const RUN_HOOK_TIMEOUT_MS = envMs('RUN_HOOK_TIMEOUT_MS', 10_000);
 // How often the API process turns finished runs into notices and sends them.
-export const RUN_HOOK_SWEEP_MS = envInt('RUN_HOOK_SWEEP_MS', 1000);
+export const RUN_HOOK_SWEEP_MS = envMs('RUN_HOOK_SWEEP_MS', 1000);
 // Notices out at once, across every webhook.
 export const RUN_HOOK_CONCURRENCY = 4;
 // Finished notices kept per webhook: its delivery log.

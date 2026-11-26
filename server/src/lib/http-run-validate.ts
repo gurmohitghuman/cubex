@@ -26,14 +26,28 @@ export interface HttpColumnValidation {
   sanitizedMappingColumns?: string[];
 }
 
+type CheckExisting = boolean | { except: readonly string[] };
+
 export function validateHttpRunColumns(
   sheetId: string,
   userId: string,
   responseMapping: ResponseMapping[] | undefined,
   master: string | undefined,
   // Skip the "already exists on the sheet" check for columns the run legitimately
-  // reuses (preview never creates columns; a rerun targets existing columns).
-  checkExisting: boolean,
+  // reuses (preview never creates columns; a rerun targets existing columns), or
+  // for these columns only (a new setup for a column keeps its own columns, named
+  // exactly as they are: another spelling of one is a second column, and clashes).
+  checkExisting: CheckExisting,
+): HttpColumnValidation {
+  return validateRunColumnsOn(() => getSheetColumns(sheetId, userId), responseMapping, master, checkExisting);
+}
+
+// The same against the given columns (an enrichment call priced on its items, without a sheet).
+export function validateRunColumnsOn(
+  existingColumns: () => string[],
+  responseMapping: ResponseMapping[] | undefined,
+  master: string | undefined,
+  checkExisting: CheckExisting,
 ): HttpColumnValidation {
   const mappings = Array.isArray(responseMapping) ? responseMapping : [];
 
@@ -100,12 +114,13 @@ export function validateHttpRunColumns(
   // getSheetColumns reads column_order (authoritative), so this catches an
   // existing-but-empty column the old json_extract data-probe would miss.
   if (checkExisting) {
-    const existing = getSheetColumns(sheetId, userId);
+    const own = new Set(checkExisting === true ? [] : checkExisting.except);
+    const existing = existingColumns();
     const toCreate = sanitizedMaster
       ? [sanitizedMaster, ...sanitizedMappingColumns]
       : sanitizedMappingColumns;
     for (const name of toCreate) {
-      const clash = findColumnNameCollision(name, existing);
+      const clash = findColumnNameCollision(name, existing.filter(c => !(c === name && own.has(c))));
       if (clash) return { ok: false, error: columnCollisionMessage(name, clash) };
     }
   }

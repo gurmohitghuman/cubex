@@ -22,38 +22,26 @@ import { snapshotSheet } from './setup-version-snapshot';
 import { fieldContext, planRestore, type PlannedColumn, type RestorePlan } from './setup-version-plan';
 import { pausedByHand, RestoreRefused, turnAutoRunsOn, writePlan } from './setup-version-apply';
 import type { RunFail } from './run-shared';
+import { sheetWorkGoing } from './sheet-work-going';
 
 export interface RestoreAnswer {
   version: VersionInfo; dry_run: boolean; nothing: boolean; blocked: string | null; columns: PlannedColumn[];
   unchanged: number; order_changed: boolean; saved_before: VersionInfo | null; message: string;
 }
 
-const RUNS_ACTIVE = `SELECT 1 FROM ai_runs WHERE sheet_id = ? AND user_id = ?
-    AND (status IN ('pending', 'running', 'paused') OR placeholder_work IS NOT NULL)
-  UNION ALL SELECT 1 FROM http_runs WHERE sheet_id = ? AND user_id = ?
-    AND (status IN ('pending', 'running', 'paused') OR placeholder_work IS NOT NULL)
-  UNION ALL SELECT 1 FROM setup_runs WHERE sheet_id = ? AND user_id = ? AND status IN ('running', 'paused')
-  LIMIT 1`;
-// A clean, formula or lookup column being filled (a lookup's may wait, its sheet
-// free, for the other sheet or a column there): a restore writing its record back would end it.
-const FILLING = `SELECT column_name FROM clean_columns WHERE sheet_id = ? AND user_id = ? AND fill_status = 'filling'
-  UNION ALL SELECT column_name FROM formula_columns WHERE sheet_id = ? AND user_id = ? AND fill_status = 'filling'
-  UNION ALL SELECT column_name FROM lookup_columns WHERE sheet_id = ? AND user_id = ? AND fill_status = 'filling'
-  LIMIT 1`;
 export const KEYS = "A request it puts back reads saved API keys: restoring it needs the 'secrets' scope.";
 
 // Why the restore can't happen now (the restore refuses; a dry run says so).
 function refusal(
   sheetId: string, userId: string, versionId: string, plan: RestorePlan, hasSecretsScope: boolean,
 ): RunFail | null {
-  if (db.prepare(RUNS_ACTIVE).get(sheetId, userId, sheetId, userId, sheetId, userId)) {
+  const going = sheetWorkGoing(sheetId, userId);
+  if (going && 'run' in going) {
     return { fail: 'conflict', message: 'A run is going on this sheet, or a saved setup is filling it. Stop it or '
       + 'let it finish, then restore.' };
   }
-  const filling = db.prepare(FILLING).pluck().get(sheetId, userId, sheetId, userId, sheetId, userId) as
-    string | undefined;
-  if (filling) {
-    return { fail: 'conflict', message: `"${filling}" is still being filled (a lookup's fill may be waiting for `
+  if (going) {
+    return { fail: 'conflict', message: `"${going.filling}" is still being filled (a lookup's fill may be waiting for `
       + 'the sheet it looks in or a column there). Let it finish, then restore.' };
   }
   if (plan.loop) return { fail: 'conflict', message: plan.loop };

@@ -8,6 +8,7 @@ import type { EnrichRunInput } from '../lib/enrich-run-input';
 import { applyListDest, planListDest, type DestPlan } from './enrich-list-dest';
 import { fieldlessRuns, giveFields } from './enrich-list-held';
 import type { RunFail } from './run-shared';
+import { isTestCopy, LIST_ON_TEST_COPY } from './sheet-test-store';
 
 const bad = (message: string): RunFail => ({ fail: 'bad_request', message });
 
@@ -27,6 +28,7 @@ export function planListStart(
   userId: string, sheetId: string, input: EnrichRunInput, config: EnrichRunConfig, columns: string[],
 ): { ok: DestPlan | null } | RunFail {
   if (!input.list || !config.enrichment.list) return { ok: null };
+  if (isTestCopy(sheetId)) return bad(LIST_ON_TEST_COPY);
   // Fields come from real results: a run without them is a test of a few rows.
   if (!input.list.fields?.length && input.rows.test === null) {
     return bad('Pick the fields to keep first: run on a few rows, then pick them from the results.');

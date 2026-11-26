@@ -1,7 +1,8 @@
 // A deadline longer than setTimeout's longest wait (2,147,483,647 ms, about 24.8 days) is capped at it
-// (lib/request-deadline.ts waitMs), not left to overflow: an overflowing wait fires after 1 ms, so every request
-// with a body would get 408. With REQUEST_BODY_TIMEOUT_MS at 3,000,000,000, a body sent in two parts 300 ms
-// apart still arrives, and the wait left is never more than the cap.
+// (lib/env-int.ts envMs when the setting is read, lib/request-deadline.ts waitMs for every deadline), not left to
+// overflow: an overflowing wait fires after 1 ms, so every request with a body would get 408. With
+// REQUEST_BODY_TIMEOUT_MS at 3,000,000,000, a body sent in two parts 300 ms apart still arrives, and the wait left
+// is never more than the cap.
 import type { AddressInfo } from 'node:net'
 import net from 'node:net'
 
@@ -16,9 +17,12 @@ function check(label: string, cond: boolean, detail?: unknown) {
   else { failures++; console.log('FAIL', label, detail === undefined ? '' : JSON.stringify(detail)) }
 }
 
-check('the setting is read as 3,000,000,000 ms', REQUEST_BODY_TIMEOUT_MS === 3_000_000_000, REQUEST_BODY_TIMEOUT_MS)
+// The setting itself is held at the longest wait when read (lib/env-int.ts envMs), and waitMs caps any deadline too.
+check('the setting is held at 2,147,483,647 ms', REQUEST_BODY_TIMEOUT_MS === 2_147_483_647, REQUEST_BODY_TIMEOUT_MS)
 const now = Date.now()
-check('the wait left is capped at 2,147,483,647 ms', waitMs(now, REQUEST_BODY_TIMEOUT_MS) === 2_147_483_647)
+// A limit a minute past the cap: the time since `now` (a millisecond or two by this line) still leaves it above,
+// so the cap is what this reads, not that time.
+check('the wait left is capped at 2,147,483,647 ms', waitMs(now, REQUEST_BODY_TIMEOUT_MS + 60_000) === 2_147_483_647)
 check('... and is the time left below the cap, never under 0', waitMs(now, 60_000) <= 60_000
   && waitMs(now, 60_000) > 59_000 && waitMs(now - 5000, 1000) === 0)
 

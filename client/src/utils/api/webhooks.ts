@@ -1,4 +1,5 @@
 import { api } from './client'
+import type { WhereItem } from './views'
 
 const noServerToast = { skipServerErrorToast: true } as const
 
@@ -20,9 +21,33 @@ export interface WebhookSource {
   createdAt: string
   rotatedAt: string | null
   masked: boolean
+  // Events must send the webhook's token (Authorization: Bearer). The token itself is never read back.
+  tokenRequired: boolean
+  tokenSetAt: string | null
   // Full URL is present only while the reveal window is open (before the first
   // event), null once masked. Includes the secret token in the path.
   url: string | null
+  // Auto-delete's settings and counts; null while off.
+  autoDelete: WebhookAutoDelete | null
+}
+
+// Auto-delete (server services/webhook-auto-delete.ts): the newest keepRows rows stay; older ones the webhook added
+// are deleted, not put in the trash, once their auto-run columns have run (and successColumn has a result), or in
+// mode rules once they pass `where`; copied to copyToSheetId first.
+export interface WebhookAutoDelete {
+  // actions_finish: once every auto-run column has run on them; rules: once they pass `where`.
+  mode: 'actions_finish' | 'rules'
+  where: WhereItem[] | null
+  keepRows: number
+  successColumn: string | null
+  copyToSheetId: string | null
+  copyToSheet: string | null
+  // Why no row leaves until you act (a column or sheet gone, a full sheet, rows moved by a sort).
+  paused: string | null
+  // What rows wait for now (a paused auto-run or run).
+  waiting: string | null
+  rowsDeleted: number
+  lastDeletedAt: string | null
 }
 
 export interface WebhookMapping {
@@ -40,7 +65,7 @@ export interface WebhookDelivery {
   payload: unknown | null
   payloadBytes: number
   // duplicate: auto-dedupe didn't keep its row (another row has its key).
-  status: 'stored' | 'partial' | 'duplicate' | 'pruned' | 'error'
+  status: 'stored' | 'partial' | 'duplicate' | 'pruned' | 'error' | 'held'
   errorMessage: string | null
   receivedAt: string
   // Added again from the log ("Add again"): the delivery it repeats.
@@ -64,6 +89,23 @@ export const webhooksAPI = {
 
   setEnabled: (sheetId: string, enabled: boolean): Promise<{ source: WebhookSource }> =>
     api.patch(`/sheets/${sheetId}/webhook`, { enabled }, noServerToast).then(r => r.data),
+
+  // A token events must send, shown once (this answer); any old one stops.
+  newToken: (sheetId: string): Promise<{ source: WebhookSource; token: string }> =>
+    api.post(`/sheets/${sheetId}/webhook/token`, {}, noServerToast).then(r => r.data),
+
+  removeToken: (sheetId: string): Promise<{ source: WebhookSource }> =>
+    api.delete(`/sheets/${sheetId}/webhook/token`, noServerToast).then(r => r.data),
+
+  // Auto-delete on or changed (null clears the success column or the copy); off.
+  setAutoDelete: (sheetId: string, a: {
+    mode: 'actions_finish' | 'rules'; where: WhereItem[] | null; keepRows: number; successColumn: string | null;
+    copyToSheetId: string | null
+  }): Promise<{ source: WebhookSource }> =>
+    api.put(`/sheets/${sheetId}/webhook/auto-delete`, a, noServerToast).then(r => r.data),
+
+  removeAutoDelete: (sheetId: string): Promise<{ source: WebhookSource }> =>
+    api.delete(`/sheets/${sheetId}/webhook/auto-delete`, noServerToast).then(r => r.data),
 
   remove: (sheetId: string): Promise<void> =>
     api.delete(`/sheets/${sheetId}/webhook`, noServerToast).then(() => {}),

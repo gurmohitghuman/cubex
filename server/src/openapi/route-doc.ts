@@ -19,8 +19,10 @@ export const TAGS = {
   enrich: ['Enrichments', 'treg.to enrichments and waterfall columns: paid data, row by row.'],
   visibility: ['AI visibility', "Tables that check which brands AI engines name for buyers' questions."],
   hiring: ['Hiring signals', 'Tables of the companies hiring for chosen roles, with what is new at each check.'],
+  social: ['Social research', 'Tables of social posts on a topic, why they work, who made them.'],
   setups: ['Setups', 'Saved chains of filled columns, used again on other sheets.'],
-  versions: ['Setup versions', "A sheet's column setup kept by name, compared and restored."],
+  versions: ['Setup versions', "A sheet's column setup kept by name, compared and restored, or tried on sample rows."],
+  webhook: ['Sheet webhooks', 'A secret URL per sheet: each JSON event POSTed to it becomes a new row.'],
   hooks: ['Run webhooks', 'URLs Cubex tells, with a signed POST, when a run finishes.'],
   trash: ['Trash and history', "Deleted rows, sheets, tables and columns, putting them back, and a sheet's history."],
 } as const;
@@ -52,7 +54,7 @@ export interface RouteDoc {
   // by document.ts. Default: 200 'Success.'
   responses?: Record<number, string>;
   // What a success holds: JSON unless the route streams CSV.
-  produces?: Array<'json' | 'csv'>;
+  produces?: Array<'json' | 'csv' | 'jsonl'>;
   // 404 is listed when the path has a parameter, 409 for every method but GET:
   // notFound adds 404; conflict true adds 409 to a GET, false drops it.
   notFound?: boolean;
@@ -74,14 +76,18 @@ const PARAMS: Record<string, z.ZodType> = {
   'sheets.viewId': name('The view id, or its name.'),
   'sheets.setupId': id('The setup id.'),
   'sheets.versionId': id('The setup version id.'),
+  'sheets.fieldId': id("The webhook field's id (the webhook's fields list it)."),
   'rows.rowId': id('The stable row id.'),
   'ai-runs.id': id('The AI run id.'),
   'http-runs.id': id('The HTTP run id. Enrichment and waterfall runs are HTTP runs.'),
   'setups.setupId': id('The setup id.'),
   'setup-runs.runId': id('The setup run id.'),
+  'setup-calls.callId': id('The setup call id (call_setup returned it).'),
+  'run-schedules.id': id('The schedule id.'),
   'enrichments.toolId': id('The enrichment tool id, such as treg.people.email.find.'),
   'ai-visibility.id': id("The AI visibility table's id, or its Questions sheet id."),
   'hiring.id': id("The hiring table's id, or its Companies sheet id."),
+  'social-research.id': id("The social research table's id, or the id of one of its sheets."),
   'run-webhooks.id': id('The run webhook id.'),
   'trash.id': z.number().int().min(1).describe('The trash id.'),
 };

@@ -9,9 +9,9 @@
 import { runAs } from '../lib/actor';
 import express from 'express';
 import { contentDispositionFilename } from '../lib/csv-safety';
-import { planSheetExport } from '../lib/csv-export';
+import { exportContentType, planSheetExport } from '../lib/csv-export';
 import type { WhereItem } from '../lib/row-filter/where';
-import { responseWriter, writeSheetCsv } from '../lib/csv-write';
+import { responseTurn, responseWriter, writeSheetCsv, writeSheetJsonl } from '../lib/csv-write';
 import { findFileLink, linkOptions, releaseFileLink, useFileLink } from '../lib/file-links';
 import { busyMessage, sheetBusyWith, withSheetRead } from '../lib/sheet-busy';
 import { redactError } from '../lib/redact';
@@ -20,6 +20,8 @@ import { allowUpload } from '../lib/request-deadline';
 import { FILE_LINK_TOKEN_PATTERN } from '../lib/api-v1-constants';
 import { importSummary, importUploadedCsv, tooBigMessage } from '../services/csv-upload';
 import { appendAutorunNotice } from '../services/enrich-agent-autorun';
+import { dropFileCall, startFileCall, type CallLinkOptions } from '../services/setup-call-file';
+import { runFailHttpStatus } from '../services/run-shared';
 
 const router = express.Router();
 
@@ -75,10 +77,24 @@ async function receiveUpload(req: express.Request, res: express.Response) {
   if (!useFileLink(link)) return notFound(res);
   allowUpload(req); // the upload's own deadline, by its size (lib/request-deadline.ts)
 
-  const replace = linkOptions<{ mode: string }>(link).mode === 'replace';
+  const options = linkOptions<{ mode: string; call?: CallLinkOptions }>(link);
+  const replace = options.mode === 'replace';
   // The import is the link's token's doing, over MCP (lib/actor.ts: the change log and trash say so).
-  const result = await runAs({ via: 'mcp', tokenName: link.token_name, tokenId: link.token_id },
-    () => importUploadedCsv(req, link.sheet_id, link.user_id, replace));
+  const actor = { via: 'mcp' as const, tokenName: link.token_name, tokenId: link.token_id };
+  const result = await runAs(actor, () => importUploadedCsv(req, link.sheet_id, link.user_id, replace));
+  // A setup call's file (services/setup-call-file.ts): the call starts once its rows are in.
+  if (options.call && !('fail' in result)) {
+    const call = options.call;
+    const started = await runAs(actor, () => startFileCall(link.user_id, link.sheet_id, call));
+    const summary = importSummary(result.ok, false, link.user_id);
+    if ('ok' in started) return void res.status(201).json({ ...summary, ...started.ok });
+    const over = started.fail === 'over_ceiling' ? { over_ceiling: true, estimate: started.estimate } : {};
+    return void res.status(runFailHttpStatus(started)).json({
+      ...summary, error: `${started.message} The file was read, but the setup didn't start and nothing was spent.`
+        + usedUp, ...over,
+    });
+  }
+  if (options.call && 'fail' in result && result.fail !== 'busy') dropFileCall(link.user_id, options.call);
   if (!('fail' in result)) {
     // The new rows' auto-runs (an agent made the link; it should know what they spend).
     const notice = await appendAutorunNotice(link.user_id, link.sheet_id, result.ok.rowsKept);
@@ -113,11 +129,15 @@ router.get('/download/:token', async (req, res) => {
   const { token } = req.params;
   if (!FILE_LINK_TOKEN_PATTERN.test(token)) return notFound(res);
   try {
+    // Its turn on the connection first (lib/csv-write.ts responseTurn): a client gone meanwhile leaves the link
+    // unused, and the link and its sheet are read as they are then (not expired, the columns as they are now).
+    if (!await responseTurn(res)) return;
     const link = findFileLink(token, 'download');
     if (!link) return notFound(res);
-    const plan = planSheetExport(
-      link.sheet_id, link.user_id, linkOptions<{ columns: string[]; where: WhereItem[]; saved: WhereItem[] }>(link),
-    );
+    // format: 'jsonl' for JSON lines (create_download_link format); a link from before has none: CSV.
+    const options = linkOptions<{ columns: string[]; where: WhereItem[]; saved: WhereItem[]; format: string }>(link);
+    const jsonl = options.format === 'jsonl';
+    const plan = planSheetExport(link.sheet_id, link.user_id, options);
     if ('fail' in plan) {
       return plan.fail === 'not_found' ? notFound(res)
         : res.status(409).json({
@@ -127,9 +147,9 @@ router.get('/download/:token', async (req, res) => {
     // The link is used inside the read hold, so a busy sheet leaves it unused.
     const outcome = await withSheetRead(link.sheet_id, async () => {
       if (!useFileLink(link)) return 'used' as const;
-      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-      res.setHeader('Content-Disposition', contentDispositionFilename(plan.sheetName, 'csv'));
-      await writeSheetCsv(link.sheet_id, link.user_id, plan, responseWriter(res));
+      res.setHeader('Content-Type', exportContentType(jsonl ? 'jsonl' : 'csv'));
+      res.setHeader('Content-Disposition', contentDispositionFilename(plan.sheetName, jsonl ? 'jsonl' : 'csv'));
+      await (jsonl ? writeSheetJsonl : writeSheetCsv)(link.sheet_id, link.user_id, plan, responseWriter(res));
       res.end();
       return 'sent' as const;
     });

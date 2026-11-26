@@ -39,6 +39,84 @@ export const CHANGES_RECORDED_AFTER = 'v0.8.12';
 // Newest first.
 export const AGENT_CHANGES: ReleaseChanges[] = [
   {
+    version: 'v0.8.45',
+    changes: [
+      {
+        change: 'added',
+        tools: ['get_tool_guide'],
+        summary: 'get_tool_guide gives a tool\'s full details. The longest tool descriptions are shorter now and end '
+          + 'with "Details: get_tool_guide.": their edge cases, examples and long field notes moved there.',
+        details: 'Read a tool\'s guide before its first paid or destructive call, and after a refusal. Without tool '
+          + 'it lists the tools that have one. No tool or argument changed.',
+      },
+      {
+        change: 'added',
+        tools: ['call_setup', 'get_setup_call'],
+        summary: 'call_setup runs a saved setup on 1-100 items without a sheet, like a function; get_setup_call '
+          + 'answers each item\'s outputs once it finishes.',
+        details: 'Items are objects keyed by the setup\'s inputs; estimate_only defaults to true. The call id is a '
+          + 'setup run id: control_setup_run pauses or cancels it, a run webhook reports it as kind setup. Results '
+          + 'are kept 24 hours.',
+      },
+      {
+        change: 'added',
+        tools: ['call_enrichment'],
+        summary: 'call_enrichment runs one enrichment tool on 1-1,000 items without a sheet, refused up front instead '
+          + 'of pausing halfway when it could pass max_cost_usd, the daily limit, the treg balance or the token cap.',
+        details: 'It answers a run_id: get_run_status and get_run_results answer for it, with row_index as the '
+          + 'item. estimate_only defaults to true.',
+      },
+      {
+        change: 'changed',
+        tools: ['create_upload_link', 'create_download_link'],
+        summary: 'create_upload_link takes setup_id (with max_cost_usd) instead of sheet_id: the file\'s rows become a '
+          + 'setup call\'s items, and the call starts once the file is in.',
+        details: 'get_setup_call pages results with results_from and limit (next_from says where the next page '
+          + 'starts); create_download_link takes setup_call_id to save every item\'s inputs and outputs as a CSV.',
+      },
+      {
+        change: 'changed',
+        tools: ['manage_sheet', 'get_sheet'],
+        summary: 'manage_sheet tries column changes on sample rows: test copies a sheet\'s top rows and setup into a '
+          + 'hidden copy, apply_test makes the copy\'s setup the sheet\'s and puts the sample results back, '
+          + 'discard_test drops it.',
+        details: 'Work in test.test_sheet_id with the usual tools; meanwhile the sheet answers busy to every change '
+          + 'and its webhook deliveries wait (get_sheet\'s test). apply_test is a dry run unless dry_run is false.',
+      },
+      {
+        change: 'changed',
+        tools: ['get_usage'],
+        summary: 'get_usage counts runs on a sheet\'s test copy under that sheet, also after the test ends: their '
+          + 'rows have on_test_copy: true, apart from the sheet\'s own column of the same name.',
+        details: 'The whole account\'s usage lists them under the tested sheet too, not as a deleted sheet. REST: GET '
+          + '/usage, whose CSV has an On sample rows column.',
+      },
+      {
+        change: 'changed',
+        tools: ['get_usage'],
+        summary: 'get_usage lists what a call without a sheet ran as call: true, with sheet_id and sheet_name null, '
+          + 'not as a deleted sheet; by column every call adds up in one row.',
+      },
+      {
+        change: 'changed',
+        tools: ['manage_sheet_webhook'],
+        summary: 'manage_sheet_webhook takes set_auto_delete and auto_delete_off: a webhook sheet keeps its newest '
+          + 'keep_rows rows and deletes older ones once they are finished, not to the trash.',
+        details: 'A row leaves once every auto-run column has run on it and, with success_column, once that has a '
+          + 'result; copy_to_sheet_id copies it to another sheet first. get\'s webhook has auto_delete, null while '
+          + 'off.',
+      },
+      {
+        change: 'changed',
+        tools: ['manage_sheet_webhook'],
+        summary: 'manage_sheet_webhook\'s set_auto_delete takes mode "rules" with where (read_rows\' language): older '
+          + 'webhook rows are deleted once they pass it, whether auto-run has run on them or not.',
+        details: 'get\'s auto_delete has mode and where. A switch to rules needs success_column: null when one is '
+          + 'set; a switch back to actions_finish clears the rules.',
+      },
+    ],
+  },
+  {
     version: 'v0.8.44',
     changes: [
       {
@@ -58,6 +136,133 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
           + 'row_count_updating: true.',
         details: 'row_count_updating means that row_count may be out of date: call list_tables again in a moment for '
           + 'the new count. GET /api/v1/tables answers the same.',
+      },
+      {
+        change: 'changed',
+        tools: ['create_download_link'],
+        summary: 'create_download_link takes format: csv (default) or jsonl, one {"id", "data"} object a line as '
+          + 'read_rows answers a row, values keeping their type.',
+        details: 'Use jsonl to feed a script or another tool; CSV stays the one to open in a spreadsheet. REST: GET '
+          + '/sheets/:id/export?format=jsonl.',
+      },
+      {
+        change: 'changed',
+        tools: ['run_ai_column', 'run_http_enrichment', 'run_enrichment', 'waterfall_column'],
+        summary: 'save_only: true stores a column\'s new setup and runs nothing (no rows, no cost). It answers '
+          + 'saved: true and run_id, the setup\'s record: control_run rerun with it runs the column so.',
+        details: 'A new column is made empty. An existing HTTP API column takes a new setup only this way. Refused '
+          + 'with estimate_only, output_columns, a list job, or what only a run takes (target_row_ids, preview_rows).',
+      },
+      {
+        change: 'added',
+        tools: ['social_research'],
+        summary: 'social_research makes a table of social posts on a topic (TikTok, Instagram, YouTube, X), with '
+          + 'transcripts, an AI breakdown, creators, their usual views and comments set up and not run; find_posts '
+          + 'searches (paid).',
+        details: 'create is free. find_posts is an estimate unless estimate_only is false, then needs the estimate\'s '
+          + 'high_usd as max_cost_usd; running it again adds only new posts. Run the steps on the Top posts view\'s '
+          + 'rows with each column\'s own run.',
+      },
+      {
+        change: 'changed',
+        tools: ['export_csv'],
+        summary: 'export_csv puts its leading quote on a cell whose first visible character is a formula trigger: '
+          + 'after spaces or invisible characters, and for full-width forms like ＝, not only at the start.',
+        details: 'Spreadsheet apps hide the quote and show the text; import_csv takes it off again. A plain number '
+          + 'after spaces, like " -5", is left as it is.',
+      },
+      {
+        change: 'changed',
+        tools: ['read_rows', 'control_run'],
+        summary: 'Out of date now checks each row against the columns its own run read: a new setup that reads other '
+          + 'columns no longer marks the rows made before it out of date.',
+        details: 'read_rows where out_of_date, include_status and control_run\'s out_of_date modes agree. A row made '
+          + '16 or more such setups ago never reads out of date.',
+      },
+      {
+        change: 'added',
+        tools: ['list_prompt_starters'],
+        summary: 'list_prompt_starters gives good first prompts for an AI column on a sheet, the ones the app offers, '
+          + 'each as run_ai_column\'s arguments.',
+        details: 'Qualify, classify, an opener, a lead score and a company profile, written with the sheet\'s own '
+          + 'columns. Fill in the [square brackets] before running one. REST: GET /sheets/:id/prompt-starters.',
+      },
+      {
+        change: 'changed',
+        tools: ['transfer_rows'],
+        summary: 'A transfer_rows retry with its idempotency_key answers its first transfer even while either sheet '
+          + 'is busy, and doesn\'t count toward the 10 transfers a minute.',
+        details: 'A new key, or the same key with other arguments, is still refused as busy while a sheet is.',
+      },
+      {
+        change: 'server',
+        summary: 'read_rows with include_status gives a condition_not_met cell a why: each part of the column\'s "Only '
+          + 'run if" the row fails now, with what the cell holds. Free, no AI.',
+        details: 'check_run_condition\'s sample rows that fail carry the same why. A row that passes the rule now '
+          + '(its cells changed since) says so: rerun it to fill it.',
+      },
+      {
+        change: 'changed',
+        tools: ['hiring_signals'],
+        summary: 'hiring_signals takes action "update" (write scope, free): change min_roles, leave_out_companies or '
+          + 'both after create. They apply from the next check.',
+        details: 'A company kept off before gets its row at the next check if it passes now; a row already on '
+          + 'Companies stays. null resets one (every company, none left out). PATCH /api/v1/hiring/{id} does the same.',
+      },
+      {
+        change: 'added',
+        tools: ['manage_sheet_webhook'],
+        summary: 'manage_sheet_webhook sets up a sheet\'s incoming webhook, where each JSON event POSTed becomes a '
+          + 'row: get, create, turn_on, turn_off, rotate, add_field, remove_field, new_token, remove_token and '
+          + 'delete.',
+        details: 'get needs read, the rest write. The url shows only to a write key, until the first event; then '
+          + 'rotate makes a new one. new_token answers a token, shown once, that senders must send as '
+          + 'Authorization: Bearer <token>.',
+      },
+      {
+        change: 'changed',
+        tools: ['set_auto_run'],
+        summary: 'set_auto_run takes waiting_rows on a resume (paused false): run (default, as before), empty_only '
+          + 'or skip, for the rows added or changed while auto-run was paused.',
+        details: 'empty_only drops the waiting rows whose cell already holds a value ("keep existing results"); skip '
+          + 'drops every waiting row, so only rows added or changed from now on run. PUT '
+          + '/api/v1/sheets/{id}/enrichment-auto-run takes the same.',
+      },
+      {
+        change: 'changed',
+        tools: ['manage_table', 'manage_sheet'],
+        summary: 'manage_table and manage_sheet create take webhook: true to give the new sheet an incoming webhook '
+          + 'in the same call. The answer\'s webhook has its url.',
+      },
+      {
+        change: 'changed',
+        tools: ['set_auto_run'],
+        summary: 'set_auto_run takes start_delay_s (0-600, default 0): a row waits that many seconds after its last '
+          + 'change before auto-run runs it. Its answer lists each column\'s start_delay_s.',
+        details: 'For rows filled in over a while (by hand, a webhook in parts, another column): each new write starts '
+          + 'the wait again. Omitted keeps it; null sets 0. PUT /api/v1/sheets/{id}/enrichment-auto-run takes it too.',
+      },
+      {
+        change: 'added',
+        tools: ['manage_run_schedule'],
+        summary: 'manage_run_schedule reruns a sheet\'s or a table\'s run columns on a schedule: daily, on weekdays, '
+          + 'weekly, monthly or every N hours, at a time in a time zone.',
+        details: 'Each firing is a column run as the token that made it (get_setup_run follows it). max_cost_usd '
+          + 'refuses a firing that could cost more; last_error says why a firing didn\'t start.',
+      },
+      {
+        change: 'added',
+        tools: ['run_columns'],
+        summary: 'run_columns runs several of a sheet\'s run columns again in one call, on the rows a mode picks '
+          + '(among row_ids or a where), with an estimate first and an optional max_cost_usd.',
+        details: 'A column reading another chosen column waits for that one\'s whole run. It answers a setup_run: '
+          + 'follow it with get_setup_run, and pause, resume or stop it with control_setup_run.',
+      },
+      {
+        change: 'changed',
+        tools: ['get_setup_run', 'control_setup_run'],
+        summary: 'A column run (run_columns) shows as a setup run with no setup: setup_id null, column_run with its '
+          + 'mode and rows, and a step for each column (kind can be waterfall).',
       },
     ],
   },

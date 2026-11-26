@@ -8,6 +8,7 @@ import type { McpServer, ServerContext } from '@modelcontextprotocol/server';
 import { AccessTokenScope } from '../lib/access-token';
 import { redactError } from '../lib/redact';
 import { sheetBusyWith, busyMessage } from '../lib/sheet-busy';
+import { TEST_ACTIONS } from '../lib/sheet-test-hold';
 import { TOOL_ANNOTATIONS } from './tool-annotations';
 import { TOOL_OUTPUTS, type ToolAnswer, type ToolName } from './tool-outputs';
 import { checkErrorOutput, toolOutput } from './output-schema';
@@ -75,6 +76,9 @@ export const errWith = (message: string, extra: Record<string, unknown>): ErrRes
   const data = { error: message, ...extra };
   return { content: [{ type: 'text', text: JSON.stringify(data) }], structuredContent: data, isError: true };
 };
+
+// Where an address handed to this caller points (routes/mcp.ts sets it from the request: lib/file-links.ts).
+export const mcpLinkBase = (ctx: McpAuthCtx): string => ctx.linkBase ?? `http://localhost:${process.env.PORT || 3002}`;
 
 // Scope gate: null when allowed, an isError result naming the missing scope
 // otherwise (so the agent can tell the user which token setting to change).
@@ -164,6 +168,8 @@ const RUNS_WHILE_SHEET_BUSY = new Set([
   'list_trash', 'get_sheet_history',
   // Making a link doesn't touch the sheet; using it checks for busy then.
   'create_upload_link', 'create_download_link',
+  // Its get reads; every other action refuses a busy sheet itself (mcp/tools-sheet-webhook.ts).
+  'manage_sheet_webhook',
   // Only cancel_all names a sheet, and stopping its runs is allowed while it is
   // busy: a run still writing its placeholders is what holds it (as /runs/stop).
   'control_run',
@@ -178,6 +184,8 @@ const RUNS_WHILE_SHEET_BUSY = new Set([
 // busyRefusal).
 const KEYED_RUNS_WHILE_SHEET_BUSY = new Set([
   'update_cells', 'run_ai_column', 'run_http_enrichment', 'run_enrichment', 'waterfall_column',
+  // A retry answers its first transfer; any other keyed transfer is refused as busy there (rows-transfer.ts).
+  'transfer_rows',
 ]);
 
 export function refuseWhileSheetBusy(name: string, handler: ToolHandler): ToolHandler {
@@ -185,6 +193,9 @@ export function refuseWhileSheetBusy(name: string, handler: ToolHandler): ToolHa
   return async (args, mcp): Promise<ToolResult> => {
     const input = (args ?? {}) as Record<string, unknown>;
     if (KEYED_RUNS_WHILE_SHEET_BUSY.has(name) && typeof input.idempotency_key === 'string') return handler(args, mcp);
+    // A test's own actions: a sheet being tested is busy until they end it, and each checks the sheet itself.
+    const testAction = name === 'manage_sheet' && (TEST_ACTIONS as readonly unknown[]).includes(input.action);
+    if (testAction) return handler(args, mcp);
     for (const key of ['sheet_id', 'source_sheet_id', 'destination_sheet_id']) {
       const what = typeof input[key] === 'string' ? sheetBusyWith(input[key] as string) : null;
       if (what) return err(busyMessage(what));

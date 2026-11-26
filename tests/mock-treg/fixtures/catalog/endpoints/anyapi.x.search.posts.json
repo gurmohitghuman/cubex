@@ -1,0 +1,486 @@
+{
+ "endpoint": {
+  "id": "anyapi.x.search.posts",
+  "provider": "anyapi",
+  "provider_display": "AnyAPI",
+  "name": "X / Twitter Search",
+  "summary": "Search X (Twitter) with full advanced-search syntax (operators like from:, since:, until:, min_faves: work inline in the query) and get structured tweets with text, author, engagement, and cursor pagination. Limit is a per-page maximum; native pages contain approximately 20 tweets unless requireSinglePage selects a bulk lane.",
+  "method": "POST",
+  "path": "/v1/run/twitter.search",
+  "scope": "any_account",
+  "tier": "core",
+  "kind": "data",
+  "domain": "search",
+  "call_template": "treg call anyapi.x.search.posts",
+  "cost": {
+   "type": "per_call",
+   "value": 0.00075,
+   "currency": "USD",
+   "unit": "call",
+   "reported_charge": {
+    "path": "costUsd",
+    "unit": "usd"
+   },
+   "source": "observed",
+   "source_url": "https://api.getanyapi.com/v1/apis/twitter.search",
+   "checked": "2026-09-11",
+   "confidence": "verified",
+   "note": "One source bills per result, so a small `limit` can cost less than the listed price. 4 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0154 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A not-found or empty answer is billed too, at its own `costUsd`.",
+   "usd": 0.00075
+  },
+  "async": null,
+  "platform_eligible": true,
+  "platform_blocked": null,
+  "miss": null,
+  "status": null,
+  "status_note": null,
+  "superseded_by": null,
+  "verified": "2026-09-19",
+  "added": "2026-09-19",
+  "docs_url": "https://getanyapi.com/api/twitter/search",
+  "has_example": true,
+  "input": {
+   "body": {
+    "cursor": {
+     "type": "string",
+     "required": false,
+     "note": "Opaque pagination cursor from a previous response's nextCursor. Omit for the first page; pass it to fetch the next page of search results."
+    },
+    "limit": {
+     "type": "integer",
+     "required": false,
+     "note": "Page size to ask for (1-50, default 20). Some sources honor it; others always return their whole native page of about 20. A page is never trimmed after the call, so follow nextCursor to continue exactly where this response ended.",
+     "default": 20,
+     "min": 1,
+     "max": 50,
+     "example": 20
+    },
+    "query": {
+     "type": "string",
+     "required": true,
+     "note": "Search query using X (Twitter) advanced-search syntax. IMPORTANT: bare terms are ANDed - a tweet must contain EVERY word, so a list of loosely related keywords matches nothing; use one short phrase or OR between alternatives (e.g. 'anyapi OR getanyapi'). You can embed X advanced-search operators...",
+     "example": "sample"
+    },
+    "queryType": {
+     "type": "string",
+     "required": false,
+     "note": "Result ranking: 'Latest', 'Top', 'Photos', or 'Videos' (e.g. Latest).",
+     "default": "sample"
+    }
+   },
+   "bodyType": "json",
+   "queryArrayEncoding": "comma",
+   "queryParams": {
+    "fields": {
+     "type": "string",
+     "required": false,
+     "note": "Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, not the charge."
+    },
+    "max_items": {
+     "type": "integer",
+     "required": false,
+     "min": 0,
+     "note": "Caps the result rows returned; `_truncated` says how many were withheld. Not the charge."
+    },
+    "summary": {
+     "type": "boolean",
+     "required": false,
+     "note": "`true` returns only an outline: keys, item counts, per-field sizes."
+    },
+    "jq": {
+     "type": "string",
+     "required": false,
+     "note": "jq expression over the result envelope; its output replaces `output`. A failed expression returns the full result with `jqError`."
+    }
+   }
+  },
+  "capability": "x.search.posts",
+  "capability_description": "Search posts by keyword",
+  "platform": "x",
+  "platform_label": "X (Twitter)",
+  "observed": {
+   "samples": 3191211,
+   "decided": 3153903,
+   "ok_rate": 0.9752,
+   "p50_ms": 1727,
+   "p95_ms": 3422,
+   "last_ok_days": 0,
+   "hit_rate": 0.6021,
+   "hit_samples": 3075273
+  },
+  "wallet": {
+   "payable": true,
+   "protocols": [
+    "mpp"
+   ],
+   "minimum_payment_micro": 10000,
+   "fee_bps": 0,
+   "note": "pay per call with a wallet, no account. A payment is at least $0.01; the call is charged only its real price, and the rest stays as this wallet's credit for its next calls (credit is not paid back as money)."
+  },
+  "reviews": {
+   "teams": 50,
+   "samples": [
+    {
+     "usefulness": "useful",
+     "reason": "Returned high-engagement health and longevity creator accounts with active sponsor names and view counts.",
+     "client": "mcp",
+     "month": "2026-11"
+    },
+    {
+     "usefulness": "partly",
+     "reason": "Postcards email builder + Bubble, but not the visual frontend editor",
+     "client": "claude-code",
+     "month": "2026-11"
+    },
+    {
+     "usefulness": "useful",
+     "reason": "Returned 20 relevant replies with text, author, date and engagement counts; the cursor it returned was not accepted when replayed from the CLI under the same account.",
+     "client": "mcp",
+     "month": "2026-11"
+    }
+   ],
+   "share": {
+    "useful": 0.63,
+    "partly": 0.25,
+    "not_useful": 0.11
+   }
+  }
+ },
+ "provider": {
+  "service": "anyapi",
+  "display_name": "AnyAPI",
+  "limits": "no published per-key request-rate limit on /v1/run - AnyAPI does not advertise a quota it does not enforce. Spend is bounded instead by the wallet balance, the key's own spend cap, and the per-request `max_cost_usd` ceiling the caller sets. The unauthenticated /agent/signup trial route is limited to 3 per IP per hour.",
+  "pricing_url": "https://getanyapi.com/catalog",
+  "docs": "https://getanyapi.com/docs"
+ },
+ "siblings": [
+  {
+   "id": "crawl4ai.x.search.posts",
+   "provider": "crawl4ai",
+   "provider_display": "Crawl4AI",
+   "name": "Search posts on X (Twitter)",
+   "scope": "any_account",
+   "kind": "data",
+   "cost": {
+    "type": "per_success",
+    "value": 0.65,
+    "currency": "credit",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.00065
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": null,
+   "params": [
+    "limit",
+    "mode",
+    "query"
+   ],
+   "observed": {
+    "samples": 11535,
+    "decided": 9702,
+    "ok_rate": 0.9987,
+    "p50_ms": 1866,
+    "p95_ms": 8872,
+    "last_ok_days": 0,
+    "hit_rate": 0.7486,
+    "hit_samples": 9689
+   },
+   "reviews": {
+    "teams": 0
+   }
+  },
+  {
+   "id": "justoneapi.x.twitter-search-v1",
+   "provider": "justoneapi",
+   "provider_display": "Just One API",
+   "name": "Search X (Twitter) by keyword \u2014 top, latest, media, people",
+   "scope": "",
+   "kind": "data",
+   "cost": {
+    "type": "per_success",
+    "value": 0.1,
+    "currency": "CNY",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.01476
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "keyword",
+    "searchType",
+    "cursor"
+   ],
+   "observed": {
+    "samples": 47581,
+    "decided": 24846,
+    "ok_rate": 0.9999,
+    "p50_ms": 2625,
+    "p95_ms": 4428,
+    "last_ok_days": 0,
+    "hit_rate": 0.1137,
+    "hit_samples": 24821
+   },
+   "reviews": {
+    "teams": 10,
+    "share": {
+     "useful": 0.13,
+     "partly": 0.0,
+     "not_useful": 0.87
+    }
+   }
+  },
+  {
+   "id": "tikhub.x.twitter-web-fetch-search-timeline",
+   "provider": "tikhub",
+   "provider_display": "TikHub",
+   "name": "Search X (Twitter) posts by keyword",
+   "scope": "",
+   "kind": "data",
+   "cost": {
+    "type": "per_call",
+    "value": 0.001,
+    "currency": "USD",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.001
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "keyword",
+    "search_type",
+    "cursor"
+   ],
+   "observed": {
+    "samples": 374150,
+    "decided": 302498,
+    "ok_rate": 0.9876,
+    "p50_ms": 2161,
+    "p95_ms": 3789,
+    "last_ok_days": 0,
+    "hit_rate": 0.7515,
+    "hit_samples": 298738
+   },
+   "reviews": {
+    "teams": 25,
+    "share": {
+     "useful": 0.54,
+     "partly": 0.29,
+     "not_useful": 0.17
+    }
+   }
+  },
+  {
+   "id": "treg.x.search.posts",
+   "provider": "treg",
+   "provider_display": "treg",
+   "name": "x.search.posts \u2014 routed: best of 3 providers, own keys first",
+   "scope": "",
+   "kind": "routed",
+   "cost": {
+    "type": "per_success",
+    "value": 0.00075,
+    "currency": "USD",
+    "per": 1,
+    "unit": "call",
+    "varies": true,
+    "usd": 0.00075
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": null,
+   "params": [
+    "q"
+   ],
+   "observed": {
+    "samples": 358950,
+    "decided": 358687,
+    "ok_rate": 0.9602,
+    "p50_ms": null,
+    "p95_ms": null,
+    "last_ok_days": 0,
+    "hit_rate": null,
+    "hit_samples": 0
+   }
+  },
+  {
+   "id": "x.x.search-posts-all",
+   "provider": "x",
+   "provider_display": "X (Twitter)",
+   "name": "Search the full tweet archive by keyword query",
+   "scope": "any_account",
+   "kind": "data",
+   "cost": {
+    "type": "per_result",
+    "value": 0.005,
+    "currency": "USD",
+    "per": 1,
+    "unit": "post",
+    "usd": 0.005
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": null,
+   "params": [
+    "query",
+    "start_time",
+    "end_time",
+    "since_id",
+    "until_id",
+    "max_results",
+    "next_token",
+    "pagination_token",
+    "sort_order"
+   ],
+   "observed": {
+    "samples": 950,
+    "decided": 883,
+    "ok_rate": 0.9977,
+    "p50_ms": 213,
+    "p95_ms": 578,
+    "last_ok_days": 0,
+    "hit_rate": null,
+    "hit_samples": 0
+   }
+  },
+  {
+   "id": "x.x.search-posts-recent",
+   "provider": "x",
+   "provider_display": "X (Twitter)",
+   "name": "Search tweets from the last 7 days by keyword",
+   "scope": "any_account",
+   "kind": "data",
+   "cost": {
+    "type": "per_result",
+    "value": 0.005,
+    "currency": "USD",
+    "per": 1,
+    "unit": "post",
+    "usd": 0.005
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": null,
+   "params": [
+    "query",
+    "max_results",
+    "next_token",
+    "pagination_token",
+    "start_time",
+    "end_time",
+    "since_id",
+    "until_id",
+    "sort_order"
+   ],
+   "observed": {
+    "samples": 4117,
+    "decided": 2822,
+    "ok_rate": 0.9986,
+    "p50_ms": 173,
+    "p95_ms": 439,
+    "last_ok_days": 0,
+    "hit_rate": null,
+    "hit_samples": 0
+   },
+   "reviews": {
+    "teams": 0
+   }
+  }
+ ],
+ "related_capabilities": [
+  {
+   "endpoint_id": "treg.x.post.comments",
+   "capability": "x.post.comments",
+   "does": "List a post's comments"
+  },
+  {
+   "endpoint_id": "treg.x.user.posts",
+   "capability": "x.user.posts",
+   "does": "List a user's recent posts"
+  },
+  {
+   "endpoint_id": "treg.x.user.profile",
+   "capability": "x.user.profile",
+   "does": "Get a user's public profile"
+  }
+ ],
+ "call_template": "treg call anyapi.x.search.posts",
+ "example_response": {
+  "output": {
+   "found": true,
+   "data": {
+    "items": [
+     {
+      "id": "1900000",
+      "url": "https://x.com/sunny_side_studio/status/1900000",
+      "authorUsername": "sunny_side_studio",
+      "authorName": "Sunny Side Studio",
+      "authorFollowers": 120000,
+      "text": "Three things that fixed my mornings (1)",
+      "viewCount": 50000,
+      "likeCount": 2000,
+      "replyCount": 90,
+      "retweetCount": 140,
+      "createdUtc": 1795000000
+     },
+     {
+      "id": "1900001",
+      "url": "https://x.com/mila_mornings/status/1900001",
+      "authorUsername": "mila_mornings",
+      "authorName": "Mila Mornings",
+      "authorFollowers": 48000,
+      "text": "Three things that fixed my mornings (2)",
+      "viewCount": 25000,
+      "likeCount": 1000,
+      "replyCount": 45,
+      "retweetCount": 70,
+      "createdUtc": 1794913600
+     },
+     {
+      "id": "1900002",
+      "url": "https://x.com/calm_kettle/status/1900002",
+      "authorUsername": "calm_kettle",
+      "authorName": "Calm Kettle",
+      "authorFollowers": 9100,
+      "text": "Three things that fixed my mornings (3)",
+      "viewCount": 16666,
+      "likeCount": 666,
+      "replyCount": 30,
+      "retweetCount": 46,
+      "createdUtc": 1794827200
+     }
+    ],
+    "nextCursor": ""
+   }
+  },
+  "provider": "anyapi",
+  "costUsd": 0.001,
+  "items": 3,
+  "replayed": false,
+  "source": {
+   "id": "sample",
+   "name": "Sample",
+   "kind": "api",
+   "artworkKey": "sample"
+  },
+  "resultId": "sample-result"
+ },
+ "hints": []
+}

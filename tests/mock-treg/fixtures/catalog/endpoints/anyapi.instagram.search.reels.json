@@ -1,0 +1,391 @@
+{
+ "endpoint": {
+  "id": "anyapi.instagram.search.reels",
+  "provider": "anyapi",
+  "provider_display": "AnyAPI",
+  "name": "Instagram Reels Search",
+  "summary": "Search Instagram Reels by keyword: caption, likes, comments, views, creator and duration. `views` can exceed Instagram's own play count (it may add Facebook plays), so it is not an Instagram-only count. Relevance-ranked, no recency filter.",
+  "method": "POST",
+  "path": "/v1/run/instagram.reels_search",
+  "scope": "any_account",
+  "tier": "core",
+  "kind": "data",
+  "domain": "search",
+  "call_template": "treg call anyapi.instagram.search.reels",
+  "cost": {
+   "type": "per_call",
+   "value": 0.0015,
+   "currency": "USD",
+   "unit": "call",
+   "reported_charge": {
+    "path": "costUsd",
+    "unit": "usd"
+   },
+   "source": "observed",
+   "source_url": "https://api.getanyapi.com/v1/apis/instagram.reels_search",
+   "checked": "2026-09-11",
+   "confidence": "verified",
+   "note": "2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0024 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A not-found or empty answer is billed too, at its own `costUsd`.",
+   "usd": 0.0015
+  },
+  "async": null,
+  "platform_eligible": true,
+  "platform_blocked": null,
+  "miss": null,
+  "status": null,
+  "status_note": null,
+  "superseded_by": null,
+  "verified": "2026-09-19",
+  "added": "2026-09-19",
+  "docs_url": "https://getanyapi.com/api/instagram/reels-search",
+  "has_example": true,
+  "input": {
+   "body": {
+    "cursor": {
+     "type": "string",
+     "required": false,
+     "note": "Pagination cursor from a previous response's nextCursor. Pages hold about 12 reels and AnyAPI drops reels seen on recent pages, so paging often ends after two or three pages; the last, empty page is still charged."
+    },
+    "query": {
+     "type": "string",
+     "required": true,
+     "note": "Search keyword (e.g. \"travel\").",
+     "example": "sample"
+    }
+   },
+   "bodyType": "json",
+   "queryArrayEncoding": "comma",
+   "queryParams": {
+    "fields": {
+     "type": "string",
+     "required": false,
+     "note": "Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, not the charge."
+    },
+    "max_items": {
+     "type": "integer",
+     "required": false,
+     "min": 0,
+     "note": "Caps the result rows returned; `_truncated` says how many were withheld. Not the charge."
+    },
+    "summary": {
+     "type": "boolean",
+     "required": false,
+     "note": "`true` returns only an outline: keys, item counts, per-field sizes."
+    },
+    "jq": {
+     "type": "string",
+     "required": false,
+     "note": "jq expression over the result envelope; its output replaces `output`. A failed expression returns the full result with `jqError`."
+    }
+   }
+  },
+  "capability": "instagram.search.reels",
+  "capability_description": "Search reels by keyword",
+  "platform": "instagram",
+  "platform_label": "Instagram",
+  "observed": {
+   "samples": 196922,
+   "decided": 196073,
+   "ok_rate": 0.9964,
+   "p50_ms": 6397,
+   "p95_ms": 18564,
+   "last_ok_days": 0,
+   "hit_rate": 0.871,
+   "hit_samples": 195335
+  },
+  "wallet": {
+   "payable": true,
+   "protocols": [
+    "mpp"
+   ],
+   "minimum_payment_micro": 10000,
+   "fee_bps": 0,
+   "note": "pay per call with a wallet, no account. A payment is at least $0.01; the call is charged only its real price, and the rest stays as this wallet's credit for its next calls (credit is not paid back as money)."
+  },
+  "reviews": {
+   "teams": 50,
+   "samples": [
+    {
+     "usefulness": "partly",
+     "reason": "Returned useful GTA 6 reel candidates with engagement counts, but results required filtering for numbered-list format, creator narration and view-count caveat.",
+     "client": "mcp",
+     "month": "2026-11"
+    },
+    {
+     "usefulness": "useful",
+     "reason": "Korean keyword search returned 11-23 reels per call with caption, duration, likes, views and paid-partnership flag. Likes are 0 when counts are hidden, so check countsHidden.",
+     "client": "mcp",
+     "month": "2026-11"
+    },
+    {
+     "usefulness": "useful",
+     "reason": "Keyword reel search returned recent Spanish-language reels with views, likes, comments and captions; enough to compare hooks and CTA patterns.",
+     "client": "mcp",
+     "month": "2026-11"
+    }
+   ],
+   "share": {
+    "useful": 0.55,
+    "partly": 0.31,
+    "not_useful": 0.14
+   }
+  }
+ },
+ "provider": {
+  "service": "anyapi",
+  "display_name": "AnyAPI",
+  "limits": "no published per-key request-rate limit on /v1/run - AnyAPI does not advertise a quota it does not enforce. Spend is bounded instead by the wallet balance, the key's own spend cap, and the per-request `max_cost_usd` ceiling the caller sets. The unauthenticated /agent/signup trial route is limited to 3 per IP per hour.",
+  "pricing_url": "https://getanyapi.com/catalog",
+  "docs": "https://getanyapi.com/docs"
+ },
+ "siblings": [
+  {
+   "id": "justoneapi.x.instagram-search-reels-v1",
+   "provider": "justoneapi",
+   "provider_display": "Just One API",
+   "name": "Search Instagram Reels by keyword or hashtag",
+   "scope": "",
+   "kind": "data",
+   "cost": {
+    "type": "per_success",
+    "value": 0.1,
+    "currency": "CNY",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.01476
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "keyword",
+    "paginationToken"
+   ],
+   "observed": {
+    "samples": 437,
+    "decided": 437,
+    "ok_rate": 1.0,
+    "p50_ms": 3451,
+    "p95_ms": 17792,
+    "last_ok_days": 0,
+    "hit_rate": 0.0892,
+    "hit_samples": 437
+   }
+  },
+  {
+   "id": "scrapecreators.x.v2-instagram-reels-search",
+   "provider": "scrapecreators",
+   "provider_display": "ScrapeCreators",
+   "name": "Search Instagram reels by keyword",
+   "scope": "",
+   "kind": "data",
+   "cost": {
+    "type": "per_call",
+    "value": 1,
+    "currency": "credit",
+    "per": 1,
+    "unit": "call",
+    "reported_charge": {
+     "path": "credits_charged",
+     "unit": "credit"
+    },
+    "usd": 0.00188
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "query",
+    "date_posted",
+    "page"
+   ],
+   "observed": {
+    "samples": 61308,
+    "decided": 58506,
+    "ok_rate": 0.9908,
+    "p50_ms": 11883,
+    "p95_ms": 18394,
+    "last_ok_days": 0,
+    "hit_rate": 1.0,
+    "hit_samples": 57701
+   },
+   "reviews": {
+    "teams": 10,
+    "share": {
+     "useful": 0.48,
+     "partly": 0.52,
+     "not_useful": 0.0
+    }
+   }
+  },
+  {
+   "id": "tikhub.x.instagram-v2-search-reels",
+   "provider": "tikhub",
+   "provider_display": "TikHub",
+   "name": "Search Instagram reels by keyword",
+   "scope": "",
+   "kind": "data",
+   "cost": {
+    "type": "per_call",
+    "value": 0.002,
+    "currency": "USD",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.002
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "keyword",
+    "pagination_token"
+   ],
+   "observed": {
+    "samples": 12425,
+    "decided": 11571,
+    "ok_rate": 0.9992,
+    "p50_ms": 6979,
+    "p95_ms": 20629,
+    "last_ok_days": 0,
+    "hit_rate": 0.8192,
+    "hit_samples": 11557
+   },
+   "reviews": {
+    "teams": 0
+   }
+  },
+  {
+   "id": "treg.instagram.search.reels",
+   "provider": "treg",
+   "provider_display": "treg",
+   "name": "instagram.search.reels \u2014 routed: best of 4 providers, own keys first",
+   "scope": "",
+   "kind": "routed",
+   "cost": {
+    "type": "per_success",
+    "value": 0.0015,
+    "currency": "USD",
+    "per": 1,
+    "unit": "call",
+    "varies": true,
+    "usd": 0.0015
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": null,
+   "params": [
+    "q"
+   ],
+   "observed": {
+    "samples": 72801,
+    "decided": 72745,
+    "ok_rate": 0.9899,
+    "p50_ms": null,
+    "p95_ms": null,
+    "last_ok_days": 0,
+    "hit_rate": null,
+    "hit_samples": 0
+   }
+  }
+ ],
+ "related_capabilities": [
+  {
+   "endpoint_id": "treg.instagram.hashtag.posts",
+   "capability": "instagram.hashtag.posts",
+   "does": "List posts under a hashtag"
+  },
+  {
+   "endpoint_id": "treg.instagram.post.comments",
+   "capability": "instagram.post.comments",
+   "does": "List a post's comments"
+  },
+  {
+   "endpoint_id": "treg.instagram.post.detail",
+   "capability": "instagram.post.detail",
+   "does": "Get a post's content & stats"
+  },
+  {
+   "endpoint_id": "treg.instagram.search.users",
+   "capability": "instagram.search.users",
+   "does": "Search users by keyword"
+  },
+  {
+   "endpoint_id": "treg.instagram.user.posts",
+   "capability": "instagram.user.posts",
+   "does": "List a user's recent posts"
+  }
+ ],
+ "call_template": "treg call anyapi.instagram.search.reels",
+ "example_response": {
+  "output": {
+   "found": true,
+   "data": {
+    "reels": [
+     {
+      "id": "310000",
+      "shortcode": "SAMPLE0",
+      "url": "https://www.instagram.com/reel/SAMPLE0/",
+      "username": "sunny_side_studio",
+      "displayName": "Sunny Side Studio",
+      "caption": "Slow mornings, day 1",
+      "views": 700000,
+      "likes": 40000,
+      "comments": 900,
+      "reshares": 500,
+      "createdUtc": 1795000000,
+      "durationSeconds": 30
+     },
+     {
+      "id": "310001",
+      "shortcode": "SAMPLE1",
+      "url": "https://www.instagram.com/reel/SAMPLE1/",
+      "username": "mila_mornings",
+      "displayName": "Mila Mornings",
+      "caption": "Slow mornings, day 2",
+      "views": 350000,
+      "likes": 20000,
+      "comments": 450,
+      "reshares": 250,
+      "createdUtc": 1794568000,
+      "durationSeconds": 30
+     },
+     {
+      "id": "310002",
+      "shortcode": "SAMPLE2",
+      "url": "https://www.instagram.com/reel/SAMPLE2/",
+      "username": "calm_kettle",
+      "displayName": "Calm Kettle",
+      "caption": "Slow mornings, day 3",
+      "views": 233333,
+      "likes": 13333,
+      "comments": 300,
+      "reshares": 166,
+      "createdUtc": 1794136000,
+      "durationSeconds": 30
+     }
+    ],
+    "nextCursor": ""
+   }
+  },
+  "provider": "anyapi",
+  "costUsd": 0.001,
+  "items": 3,
+  "replayed": false,
+  "source": {
+   "id": "sample",
+   "name": "Sample",
+   "kind": "api",
+   "artworkKey": "sample"
+  },
+  "resultId": "sample-result"
+ },
+ "hints": []
+}

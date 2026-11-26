@@ -27,14 +27,19 @@ import type { RunFail } from './run-shared';
 import { resumeTokenFor, spendCapRefusal } from './token-spend';
 import { setupResumeLimitRefusal } from './ai-run-limit';
 import { resumeInputRefusal } from '../lib/run-resume-inputs';
+import { columnSavedKeys } from './column-run-plan';
 
 export type SetupRunAction = 'pause' | 'resume' | 'cancel';
 
 // The saved keys the rest of the setup would read: steps not done yet, and the
 // auto-runs it turns on when it ends.
 function keysAhead(r: SetupRunRow): string[] {
-  const steps = stepsOf(r);
-  return planOf(r).spec.steps.flatMap((s, i) => (s.kind === 'http'
+  const steps = stepsOf(r), plan = planOf(r);
+  if (plan.columns) {
+    return plan.columns.steps.flatMap((s, i) => (steps[i].state === 'done' ? []
+      : columnSavedKeys(r.user_id, r.sheet_id, s.kind, s.column)));
+  }
+  return plan.spec.steps.flatMap((s, i) => (s.kind === 'http'
     && (steps[i].state !== 'done' || (r.auto_run && s.autoRun))
     ? savedKeyRefsInConfig(r.user_id, { method: s.request.method, url: s.request.url, headers: s.request.headers,
       body: s.request.body ?? undefined }) : []));
@@ -61,6 +66,11 @@ const runsOf = (steps: StepRecord[]) =>
   steps.filter(s => s.state === 'running' && (s.kind === 'ai' || s.kind === 'http') && s.runId)
     .map(s => ({ kind: s.kind as 'ai' | 'http', runId: s.runId! }));
 
+// A stopped setup's runs of the layer working now stop too (a setup call paused too long: setup-call.ts).
+export async function cancelStepRuns(r: SetupRunRow): Promise<void> {
+  for (const x of runsOf(stepsOf(r))) await cancelRun(x.kind, x.runId, r.user_id);
+}
+
 export async function controlSetupRun(
   userId: string, id: string, action: SetupRunAction, hasSecretsScope: boolean,
 ): Promise<{ ok: SetupRunView } | RunFail> {
@@ -78,7 +88,8 @@ export async function controlSetupRun(
     // An AI step whose model OpenRouter's list doesn't have would fail every row: refused up front too.
     const gone = runs.map(x => resumeModelRefusal(x.kind, x.runId, userId, models)).find(m => m !== null);
     if (gone) return { fail: 'bad_request', message: gone };
-    const atLimit = runs.map(x => (x.kind === 'ai' ? setupResumeLimitRefusal(x.runId, userId) : null))
+    const columnRun = !!planOf(r).columns;
+    const atLimit = runs.map(x => (x.kind === 'ai' ? setupResumeLimitRefusal(x.runId, userId, columnRun) : null))
       .find(m => m !== null);
     if (atLimit) return { fail: 'conflict', message: atLimit };
     // A step reading a column another run holds would send its ⏳ cells; an AI prompt may name a column gone since.
@@ -94,7 +105,7 @@ export async function controlSetupRun(
     if (!hasSecretsScope && r.allow_secrets) {
       const keys = [...new Set(keysAhead(r))];
       if (keys.length) {
-        return { fail: 'forbidden', message: `The rest of this setup reads saved keys (${keys.join(', ')}). `
+        return { fail: 'forbidden', message: `The rest of this run reads saved keys (${keys.join(', ')}). `
           + 'The access token needs the \'secrets\' scope to resume it.' };
       }
       db.prepare('UPDATE setup_runs SET allow_secrets = 0 WHERE id = ? AND user_id = ?').run(id, userId);
@@ -129,7 +140,7 @@ export async function controlSetupRun(
       return { fail: 'conflict', message: `It has already ended (it's ${r.status}).` };
     }
     setStatus(id, 'cancelled', 'You stopped it.');
-    for (const x of runs) await cancelRun(x.kind, x.runId, userId);
+    await cancelStepRuns(r);
   }
   return { ok: getSetupRun(userId, id)! };
 }

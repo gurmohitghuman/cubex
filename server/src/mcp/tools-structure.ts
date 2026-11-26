@@ -13,9 +13,16 @@ import { verifySheetInTable } from '../lib/sheet-crud-helpers';
 import { trashAnswer } from '../services/trash-answer';
 import { createSampleTable } from '../services/sample-table';
 import { sampleAnswer } from '../services/sample-answer';
-import { McpAuthCtx, ok, err, missingScope, registerTool } from './tool-helpers';
+import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean, mcpLinkBase } from './tool-helpers';
+import { runTestAction, TEST_ACTIONS, TEST_WORDS, type TestAction } from './tools-sheet-test';
 import { changedOf } from './changed';
+import { SHEET_TEST_MAX_ROWS } from '../lib/constants';
 import { getSheetColumns } from '../lib/sql-helpers';
+import { webhookForNewSheet, type SheetWebhookView } from '../services/sheet-webhook';
+import { GUIDE_POINTER } from './guides/guide';
+
+// What a create with webhook true adds to its answer.
+type NewSheetWebhook = { webhook?: SheetWebhookView; webhook_error?: string };
 
 export function registerStructureTools(server: McpServer, ctx: McpAuthCtx) {
   registerTool(server, 
@@ -36,18 +43,24 @@ export function registerStructureTools(server: McpServer, ctx: McpAuthCtx) {
         action: z.enum(['create', 'rename', 'delete', 'create_sample']).describe('What to do'),
         table_id: z.string().optional().describe('rename, delete: the table (list_tables)'),
         name: z.string().optional().describe('Required for create/rename'),
+        webhook: lenientBoolean().optional()
+          .describe('create: true gives its first sheet an incoming webhook (manage_sheet_webhook)'),
       },
     },
-    async ({ action, table_id, name }) => {
+    async ({ action, table_id, name, webhook }) => {
       const denied = missingScope(ctx, 'write');
       if (denied) return denied;
+      if (webhook !== undefined && action !== 'create') return err('webhook is for create.');
       if (action === 'create') {
         const result = createTable(ctx.userId, name);
         if ('fail' in result) return err(result.message);
+        const hook: NewSheetWebhook = webhook
+          ? webhookForNewSheet(ctx.userId, result.ok.sheetId, mcpLinkBase(ctx)) : {};
         return ok({
           id: result.ok.id, name: result.ok.name,
-          sheets: [{ id: result.ok.sheetId, name: 'Sheet1', position: 0, row_count: 0 }],
-          changed: changedOf(ctx.userId, [{ sheetId: result.ok.sheetId }]),
+          sheets: [{ id: result.ok.sheetId, name: 'Sheet1', position: 0, row_count: 0 }], ...hook,
+          changed: changedOf(ctx.userId, [{ sheetId: result.ok.sheetId,
+            columns: hook.webhook ? [hook.webhook.column] : [] }]),
         });
       }
       if (action === 'create_sample') {
@@ -73,20 +86,18 @@ export function registerStructureTools(server: McpServer, ctx: McpAuthCtx) {
     {
       description:
         'Create, rename, copy, delete or reorder the sheet tabs of a table (a table always keeps at least one sheet). '
-        + 'create auto-names the sheet when name is omitted and can insert after a given tab. copy makes a new sheet '
-        + 'right after sheet_id holding its values: the same rows in the same order under the same column names (or '
-        + 'only the columns you list), as plain columns that nothing fills (no runs, formulas, lookups, rules or '
-        + 'views come along), with a run\'s status words (⏳, ❌, ⏭️, ➕) left empty. Free, no AI; name defaults to '
-        + '"Copy of <sheet>". Use it to keep a sheet as it is now, for example before running its columns again; it '
-        + 'answers once every row is in (rows_copied). delete puts the sheet '
+        + 'copy makes a new sheet right after sheet_id holding its values only, as plain columns that nothing fills '
+        + '(free, no AI). delete puts the sheet '
         + 'in the trash whole (rows, columns, runs, views, webhook), cancels its active runs and stops its webhook; '
         + 'it is kept for the days set in Settings (30 by default; 0 deletes at once), and restore_from_trash brings '
         + 'it back. Enrichment results its columns bought that were not yet added as rows in another sheet are '
-        + 'dropped (list_results_dropped says how many and for which sheets). Returns the table\'s updated tab list.',
+        + 'dropped (list_results_dropped says how many and for which sheets). Returns the table\'s updated tab list. '
+        + `${TEST_WORDS} ${GUIDE_POINTER}`,
       inputSchema: {
-        action: z.enum(['create', 'rename', 'copy', 'delete', 'reorder']).describe('What to do'),
+        action: z.enum(['create', 'rename', 'copy', 'delete', 'reorder', ...TEST_ACTIONS]).describe('What to do'),
         table_id: z.string().describe('The table (list_tables)'),
-        sheet_id: z.string().optional().describe('Required for rename/copy/delete'),
+        sheet_id: z.string().optional()
+          .describe('Required for rename/copy/delete and the test actions (the sheet or its test copy)'),
         name: z.string().optional().describe('create and copy: optional; rename: required'),
         columns: z.array(z.string()).min(1).optional()
           .describe('copy only: the columns to copy, in this order (default: every column)'),
@@ -94,16 +105,31 @@ export function registerStructureTools(server: McpServer, ctx: McpAuthCtx) {
           .describe('create only: insert after this tab; an unknown id appends at the end'),
         ordered_sheet_ids: z.array(z.string()).min(1).optional()
           .describe('reorder only: every sheet id of the table, in the desired order'),
+        webhook: lenientBoolean().optional()
+          .describe('create: true gives the new sheet an incoming webhook (manage_sheet_webhook)'),
+        row_ids: z.array(z.string()).min(1).optional().describe('test, test_add_rows: the rows to take'),
+        rows: z.number().int().min(1).max(SHEET_TEST_MAX_ROWS).optional()
+          .describe('test, test_add_rows: how many rows (default 10)'),
+        how: z.enum(['top', 'random']).optional()
+          .describe('test_add_rows: the next rows from the top (default), or random'),
+        dry_run: lenientBoolean().optional().describe('apply_test: false applies; default true'),
       },
     },
-    async ({ action, table_id, sheet_id, name, columns, after_sheet_id, ordered_sheet_ids }) => {
+    async ({ action, table_id, sheet_id, name, columns, after_sheet_id, ordered_sheet_ids, webhook, ...test }) => {
       const denied = missingScope(ctx, 'write');
       if (denied) return denied;
+      if (webhook !== undefined && action !== 'create') return err('webhook is for create.');
+      if ((TEST_ACTIONS as readonly string[]).includes(action)) {
+        return runTestAction(ctx, action as TestAction, { table_id, sheet_id, ...test });
+      }
       if (action === 'create') {
         const result = createSheet(ctx.userId, table_id, name, after_sheet_id);
         if ('fail' in result) return err(result.message);
         const made = result.ok.sheet;
-        return ok({ ...result.ok, changed: changedOf(ctx.userId, [made && { sheetId: made.id }]) });
+        const hook: NewSheetWebhook = webhook && made
+          ? webhookForNewSheet(ctx.userId, made.id, mcpLinkBase(ctx)) : {};
+        return ok({ ...result.ok, ...hook, changed: changedOf(ctx.userId,
+          [made && { sheetId: made.id, columns: hook.webhook ? [hook.webhook.column] : [] }]) });
       }
       if (action === 'copy') {
         if (!sheet_id) return err('sheet_id is required for copy');

@@ -6,6 +6,7 @@ import { TRANSFORM_MAX_CALL_MS, TRANSFORM_MAX_ROWS } from '../lib/api-v1-constan
 import { SHEET_ID, McpAuthCtx, ok, err, errWith, missingScope, registerTool } from './tool-helpers';
 import { whereLike } from './where-schema';
 import { changedOf } from './changed';
+import { GUIDE_POINTER } from './guides/guide';
 
 export function registerTransformTool(server: McpServer, ctx: McpAuthCtx): void {
   registerTool(server, 'transform_column', {
@@ -13,17 +14,12 @@ export function registerTransformTool(server: McpServer, ctx: McpAuthCtx): void 
       'Fill target_column from other columns with a fixed rule, on the server: no AI, no cost. Use it rather '
       + 'than run_ai_column for mechanical text work; for names, company names, emails, domains, phones, Title '
       + 'Case and spaces use clean_column (it keeps cleaning new rows); for a live per-row result use '
-      + 'formula_column. Example: turn "8 | B2B SaaS" into a number with regex_extract pattern "^(\\\\d+)". '
+      + 'formula_column. '
       + `A call writes at most ${TRANSFORM_MAX_ROWS.toLocaleString('en-US')} rows or works about `
       + `${TRANSFORM_MAX_CALL_MS / 1000} seconds, and the rows it wrote stay written. With rows left it answers `
-      + 'next_cursor: call again with the same arguments and that cursor. An error after some rows carries '
-      + 'next_cursor and rows_done: go on with that cursor, never start over (those rows would get the operation '
-      + 'twice). While a pass is unfinished, a call on the same column without its cursor is refused with the '
-      + 'cursor; restart:true starts over instead. If the pass\'s rows move (a sort, an import undone, duplicates '
-      + 'removed, rows restored to other places), every call into its column is refused until restart: true, '
-      + 'unless it had done no rows. A pass ends at the last row, on restart or when its column is permanently '
-      + 'deleted. Returns updated (rows written), created_column and, with rows left, next_cursor. '
-      + 'Next: read_rows to check the column.',
+      + 'next_cursor: call again with the same arguments and that cursor. '
+      + 'Returns updated (rows written), created_column and, with rows left, next_cursor. '
+      + `Next: read_rows to check the column. ${GUIDE_POINTER}`,
     inputSchema: {
       sheet_id: z.string().describe(SHEET_ID),
       target_column: z.string().describe('Column to write into; created if it does not exist'),

@@ -28,9 +28,11 @@ import { hideInViews } from './waterfall-views';
 import { LOOKUP_MOVED, lookupStepsMoved } from './waterfall-build-lookup';
 import { logRunStarted } from '../lib/change-log';
 import { actorTokenId } from '../lib/actor';
+import { saveHttpSetup } from './column-setup-save';
 
 export interface WaterfallStarted {
   runId: string; resultColumn: string; outputColumns: string[]; rowsInScope: number; notes?: string[];
+  saved?: true; // saveOnly: nothing ran; runId is the setup's record
 }
 export type WaterfallStartOutcome = { ok: WaterfallStarted } | RunFail;
 
@@ -85,6 +87,7 @@ export async function startWaterfallRun(
   const p = prepared.ok;
   const keys = keysProblem(userId, p, opts.hasSecretsScope);
   if ('fail' in keys) return keys;
+  if (input.saveOnly) return saveWaterfallSetup(sheetId, userId, input, p, keys.allowSecrets);
   const runId = uuidv4();
   const outputNames = p.outputs.map(o => o.columnName);
   const placeholderColumns = [p.resultColumn,
@@ -144,4 +147,31 @@ export async function startWaterfallRun(
       },
     };
   });
+}
+
+// Save: the setup the run would store, as the column's (services/column-setup-save.ts), with its step columns
+// hidden as a run hides them. The catalog and price reads awaited the network: a run started on these columns
+// since, or a lookup step's sheet moved, is caught inside the write lock.
+function saveWaterfallSetup(
+  sheetId: string, userId: string, input: WaterfallRunInput, p: PreparedWaterfall, allowSecrets: number,
+): WaterfallStartOutcome {
+  const outputNames = p.outputs.map(o => o.columnName);
+  const before = new Set(getSheetColumns(sheetId, userId, false));
+  const saved = saveHttpSetup(sheetId, userId, 'waterfall', p.resultColumn, outputNames, {
+    kind: 'http', mode: 'waterfall', config: p.config as unknown as Record<string, unknown>, allowSecrets,
+    destSheetId: null, extracted: outputNames,
+  }, p.rule?.rule ?? null, () => {
+    const current = new Set(getSheetColumns(sheetId, userId, false));
+    if (input.continueColumn ? activeRunOn(sheetId, userId, p.resultColumn)
+      : [p.resultColumn, ...outputNames].some(c => current.has(c))) {
+      return 'Another run just started on these columns. Try again in a moment.';
+    }
+    return lookupStepsMoved(p.config, userId) ? LOOKUP_MOVED : null;
+  });
+  if ('fail' in saved) return saved;
+  hideInViews(sheetId, userId, p.hideColumns.filter(c => !before.has(c)));
+  return { ok: {
+    runId: saved.ok.setupId, saved: true, resultColumn: p.resultColumn, outputColumns: outputNames, rowsInScope: 0,
+    ...(p.built.ignoredProviders.length ? { notes: p.built.ignoredProviders } : {}),
+  } };
 }

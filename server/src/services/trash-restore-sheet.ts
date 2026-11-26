@@ -93,10 +93,10 @@ function restoreSheet(userId: string, item: TrashItem, later: Restarted): { ok: 
       .get(sheetId, userId, item.id) as { name: string } | undefined;
     if (!sheet || !claim(item)) return;
     const taken = db.prepare(`SELECT 1 FROM sheets WHERE table_id = ? AND user_id = ? AND trash_id IS NULL
-      AND LOWER(name) = LOWER(?)`).pluck();
+      AND test_of IS NULL AND LOWER(name) = LOWER(?)`).pluck();
     const name = freeName(sheet.name, MAX_SHEET_NAME_LENGTH, n => !!taken.get(item.table_id, userId, n));
     const last = db.prepare(`SELECT MAX(position) FROM sheets WHERE table_id = ? AND user_id = ?
-      AND trash_id IS NULL`).pluck().get(item.table_id, userId) as number | null;
+      AND trash_id IS NULL AND test_of IS NULL`).pluck().get(item.table_id, userId) as number | null;
     db.prepare(`UPDATE sheets SET trash_id = NULL, name = ?, position = ?, updated_at = datetime('now')
       WHERE id = ? AND user_id = ?`).run(name, (last ?? -1) + 1, sheetId, userId);
     restartLookupsInto([sheetId]);

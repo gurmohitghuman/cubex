@@ -12,9 +12,11 @@ import { ROW_COUNT_API_WAIT_MS, ROW_COUNT_HOLD_MS } from '../lib/constants-row-c
 
 export interface LiveSheet extends CountedSheet { table_id: string; name: string; position: number }
 
-// The user's sheets not in the trash (a table in the trash has its sheets there too), by table and position.
+// The user's sheets not in the trash (a table in the trash has its sheets there too), by table and position. A
+// test's hidden copy isn't one, and a hidden working table's (a setup call's) aren't listed.
 export const liveSheets = (userId: string): LiveSheet[] => db.prepare(`SELECT id, table_id, name, position,
-  ${COUNT_COLUMNS} FROM sheets WHERE user_id = ? AND trash_id IS NULL ORDER BY table_id, position`)
+  ${COUNT_COLUMNS} FROM sheets WHERE user_id = ? AND trash_id IS NULL AND test_of IS NULL
+  AND table_id NOT IN (SELECT id FROM tables WHERE hidden = 1) ORDER BY table_id, position`)
   .all(userId) as LiveSheet[];
 
 export interface TableCount { id: string; row_count: number; row_count_updating: boolean }

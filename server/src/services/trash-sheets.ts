@@ -15,6 +15,7 @@ import { insertTrashItem, trashKeeps } from '../lib/trash/store';
 import { logSheetChange } from '../lib/change-log';
 import { trashedLookupMessage } from '../lib/trash/lookups';
 import { clearRunPlaceholders } from '../lib/run-placeholders';
+import { dropRunSpans } from '../lib/derived-spans';
 import { abortListRunsInto, clearListRunCells } from './run-control';
 import { resultsNotAdded, type ResultsNotAdded } from './enrich-list-guard';
 import { kickTrashPurge } from './trash-purge';
@@ -23,25 +24,29 @@ import { failedCell } from '../lib/enrich-cells';
 
 export type TrashFail = { fail: 'not_found' | 'conflict' | 'bad_request'; message: string };
 
-interface Retired { runs: Array<['ai' | 'http', string]>; listRuns: string[]; sources: string[] }
+export interface Retired { runs: Array<['ai' | 'http', string]>; listRuns: string[]; sources: string[] }
 
 // Inside the deleting transaction: everything that could still work on the
 // sheets stops. Their runs are cancelled as a person's cancel is, so their "⏳"
 // cells clear (the sheet may come back). Returns those runs and the list runs
 // into them (clear their cells after the commit), and the webhook sources
 // (drop their rate buckets after).
-function retireSheets(sheetIds: string[], userId: string): Retired {
+export function retireSheets(sheetIds: string[], userId: string): Retired {
   const ids = JSON.stringify(sheetIds);
   const sources = db.prepare(`SELECT id FROM webhook_sources WHERE sheet_id IN (SELECT value FROM json_each(?))
     AND user_id = ?`).pluck().all(ids, userId) as string[];
   const runs: Retired['runs'] = [];
   for (const kind of ['ai', 'http'] as const) {
     const table = kind === 'ai' ? 'ai_runs' : 'http_runs';
-    const active = db.prepare(`SELECT id FROM ${table} WHERE sheet_id IN (SELECT value FROM json_each(?))
-      AND user_id = ? AND status IN ('pending', 'running', 'paused')`).pluck().all(ids, userId) as string[];
+    const active = db.prepare(`SELECT id, sheet_id FROM ${table} WHERE sheet_id IN (SELECT value FROM json_each(?))
+      AND user_id = ? AND status IN ('pending', 'running', 'paused')`)
+      .all(ids, userId) as Array<{ id: string; sheet_id: string }>;
     db.prepare(`UPDATE ${table} SET status = 'cancelled', placeholder_work = 'clearing', updated_at = datetime('now')
-      WHERE id IN (SELECT value FROM json_each(?))`).run(JSON.stringify(active));
-    for (const id of active) runs.push([kind, id]);
+      WHERE id IN (SELECT value FROM json_each(?))`).run(JSON.stringify(active.map(r => r.id)));
+    for (const r of active) {
+      dropRunSpans(r.sheet_id, { kind, id: r.id });
+      runs.push([kind, r.id]);
+    }
   }
   // List results on their way into these sheets: their source rows say they
   // weren't added (destsGone), and the journal rows go, as with the sheet.
@@ -72,6 +77,9 @@ export type SheetTrashOutcome =
   | TrashFail;
 
 export function trashSheet(userId: string, tableId: string, sheetId: string): SheetTrashOutcome {
+  if (db.prepare('SELECT test_of FROM sheets WHERE id = ? AND user_id = ?').pluck().get(sheetId, userId)) {
+    return { fail: 'conflict', message: 'This is a test copy: discard its test instead.' };
+  }
   const sheet = db.prepare(`SELECT s.id FROM sheets s JOIN tables t ON t.id = s.table_id WHERE s.id = ?
     AND s.table_id = ? AND s.user_id = ? AND s.trash_id IS NULL AND t.trash_id IS NULL`).get(sheetId, tableId, userId);
   if (!sheet) return { fail: 'not_found', message: 'Sheet not found' };
@@ -83,8 +91,8 @@ export function trashSheet(userId: string, tableId: string, sheetId: string): Sh
   let retired: Retired = { runs: [], listRuns: [], sources: [] };
   let notAdded: ResultsNotAdded | null = null;
   db.transaction(() => {
-    const live = db.prepare('SELECT COUNT(*) FROM sheets WHERE table_id = ? AND user_id = ? AND trash_id IS NULL')
-      .pluck().get(tableId, userId) as number;
+    const live = db.prepare(`SELECT COUNT(*) FROM sheets WHERE table_id = ? AND user_id = ? AND trash_id IS NULL
+      AND test_of IS NULL`).pluck().get(tableId, userId) as number;
     if (live <= 1) { last = true; return; }
     notAdded = resultsNotAdded(sheetId, userId);
     retired = retireSheets([sheetId], userId);
@@ -132,7 +140,7 @@ export function trashTable(userId: string, tableId: string): TableTrashOutcome {
   return { ok: { trashId: trashKeeps(userId) ? trashId : null } };
 }
 
-function afterRetire(retired: Retired, userId: string): void {
+export function afterRetire(retired: Retired, userId: string): void {
   for (const [kind, id] of retired.runs) {
     clearRunPlaceholders(kind, id)
       .catch(err => console.error(`Clearing the cells of cancelled ${kind} run ${id} failed (retried later):`, err));

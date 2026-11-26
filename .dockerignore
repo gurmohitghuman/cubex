@@ -36,8 +36,12 @@ npm-debug.log*
 yarn-debug.log*
 pnpm-debug.log*
 
-# Git internals
+# Git internals, all but what names the commit and its release tags, which scripts/docker-version.mjs reads to
+# record the build (never .git/config, which can hold a credential, nor the objects)
 .git
+!.git/HEAD
+!.git/refs
+!.git/packed-refs
 .gitignore
 .github
 

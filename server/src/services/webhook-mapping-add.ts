@@ -18,7 +18,8 @@ import { busyMessage, sheetBusyWith } from '../lib/sheet-busy';
 export interface WebhookMappingInput { jsonPath: string; columnName: string; valueMode: 'scalar' | 'json' }
 
 // error: what the route answers (400 invalid, 409 busy).
-export type WebhookMappingAdd = { ok: true } | { fail: 'invalid' | 'busy'; error: string };
+// column: the new column's name as saved (spacing normalized).
+export type WebhookMappingAdd = { ok: true; column: string } | { fail: 'invalid' | 'busy'; error: string };
 
 // The caller has verified the sheet is the user's and found its webhook source.
 export function addWebhookMapping(
@@ -45,6 +46,22 @@ export function addWebhookMapping(
   const existingCols = getSheetColumns(sheetId, userId);
   const collision = findColumnNameCollision(columnName, existingCols);
   if (collision) return { fail: 'invalid', error: columnCollisionMessage(columnName, collision) };
+  // The webhook's own columns count even when a CSV replace has unlisted them (its next event lists them again,
+  // lib/webhook-ingest.ts): its marker, which each event stamps (a field there would overwrite the stamp), and the
+  // columns its fields fill (one more would break the one-field-a-column index with a 500).
+  const marker = db.prepare('SELECT raw_column_name FROM webhook_sources WHERE id = ? AND user_id = ?').pluck()
+    .get(sourceId, userId) as string | undefined;
+  if (marker && findColumnNameCollision(columnName, [marker])) {
+    return { fail: 'invalid', error: `"${marker}" is the webhook's own column, the time each event came in: pick `
+      + 'another name.' };
+  }
+  const filled = db.prepare('SELECT column_name FROM webhook_mappings WHERE source_id = ? AND user_id = ?').pluck()
+    .all(sourceId, userId) as string[];
+  const taken = findColumnNameCollision(columnName, filled);
+  if (taken) {
+    return { fail: 'invalid', error: `The webhook already fills "${taken.clash}" (an import took it off the sheet; its `
+      + 'next event puts it back): remove that field first, or pick another name.' };
+  }
   if (existingCols.length >= MAX_COLUMNS_PER_SHEET) {
     return { fail: 'invalid', error: `Column limit reached (${MAX_COLUMNS_PER_SHEET} per sheet).` };
   }
@@ -59,5 +76,5 @@ export function addWebhookMapping(
     logSheetChange(sheetId, userId, 'webhook', `The webhook fills "${columnName}" from ${input.jsonPath}`,
       { column: columnName });
   }).immediate();
-  return { ok: true };
+  return { ok: true, column: columnName };
 }

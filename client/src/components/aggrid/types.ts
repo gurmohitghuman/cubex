@@ -38,6 +38,8 @@ export interface RunMenuActions {
   // AI: column is the base name, columnName the header clicked.
   onRunFirstRows?: (kind: 'ai' | 'http', column: string, columnName?: string) => void
   onEditAIColumn?: (baseName: string) => void
+  // An HTTP API column's Edit: the HTTP dialog on its setup (Save, Save and run on all rows).
+  onEditHTTPColumn?: (column: string) => void
   // False for a column of a structured (multi-column) run: the edit dialog only
   // knows single-column runs, so "Edit / Update Instructions" is hidden there.
   canEditAIColumn?: (columnName: string) => boolean
@@ -133,6 +135,9 @@ export interface AGGridSpreadsheetProps {
   onOpenSearch?: () => void
   // Registers the grid's search handle (useGridSearch). Null on unmount.
   registerSearch?: (api: GridSearchApi | null) => void
+  // The sheet is being tested on a copy (utils/api/sheet-test.ts): cells take no edits and no column is added here
+  // (the column menu's changes get the server's busy answer).
+  readOnly?: boolean
 }
 
 // A cell search found: its row (row_index) and column (name).

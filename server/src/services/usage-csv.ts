@@ -23,24 +23,27 @@ const figureCells = (f: UsageFigures) => [String(f.runs), String(f.cells), Strin
   money(f.ai_cost_usd), money(f.provider_cost_usd), money(f.enrichment_cost_usd), money(f.total_cost_usd),
   money(f.cost_per_cell_usd)];
 const line = (cells: Array<string | null>) => cells.map(escapeCsvCell).join(',');
-const sheetOf = (r: { sheet_name: string | null; sheet_deleted: boolean }) =>
-  (r.sheet_deleted ? 'Deleted sheet' : r.sheet_name);
+const yes = (v: boolean) => (v ? 'yes' : '');
+const sheetOf = (r: { sheet_name: string | null; sheet_deleted: boolean; call?: true }) =>
+  (r.call ? 'A call without a sheet' : r.sheet_deleted ? 'Deleted sheet' : r.sheet_name);
 
 const HEADS: Record<UsageGroupBy, string[]> = {
-  column: ['Sheet', 'Column', 'Deleted', 'Kind', ...FIGURE_HEADS, 'Last run (UTC)'],
+  column: ['Sheet', 'Column', 'Deleted', 'On sample rows', 'Kind', ...FIGURE_HEADS, 'Last run (UTC)'],
   day: ['Day (UTC)', ...FIGURE_HEADS],
-  run: ['Started (UTC)', 'Sheet', 'Column', 'Deleted', 'Kind', 'What ran', 'Status', ...FIGURE_HEADS, 'Run ID'],
+  run: ['Started (UTC)', 'Sheet', 'Column', 'Deleted', 'On sample rows', 'Kind', 'What ran', 'Status', ...FIGURE_HEADS,
+    'Run ID'],
 };
 
 function rowCells(groupBy: UsageGroupBy, r: UsageColumnRow | UsageDayRow | UsageRunRow): Array<string | null> {
   if (groupBy === 'day') return [(r as UsageDayRow).day, ...figureCells(r)];
   if (groupBy === 'column') {
     const c = r as UsageColumnRow;
-    return [sheetOf(c), c.column, c.column_deleted ? 'yes' : '', KIND[c.kind], ...figureCells(c), c.last_run_at];
+    return [sheetOf(c), c.column, yes(c.column_deleted), yes(c.on_test_copy), KIND[c.kind], ...figureCells(c),
+      c.last_run_at];
   }
   const u = r as UsageRunRow;
-  return [u.started_at, sheetOf(u), u.column, u.column_deleted ? 'yes' : '', KIND[u.kind], u.what, u.status,
-    ...figureCells(u), u.run_id];
+  return [u.started_at, sheetOf(u), u.column, yes(u.column_deleted), yes(u.on_test_copy), KIND[u.kind], u.what,
+    u.status, ...figureCells(u), u.run_id];
 }
 
 export async function writeUsageCsv(

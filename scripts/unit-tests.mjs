@@ -9,6 +9,7 @@
 // Usage: node scripts/unit-tests.mjs [name...]   (only the tests whose file name contains a name)
 //        UNIT_FILE_TIMEOUT_S=<seconds> changes each file's limit (300 by default)
 //        UNIT_SHARD=k/n runs the k-th of n shares of those files, as CI's runners do (scripts/unit-shards.mjs)
+//        UNIT_SLOW_START_S=<seconds> changes when a file's process counts as slow to start (5 by default)
 import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
@@ -20,6 +21,8 @@ import { filesOfShard, parseShard } from './unit-shards.mjs';
 const PREFIX = 'cubex-unit-';
 const DEFAULT_LIMIT_S = 300;
 const MAX_LIMIT_S = 2_147_483; // Node's longest timer, in whole seconds
+const slowText = process.env.UNIT_SLOW_START_S ?? '';
+const SLOW_START_S = slowText === '' ? 5 : Number(slowText);
 const WINDOWS = process.platform === 'win32';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const tsx = createRequire(import.meta.url).resolve('tsx/cli');
@@ -27,6 +30,10 @@ const limitText = process.env.UNIT_FILE_TIMEOUT_S ?? '';
 const LIMIT_S = limitText === '' ? DEFAULT_LIMIT_S : Number(limitText);
 if (!Number.isFinite(LIMIT_S) || LIMIT_S <= 0 || LIMIT_S > MAX_LIMIT_S) {
   console.error(`UNIT_FILE_TIMEOUT_S must be a number of seconds over 0 and up to ${MAX_LIMIT_S}, not '${limitText}'`);
+  process.exit(2);
+}
+if (!Number.isFinite(SLOW_START_S) || SLOW_START_S < 0 || SLOW_START_S > MAX_LIMIT_S) {
+  console.error(`UNIT_SLOW_START_S must be a number of seconds from 0 up to ${MAX_LIMIT_S}, not '${slowText}'`);
   process.exit(2);
 }
 let shard = null;
@@ -47,6 +54,16 @@ if (!tests.length) { console.log(`[done] no unit tests${ofShard}`); process.exit
 // Not realpath'd: tsx puts a socket in here and macOS caps socket paths near 104 characters.
 const base = path.resolve(os.tmpdir());
 const dir = fs.mkdtempSync(path.join(base, PREFIX));
+// A test's process (tsx's second one, the file its main script) notes when it started, so a machine stall before a
+// test begins is named in the log at once (once, a 5-minute stall took an hour to tell apart from a test bug). Normal
+// is under 2.5 s; past UNIT_SLOW_START_S the runner says so while it waits, and again with the time once it started.
+const startNote = path.join(dir, 'start-note.cjs');
+fs.writeFileSync(startNote, "const f = process.env.UNIT_STARTED_FILE;\n"
+  + "if (f && /\\.test\\.ts$/.test(process.argv[1] || '')) {\n"
+  + "  try { require('fs').writeFileSync(f, String(Date.now()), { flag: 'wx' }); } catch {}\n}\n");
+const nodeOptions = `${process.env.NODE_OPTIONS ?? ''} --require ${JSON.stringify(startNote)}`.trim();
+const slowStart = (file, why) => console.log(`[slow start] tests/unit/${file}: ${why} (normally under 2.5 s); `
+  + 'the machine may have stalled');
 // A test and every process it started. tsx runs each test in a second Node process, so stopping only the
 // first would leave the test itself running. On Windows taskkill follows the process tree. On macOS and Linux
 // the tree comes from one look at the process table (ps), parents first; a process started after that look is
@@ -149,7 +166,16 @@ for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
 // Linux, TEMP/TMP on Windows), so whatever else it makes is removed with that folder too.
 const run = (file, n) => new Promise(resolve => {
   const db = path.join(fs.mkdtempSync(path.join(dir, `db${n}-`)), 'unit.db');
-  const env = { ...process.env, DB_PATH: db, TMPDIR: dir, TEMP: dir, TMP: dir };
+  const startedFile = path.join(path.dirname(db), 'started');
+  const env = { ...process.env, DB_PATH: db, TMPDIR: dir, TEMP: dir, TMP: dir, NODE_OPTIONS: nodeOptions,
+    UNIT_STARTED_FILE: startedFile };
+  const spawnedAt = Date.now();
+  const startMs = () => {
+    try { return Number(fs.readFileSync(startedFile, 'utf8')) - spawnedAt; } catch { return null; }
+  };
+  const waited = setTimeout(() => {
+    if (startMs() === null) slowStart(file, `its process hasn't started after ${SLOW_START_S} s`);
+  }, SLOW_START_S * 1000);
   const child = spawn(process.execPath, [tsx, path.join('tests', 'unit', file)],
     { cwd: root, env, stdio: 'inherit' });
   running = child;
@@ -161,7 +187,12 @@ const run = (file, n) => new Promise(resolve => {
   }, LIMIT_S * 1000);
   // A late test's print and stop finish before its result, and before the next test starts.
   const end = async status => {
-    ended = true; clearTimeout(timer); running = null; await stopping; resolve(late ?? status);
+    ended = true; clearTimeout(timer); clearTimeout(waited); running = null;
+    const ms = startMs();
+    if (ms !== null && ms > SLOW_START_S * 1000) {
+      slowStart(file, `its process took ${(ms / 1000).toFixed(1)} s to start`);
+    }
+    await stopping; resolve(late ?? status);
   };
   child.on('error', err => { console.error(err.message); end(1); });
   child.on('exit', code => end(code ?? 1));

@@ -35,7 +35,7 @@ export const AGGridSpreadsheet: React.FC<AGGridSpreadsheetProps> = (props) => {
     onSelectedRowsChange, onCellClick, runActions = NO_RUN_ACTIONS,
     columnTypes = NO_COLUMN_TYPES, autorun, columnSpend, cleanColumns, formulaColumns, lookupColumns,
     columnDescriptions, activeHTTPRunsByColumn = {}, activeAIRunsByColumn = {},
-    onColumnReorder, sheetId,
+    onColumnReorder, sheetId, readOnly,
     lastRenamedColumn = null, registerClearSelection, registerViewport, hiddenColumns, rowFilterActive,
     onClearAllFilters,
     windowStart = 0, onLoadEarlier, onOpenSearch, registerSearch, failedRuns, onRetryFailed, runCells = null,
@@ -55,7 +55,9 @@ export const AGGridSpreadsheet: React.FC<AGGridSpreadsheetProps> = (props) => {
   const [confirmDeleteRows, setConfirmDeleteRows] = useState<number[] | null>(null)
 
   const rowData = useRowData(data)
-  const search = useGridSearch({ gridRef, windowStart, data, colIdFor, registerSearch, onLoadEarlier, onOpenSearch })
+  // The grid's scroll box, read when rows land above it (wrapperRef is set by then: useHeaderContextMenu below).
+  const search = useGridSearch({ gridRef, windowStart, data, colIdFor, registerSearch, onLoadEarlier, onOpenSearch,
+    viewport: () => wrapperRef.current?.querySelector<HTMLElement>('.ag-body-viewport') ?? null })
 
   // Disable row animation while any AI/HTTP run is active (perf fix #1). Streaming
   // result cells arrive in batched bursts; animating each one makes AG Grid recalc
@@ -107,7 +109,7 @@ export const AGGridSpreadsheet: React.FC<AGGridSpreadsheetProps> = (props) => {
     columns, columnTypes, columnWidths, emptyFilter, columnFilters, autorun, columnSpend, cleanColumns,
     formulaColumns, lookupColumns, columnDescriptions, hiddenColumns, onDeleteColumn, onAddColumn, colIdFor,
     handleHeaderColumnDelete, openColumnMenu, rowNumberDigits: String(windowStart + data.length).length,
-    failedRuns, onRetryFailed,
+    failedRuns, onRetryFailed, readOnly,
   })
 
   const {

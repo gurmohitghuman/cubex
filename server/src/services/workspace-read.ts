@@ -27,7 +27,7 @@ export interface TableSummary {
 
 export async function listTablesWithSheets(userId: string): Promise<TableSummary[]> {
   const tables = db.prepare(
-    `SELECT id, name, created_at, updated_at FROM tables WHERE user_id = ? AND trash_id IS NULL
+    `SELECT id, name, created_at, updated_at FROM tables WHERE user_id = ? AND trash_id IS NULL AND hidden = 0
      ORDER BY created_at DESC`,
   ).all(userId) as Array<{ id: string; name: string; created_at: string; updated_at: string }>;
   const sheets = liveSheets(userId);
@@ -76,8 +76,10 @@ export interface SheetMeta {
 export function getSheetMeta(
   sheetId: string, userId: string, named: ReadonlySet<string> = new Set(),
 ): SheetMeta | null {
-  const sheet = db.prepare(`SELECT id, table_id, name, description, data_version, row_generation, default_ai_model
-    FROM sheets WHERE id = ? AND user_id = ?`).get(sheetId, userId) as {
+  // A sheet in the trash, or of a table in the trash, is not found (callers add the restore_from_trash hint).
+  const sheet = db.prepare(`SELECT s.id, s.table_id, s.name, s.description, s.data_version, s.row_generation,
+      s.default_ai_model FROM sheets s JOIN tables t ON t.id = s.table_id
+    WHERE s.id = ? AND s.user_id = ? AND s.trash_id IS NULL AND t.trash_id IS NULL`).get(sheetId, userId) as {
     id: string; table_id: string; name: string; description: string | null; data_version: number;
     row_generation: number; default_ai_model: string | null;
   } | undefined;

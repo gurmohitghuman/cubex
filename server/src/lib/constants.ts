@@ -14,6 +14,8 @@ export * from './constants-curl';
 // HTTP column retries and the response code column; "run finished" webhooks.
 export * from './constants-http-retry';
 export * from './constants-run-hooks';
+// Auto-delete on a webhook sheet.
+export * from './constants-webhook-auto-delete';
 // Usage history, same split.
 export * from './constants-usage';
 // Waterfall columns, same split.
@@ -35,7 +37,7 @@ export * from './constants-wal';
 export * from './constants-version';
 // Undoing a run, same split.
 export * from './constants-undo';
-import { envInt } from './env-int';
+import { envInt, envMs } from './env-int';
 
 // Centralized regexes used by multiple routes
 export const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -97,6 +99,10 @@ export const MIN_API_KEY_VALUE_LENGTH = 10;
 // server keeps answering. Raise it via env if you need more.
 export const MAX_COLUMNS_PER_SHEET = envInt('MAX_COLUMNS_PER_SHEET', 200);
 export const MAX_ROWS_PER_SHEET = envInt('MAX_ROWS_PER_SHEET', 1_000_000);
+// Trying column changes on sample rows (services/sheet-test*.ts): a test starts with this many rows from the top
+// (or the rows chosen), takes this many more at a time, and holds at most SHEET_TEST_MAX_ROWS.
+export const SHEET_TEST_ROWS = 10;
+export const SHEET_TEST_MAX_ROWS = 50;
 
 // lib/column-repair.ts reads a sheet's rows in slices of this many between
 // requests (about 25 ms each), so its full-sheet key scan never blocks one.
@@ -106,7 +112,8 @@ export const COLUMN_REPAIR_SLICE_ROWS = 20_000;
 // answers other requests between slices (lib/slices.ts).
 export const HEAVY_SLICE_ROWS = 5_000;
 // A slice of a CSV import, a clean, formula or lookup column's fill or follow, or a column added from an answer also
-// stops once it has taken this long (one row at least; lib/slice-clock.ts). Sized by rows alone, a slice of 5,000
+// stops once it has taken this long (one row at least; lib/slice-clock.ts), and a run start's seed takes as many rows
+// as fit it while such columns read the run's (lib/placeholder-cells.ts). Sized by rows alone, a slice of 5,000
 // took a median 90 to 96 ms on Windows CI (63 to 72 on Linux), so a slow moment on the runner could pass 200 ms.
 export const BULK_SLICE_MS = 40;
 // Stored AI/HTTP results written per slice (a sheet's results deleted, a sort moving them with their rows). An
@@ -180,7 +187,7 @@ export const SIDEQUEST_IDLE_THREAD_MS = 60_000;
 // How often the Sidequest worker looks for a job to start while it has none or
 // is full (its default, 100 ms, kept it busy all day). A new run starts within
 // about this long; one waiting for a free slot, within about twice it.
-export const SIDEQUEST_POLL_MS = envInt('SIDEQUEST_POLL_MS', 1000);
+export const SIDEQUEST_POLL_MS = envMs('SIDEQUEST_POLL_MS', 1000);
 
 // Incoming webhooks (POST /api/webhooks/:token). The app's only unauthenticated
 // write surface — every number here is a guard. See docs/webhooks.md.
@@ -191,7 +198,7 @@ export const SIDEQUEST_POLL_MS = envInt('SIDEQUEST_POLL_MS', 1000);
 export const WEBHOOK_MAX_BODY_BYTES = 512 * 1024;
 // The body must arrive this long after the headers (a deadline: a trickle doesn't extend it), else 408. 512 KB
 // in 30 s needs only ~17 KB/s. Tighter than every request's own deadline (lib/request-deadline.ts).
-export const WEBHOOK_BODY_TIMEOUT_MS = envInt('WEBHOOK_BODY_TIMEOUT_MS', 30_000);
+export const WEBHOOK_BODY_TIMEOUT_MS = envMs('WEBHOOK_BODY_TIMEOUT_MS', 30_000);
 // Per-token ingestion rate limit (token-bucket keyed on the webhook source),
 // ~10 records/sec, burst 20, so a misbehaving sender can't flood a sheet.
 // Excess -> 429.
@@ -200,6 +207,9 @@ export const WEBHOOK_RATE_BURST = 20;
 // Idle entries in the per-token bucket Map are evicted after this long so
 // deleted/rotated webhooks don't linger in memory.
 export const WEBHOOK_BUCKET_IDLE_EVICT_MS = 5 * 60 * 1000;
+// Events one webhook may have arriving at once (their bodies still coming in). The bucket counts starts, so
+// slow bodies could otherwise pile up within it (each may take WEBHOOK_BODY_TIMEOUT_MS). Excess -> 429.
+export const WEBHOOK_MAX_OPEN_BODIES = 20;
 // Structural guard on the parsed payload (runs AFTER JSON.parse, BEFORE any
 // extraction/write). Bounds json_set cost and delivery-store size. Over -> 400.
 export const WEBHOOK_MAX_JSON_DEPTH = 10;
@@ -238,6 +248,10 @@ export const WEBHOOK_RAW_KEEP_BYTES = 10 * 1024 * 1024; // ~10 MB
 // still works for the recent window; a metadata row is ~a few hundred bytes, so
 // 5000 rows ≈ a couple MB/source worst case.
 export const WEBHOOK_DELIVERY_KEEP_COUNT = 5000;
+// Deliveries kept for a sheet while it is tested on a copy (lib/webhook-hold.ts), added when the test ends: at most
+// this many, or this many bytes of payloads; past either, a delivery is refused (409) so the sender tries it again.
+export const WEBHOOK_HELD_MAX_COUNT = 10_000;
+export const WEBHOOK_HELD_MAX_BYTES = 100 * 1024 * 1024;
 // :token URL-segment format (base64url of 32 random bytes -> 43 chars). A cheap
 // regex pre-check rejects malformed tokens with a generic 404 before any DB work.
 export const WEBHOOK_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
@@ -291,3 +305,22 @@ export const BUILD_ID_RECHECK_MS = 5000;
 // the app's SAMPLE_CREATE_TIMEOUT_MS.
 export const SAMPLE_STEP_WAIT_MS = 20_000;
 export const SAMPLE_STEP_POLL_MS = 20;
+
+// Social research tables (lib/social/, services/social-*.ts). Guards, not quotas.
+export const SOCIAL_MAX_SEARCHES = 10;
+export const SOCIAL_MAX_SEARCH_CHARS = 100;
+// Posts kept per search per platform (a search answers its first page: about 20 to 30).
+export const SOCIAL_POSTS_PER_SEARCH = 30;
+export const SOCIAL_MAX_POSTS_PER_SEARCH = 50;
+export const SOCIAL_MAX_DAYS = 365;
+// Find posts starts each platform's search on one Searches sheet: each start holds it while it sets up its rows
+// (a few rows: milliseconds), so the next waits for it, at most this long.
+export const SOCIAL_START_WAIT_MS = envMs('SOCIAL_START_WAIT_MS', 15_000);
+// How many of a run column's input lists (lib/run-inputs/sets.ts) the out-of-date check reads, newest first. A row
+// made from an older list never reads out of date, as a row no run stamped (docs/mcp.md says 16).
+export const RUN_INPUT_SETS_READ = 16;
+// "Creator's usual views" (lib/social/usual.ts): the creator's recent posts asked for (one call's page), the fewest
+// with views it takes to say what their usual is, and how many times their usual makes a post stand out.
+export const SOCIAL_RECENT_POSTS = 30;
+export const SOCIAL_USUAL_MIN_POSTS = 3;
+export const SOCIAL_STANDS_OUT_TIMES = 3;

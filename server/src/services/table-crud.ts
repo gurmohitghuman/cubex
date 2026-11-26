@@ -23,8 +23,10 @@ export type CreateTableOutcome =
 // Creates the table plus its first sheet, deliberately EMPTY (0 rows/cols):
 // add-first-column creates row 0 and the empty-state UI handles the rest. Only
 // the add-sheet route seeds a starter grid; seeding here would change
-// import/onboarding semantics app-wide.
-export function createTable(userId: string, rawName: unknown): CreateTableOutcome {
+// import/onboarding semantics app-wide. hidden: a setup call's working table
+// (services/setup-call.ts), hidden from the first moment, never listed; its
+// sheet is kept in call_sheets (migration 075) for the usage history and Settings' spend card.
+export function createTable(userId: string, rawName: unknown, opts: { hidden?: boolean } = {}): CreateTableOutcome {
   const validationErr = validateTableName(rawName);
   if (validationErr) return { fail: 'bad_request', message: validationErr };
   const name = normalizeNameSpacing(rawName as string);
@@ -38,10 +40,12 @@ export function createTable(userId: string, rawName: unknown): CreateTableOutcom
       fail = { fail: 'conflict', message: `A table named "${name}" already exists` };
       return;
     }
-    db.prepare('INSERT INTO tables (id, user_id, name) VALUES (?, ?, ?)').run(tableId, userId, name);
+    db.prepare('INSERT INTO tables (id, user_id, name, hidden) VALUES (?, ?, ?, ?)')
+      .run(tableId, userId, name, opts.hidden ? 1 : 0);
     db.prepare('INSERT INTO sheets (id, table_id, user_id, name, position) VALUES (?, ?, ?, ?, 0)')
       .run(sheetId, tableId, userId, 'Sheet1');
     createDefaultView(sheetId, userId);
+    if (opts.hidden) db.prepare('INSERT INTO call_sheets (sheet_id, user_id) VALUES (?, ?)').run(sheetId, userId);
   }).immediate();
   if (fail) return fail;
   return { ok: { id: tableId, name, sheetId } };

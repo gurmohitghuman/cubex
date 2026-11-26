@@ -6,6 +6,7 @@ import accessTokensRoutes from './settings-access-tokens';
 import tregRoutes from './settings-treg';
 import { authenticateToken } from '../middleware/auth';
 import { runWebhookRoutes } from './run-webhooks-routes';
+import { runScheduleRoutes } from './run-schedules-routes';
 import reuseRoutes from './settings-reuse';
 import trashRoutes from './settings-trash';
 import versionRoutes from './settings-version';
@@ -19,6 +20,8 @@ router.use(tregRoutes);
 // "Run finished" webhooks: the signed-in account may read and change them.
 router.use('/run-webhooks', authenticateToken);
 router.use(runWebhookRoutes('/run-webhooks', () => (_req, _res, next) => next()));
+router.use('/run-schedules', authenticateToken);
+router.use(runScheduleRoutes('/run-schedules', () => (_req, _res, next) => next()));
 router.use(reuseRoutes);
 router.use(trashRoutes);
 router.use(versionRoutes);

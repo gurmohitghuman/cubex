@@ -6,6 +6,9 @@
 // Route-level JSON body cap (the 32MB global parser is skipped for the prefix
 // so Bearer auth runs before any body parse; see applyServerMiddleware).
 export const API_V1_MAX_JSON_BYTES = 2 * 1024 * 1024;
+// A body (/api/v1 and /mcp) nesting arrays or objects deeper than this is refused with a 400 before any route or
+// tool reads it (lib/json-depth.ts). Nothing they take comes near it.
+export const MAX_JSON_DEPTH = 64;
 
 // Per-TOKEN request budget (keyed after validation — never on an unvalidated
 // credential). Generous for an agent poll loop; a runaway script throttles its
@@ -21,6 +24,8 @@ export const API_V1_MAX_ROWS_PAGE = 500;
 export const MCP_MAX_ROWS_PAGE = 100;
 // read_rows / rows/query `row_ids`: the most rows one read names (services/rows-by-id.ts).
 export const ROWS_BY_ID_MAX = 1000;
+// get_run_results with include_answers: stored answers can be large (a few KB each), so such a page is short.
+export const ANSWERS_PAGE_MAX = 10;
 // Over MCP a read by id keeps rows up to about this many characters and lists
 // the rest in unread_ids, as export_csv does (MCP_EXPORT_MAX_CHARS below).
 export const MCP_ROWS_BY_ID_MAX_CHARS = 40_000;

@@ -28,12 +28,43 @@ const setupRun = obj({
     column: str, kind: str, layer: num, mode: str, state: str, run_id: nul(str), note: nul(str),
   })),
   max_cost_usd: opt(num),
+  column_run: opt(info('A column run (run_columns): mode, how many row_ids, where')),
 });
 // estimate_only (its default): estimate, inputs, makes and carries_on. Started: setup_run.
 export const applySetup = obj({
   setup_run: opt(setupRun), estimate: opt(info('What it would cost, by column')),
   inputs: opt(info('Input -> the column it reads')), makes: opt(strs).describe('The columns it would make'),
   carries_on: opt(strs).describe('The columns it carries on'), changed,
+});
+// A setup called on items without a sheet (tools-setup-calls.ts): results once it has finished.
+const setupCall = obj({
+  id: str, setup_id: nul(str).describe('null when the setup was deleted'), setup_name: str, status: str, items: num,
+  layer: num, layers: num, error_message: nul(str), created_at: str, updated_at: str,
+  keep_until: nul(str), webhook_id: nul(str),
+  max_cost_usd: opt(num),
+  steps: z.array(obj({ column: str, kind: str, layer: num, state: str, run_id: nul(str), note: nul(str) })),
+  results: opt(z.array(obj({ item: num, status: str, error: nul(str), outputs: info('Column: value, or null') }))),
+  next_from: opt(nul(num)),
+});
+// estimate_only (its default): estimate, makes and items. Started: setup_call.
+export const callSetup = obj({
+  setup_call: opt(info('The call, as get_setup_call answers it')), estimate: opt(info('What it would cost, by column')),
+  makes: opt(strs).describe('The columns it would make'), items: opt(num),
+});
+export const getSetupCall = setupCall;
+// One enrichment tool called on items (tools-enrich-calls.ts): an estimate, or the run it started.
+export const callEnrichment = obj({
+  estimate_only: opt(bool), estimate: opt(info('What it would cost, as run_enrichment estimates it')),
+  run_id: opt(str), run_type: opt(str), items: opt(num), status_column: opt(str), output_columns: opt(strs),
+});
+// estimate_only (its default): estimate. Started: setup_run.
+export const runColumns = obj({
+  setup_run: opt(setupRun), estimate: opt(info('What it would cost, by column')), changed,
+});
+// Scheduled reruns (tools-run-schedules.ts): the schedules (list), one schedule, or what was deleted.
+export const manageRunSchedule = obj({
+  schedules: opt(z.array(info('A schedule'))), schedule: opt(info('The schedule: its settings, next_at, last firing')),
+  deleted: opt(str),
 });
 // No setup_run_id: setup_runs. With one: that setup run.
 export const getSetupRun = obj({ setup_runs: opt(z.array(setupRun)), ...setupRun.partial().shape });

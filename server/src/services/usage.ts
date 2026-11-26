@@ -1,10 +1,15 @@
+// Over 200 lines: one read for the three groupings (column, day, run), their totals and the request, which the
+// app, REST and MCP share.
 // Usage history: for each column (deleted ones too), each day or each run, the
 // runs, the cells they ran, what they cost (OpenRouter's charge, the user's
 // own provider key, treg's charges) and the cost per cell. One surface for the
 // app's Usage view, GET /api/v1/usage and MCP get_usage. It sums run_usage
 // (migration 033: one small record per run, kept by triggers), never rows,
 // results or run configs, so a million-row sheet costs no more than its runs.
-// Each run counts on the day it started (UTC).
+// Each run counts on the day it started (UTC). Runs on a sheet's test copy count
+// under the sheet (migration 076's test_copies), marked on_test_copy. A call without a sheet (a setup or enrichment
+// call over the API or MCP, on a hidden working table: call_sheets, migration 075) is call: true, with no sheet, as
+// in Settings' spend card: by column, every call adds up in one line; by run, each keeps its column.
 import { db } from '../lib/db';
 import { nowDate } from '../lib/clock';
 import { isResultType, RESULT_INFO } from '../lib/waterfall/result-type';
@@ -17,15 +22,18 @@ export interface UsageFigures {
 }
 // preview, assist: an AI preview's rows and an AI helper's calls (services/usage-calls.ts), no run behind them.
 type Kind = 'ai' | 'enrichment' | 'http' | 'waterfall' | 'preview' | 'assist' | 'mixed';
-// sheet_deleted: the sheet is gone (what its runs spent stays in the history).
+// sheet_deleted: the sheet is gone (what its runs spent stays in the history). on_test_copy: runs on a copy of the
+// sheet where changes were tried on sample rows (listed apart from the sheet's own column of the same name).
+// call: a call without a sheet's.
 export interface UsageColumnRow extends UsageFigures {
-  sheet_id: string; sheet_name: string | null; sheet_deleted: boolean; column: string | null; column_deleted: boolean;
-  kind: Kind; last_run_at: string;
+  sheet_id: string | null; sheet_name: string | null; sheet_deleted: boolean; column: string | null;
+  column_deleted: boolean; on_test_copy: boolean; kind: Kind; last_run_at: string; call?: true;
 }
 export interface UsageDayRow extends UsageFigures { day: string }
 export interface UsageRunRow extends UsageFigures {
-  run_id: string; sheet_id: string; sheet_name: string | null; sheet_deleted: boolean; column: string | null;
-  column_deleted: boolean; kind: Kind; what: string | null; status: string; started_at: string;
+  run_id: string; sheet_id: string | null; sheet_name: string | null; sheet_deleted: boolean; column: string | null;
+  column_deleted: boolean; on_test_copy: boolean; kind: Kind; what: string | null; status: string; started_at: string;
+  call?: true;
 }
 export type UsageRow = UsageColumnRow | UsageDayRow | UsageRunRow;
 
@@ -49,14 +57,15 @@ export function figures(s: Sums): UsageFigures {
   };
 }
 
-// The range on one sheet (its index; +user_id keeps the planner on it) or the
-// account. Each statement below spells its columns out, so tests/unit/sql-schema
-// checks them; only this WHERE goes in.
+// The range on one sheet and its test copies (its index for each; +user_id keeps
+// the planner on it) or the account. Each statement below spells its columns
+// out, so tests/unit/sql-schema checks them; only this WHERE goes in.
 function scopeWhere(s: UsageScope): { sql: string; params: unknown[] } {
   const { start, end } = rangeBounds(s.range);
   return s.sheetId
-    ? { sql: 'u.sheet_id = ? AND +u.user_id = ? AND u.started_at >= ? AND u.started_at < ?',
-      params: [s.sheetId, s.userId, start, end] }
+    ? { sql: `u.sheet_id IN (SELECT ? UNION ALL SELECT x.copy_id FROM test_copies x WHERE x.sheet_id = ?
+        AND x.user_id = ?) AND +u.user_id = ? AND u.started_at >= ? AND u.started_at < ?`,
+      params: [s.sheetId, s.sheetId, s.userId, s.userId, start, end] }
     : { sql: 'u.user_id = ? AND u.started_at >= ? AND u.started_at < ?', params: [s.userId, start, end] };
 }
 
@@ -66,6 +75,12 @@ function sheetNames(userId: string): Map<string, string> {
   const rows = db.prepare('SELECT id, name FROM sheets WHERE user_id = ?').all(userId) as
     Array<{ id: string; name: string }>;
   return new Map(rows.map(r => [r.id, r.name]));
+}
+
+// A row's sheet: its name, or gone, or a call's (no sheet).
+function sheetOf(names: Map<string, string>, sheetId: string | null, call: number) {
+  if (call) return { sheet_id: null, sheet_name: null, sheet_deleted: false, call: true as const };
+  return { sheet_id: sheetId, sheet_name: names.get(sheetId!) ?? null, sheet_deleted: !names.has(sheetId!) };
 }
 
 // The model of an AI run, the tool of an enrichment, what a waterfall finds
@@ -87,10 +102,13 @@ function whatRan(runId: string, kind: string, userId: string): string | null {
   return typeof v === 'string' ? v : null;
 }
 
-type ColumnSql = Sums & { sheet_id: string; col: string | null; deleted: number; kinds: string; last_at: string };
+type ColumnSql = Sums & {
+  sheet_id: string | null; col: string | null; deleted: number; on_copy: number; call: number; kinds: string;
+  last_at: string;
+};
 type RunSql = Sums & {
-  run_id: string; sheet_id: string; col: string | null; deleted: number; kind: string; status: string;
-  started_at: string;
+  run_id: string; sheet_id: string; col: string | null; deleted: number; on_copy: number; call: number; kind: string;
+  status: string; started_at: string;
 };
 
 function totalsOf(s: UsageScope): UsageFigures {
@@ -101,21 +119,26 @@ function totalsOf(s: UsageScope): UsageFigures {
     FROM run_usage u WHERE ${w.sql}`).get(...w.params) as Sums);
 }
 
-// Columns (deleted ones too), costliest first.
+// Columns (deleted ones too), costliest first; a test copy's under the sheet it tested (t), apart from the sheet's
+// own; every call's runs in one line (k: its keys are all null).
 function columnRows(s: UsageScope, limit: number): UsageColumnRow[] {
   const w = scopeWhere(s);
-  const rows = db.prepare(`SELECT u.sheet_id, u.column_name AS col, u.column_deleted AS deleted,
+  const rows = db.prepare(`SELECT CASE WHEN k.sheet_id IS NULL THEN COALESCE(t.sheet_id, u.sheet_id) END AS sheet_id,
+      CASE WHEN k.sheet_id IS NULL THEN u.column_name END AS col, MAX(k.sheet_id IS NOT NULL) AS call,
+      IFNULL(CASE WHEN k.sheet_id IS NULL THEN u.column_deleted END, 0) AS deleted, t.copy_id IS NOT NULL AS on_copy,
       GROUP_CONCAT(DISTINCT COALESCE(u.mode, u.kind)) AS kinds, MAX(u.started_at) AS last_at, COUNT(*) AS runs,
       IFNULL(SUM(u.cells), 0) AS cells, IFNULL(SUM(u.reused_cells), 0) AS reused, IFNULL(SUM(u.ai_cost_usd), 0) AS ai,
       IFNULL(SUM(u.provider_cost_usd), 0) AS provider, IFNULL(SUM(u.enrich_micro), 0) AS enrich
-    FROM run_usage u WHERE ${w.sql}
-    GROUP BY u.sheet_id, u.column_name, u.column_deleted
+    FROM run_usage u LEFT JOIN test_copies t ON t.copy_id = u.sheet_id AND t.user_id = u.user_id
+      LEFT JOIN call_sheets k ON k.sheet_id = u.sheet_id AND k.user_id = u.user_id WHERE ${w.sql}
+    GROUP BY CASE WHEN k.sheet_id IS NULL THEN COALESCE(t.sheet_id, u.sheet_id) END, on_copy,
+      CASE WHEN k.sheet_id IS NULL THEN u.column_name END, CASE WHEN k.sheet_id IS NULL THEN u.column_deleted END
     ORDER BY SUM(u.ai_cost_usd) + SUM(u.provider_cost_usd) + SUM(u.enrich_micro) / 1e6 DESC, SUM(u.cells) DESC,
-      u.column_name LIMIT ?`).all(...w.params, limit) as ColumnSql[];
+      col LIMIT ?`).all(...w.params, limit) as ColumnSql[];
   const names = sheetNames(s.userId);
   return rows.map(r => ({
-    sheet_id: r.sheet_id, sheet_name: names.get(r.sheet_id) ?? null, sheet_deleted: !names.has(r.sheet_id),
-    column: r.col, column_deleted: r.deleted === 1, kind: kindOf(r.kinds), last_run_at: r.last_at, ...figures(r),
+    ...sheetOf(names, r.sheet_id, r.call), column: r.col, column_deleted: r.deleted === 1,
+    on_test_copy: r.on_copy === 1, kind: kindOf(r.kinds), last_run_at: r.last_at, ...figures(r),
   }));
 }
 
@@ -140,25 +163,30 @@ function groupCount(s: UsageScope, groupBy: Exclude<UsageGroupBy, 'run'>): numbe
   const w = scopeWhere(s);
   const count = groupBy === 'day'
     ? db.prepare(`SELECT COUNT(DISTINCT substr(u.started_at, 1, 10)) FROM run_usage u WHERE ${w.sql}`)
-    : db.prepare(`SELECT COUNT(*) FROM (SELECT 1 FROM run_usage u WHERE ${w.sql}
-        GROUP BY u.sheet_id, u.column_name, u.column_deleted)`);
+    : db.prepare(`SELECT COUNT(*) FROM (SELECT 1 FROM run_usage u
+        LEFT JOIN test_copies t ON t.copy_id = u.sheet_id AND t.user_id = u.user_id
+        LEFT JOIN call_sheets k ON k.sheet_id = u.sheet_id AND k.user_id = u.user_id WHERE ${w.sql}
+        GROUP BY CASE WHEN k.sheet_id IS NULL THEN COALESCE(t.sheet_id, u.sheet_id) END, t.copy_id IS NOT NULL,
+          CASE WHEN k.sheet_id IS NULL THEN u.column_name END,
+          CASE WHEN k.sheet_id IS NULL THEN u.column_deleted END)`);
   return count.pluck().get(...w.params) as number;
 }
 
 // Runs newest first, after (started_at, run_id) `after` (null: from the newest).
 export function runPage(s: UsageScope, after: [string, string] | null, limit: number): UsageRunRow[] {
   const w = scopeWhere(s);
-  const rows = db.prepare(`SELECT u.run_id, u.sheet_id, u.column_name AS col, u.column_deleted AS deleted,
+  const rows = db.prepare(`SELECT u.run_id, COALESCE(t.sheet_id, u.sheet_id) AS sheet_id, u.column_name AS col,
+      u.column_deleted AS deleted, t.copy_id IS NOT NULL AS on_copy, k.sheet_id IS NOT NULL AS call,
       COALESCE(u.mode, u.kind) AS kind, u.status, u.started_at, 1 AS runs, u.cells, u.reused_cells AS reused,
       u.ai_cost_usd AS ai, u.provider_cost_usd AS provider, u.enrich_micro AS enrich
-    FROM run_usage u
+    FROM run_usage u LEFT JOIN test_copies t ON t.copy_id = u.sheet_id AND t.user_id = u.user_id
+      LEFT JOIN call_sheets k ON k.sheet_id = u.sheet_id AND k.user_id = u.user_id
     WHERE ${w.sql} AND (u.started_at, u.run_id) < (?, ?) ORDER BY u.started_at DESC, u.run_id DESC LIMIT ?`)
     .all(...w.params, ...(after ?? ['9999', '']), limit) as RunSql[];
   const names = sheetNames(s.userId);
   return rows.map(r => ({
-    run_id: r.run_id, sheet_id: r.sheet_id, sheet_name: names.get(r.sheet_id) ?? null,
-    sheet_deleted: !names.has(r.sheet_id), column: r.col, column_deleted: r.deleted === 1, kind: kindOf(r.kind),
-    what: whatRan(r.run_id, r.kind, s.userId), status: r.status,
+    run_id: r.run_id, ...sheetOf(names, r.sheet_id, r.call), column: r.col, column_deleted: r.deleted === 1,
+    on_test_copy: r.on_copy === 1, kind: kindOf(r.kind), what: whatRan(r.run_id, r.kind, s.userId), status: r.status,
     started_at: r.started_at, ...figures(r),
   }));
 }

@@ -7,6 +7,7 @@ import { countRows, jsonPath, parseRowData, verifySheetOwnership } from '../lib/
 import { MAX_ROWS_PER_SHEET } from '../lib/constants';
 import { bumpDataVersion, sheetHasActiveRun, checkColumns, TxnFail } from './data-plane-shared';
 import { busyMessage, nextRowIndex, sheetBusyWith } from '../lib/sheet-busy';
+import { CLOSING, copyClosing, sheetUnderTest, TESTING } from '../lib/sheet-test-hold';
 import { autorunRowsRemoved, markAutorunInputs } from '../lib/autorun-mark';
 import { sheetRunBlock } from './autorun-block';
 import { deleteRowsToTrash } from './trash-rows';
@@ -50,6 +51,10 @@ export function appendRows(
   const created: Array<{ id: string; index: number }> = [];
   let deduped: AutoDedupeOutcome | null = null;
   db.transaction(() => {
+    // Appends land above a heavy operation's range, but a sheet being tested on a copy takes none, nor a copy
+    // whose test has ended.
+    const held = sheetUnderTest(sheetId) ? TESTING : copyClosing(sheetId) ? CLOSING : null;
+    if (held) { fail = { fail: 'busy', message: busyMessage(held) }; return; }
     fail = checkColumns(sheetId, userId, incomingCols);
     if (fail) return;
     const current = countRows(sheetId, userId);

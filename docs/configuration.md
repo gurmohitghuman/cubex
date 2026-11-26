@@ -4,13 +4,15 @@
 
 Everything is optional. Settings live in `~/.cubex/config.env` (on Windows, `%LOCALAPPDATA%\cubex\config.env`), one `KEY=value` per line; after a change, run `cubex restart`. (With Docker, Coolify or a source checkout, they live elsewhere: see [Other ways to run Cubex](other-ways-to-run.md).)
 
+A setting in milliseconds (its name ends in `_MS`) is at most `2147483647` (about 24.8 days), the longest wait Node can keep: a longer value counts as that, and the log says so once when Cubex starts.
+
 | Variable | Default | What it does |
 |---|---|---|
 | `PORT` | `3002` | Port Cubex listens on. |
 | `HOST` | `127.0.0.1` | Who can open Cubex. `127.0.0.1`: only this computer. `0.0.0.0`: any device that can reach it. |
 | `DB_PATH` | `~/.cubex/data/cubex.db` | The database. Its directory also holds `jobs.db` and the generated secrets. |
 | `INITIAL_PASSWORD` | (none) | Creates the account with this password on first boot, so a public install can't be claimed by whoever finds it first. Ignored once the account exists. |
-| `PUBLIC_URL` | (none) | The address webhook senders and agents' file links use, if it differs from the one you browse on. |
+| `PUBLIC_URL` | (none) | The address webhook senders and agents' file links use, if it differs from the one you browse on. Also set it to the address you open Cubex on when a proxy over plain HTTP doesn't pass the `Host` header, or the app refuses your changes. |
 | `MAX_ROWS_PER_SHEET` | `1000000` | Rows per sheet. |
 | `MAX_COLUMNS_PER_SHEET` | `200` | Columns per sheet. |
 | `MAX_CSV_UPLOAD_MB` | `500` | Largest CSV you can import. |

@@ -12,6 +12,7 @@ import {
   TokenAuthRequest,
 } from '../middleware/access-token-auth';
 import { API_V1_MAX_JSON_BYTES } from '../lib/api-v1-constants';
+import { jsonTooDeep, TOO_DEEP } from '../lib/json-depth';
 import { apiV1Limiter } from '../lib/limits';
 import { versionInfo } from '../services/version-info';
 import { changesSince } from '../services/version-changes';
@@ -30,20 +31,26 @@ import transferV1 from './api-v1-transfer';
 import enrichV1 from './api-v1-enrich';
 import waterfallV1 from './api-v1-waterfall';
 import runConditionsV1 from './api-v1-run-conditions';
+import promptStartersV1 from './api-v1-prompt-starters';
 import cleanV1 from './api-v1-clean';
 import formulaV1 from './api-v1-formula';
 import lookupV1 from './api-v1-lookup';
 import setupsV1 from './api-v1-setups';
+import setupCallsV1 from './api-v1-setup-calls';
+import { runScheduleRoutes } from './run-schedules-routes';
 import viewsV1 from './api-v1-views';
 import setupVersionsV1 from './api-v1-setup-versions';
+import sheetTestV1 from './api-v1-sheet-test';
 import usageV1 from './api-v1-usage';
 import trashV1 from './api-v1-trash';
 import savedKeysV1 from './api-v1-saved-keys';
 import aiVisibilityV1 from './api-v1-ai-visibility';
 import hiringV1 from './api-v1-hiring';
+import socialV1 from './api-v1-social';
 import { refuseChangesWhileBusy } from '../lib/sheet-busy';
 import { V1_SHEET_BUSY_ALLOWED } from './api-v1-shared';
 import { runWebhookRoutes } from './run-webhooks-routes';
+import sheetWebhookV1 from './api-v1-sheet-webhook';
 import { actAs } from '../lib/actor';
 import { tokenSpendFor } from '../services/token-spend';
 import { openApiDocument } from '../openapi/document';
@@ -59,6 +66,11 @@ router.use((err: any, _req: express.Request, res: express.Response, next: expres
   if (err.type === 'entity.too.large') return res.status(413).json({ error: 'Request body too large' });
   return res.status(400).json({ error: 'Invalid JSON body' });
 });
+// A body nested deeper than any route takes is refused before a route reads it (lib/json-depth.ts).
+router.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (jsonTooDeep(req.body)) return res.status(400).json({ error: TOO_DEEP });
+  return next();
+});
 // What a call changes is done by its token (lib/actor.ts), set after the body
 // parser, whose stream events would otherwise drop it.
 router.use(actAs(req => ({
@@ -72,6 +84,7 @@ router.use('/sheets/:id', refuseChangesWhileBusy(V1_SHEET_BUSY_ALLOWED));
 router.use(tablesV1);
 router.use(aiVisibilityV1);
 router.use(hiringV1);
+router.use(socialV1);
 router.use(tableSheetsV1);
 router.use(sheetsV1);
 router.use(sheetOpsV1);
@@ -86,9 +99,13 @@ router.use(formulaV1);
 router.use(lookupV1);
 // Setups: a saved chain of filled columns, used again on other sheets (services/setup-*.ts).
 router.use(setupsV1);
+router.use(setupCallsV1);
+router.use(runScheduleRoutes('/run-schedules', requireScope));
 router.use(viewsV1);
 // Setup versions: a sheet's column setup kept by name, compared and restored (services/setup-version-*.ts).
 router.use(setupVersionsV1);
+// Tests of column changes on sample rows: a hidden copy, applied or discarded (services/sheet-test-*.ts).
+router.use(sheetTestV1);
 router.use(importV1);
 // Enrichment (Phase 2): AI/HTTP run starts, status/results reads, control.
 router.use(runsV1);
@@ -96,12 +113,16 @@ router.use(runReadsV1);
 router.use(runControlV1);
 router.use(runUndoV1);
 router.use(runConditionsV1);
+// Prompt starters: good first prompts for an AI column, from the sheet's columns (services/prompt-starters-read.ts).
+router.use(promptStartersV1);
 // Enrichments (treg.to): catalog, run starts, fields, auto-run.
 router.use(enrichV1);
 // Waterfall columns: one result per row from ordered steps (services/waterfall-*.ts).
 router.use(waterfallV1);
 // "Run finished" webhooks: signed notices when a run ends (services/run-hooks.ts).
 router.use(runWebhookRoutes('/run-webhooks', requireScope));
+// A sheet's incoming webhook: events POSTed to its URL become rows (services/sheet-webhook.ts).
+router.use(sheetWebhookV1);
 router.use(usageV1);
 router.use(trashV1);
 // Saved API keys by name and where they're used, never a value (services/saved-key-uses.ts).

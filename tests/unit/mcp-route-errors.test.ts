@@ -3,7 +3,8 @@
 // id: null (the request's id, or none), no code from the legacy -32000 range,
 // and words that say what to send instead. Bad JSON and a body over 2 MB get
 // -32700; a POST that isn't JSON, or is JSON in a charset that isn't a UTF one or
-// an encoding other than gzip or deflate, gets 415; GET and DELETE get 405 with
+// an encoding other than gzip or deflate, gets 415 (utf8 and us-ascii labels are read as UTF-8); an empty Origin
+// header is refused like a foreign one; GET and DELETE get 405 with
 // Allow: POST; a batch gets -32600. A throw in the POST handler is logged
 // redacted and answered -32603 with the request's id.
 import assert from 'node:assert/strict'
@@ -79,8 +80,11 @@ async function main() {
       assert.deepEqual(got, { status: 415, acceptEncoding, body: refused(-32600, NOT_UTF8_JSON) },
         JSON.stringify(headers))
     }
-    // What the refusal asks for is answered: UTF-8, plain or with gzip or deflate.
+    // What the refusal asks for is answered: UTF-8, plain or with gzip or deflate, also when labelled utf8 or
+    // us-ascii (a subset of UTF-8).
     const sent = [[ping, {}], [ping, { 'content-type': 'application/json; charset=utf-8' }],
+      [ping, { 'content-type': 'application/json; charset=utf8' }],
+      [ping, { 'content-type': 'application/json; Charset="US-ASCII"' }],
       [gzipSync(ping), { 'content-encoding': 'gzip' }], [deflateSync(ping), { 'content-encoding': 'deflate' }]] as const
     for (const [body, headers] of sent) {
       assert.deepEqual(await send('POST', body, { ...json, ...headers }),
@@ -103,9 +107,11 @@ async function main() {
     }
   })
 
-  await check('a page on another site: 403, no id', async () => {
-    assert.deepEqual(await send('POST', '{}', { ...json, origin: 'http://elsewhere.example' }),
-      { status: 403, allow: null, body: refused(-31403, FORBIDDEN_ORIGIN) })
+  await check('a page on another site, or an empty Origin header: 403, no id', async () => {
+    for (const origin of ['http://elsewhere.example', '']) {
+      assert.deepEqual(await send('POST', '{}', { ...json, origin }),
+        { status: 403, allow: null, body: refused(-31403, FORBIDDEN_ORIGIN) }, JSON.stringify(origin))
+    }
   })
 
   await check('a throw in the POST handler: logged redacted, -32603 with the request id (none for a note)',
