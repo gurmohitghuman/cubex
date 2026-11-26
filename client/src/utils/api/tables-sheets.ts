@@ -1,6 +1,6 @@
 import { api } from './client'
 import type { ColumnFilters } from '@/lib/filters'
-import type { Sheet, SheetData, Table } from './types'
+import type { Sheet, SheetData, Table, TableRuns } from './types'
 import type { GridAutoDedupe, ImportAutoDedupe } from './dedupe'
 import { SAMPLE_CREATE_TIMEOUT_MS, SHEET_COPY_TIMEOUT_MS } from '@/lib/constants'
 
@@ -14,6 +14,8 @@ import { SAMPLE_CREATE_TIMEOUT_MS, SHEET_COPY_TIMEOUT_MS } from '@/lib/constants
 // going there).
 export interface TrashRef { id: number; days: number; moving?: boolean }
 export interface TableRowCount { id: string; row_count: number; row_count_updating: boolean }
+// The home's runs (GET /tables/runs): key changes when a run starts, ends, pauses or resumes.
+export interface HomeRuns { key: string; tables: TableRuns[] }
 
 const noServerToast = { skipServerErrorToast: true } as const
 
@@ -22,6 +24,10 @@ export const tablesAPI = {
   // Every table's rows once the counts being made are made (the server holds it up to 20 s).
   rowCounts: (signal: AbortSignal): Promise<TableRowCount[]> =>
     api.get('/tables/row-counts', { ...noServerToast, signal }).then(res => res.data.tables),
+  // Every table's runs once they differ from the answer whose key is `since` (held up to 25 s; none: at once).
+  runs: (since: string | null, signal: AbortSignal): Promise<HomeRuns> =>
+    api.get('/tables/runs', { params: since === null ? {} : { since }, ...noServerToast, signal })
+      .then(res => res.data),
   getById: (id: string): Promise<Table> => api.get(`/tables/${id}`, noServerToast).then(res => res.data),
   create: (name: string): Promise<Table> => api.post('/tables', { name }, noServerToast).then(res => res.data),
   // A table of made-up leads with columns that show what Cubex does (server services/sample-table.ts).

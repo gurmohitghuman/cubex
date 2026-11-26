@@ -10,14 +10,17 @@ import {
 } from '../services/table-crud';
 import { createSampleTable } from '../services/sample-table';
 import { homeCounts, homeCountsWhenMade, liveSheets } from '../services/table-row-counts';
-import { acquireCountWait } from '../lib/long-poll-holds';
+import { homeRuns, homeRunsWhenChanged } from '../services/table-runs';
+import { acquireCountWait, acquireRunsWait } from '../lib/long-poll-holds';
+import { ROW_COUNT_HOLD_MS } from '../lib/constants-row-counts';
 
 const router = express.Router();
 router.use(authenticateToken);
 
 // GET /: the user's tables with their sheet ids and rows, counted nothing on the request (lib/row-counts.ts): a
 // table whose rows changed since they were last counted answers that count with row_count_updating, and the home
-// then waits for the new one (GET /row-counts).
+// then waits for the new one (GET /row-counts). runs: its runs going now and paused (services/table-runs.ts), left
+// out when it has none; the home then follows them (GET /runs).
 router.get('/', (req: AuthRequest, res) => {
   try {
     // Explicit client columns (no user_id) — this row is spread into the response
@@ -28,6 +31,7 @@ router.get('/', (req: AuthRequest, res) => {
     ).all(req.userId!) as Array<{ id: string; name: string; created_at: string; updated_at: string }>;
     const sheets = liveSheets(req.userId!);
     const counts = homeCounts(req.userId!, sheets);
+    const runs = homeRuns(req.userId!, sheets);
     const sheetsByTable = new Map<string, Array<{ id: string }>>();
     for (const s of sheets) {
       if (!sheetsByTable.has(s.table_id)) sheetsByTable.set(s.table_id, []);
@@ -36,6 +40,7 @@ router.get('/', (req: AuthRequest, res) => {
     res.json(tables.map(t => ({
       ...t, sheets: sheetsByTable.get(t.id) || [],
       row_count: counts.get(t.id)?.row_count ?? 0, row_count_updating: counts.get(t.id)?.row_count_updating ?? false,
+      ...(runs.has(t.id) ? { runs: runs.get(t.id) } : {}),
     })));
   } catch (error) {
     console.error('Get tables error:', error);
@@ -45,11 +50,13 @@ router.get('/', (req: AuthRequest, res) => {
 
 // GET /row-counts: every table's rows once the counts the home showed as updating are made (held up to
 // ROW_COUNT_HOLD_MS; one still being counted then answers row_count_updating and the home asks again). 429 when the
-// account already holds MAX_COUNT_WAITS_PER_USER of these: the home keeps its counts marked as updating. A page that
-// leaves lets go of its slot at once (the response closes), as the sheet's change poll does.
+// account already holds MAX_COUNT_WAITS_PER_USER of these (other tabs of the home), with Retry-After: the hold's
+// length, by when one of them has answered. A page that leaves lets go of its slot at once (the response closes),
+// as the sheet's change poll does.
 router.get('/row-counts', async (req: AuthRequest, res) => {
   const release = acquireCountWait(req.userId!);
   if (!release) {
+    res.set('Retry-After', String(Math.ceil(ROW_COUNT_HOLD_MS / 1000)));
     return res.status(429).json({ error: 'Too many home pages are open. Close one, then reload this page.' });
   }
   res.on('close', release);
@@ -58,6 +65,31 @@ router.get('/row-counts', async (req: AuthRequest, res) => {
   } catch (error) {
     console.error('Get row counts error:', error);
     res.status(500).json({ error: 'Couldn\'t count the rows. Reload the page to try again.' });
+  } finally {
+    release();
+  }
+});
+
+// GET /runs?since=<key>: every table's runs going now and paused once they differ from `since` (the key the last
+// answer gave; none: answers at once), checked once a second and held up to RUNS_HOLD_MS. 429 with Retry-After when
+// the account already holds MAX_RUNS_WAITS_PER_USER of these (other tabs of the home). Leaving lets go at once.
+const RUNS_HOLD_MS = 25_000;
+const RUNS_CHECK_MS = 1_000;
+router.get('/runs', async (req: AuthRequest, res) => {
+  const release = acquireRunsWait(req.userId!);
+  if (!release) {
+    res.set('Retry-After', String(RUNS_HOLD_MS / 1000));
+    return res.status(429).json({ error: 'Too many home pages are open. Close one, then reload this page.' });
+  }
+  let closed = false;
+  res.on('close', () => { closed = true; release(); });
+  const since = typeof req.query.since === 'string' ? req.query.since : null;
+  try {
+    const runs = await homeRunsWhenChanged(req.userId!, since, Date.now() + RUNS_HOLD_MS, RUNS_CHECK_MS, () => closed);
+    if (!closed) res.json(runs);
+  } catch (error) {
+    console.error('Get runs error:', error);
+    if (!closed) res.status(500).json({ error: 'Couldn\'t read the runs. Reload the page to try again.' });
   } finally {
     release();
   }
