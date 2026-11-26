@@ -169,19 +169,32 @@ export async function withSheetRead<T>(
 // while the sheet is busy, any change to it gets a 409 with the reason. Reads,
 // and the POSTs listed in `allowed` (appending rows lands above the reserved
 // range; a row query only reads), go through. An entry can be a pattern for a
-// path with an id in it, or a test of the request (a keyed call that checks
-// for busy itself).
+// path with an id in it (both for a POST), or a test of the whole request, any
+// method (a keyed call that checks for busy itself, a webhook's own controls).
 export type BusyAllowed = string | RegExp | ((req: Request) => boolean);
 export function refuseChangesWhileBusy(allowed: BusyAllowed[]) {
   return (req: Request, res: Response, next: NextFunction): void => {
     if (req.method === 'GET' || req.method === 'HEAD') return next();
     const what = sheetBusyWith(req.params.id);
-    const listed = allowed.some(a => (typeof a === 'string' ? a === req.path
-      : a instanceof RegExp ? a.test(req.path) : a(req)));
-    if (!what || (req.method === 'POST' && listed)) return next();
+    const listed = allowed.some(a => (typeof a === 'function' ? a(req)
+      : req.method === 'POST' && (typeof a === 'string' ? a === req.path : a.test(req.path))));
+    if (!what || listed) return next();
     res.status(409).json({ error: busyMessage(what), busy: true });
   };
 }
+
+// A sheet's webhook's own controls (services/sheet-webhook.ts): turning it on or off, a new URL, a token made or
+// removed, auto-delete set or turned off, the webhook deleted. They change only its record, never rows or columns,
+// so they go through while the sheet is busy: a sort or an import must not keep its owner from cutting off a leaked
+// URL while events still add rows (auto-delete's sweep itself waits while the sheet is busy). Setting one up and
+// adding or removing a field change its columns, so they wait. The path is the sheet routers' own (/webhook…).
+const AUTO_DELETE_PATH = '/webhook/auto-delete';
+export const webhookControl = (req: Request): boolean =>
+  (req.method === 'PATCH' && req.path === '/webhook')
+  || (req.method === 'POST' && (req.path === '/webhook/rotate' || req.path === '/webhook/token'))
+  || (req.method === 'PUT' && req.path === AUTO_DELETE_PATH)
+  || (req.method === 'DELETE' && (req.path === '/webhook' || req.path === '/webhook/token'
+    || req.path === AUTO_DELETE_PATH));
 
 // Where an appended row goes: one past the last row, and never inside a range
 // a running operation has reserved. Call inside the transaction that inserts.

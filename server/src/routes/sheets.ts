@@ -27,7 +27,7 @@ import descriptionRoutes from './sheets-descriptions';
 import historyRoutes from './sheets-history';
 import skipWhyRoutes from './sheets-skip-why';
 import setupVersionRoutes from './sheets-setup-versions';
-import { refuseChangesWhileBusy } from '../lib/sheet-busy';
+import { refuseChangesWhileBusy, webhookControl } from '../lib/sheet-busy';
 
 // Composed sheets router. Each sub-router handles a related cluster of endpoints,
 // which keeps each file small.
@@ -50,8 +50,12 @@ router.use('/:id', refuseChangesWhileBusy([
   '/runs/stop',
   // Using a setup: its estimate only reads, and its start checks the sheet itself (services/setup-apply.ts).
   /^\/setups\/[^/]+\/apply$/,
+  // Running chosen columns: the same (services/column-run.ts).
+  '/column-runs',
   // A dry restore only reads; a restore checks the sheet itself (services/setup-version-restore.ts).
   /^\/setup-versions\/[^/]+\/restore$/,
+  // The webhook's own controls: a leaked URL can be cut off mid-import (lib/sheet-busy.ts webhookControl).
+  webhookControl,
 ]));
 router.use(readRoutes);
 router.use(dataRoutes);

@@ -1,6 +1,9 @@
 // manage_sheet_webhook while its sheet is busy (a sort, an import), through /mcp in both protocol eras: get
-// reads, as get_sheet does and as REST GET /sheets/:id/webhook does, and every change is refused with the busy
-// words, writing nothing, as over REST. The url it answers is absolute, at the address the caller reached
+// reads, as get_sheet does and as REST GET /sheets/:id/webhook does; a change to its columns (add_field,
+// remove_field) is refused with the busy words, writing nothing, as over REST; and its own controls (turn_off,
+// turn_on, rotate, set_auto_delete, auto_delete_off) go through, so a leaked URL can be cut off mid-import
+// (lib/sheet-busy.ts webhookControl).
+// The url it answers is absolute, at the address the caller reached
 // Cubex on (ctx.linkBase), so an agent can paste it into a sender.
 import assert from 'node:assert/strict'
 import dbMod from '../../server/src/lib/db'
@@ -19,6 +22,8 @@ db.prepare('INSERT INTO tables (id,user_id,name) VALUES (?,?,?)').run('t-hooks',
 db.prepare('INSERT INTO sheets (id,table_id,user_id,name,column_order) VALUES (?,?,?,?,?)')
   .run('s-hook', 't-hooks', u, 'Events', JSON.stringify(['Name']))
 createSourceWithColumn('s-hook', u, 'Webhook')
+db.prepare(`INSERT INTO webhook_mappings (id, source_id, user_id, json_path, column_name)
+  SELECT 'f-name', id, user_id, '$.name', 'Name' FROM webhook_sources WHERE sheet_id = ?`).run('s-hook')
 
 type Result = { isError?: boolean; structuredContent?: Record<string, any>; content: Array<{ text: string }> }
 async function both(args: Record<string, unknown>): Promise<Result[]> {
@@ -30,6 +35,9 @@ async function both(args: Record<string, unknown>): Promise<Result[]> {
   }
   return out
 }
+const tokenHash = () => db.prepare('SELECT token_hash FROM webhook_sources WHERE sheet_id = ?').pluck()
+  .get('s-hook') as string
+const fields = () => db.prepare('SELECT COUNT(*) FROM webhook_mappings').pluck().get() as number
 const enabled = () => (db.prepare('SELECT enabled FROM webhook_sources WHERE sheet_id = ?').get('s-hook') as
   { enabled: number }).enabled
 
@@ -51,27 +59,38 @@ async function main() {
         assert.equal(r.structuredContent!.webhook.enabled, true)
       }
     })
-    await check('a busy sheet: every change is refused with the busy words, and writes nothing', async () => {
-      for (const action of ['turn_off', 'rotate', 'delete']) {
-        for (const r of await both({ action })) {
-          assert.equal(r.isError, true, `${action}: ${JSON.stringify(r)}`)
+    await check('a busy sheet: a change to its columns is refused with the busy words, writing nothing', async () => {
+      for (const args of [{ action: 'add_field', json_path: '$.email', column: 'Email' },
+        { action: 'remove_field', field_id: 'f-name' }]) {
+        for (const r of await both(args)) {
+          assert.equal(r.isError, true, `${args.action}: ${JSON.stringify(r)}`)
           assert.equal(JSON.parse(r.content[0].text).error, busyMessage('sort'))
         }
       }
-      for (const r of await both({ action: 'add_field', json_path: '$.email', column: 'Email' })) {
-        assert.equal(r.isError, true, JSON.stringify(r))
+      assert.equal(fields(), 1)
+    })
+    await check('a busy sheet: its own controls go through (turn_off, turn_on, rotate, auto-delete)', async () => {
+      for (const r of await both({ action: 'turn_off' })) assert.equal(r.structuredContent?.webhook.enabled, false)
+      assert.equal(enabled(), 0)
+      for (const r of await both({ action: 'turn_on' })) assert.equal(r.structuredContent?.webhook.enabled, true)
+      const before = tokenHash()
+      for (const r of await both({ action: 'rotate' })) assert.equal(r.isError, undefined, JSON.stringify(r))
+      assert.notEqual(tokenHash(), before)
+      for (const r of await both({ action: 'set_auto_delete', keep_rows: 5 })) {
+        assert.equal(r.structuredContent?.webhook.auto_delete?.keep_rows, 5, JSON.stringify(r))
       }
-      assert.equal(enabled(), 1)
-      assert.equal((db.prepare('SELECT COUNT(*) n FROM webhook_mappings').get() as { n: number }).n, 0)
+      for (const r of await both({ action: 'auto_delete_off' })) {
+        assert.equal(r.structuredContent?.webhook.auto_delete, null, JSON.stringify(r))
+      }
     })
   } finally {
     release()
     await sorting
   }
-  await check('once it is free, a change goes through', async () => {
-    const [first] = await both({ action: 'turn_off' })
-    assert.equal(first.structuredContent!.webhook.enabled, false)
-    assert.equal(enabled(), 0)
+  await check('once it is free, a change to its columns goes through', async () => {
+    const [first] = await both({ action: 'add_field', json_path: '$.email', column: 'Email' })
+    assert.equal(first.isError, undefined, JSON.stringify(first))
+    assert.equal(fields(), 2)
   })
   done()
 }

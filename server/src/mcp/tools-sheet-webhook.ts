@@ -13,6 +13,8 @@ import type { WebhookSourceFull } from '../lib/webhook-service';
 import { McpAuthCtx, ok, err, missingScope, registerTool, SHEET_ID, mcpLinkBase } from './tool-helpers';
 import { busyMessage, sheetBusyWith } from '../lib/sheet-busy';
 import { changedOf } from './changed';
+import { AUTO_DELETE_KEEP_DEFAULT, AUTO_DELETE_KEEP_MAX } from '../lib/constants-webhook-auto-delete';
+import { GUIDE_POINTER } from './guides/guide';
 
 const ACTIONS = [
   'get', 'create', 'turn_on', 'turn_off', 'rotate', 'add_field', 'remove_field', 'new_token', 'remove_token',
@@ -22,21 +24,16 @@ const ACTIONS = [
 export function registerSheetWebhookTools(server: McpServer, ctx: McpAuthCtx): void {
   registerTool(server, 'manage_sheet_webhook', {
     description:
-      'A sheet\'s incoming webhook: a secret URL where each JSON event POSTed becomes a new row. get: its state '
-      + '(webhook null when none): on or off, events_received, last_event_at, last_error and its fields. create: '
+      'A sheet\'s incoming webhook: a secret URL where each JSON event POSTed becomes a new row. create: '
       + 'adds one (one per sheet) and a column marking the rows it adds. The url is shown until the first event '
       + 'arrives, and only to a key with the write scope; after that it is hidden and rotate makes a new one (the '
-      + 'old one stops at once). turn_off: events get 404 and add nothing until turn_on. add_field: json_path '
-      + '(like $.email or $.plan.name) and column, a new column each event fills, as text (default) or as json. '
-      + 'remove_field: field_id; its column and values stay. new_token: senders must then send the answer\'s '
-      + 'token (shown once) as Authorization: Bearer <token>, or get 404; an old one stops. remove_token: no '
-      + 'token needed. set_auto_delete: keep the newest keep_rows rows (default 100); older rows the webhook added '
-      + 'are deleted (not to the trash) once every auto-run column has run on them and, with success_column, once '
-      + 'it has a result; with copy_to_sheet_id they are copied there first. What it leaves out stays; null clears. '
-      + 'auto_delete_off stops it. delete: the webhook '
-      + 'and its kept events go; its columns and rows stay. manage_table or manage_sheet create with webhook true '
-      + 'makes a sheet with one. '
-      + 'Every action but get needs the write scope.',
+      + 'old one stops at once). delete: the webhook and its kept events go; its '
+      + 'columns and rows stay. new_token: senders must then send the answer\'s token (shown once) as '
+      + 'Authorization: Bearer <token>, or get 404; an old one stops. set_auto_delete: keep the newest keep_rows '
+      + `rows (default ${AUTO_DELETE_KEEP_DEFAULT}); older rows the webhook added are deleted, not to the trash `
+      + '(they can\'t be restored), once every auto-run column has run on them and, with success_column, once it '
+      + 'has a result; with copy_to_sheet_id they are copied there first. auto_delete_off stops it. Every action '
+      + `but get needs the write scope. ${GUIDE_POINTER}`,
     inputSchema: z.object({
       action: z.enum(ACTIONS).describe('What to do'),
       sheet_id: z.string().describe(SHEET_ID),
@@ -44,7 +41,8 @@ export function registerSheetWebhookTools(server: McpServer, ctx: McpAuthCtx): v
       column: z.string().optional().describe('add_field: the new column\'s name'),
       as: z.enum(['text', 'json']).optional().describe('add_field: text (default) or the value as JSON'),
       field_id: z.string().optional().describe('remove_field: the field (get lists them)'),
-      keep_rows: z.number().int().optional().describe('set_auto_delete: newest rows kept, 0 to 100000'),
+      keep_rows: z.number().int().optional()
+        .describe(`set_auto_delete: newest rows kept, 0 to ${AUTO_DELETE_KEEP_MAX}`),
       success_column: z.string().nullable().optional()
         .describe('set_auto_delete: rows leave once this column has a result'),
       copy_to_sheet_id: z.string().nullable().optional()
@@ -67,8 +65,11 @@ export function registerSheetWebhookTools(server: McpServer, ctx: McpAuthCtx): v
       return ok({ webhook: got.ok && sheetWebhookView(got.ok, ctx.scopes.has('write') ? mcpLinkBase(ctx) : null),
         changed: [] });
     }
-    // get reads while a sort or an import runs, as get_sheet does; a change waits, as over REST.
-    const busy = sheetBusyWith(sheet_id);
+    // get reads while a sort or an import runs, as get_sheet does. Setting one up and adding or removing a field
+    // change columns and wait, as over REST; the webhook's own controls (on, off, a new URL or token, auto-delete,
+    // delete) go through, so a leaked URL can be cut off mid-import (lib/sheet-busy.ts webhookControl).
+    const waits = action === 'create' || action === 'add_field' || action === 'remove_field';
+    const busy = waits ? sheetBusyWith(sheet_id) : null;
     if (busy) return err(busyMessage(busy));
     if (action === 'delete') {
       const gone = deleteSheetWebhook(ctx.userId, sheet_id);

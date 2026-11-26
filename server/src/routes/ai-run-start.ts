@@ -19,6 +19,8 @@ router.post('/run', async (req: AuthRequest, res) => {
     // Optional: the run's hard spend limit in dollars (services/ai-spend-gate.ts).
     const limit = usdLimitOf((req.body as { spendLimitUsd?: unknown } | undefined)?.spendLimitUsd, 'spendLimitUsd');
     if ('error' in limit) return res.status(400).json({ error: limit.error });
+    // The edit dialog's Save: the setup becomes the column's and nothing runs (services/column-setup-save.ts).
+    const saveOnly = (req.body as { saveOnly?: unknown } | undefined)?.saveOnly === true;
 
     const result = await startAiRun(req.userId!, {
       sheetId: parsed.sheetId,
@@ -37,8 +39,13 @@ router.post('/run', async (req: AuthRequest, res) => {
       // The dialog's output columns: one answer per row fills them all (ai-run-start-multi.ts).
       outputColumns: parsed.outputColumns,
       spendLimitUsd: limit.value,
+      saveOnly,
     });
     if ('fail' in result) return res.status(runFailHttpStatus(result)).json({ error: result.message });
+    if (result.ok.saved) {
+      return res.json({ saved: true, setupId: result.ok.runId, message: 'Setup saved. Nothing ran.',
+        runIf: result.ok.runIf ?? null });
+    }
 
     res.json({
       runId: result.ok.runId, message: 'AI run started and column created', reusedRows: result.ok.reusedRows,

@@ -1,0 +1,145 @@
+{
+ "endpoint": {
+  "id": "anyapi.twitter.tweet_transcript",
+  "provider": "anyapi",
+  "provider_display": "AnyAPI",
+  "name": "Twitter Tweet Transcript",
+  "summary": "Extract the spoken transcript from a Twitter/X video tweet by URL.",
+  "method": "POST",
+  "path": "/v1/run/twitter.tweet_transcript",
+  "scope": "",
+  "tier": "extended",
+  "kind": "data",
+  "domain": "tweet",
+  "call_template": "treg call anyapi.twitter.tweet_transcript",
+  "cost": {
+   "type": "per_call",
+   "value": 0.0012,
+   "currency": "USD",
+   "unit": "call",
+   "reported_charge": {
+    "path": "costUsd",
+    "unit": "usd"
+   },
+   "source": "rate_card_api",
+   "source_url": "https://api.getanyapi.com/v1/apis/twitter.tweet_transcript",
+   "checked": "2026-09-11",
+   "confidence": "verified",
+   "note": "2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A not-found or empty answer is billed too, at its own `costUsd`.",
+   "usd": 0.0012
+  },
+  "async": null,
+  "platform_eligible": true,
+  "platform_blocked": null,
+  "miss": null,
+  "status": null,
+  "status_note": null,
+  "superseded_by": null,
+  "verified": "2026-09-19",
+  "added": "2026-09-19",
+  "docs_url": "https://getanyapi.com/api/twitter/tweet-transcript",
+  "has_example": true,
+  "input": {
+   "body": {
+    "url": {
+     "type": "string",
+     "required": true,
+     "note": "Tweet URL of the video to transcribe (e.g. https://www.example.com/sample).",
+     "example": "https://www.example.com/sample"
+    }
+   },
+   "bodyType": "json",
+   "queryArrayEncoding": "comma",
+   "queryParams": {
+    "fields": {
+     "type": "string",
+     "required": false,
+     "note": "Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, not the charge."
+    },
+    "max_items": {
+     "type": "integer",
+     "required": false,
+     "min": 0,
+     "note": "Caps the result rows returned; `_truncated` says how many were withheld. Not the charge."
+    },
+    "summary": {
+     "type": "boolean",
+     "required": false,
+     "note": "`true` returns only an outline: keys, item counts, per-field sizes."
+    },
+    "jq": {
+     "type": "string",
+     "required": false,
+     "note": "jq expression over the result envelope; its output replaces `output`. A failed expression returns the full result with `jqError`."
+    }
+   }
+  },
+  "capability": "",
+  "capability_description": "",
+  "platform": "x",
+  "platform_label": "X (Twitter)",
+  "observed": null,
+  "wallet": {
+   "payable": true,
+   "protocols": [
+    "mpp"
+   ],
+   "minimum_payment_micro": 10000,
+   "fee_bps": 0,
+   "note": "pay per call with a wallet, no account. A payment is at least $0.01; the call is charged only its real price, and the rest stays as this wallet's credit for its next calls (credit is not paid back as money)."
+  },
+  "reviews": {
+   "teams": 0,
+   "samples": [
+    {
+     "usefulness": "useful",
+     "reason": "Full transcript of a short native X video at the listed price.",
+     "client": "mcp",
+     "month": "2026-11"
+    },
+    {
+     "usefulness": "not_useful",
+     "reason": "Returned found:false, reason too_long for a 6 min 40 s native X video; no charge.",
+     "client": "mcp",
+     "month": "2026-11"
+    },
+    {
+     "usefulness": "useful",
+     "reason": "Result used to build the video's context for a how-to extraction.",
+     "client": "claude-code",
+     "month": "2026-10"
+    }
+   ]
+  }
+ },
+ "provider": {
+  "service": "anyapi",
+  "display_name": "AnyAPI",
+  "limits": "no published per-key request-rate limit on /v1/run - AnyAPI does not advertise a quota it does not enforce. Spend is bounded instead by the wallet balance, the key's own spend cap, and the per-request `max_cost_usd` ceiling the caller sets. The unauthenticated /agent/signup trial route is limited to 3 per IP per hour.",
+  "pricing_url": "https://getanyapi.com/catalog",
+  "docs": "https://getanyapi.com/docs"
+ },
+ "siblings": [],
+ "observed_pending": true,
+ "call_template": "treg call anyapi.twitter.tweet_transcript",
+ "example_response": {
+  "output": {
+   "found": true,
+   "data": {
+    "transcript": "Three things, in thirty seconds."
+   }
+  },
+  "provider": "anyapi",
+  "costUsd": 0.001,
+  "items": 1,
+  "replayed": false,
+  "source": {
+   "id": "sample",
+   "name": "Sample",
+   "kind": "api",
+   "artworkKey": "sample"
+  },
+  "resultId": "sample-result"
+ },
+ "hints": []
+}

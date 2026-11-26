@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { Bookmark, Pause, Play, Square } from 'lucide-react'
+import { Bookmark, Pause, Play, PlayCircle, Square } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { setupsAPI, type SetupRunView } from '@/utils/api/setups'
 import { onSetupRunsChanged } from '@/lib/setup-runs-signal'
@@ -7,10 +7,13 @@ import { onSetupRunsChanged } from '@/lib/setup-runs-signal'
 // While a setup works, how often the chip looks again (its runs stream into the grid on their own).
 const LIVE_POLL_MS = 2500
 const isLive = (r: SetupRunView) => r.status === 'running' || r.status === 'paused'
+// A column run (Data, Run columns) rather than a setup being used.
+const isColumnRun = (r: SetupRunView) => !!r.column_run
 
-// The sheet header's chip while a setup is being used on the sheet: its name,
-// the step it's on, pause or resume, stop. When it ends, a toast says how
-// (and that using it again carries on after a failure).
+// The sheet header's chip while a setup is being used on the sheet, or columns
+// run again (Run columns): its name, the step it's on, pause or resume, stop.
+// When it ends, a toast says how (and, for a setup, that using it again carries
+// on after a failure).
 // onProgress: a setup moved to its next step or ended, so the sheet reloads
 // into its new columns at once instead of at the next change poll.
 // dataVersion: the sheet's; when it moves, the chip looks again, so a setup an
@@ -44,8 +47,8 @@ export const SetupRunChip: React.FC<{
         moved = true
         if (r.status === 'done') toast.success(`"${r.setup_name}" is done.`)
         else if (r.status === 'failed') {
-          toast.error(`"${r.setup_name}" stopped: ${r.error_message ?? 'a step failed'} `
-            + 'Use the setup again here to carry on from where it stopped.')
+          toast.error(`"${r.setup_name}" stopped: ${r.error_message ?? 'a step failed'}`
+            + (isColumnRun(r) ? '' : ' Use the setup again here to carry on from where it stopped.'))
         }
       }
     }
@@ -68,27 +71,28 @@ export const SetupRunChip: React.FC<{
   if (!live) return null
   const act = async (action: 'pause' | 'resume' | 'cancel') => {
     try { setLive(await setupsAPI.control(live.id, action)) } catch (e: any) {
-      toast.error(e?.response?.data?.error || "Couldn't change the setup.")
+      toast.error(e?.response?.data?.error || `Couldn't change ${isColumnRun(live) ? 'the run' : 'the setup'}.`)
     }
     void look()
   }
   const paused = live.status === 'paused'
+  const what = isColumnRun(live) ? 'the run' : 'the setup'
   return (
     <div className={'flex shrink-0 items-center gap-1.5 whitespace-nowrap border border-gray-300 px-2 py-1 text-xs '
       + 'text-gray-700'}
       data-testid="setup-run-chip"
       title={[...(paused && live.error_message ? [live.error_message] : []),
         ...live.steps.map(s => `${s.layer}. ${s.column}: ${s.state}`)].join('\n')}>
-      <Bookmark className="h-3 w-3" />
+      {isColumnRun(live) ? <PlayCircle className="h-3 w-3" /> : <Bookmark className="h-3 w-3" />}
       <span className="max-w-[8rem] truncate lg:max-w-[16rem]">
         {live.setup_name}: step {live.layer} of {live.layers}{paused ? ' (paused)' : ''}
       </span>
       <button type="button" className="p-0.5 hover:text-gray-900" onClick={() => void act(paused ? 'resume' : 'pause')}
-        aria-label={paused ? 'Resume the setup' : 'Pause the setup'}>
+        aria-label={paused ? `Resume ${what}` : `Pause ${what}`}>
         {paused ? <Play className="h-3 w-3" /> : <Pause className="h-3 w-3" />}
       </button>
       <button type="button" className="p-0.5 hover:text-red-600" onClick={() => void act('cancel')}
-        aria-label="Stop the setup">
+        aria-label={`Stop ${what}`}>
         <Square className="h-3 w-3" />
       </button>
     </div>

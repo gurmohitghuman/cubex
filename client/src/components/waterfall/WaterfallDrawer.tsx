@@ -17,6 +17,7 @@ import { RunProgress } from './RunProgress'
 import { DryRunPanel } from './DryRunPanel'
 import { startCopy, type StartChoice } from './start-copy'
 import { useWaterfallEstimate, useWaterfallRun } from './useWaterfall'
+import { useWaterfallSave } from './useWaterfallSave'
 
 export type WaterfallOpenTarget = { kind: 'new' } | { kind: 'edit'; column: string } | { kind: 'run'; runId: string }
 
@@ -122,6 +123,7 @@ export const WaterfallDrawer: React.FC<Props> = (p) => {
   const e = est.estimate
   // Run only on the estimate of the draft as it is now (the last one stays shown while the next loads).
   const runnable = !problem && !!e && !est.loading && !starting
+  const saver = useWaterfallSave(sheetId, () => { p.onRunChanged(); setDraft(null); p.onClose() }, setError)
   const copy = e && confirm ? startCopy(confirm, e, dryRows) : null
   return (
     <Drawer isOpen={isOpen} onClose={p.onClose} panelClassName="max-w-lg">
@@ -174,8 +176,14 @@ export const WaterfallDrawer: React.FC<Props> = (p) => {
                   onClick={() => setConfirm({ kind: 'dry', only: null })}>Try on {dryRows} rows</button>
                 <button type="button" className="btn-secondary" disabled={!runnable}
                   onClick={() => setConfirm({ kind: 'test' })}>Run on {ENRICH_TEST_ROWS} rows</button>
-                <button type="button" className="btn-primary" disabled={!runnable || e?.rows === 0}
-                  onClick={() => setConfirm({ kind: 'all' })}>Run</button>
+                {draft.continueColumn && (
+                  <button type="button" className="btn-secondary" data-testid="waterfall-save-setup"
+                    disabled={!!problem || starting || saver.saving} onClick={() => saver.save(toInput(draft, choice))}
+                    title="Save the new setup. Nothing runs and nothing is billed.">
+                    {saver.saving ? 'Saving…' : 'Save'}</button>
+                )}
+                <button type="button" className="btn-primary" disabled={!runnable || e?.rows === 0 || saver.saving}
+                  onClick={() => setConfirm({ kind: 'all' })}>{draft.continueColumn ? 'Save and run' : 'Run'}</button>
               </div>
             </div>
           )}

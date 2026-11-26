@@ -1,0 +1,537 @@
+{
+ "endpoint": {
+  "id": "tikhub.x.youtube-web-search-video",
+  "provider": "tikhub",
+  "provider_display": "TikHub",
+  "name": "Search YouTube videos by keyword",
+  "summary": "Youtube: search video (web)",
+  "method": "GET",
+  "path": "/api/v1/youtube/web/search_video",
+  "scope": "",
+  "tier": "extended",
+  "kind": "data",
+  "domain": "search",
+  "call_template": "treg call tikhub.x.youtube-web-search-video",
+  "cost": {
+   "type": "per_call",
+   "value": 0.001,
+   "currency": "USD",
+   "per": 1,
+   "unit": "call",
+   "source": "rate_card_api",
+   "source_url": "https://api.tikhub.io/api/v1/tikhub/user/get_all_endpoints_info",
+   "checked": "2026-07-28",
+   "confidence": "verified",
+   "usd": 0.001
+  },
+  "async": null,
+  "platform_eligible": true,
+  "platform_blocked": null,
+  "miss": null,
+  "status": null,
+  "status_note": null,
+  "superseded_by": null,
+  "verified": "2026-07-28",
+  "added": "2026-07-28",
+  "docs_url": "",
+  "has_example": true,
+  "input": {
+   "queryParams": {
+    "search_query": {
+     "type": "string",
+     "required": true,
+     "note": "Search keyword",
+     "example": "sample"
+    },
+    "language_code": {
+     "type": "string",
+     "required": false,
+     "note": "Language code",
+     "example": "sample"
+    },
+    "order_by": {
+     "type": "string",
+     "required": false,
+     "note": "Order by",
+     "example": "sample"
+    },
+    "country_code": {
+     "type": "string",
+     "required": false,
+     "note": "Country code",
+     "example": "sample"
+    },
+    "continuation_token": {
+     "type": "string",
+     "required": false,
+     "note": "Pagination token"
+    }
+   }
+  },
+  "capability": "youtube.search.videos",
+  "capability_description": "Search videos by keyword",
+  "platform": "youtube",
+  "platform_label": "YouTube",
+  "observed": {
+   "samples": 162104,
+   "decided": 137335,
+   "ok_rate": 0.9982,
+   "p50_ms": 1295,
+   "p95_ms": 11678,
+   "last_ok_days": 0,
+   "hit_rate": 0.9502,
+   "hit_samples": 137070
+  },
+  "wallet": {
+   "payable": true,
+   "protocols": [
+    "mpp"
+   ],
+   "minimum_payment_micro": 10000,
+   "fee_bps": 0,
+   "note": "pay per call with a wallet, no account. A payment is at least $0.01; the call is charged only its real price, and the rest stays as this wallet's credit for its next calls (credit is not paid back as money)."
+  },
+  "reviews": {
+   "teams": 25,
+   "samples": [
+    {
+     "usefulness": "useful",
+     "reason": "Found the precise recent channel upload.",
+     "client": "cli",
+     "month": "2026-11"
+    },
+    {
+     "usefulness": "partly",
+     "reason": "Rows are heavily skewed to uploads from the last few weeks, not the relevance ranking a real YouTube searcher sees, so it can't be used to judge ranking competition.",
+     "client": "mcp",
+     "month": "2026-11"
+    },
+    {
+     "usefulness": "not_useful",
+     "reason": "The query was a specific how-to (cheese corn with a commercial coater) but the results were generic trending videos unrelated to the query terms (soups, Roblox, audiobooks).",
+     "client": "mcp",
+     "month": "2026-11"
+    }
+   ],
+   "share": {
+    "useful": 0.47,
+    "partly": 0.39,
+    "not_useful": 0.15
+   }
+  }
+ },
+ "provider": {
+  "service": "tikhub",
+  "display_name": "TikHub",
+  "pricing_url": "https://api.tikhub.io/api/v1/tikhub/user/get_all_endpoints_info",
+  "docs": "https://docs.tikhub.io/"
+ },
+ "siblings": [
+  {
+   "id": "crawl4ai.youtube.search.videos",
+   "provider": "crawl4ai",
+   "provider_display": "Crawl4AI",
+   "name": "YouTube search results",
+   "scope": "any_account",
+   "kind": "data",
+   "cost": {
+    "type": "per_success",
+    "value": 0.9,
+    "currency": "credit",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.0009
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-10-11",
+   "params": [
+    "limit",
+    "query"
+   ],
+   "observed": {
+    "samples": 53903,
+    "decided": 53872,
+    "ok_rate": 0.9993,
+    "p50_ms": 1547,
+    "p95_ms": 4081,
+    "last_ok_days": 0,
+    "hit_rate": 0.9917,
+    "hit_samples": 53830
+   },
+   "reviews": {
+    "teams": 25,
+    "share": {
+     "useful": 0.85,
+     "partly": 0.15,
+     "not_useful": 0.0
+    }
+   }
+  },
+  {
+   "id": "justoneapi.x.youtube-search-v1",
+   "provider": "justoneapi",
+   "provider_display": "Just One API",
+   "name": "Search YouTube by keyword",
+   "scope": "",
+   "kind": "data",
+   "cost": {
+    "type": "per_success",
+    "value": 0.1,
+    "currency": "CNY",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.01476
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "keyword",
+    "continuationToken",
+    "uploadDate",
+    "type",
+    "duration",
+    "features",
+    "sortBy"
+   ],
+   "observed": {
+    "samples": 3501,
+    "decided": 3425,
+    "ok_rate": 1.0,
+    "p50_ms": 2829,
+    "p95_ms": 4206,
+    "last_ok_days": 0,
+    "hit_rate": 0.8589,
+    "hit_samples": 3423
+   },
+   "reviews": {
+    "teams": 0
+   }
+  },
+  {
+   "id": "scrapecreators.x.v1-youtube-search",
+   "provider": "scrapecreators",
+   "provider_display": "ScrapeCreators",
+   "name": "Search YouTube by keyword \u2014 videos, channels, playlists",
+   "scope": "",
+   "kind": "data",
+   "cost": {
+    "type": "per_call",
+    "value": 1,
+    "currency": "credit",
+    "per": 1,
+    "unit": "call",
+    "reported_charge": {
+     "path": "credits_charged",
+     "unit": "credit"
+    },
+    "usd": 0.00188
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": null,
+   "params": [
+    "query",
+    "uploadDate",
+    "sortBy",
+    "type",
+    "duration",
+    "region",
+    "continuationToken",
+    "includeExtras"
+   ],
+   "observed": {
+    "samples": 47347,
+    "decided": 47189,
+    "ok_rate": 0.9989,
+    "p50_ms": 1439,
+    "p95_ms": 6963,
+    "last_ok_days": 0,
+    "hit_rate": null,
+    "hit_samples": 0
+   },
+   "reviews": {
+    "teams": 10,
+    "share": {
+     "useful": 0.72,
+     "partly": 0.27,
+     "not_useful": 0.01
+    }
+   }
+  },
+  {
+   "id": "serpapi.youtube.search.videos",
+   "provider": "serpapi",
+   "provider_display": "SerpApi",
+   "name": "YouTube video search for a query \u2014 views, channels",
+   "scope": "any_account",
+   "kind": "data",
+   "cost": {
+    "type": "per_success",
+    "value": 0.015,
+    "currency": "USD",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.015
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "engine",
+    "search_query",
+    "gl",
+    "hl",
+    "sp"
+   ],
+   "observed": {
+    "samples": 2539,
+    "decided": 2533,
+    "ok_rate": 1.0,
+    "p50_ms": 2157,
+    "p95_ms": 5625,
+    "last_ok_days": 0,
+    "hit_rate": 1.0,
+    "hit_samples": 2386
+   },
+   "reviews": {
+    "teams": 0
+   }
+  },
+  {
+   "id": "tikhub.x.youtube-web-v2-get-general-search",
+   "provider": "tikhub",
+   "provider_display": "TikHub",
+   "name": "Search YouTube by keyword with filters",
+   "scope": "",
+   "kind": "data",
+   "cost": {
+    "type": "per_call",
+    "value": 0.001,
+    "currency": "USD",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.001
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "search_query",
+    "language_code",
+    "country_code",
+    "time_zone",
+    "upload_time",
+    "duration",
+    "content_type",
+    "feature",
+    "sort_by",
+    "continuation_token"
+   ],
+   "observed": {
+    "samples": 6826,
+    "decided": 6669,
+    "ok_rate": 0.9996,
+    "p50_ms": 2128,
+    "p95_ms": 4221,
+    "last_ok_days": 0,
+    "hit_rate": null,
+    "hit_samples": 0
+   },
+   "reviews": {
+    "teams": 0
+   }
+  },
+  {
+   "id": "tikhub.youtube.search.videos",
+   "provider": "tikhub",
+   "provider_display": "TikHub",
+   "name": "Search YouTube videos by keyword and filters",
+   "scope": "any_account",
+   "kind": "data",
+   "cost": {
+    "type": "per_call",
+    "value": 0.002,
+    "currency": "USD",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.002
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "keyword",
+    "continuation_token",
+    "type",
+    "upload_date",
+    "duration",
+    "features",
+    "sort_by"
+   ],
+   "observed": {
+    "samples": 116750,
+    "decided": 116631,
+    "ok_rate": 0.9972,
+    "p50_ms": 1400,
+    "p95_ms": 3292,
+    "last_ok_days": 0,
+    "hit_rate": 0.9223,
+    "hit_samples": 116300
+   },
+   "reviews": {
+    "teams": 25,
+    "share": {
+     "useful": 0.67,
+     "partly": 0.28,
+     "not_useful": 0.05
+    }
+   }
+  },
+  {
+   "id": "treg.youtube.search.videos",
+   "provider": "treg",
+   "provider_display": "treg",
+   "name": "youtube.search.videos \u2014 routed: best of 4 providers, own keys first",
+   "scope": "",
+   "kind": "routed",
+   "cost": {
+    "type": "per_success",
+    "value": 0.001,
+    "currency": "USD",
+    "per": 1,
+    "unit": "call",
+    "varies": true,
+    "usd": 0.001
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": null,
+   "params": [
+    "q"
+   ],
+   "observed": {
+    "samples": 73940,
+    "decided": 73862,
+    "ok_rate": 0.9538,
+    "p50_ms": null,
+    "p95_ms": null,
+    "last_ok_days": 0,
+    "hit_rate": null,
+    "hit_samples": 0
+   }
+  },
+  {
+   "id": "youtube.youtube.search.videos",
+   "provider": "youtube",
+   "provider_display": "YouTube",
+   "name": "Search YouTube videos by keyword",
+   "scope": "any_account",
+   "kind": "data",
+   "cost": {
+    "type": "free",
+    "value": 0,
+    "currency": "USD",
+    "unit": "call",
+    "usd": 0.0
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "part",
+    "q",
+    "type",
+    "order",
+    "publishedAfter",
+    "regionCode",
+    "maxResults"
+   ],
+   "observed": {
+    "samples": 1730,
+    "decided": 974,
+    "ok_rate": 1.0,
+    "p50_ms": 360,
+    "p95_ms": 617,
+    "last_ok_days": 0,
+    "hit_rate": null,
+    "hit_samples": 0
+   },
+   "reviews": {
+    "teams": 0
+   }
+  }
+ ],
+ "related_capabilities": [
+  {
+   "endpoint_id": "treg.youtube.channel.profile",
+   "capability": "youtube.channel.profile",
+   "does": "A channel's profile & lifetime stats"
+  },
+  {
+   "endpoint_id": "treg.youtube.channel.videos",
+   "capability": "youtube.channel.videos",
+   "does": "List a channel's videos"
+  },
+  {
+   "endpoint_id": "treg.youtube.video.comments",
+   "capability": "youtube.video.comments",
+   "does": "List a video's comments"
+  },
+  {
+   "endpoint_id": "treg.youtube.video.detail",
+   "capability": "youtube.video.detail",
+   "does": "Get a video's metadata & stats"
+  }
+ ],
+ "call_template": "treg call tikhub.x.youtube-web-search-video",
+ "example_response": {
+  "code": 200,
+  "request_id": "sample",
+  "message": "sample",
+  "message_zh": "sample",
+  "support": "sample",
+  "time": "sample",
+  "time_stamp": 1785220263,
+  "time_zone": "sample",
+  "docs": "sample",
+  "cache_message": "sample",
+  "cache_message_zh": "sample",
+  "cache_url": "sample",
+  "router": "sample",
+  "params": {
+   "search_query": "sample"
+  },
+  "data": {
+   "number_of_videos": 20,
+   "estimated_results": 639421,
+   "query": "sample",
+   "country": "sample",
+   "lang": "sample",
+   "timezone": "sample",
+   "continuation_token": "sample",
+   "videos": [
+    "sample",
+    "sample"
+   ]
+  }
+ },
+ "hints": []
+}
