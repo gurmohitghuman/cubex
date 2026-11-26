@@ -174,18 +174,14 @@ export const useRowOps = ({
         return
       }
       console.error('Bulk delete rows error:', error)
-      // If an EARLIER chunk already committed server-side before this one failed,
-      // the optimistic removal below never ran, so the grid still shows rows that
-      // are gone on the server. Reload to re-sync to server truth rather than leave
-      // the UI lying. (Single-chunk failures — the only case under the live row cap
-      // — deleted nothing, so the grid is already correct and no reload is needed.)
-      // Same origin-sheet guard as above: only reload if we're still on it.
-      if (chunksAcked > 0) {
-        toast.error('Some rows were deleted before the request failed. Reloading to re-sync.', { id: toastId })
-        if (activeSheetIdRef.current === originSheetId) reloadActiveSheet()
-        return
-      }
-      toast.error('Failed to delete rows', { id: toastId })
+      // Rows may be gone on the server even though this call failed: an earlier chunk committed, or the server
+      // deleted this one's rows with big cells in slices and failed part way (it keeps those in the trash). The
+      // optimistic removal below never ran, so reload to show the sheet as it is rather than rows that are gone
+      // (an edit to one would bring it back). Same origin-sheet guard as above: only reload if we're still on it.
+      toast.error(chunksAcked > 0
+        ? 'Some rows were deleted before the request failed. Reloading to re-sync.'
+        : 'Failed to delete rows. Reloaded to show the sheet as it is.', { id: toastId })
+      if (activeSheetIdRef.current === originSheetId) reloadActiveSheet()
     }
   }, [
     activeSheet, setSheetData, setLoadedRowsCount, dropPendingForRows,

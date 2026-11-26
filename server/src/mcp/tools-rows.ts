@@ -14,7 +14,7 @@ import {
   IDEMPOTENT_WRITE_KEY_MAX_CHARS,
 } from '../lib/api-v1-constants';
 import { parseCellMap, txnFailMessage } from '../services/data-plane-shared';
-import { appendAnswer, appendRows, patchAnswer, patchRowById, deleteRowsByIds } from '../services/rows-write';
+import { appendAnswer, appendRows, patchAnswer, patchRowById, deleteRowsByIdsSliced } from '../services/rows-write';
 import { trashAnswer } from '../services/trash-answer';
 import { batchUpdateRows } from '../services/rows-batch-update';
 import { appendAutorunNotice } from '../services/enrich-agent-autorun';
@@ -181,7 +181,7 @@ export function registerRowTools(server: McpServer, ctx: McpAuthCtx) {
       const denied = missingScope(ctx, 'write');
       if (denied) return denied;
       if (!verifySheetOwnership(sheet_id, ctx.userId)) return err('Sheet not found');
-      const result = deleteRowsByIds(sheet_id, ctx.userId, row_ids);
+      const result = await deleteRowsByIdsSliced(sheet_id, ctx.userId, row_ids);
       if ('fail' in result) return err(txnFailMessage(result, MAX_ROWS_PER_SHEET));
       const { deleted } = result.ok;
       return ok({
