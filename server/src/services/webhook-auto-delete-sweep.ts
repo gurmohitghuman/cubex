@@ -2,7 +2,8 @@
 // Auto-delete's sweep (API process, every AUTO_DELETE_SWEEP_MS; services/webhook-auto-delete.ts says what it
 // does). For each webhook sheet with it on, a read first: is there a finished row older than the newest
 // keep_rows (services/webhook-auto-delete-rows.ts)? Only then a bulk writer (lib/bulk-slices.ts): slices of at
-// most AUTO_DELETE_SLICE_ROWS rows, each one transaction that checks again, copies and deletes
+// most AUTO_DELETE_SLICE_ROWS rows and HEAVY_SLICE_BYTES of them (half with a copy, which writes each row again),
+// each one transaction that checks again, copies and deletes
 // (services/webhook-auto-delete-move.ts). Where it got to in the sheet is kept in memory between sweeps, so rows
 // waiting on a slow auto-run are looked at a window a sweep, not all again; a restart starts from the top.
 // It never works while a run is active on the sheet or the sheet it copies to (a run writes by row position or
@@ -13,7 +14,7 @@
 import { db } from '../lib/db';
 import {
   AUTO_DELETE_SCAN_ROWS, AUTO_DELETE_SLICE_ROWS, AUTO_DELETE_SLICES_PER_SWEEP, AUTO_DELETE_STARVED_MS,
-  AUTO_DELETE_SWEEP_MS, AUTO_DELETE_YIELD_MS,
+  AUTO_DELETE_SWEEP_MS, AUTO_DELETE_YIELD_MS, HEAVY_SLICE_BYTES,
 } from '../lib/constants';
 import { asBulkWriter } from '../lib/bulk-slices';
 import { sheetBusyWith, sheetHeld } from '../lib/sheet-busy';
@@ -135,7 +136,8 @@ function slice(cfg: AutoDeleteRow, raw: string, to: CopyTo | null): Step {
   const rules = rulesOf(cfg);
   if (!('ok' in rules)) return 'stop';
   const found = finishedRows({ id: cfg.sheet_id, userId: cfg.user_id, raw }, holding, cfg.success_column,
-    after.get(cfg.source_id) ?? -1, upTo, AUTO_DELETE_SCAN_ROWS, AUTO_DELETE_SLICE_ROWS, rules.ok, runColumnsOf(cfg));
+    after.get(cfg.source_id) ?? -1, upTo, AUTO_DELETE_SCAN_ROWS, AUTO_DELETE_SLICE_ROWS, rules.ok, runColumnsOf(cfg),
+    to ? HEAVY_SLICE_BYTES / 2 : HEAVY_SLICE_BYTES);
   let leaving = found.rowids;
   if (leaving.length > 0 && to) {
     const copied = copyRows(cfg.sheet_id, cfg.user_id, raw, leaving, to);
