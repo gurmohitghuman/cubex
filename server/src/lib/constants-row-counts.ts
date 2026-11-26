@@ -1,4 +1,4 @@
-// Row counts of the home and list_tables (lib/row-counts.ts).
+// Row counts of the home and get_workspace's all_tables (lib/row-counts.ts).
 
 // Rows one slice of a count reads, on the server's thread, before it lets other work run: about 10 ms (100,000 rows
 // took 20 to 25 ms, on a 4.7 GB database of 10 sheets of 1M rows and in tests/unit/row-counts-speed.test.ts).
@@ -9,9 +9,14 @@ export const ROW_COUNT_TRIES = 3;
 // A count's write to sheets.counted_rows refused because another connection held the write lock is tried again this
 // much later (lib/write-when-free.ts), until it is written.
 export const ROW_COUNT_WRITE_RETRY_MS = 1_000;
-// GET /v1/tables and list_tables wait this long at most for the counts of changed sheets; past it they answer the
+// GET /v1/tables and get_workspace (all_tables) wait this long at most for the counts of changed sheets; past it they
+// answer the
 // last count, saying it may be out of date. An agent's call never waits on a big count.
 export const ROW_COUNT_API_WAIT_MS = 2_000;
 // The home's wait for the counts it showed as updating (GET /api/tables/row-counts) answers by this time at most,
 // well under the 65 s keep-alive, as the sheet's change poll does; the home then asks again for those still counted.
 export const ROW_COUNT_HOLD_MS = 20_000;
+// The home's wait for its Runs column (GET /api/tables/runs) answers by this time at most when no run starts, ends,
+// pauses or resumes, under axios's 30 s timeout and the 65 s keep-alive; it checks the runs every HOME_RUNS_CHECK_MS.
+export const HOME_RUNS_HOLD_MS = 25_000;
+export const HOME_RUNS_CHECK_MS = 1_000;

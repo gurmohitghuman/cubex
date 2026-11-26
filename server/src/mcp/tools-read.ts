@@ -5,7 +5,7 @@ import { McpServer } from '@modelcontextprotocol/server';
 import { db } from '../lib/db';
 import { MCP_MAX_ROWS_PAGE, MCP_ROWS_BY_ID_MAX_CHARS, ROWS_BY_ID_MAX } from '../lib/api-v1-constants';
 import { MAX_ROWS_PER_SHEET, MAX_COLUMNS_PER_SHEET } from '../lib/constants';
-import { listTablesWithSheets, readRowsPage } from '../services/workspace-read';
+import { readRowsPage } from '../services/workspace-read';
 import { readSheetDetails } from '../services/sheet-details';
 import { queryRows, type WhereItem } from '../services/row-selection';
 import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean, SHEET_ID } from './tool-helpers';
@@ -16,24 +16,12 @@ import { parseColumns } from '../lib/row-select/paths';
 import { parseAggregate } from '../lib/row-aggregate/spec';
 import { testOfSheet, testView } from '../services/sheet-test-store';
 import { CSV_WORDS, readRowsCsv } from './tools-read-csv';
+import { HISTORY_FIELDS, HISTORY_WORDS, sheetHistoryAnswer } from './tools-sheet-history';
 
 const ownsSheet = (sheetId: string, userId: string): boolean =>
   !!db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ? AND trash_id IS NULL').get(sheetId, userId);
 
 export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
-  registerTool(server, 
-    'list_tables',
-    {
-      description:
-        'List every table in the workspace with its sheets (tabs): ids, names, positions and row counts. A '
-        + 'sheet still being counted after a change answers its last count with row_count_updating: true. '
-        + 'get_workspace is the first look; use this to turn a table or sheet name it left out into a sheet_id, '
-        + 'then get_sheet for its columns or read_rows for its rows.',
-      inputSchema: {},
-    },
-    async () => missingScope(ctx, 'read') ?? ok({ tables: await listTablesWithSheets(ctx.userId) }),
-  );
-
   registerTool(server, 
     'get_sheet',
     {
@@ -44,7 +32,7 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
         + 'is and what fills it. It also answers active runs, views, auto_dedupe and test (a test of its column '
         + 'changes, manage_sheet\'s test, or null: the sheet takes no changes until it is applied or discarded; work '
         + 'in test_sheet_id). include_counts counts filled, '
-        + `empty and error rows per column. ${GUIDE_POINTER}`,
+        + `empty and error rows per column. ${HISTORY_WORDS} ${GUIDE_POINTER}`,
       inputSchema: {
         sheet_id: z.string().describe(SHEET_ID),
         columns: z.array(z.string()).optional()
@@ -52,11 +40,19 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
         include_counts: lenientBoolean().optional()
           .describe('Count filled, empty and error rows per column (reads every row; slower on big sheets). '
             + 'Default false'),
+        ...HISTORY_FIELDS,
       },
     },
-    async ({ sheet_id, columns, include_counts }, mcp) => {
+    async ({ sheet_id, columns, include_counts, history, ...log }, mcp) => {
       const denied = missingScope(ctx, 'read');
       if (denied) return denied;
+      if (history) {
+        if (columns !== undefined || include_counts !== undefined) {
+          return err('columns and include_counts are for the details: history takes column, before and limit.');
+        }
+        return sheetHistoryAnswer(ctx, sheet_id, log);
+      }
+      if (Object.values(log).some(v => v !== undefined)) return err('column, before and limit are for history: true.');
       // Counting stops on a cancel or a hang-up (an initialize-era client's hang-up aborts only ctx.abortSignal).
       const read = await readSheetDetails(sheet_id, ctx.userId, { columns, counts: include_counts === true,
         stop: () => mcp.mcpReq.signal.aborted || ctx.abortSignal?.aborted === true });

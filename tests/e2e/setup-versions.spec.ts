@@ -79,7 +79,7 @@ test('REST and MCP: save, compare, restore without running, then the next run us
     expect((await v1.delete(`/api/v1/sheets/${sheetId}/columns/Domain`)).ok()).toBeTruthy()
     await call(client, 'manage_column', {
       action: 'describe', sheet_id: sheetId, column: 'Name', description: 'Changed' })
-    const runsBefore = (await call(client, 'list_runs', { sheet_id: sheetId })).runs.length
+    const runsBefore = (await call(client, 'get_run', { action: 'list', sheet_id: sheetId })).runs.length
 
     const compared = await (await v1.get(`/api/v1/sheets/${sheetId}/setup-versions/${version.id}`)).json()
     const by = new Map<string, any>(compared.columns.map((c: any) => [c.column, c]))
@@ -118,7 +118,7 @@ test('REST and MCP: save, compare, restore without running, then the next run us
     expect(d.get('Fit (Output)').fill).toMatchObject({ run_status: 'restored', prompt: 'Is /name a fit?' })
     expect(d.get('Call').fill.run_status).toBe('restored')
     expect(d.get('Call').fill.url).toContain('/v1?d={{Domain}}')
-    expect((await call(client, 'list_runs', { sheet_id: sheetId })).runs.length).toBe(runsBefore)
+    expect((await call(client, 'get_run', { action: 'list', sheet_id: sheetId })).runs.length).toBe(runsBefore)
     const rows = await (await v1.post(`/api/v1/sheets/${sheetId}/rows/query`, { data: { limit: 10 } })).json()
     expect(rows.rows.map((r: any) => r.data.Domain ?? '')).toEqual(['', ''])
     expect(rows.rows.map((r: any) => r.data.OK)).toEqual(['one', 'one'])

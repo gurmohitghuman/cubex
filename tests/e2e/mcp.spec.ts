@@ -37,33 +37,20 @@ test('MCP: discover tools, read and write a sheet end-to-end', async () => {
   const tools = (await client.listTools()).tools.map(t => t.name).sort()
   // Keep this list sorted: it's compared with toEqual.
   expect(tools).toEqual([
-    'add_enrichment_field', 'add_list_rows', 'ai_visibility', 'append_rows', 'apply_setup',
-    'call_enrichment', 'call_setup', 'change_rows', 'check_run_condition',
-    'clean_column', 'control_run', 'control_setup_run',
-    'create_download_link', 'create_upload_link', 'delete_setup',
-    'formula_column',
-    'get_balances', 'get_enrichment', 'get_list_fields', 'get_run_results', 'get_run_status',
-    'get_setup_call', 'get_setup_run',
-    'get_sheet', 'get_sheet_history', 'get_tool_guide', 'get_usage', 'get_version', 'get_workspace', 'hiring_signals',
-    'import_csv',
-    'list_models', 'list_prompt_starters', 'list_run_webhooks', 'list_runs', 'list_saved_keys', 'list_setup_versions',
-    'list_setups', 'list_tables', 'list_trash', 'lookup_column',
+    'add_enrichment_field', 'add_list_rows', 'ai_visibility', 'append_rows', 'apply_setup', 'change_rows',
+    'check_run_condition', 'clean_column', 'control_run', 'control_setup_run', 'create_download_link',
+    'create_upload_link', 'delete_setup', 'find_enrichments', 'formula_column', 'get_account', 'get_list_fields',
+    'get_run', 'get_sheet', 'get_tool_guide', 'get_workspace', 'hiring_signals', 'import_csv', 'list_models',
+    'list_prompt_starters', 'list_run_webhooks', 'list_setup_versions', 'list_setups', 'list_trash', 'lookup_column',
     'manage_column', 'manage_run_schedule', 'manage_run_webhook', 'manage_setup_version', 'manage_sheet',
-    'manage_sheet_webhook',
-    'manage_table', 'manage_view',
-    'read_rows',
-    'remove_duplicates',
-    'restore_from_trash', 'restore_setup_version',
-    'run_ai_column', 'run_columns', 'run_enrichment', 'run_http_enrichment', 'save_setup', 'search_enrichments',
-    'set_auto_dedupe',
-    'set_auto_run',
-    'set_default_model', 'social_research',
-    'transfer_rows', 'transform_column',
+    'manage_sheet_webhook', 'manage_table', 'manage_view', 'read_rows', 'remove_duplicates', 'restore_from_trash',
+    'restore_setup_version', 'run_ai_column', 'run_columns', 'run_enrichment', 'run_http_enrichment', 'save_setup',
+    'set_auto_dedupe', 'set_auto_run', 'set_default_model', 'social_research', 'transfer_rows', 'transform_column',
     'undo_run', 'waterfall_column', 'write_formula', 'write_run_condition',
   ])
 
   // Discovery → read: resolve the seeded sheet, read its rows.
-  const tablesRes = parseResult(await client.callTool({ name: 'list_tables', arguments: {} }))
+  const tablesRes = parseResult(await client.callTool({ name: 'get_workspace', arguments: { all_tables: true } }))
   const sheet = tablesRes.tables.flatMap((t: any) => t.sheets).find((s: any) => s.id === sheetId)
   expect(sheet.row_count).toBe(3)
 

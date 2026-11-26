@@ -1,4 +1,5 @@
-// Each sheet's row count, for the home (GET /api/tables) and for GET /v1/tables and list_tables, without counting
+// Each sheet's row count, for the home (GET /api/tables) and for GET /v1/tables and get_workspace (all_tables), without
+// counting
 // rows on a request: COUNT(*) over 10 sheets of 1M rows held the server's thread 1.2 to 1.4 s on every home load.
 // - A count is kept in memory with the sheet's marker when it was made: its data_version, row_generation and how
 //   often its rows were added to or removed on this server (lib/rows-changed.ts). Every row insert and delete moves

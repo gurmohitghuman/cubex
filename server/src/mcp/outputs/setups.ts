@@ -30,13 +30,8 @@ const setupRun = obj({
   max_cost_usd: opt(num),
   column_run: opt(info('A column run (run_columns): mode, how many row_ids, where')),
 });
-// estimate_only (its default): estimate, inputs, makes and carries_on. Started: setup_run.
-export const applySetup = obj({
-  setup_run: opt(setupRun), estimate: opt(info('What it would cost, by column')),
-  inputs: opt(info('Input -> the column it reads')), makes: opt(strs).describe('The columns it would make'),
-  carries_on: opt(strs).describe('The columns it carries on'), changed,
-});
-// A setup called on items without a sheet (tools-setup-calls.ts): results once it has finished.
+// A setup called on items without a sheet (apply_setup with items, mcp/setup-items.ts): results once it has
+// finished.
 const setupCall = obj({
   id: str, setup_id: nul(str).describe('null when the setup was deleted'), setup_name: str, status: str, items: num,
   layer: num, layers: num, error_message: nul(str), created_at: str, updated_at: str,
@@ -46,16 +41,13 @@ const setupCall = obj({
   results: opt(z.array(obj({ item: num, status: str, error: nul(str), outputs: info('Column: value, or null') }))),
   next_from: opt(nul(num)),
 });
-// estimate_only (its default): estimate, makes and items. Started: setup_call.
-export const callSetup = obj({
-  setup_call: opt(info('The call, as get_setup_call answers it')), estimate: opt(info('What it would cost, by column')),
-  makes: opt(strs).describe('The columns it would make'), items: opt(num),
-});
-export const getSetupCall = setupCall;
-// One enrichment tool called on items (tools-enrich-calls.ts): an estimate, or the run it started.
-export const callEnrichment = obj({
-  estimate_only: opt(bool), estimate: opt(info('What it would cost, as run_enrichment estimates it')),
-  run_id: opt(str), run_type: opt(str), items: opt(num), status_column: opt(str), output_columns: opt(strs),
+// estimate_only (its default): estimate, inputs (a sheet's), makes, carries_on (a sheet's) and items (items').
+// Started: setup_run on a sheet, setup_call with items.
+export const applySetup = obj({
+  setup_run: opt(setupRun), setup_call: opt(info('The call, as get_run\'s setup answers it')),
+  estimate: opt(info('What it would cost, by column')),
+  inputs: opt(info('Input -> the column it reads')), makes: opt(strs).describe('The columns it would make'),
+  carries_on: opt(strs).describe('The columns it carries on'), items: opt(num), changed,
 });
 // estimate_only (its default): estimate. Started: setup_run.
 export const runColumns = obj({
@@ -66,8 +58,13 @@ export const manageRunSchedule = obj({
   schedules: opt(z.array(info('A schedule'))), schedule: opt(info('The schedule: its settings, next_at, last firing')),
   deleted: opt(str),
 });
-// No setup_run_id: setup_runs. With one: that setup run.
-export const getSetupRun = obj({ setup_runs: opt(z.array(setupRun)), ...setupRun.partial().shape });
+// No setup_run_id: setup_runs. With one: that setup run, or a call on items with a page of its results.
+export const getSetupRun = obj({
+  setup_runs: opt(z.array(setupRun)), ...setupRun.partial().shape, ...setupCall.partial().shape,
+  steps: opt(z.array(obj({
+    column: str, kind: str, layer: num, mode: opt(str), state: str, run_id: nul(str), note: nul(str),
+  }))),
+});
 export const controlSetupRun = obj({ ...setupRun.shape, changed });
 
 const version = obj({

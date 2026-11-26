@@ -85,7 +85,7 @@ test('multi-output: pause mid-run then resume leaves no cell on ⏳', async () =
   let paused = false
   for (let i = 0; i < 60; i++) {
     const s = parseResult(await client.callTool({
-      name: 'get_run_status', arguments: { run_type: 'ai', run_id: runId },
+      name: 'get_run', arguments: { action: 'status', run_type: 'ai', run_id: runId },
     }))
     if (['completed', 'failed', 'cancelled'].includes(s?.status)) break
     if ((s?.processed_rows ?? 0) >= 1) {
@@ -122,7 +122,7 @@ test('multi-output: pause mid-run then resume leaves no cell on ⏳', async () =
   let status: any = null
   for (let i = 0; i < 150; i++) {
     status = parseResult(await client.callTool({
-      name: 'get_run_status', arguments: { run_type: 'ai', run_id: runId },
+      name: 'get_run', arguments: { action: 'status', run_type: 'ai', run_id: runId },
     }))
     if (['completed', 'failed', 'cancelled'].includes(status?.status)) break
     await new Promise(r => setTimeout(r, 1000))

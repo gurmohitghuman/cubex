@@ -1,11 +1,11 @@
 // The trash and a sheet's change log for agents: list_trash, restore_from_trash
 // (services/trash-*.ts; GET /v1/trash and POST /v1/trash/restore are the same)
-// and get_sheet_history (services/sheet-history.ts). Deleting for good is only
+// and get_sheet's history (services/sheet-history.ts). Deleting permanently is only
 // in the app.
 import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import {
-  CHANGE_LOG_DAYS, CHANGE_LOG_PAGE_DEFAULT, CHANGE_LOG_PAGE_MAX, TRASH_IDS_MAX, TRASH_LIST_PAGE,
+  TRASH_IDS_MAX, TRASH_LIST_PAGE,
   TRASH_RESTORE_PICK_MAX, TRASH_ROWS_PAGE_MAX,
 } from '../lib/constants';
 import { verifySheetOwnership } from '../lib/sql-helpers';
@@ -13,7 +13,6 @@ import { TRASH_HOWS, type TrashHow } from '../lib/trash/store';
 import { getTrashEntry, listTrash, readTrashRows } from '../services/trash-read';
 import { holdersFirst, restoreFromTrash } from '../services/trash-actions';
 import { restoreRows } from '../services/trash-restore';
-import { readSheetHistory } from '../services/sheet-history';
 import { SHEET_ID, McpAuthCtx, err, lenientInt, missingScope, ok, registerTool } from './tool-helpers';
 import { changedOf, type Touch } from './changed';
 import { GUIDE_POINTER } from './guides/guide';
@@ -95,30 +94,6 @@ export function registerTrashTools(server: McpServer, ctx: McpAuthCtx) {
     const results = await restoreFromTrash(ctx.userId, holdersFirst(ctx.userId, ids),
       { surface: 'mcp', hasSecretsScope: ctx.scopes.has('secrets') });
     return ok({ results, changed: changedOf(ctx.userId, results.map(r => r.restored && restoredTouch(r.restored))) });
-  });
-
-  registerTool(server, 'get_sheet_history', {
-    description:
-      `A sheet's change log, newest first, kept ${CHANGE_LOG_DAYS} days: columns added, renamed and deleted, `
-      + 'runs started and stopped, auto-run and "Only run if" changes, default model, clean, formula and lookup '
-      + 'columns, views, its webhook, and rows deleted, restored, imported, sorted, moved and deduplicated. Each '
-      + 'line has when (at, UTC), by (the app, an access token by name over the API or MCP, or Cubex itself), '
-      + 'action, column, summary and detail; a line about rows or a column deleted to the trash has its trash_id '
-      + 'and in_trash: true while that item is in the trash (also while a big column\'s cells are still moving in), '
-      + 'false once it is restored or permanently deleted (still true after a restore that left cells behind in '
-      + 'it). Read-only. For what was deleted, list_trash.',
-    inputSchema: {
-      sheet_id: z.string().describe(SHEET_ID),
-      column: z.string().optional().describe('Only lines about this column'),
-      before: lenientInt(1, Number.MAX_SAFE_INTEGER).optional().describe('The next page, below this change id'),
-      limit: lenientInt(1, CHANGE_LOG_PAGE_MAX).optional()
-        .describe(`Lines, 1-${CHANGE_LOG_PAGE_MAX} (default ${CHANGE_LOG_PAGE_DEFAULT})`),
-    },
-  }, async ({ sheet_id, ...a }: { sheet_id: string; column?: string; before?: number; limit?: number }) => {
-    const denied = missingScope(ctx, 'read');
-    if (denied) return denied;
-    if (!verifySheetOwnership(sheet_id, ctx.userId)) return err('Sheet not found');
-    return ok(readSheetHistory(sheet_id, ctx.userId, a));
   });
 }
 

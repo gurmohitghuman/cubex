@@ -31,8 +31,8 @@ function usedUpByHand(runId: string, limitUsd = 0.001, cutOffMicro = 1000) {
 
 async function aiStatus(client: Client, runId: string, statuses: string[]) {
   let last: any
-  await expect.poll(async () => (last = await call(client, 'get_run_status',
-    { run_type: 'ai', run_id: runId, wait_seconds: 2 })).status, { timeout: 60_000 }).toMatch(
+  await expect.poll(async () => (last = await call(client, 'get_run',
+    { action: 'status', run_type: 'ai', run_id: runId, wait_seconds: 2 })).status, { timeout: 60_000 }).toMatch(
     new RegExp(`^(${statuses.join('|')})$`))
   return last
 }
@@ -77,7 +77,7 @@ test('Resume on a run paused by hand with its limit used up asks for a higher on
     usedUpByHand(usedUp)
     const room = await pausedRun(client, sheetId, 'Room')
     usedUpByHand(room, 5, 0)
-    const status = await call(client, 'get_run_status', { run_type: 'ai', run_id: usedUp })
+    const status = await call(client, 'get_run', { action: 'status', run_type: 'ai', run_id: usedUp })
     expect(status).toMatchObject({ status: 'paused', spend_limit_usd: 0.001, resume_least_usd: 0.001001 })
     expect(status.pause_reason).toBeUndefined()
     const rest = await (await api.get(`${BASE}/api/v1/ai-runs/${usedUp}`,

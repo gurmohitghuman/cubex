@@ -24,14 +24,14 @@ description: "Explain where a value in a Cubex sheet came from: the column, run,
 
 ## 3. Read that run's answer for the row
 
-`get_run_results` with the `run_type`, the `run_id` and `status_filter: "all"` (it lists only failed rows by default) returns rows in sheet order with their `row_id`; page with `cursor` to the row.
+`get_run` (action `results`) with the `run_type`, the `run_id` and `status_filter: "all"` (it lists only failed rows by default) returns rows in sheet order with their `row_id`; page with `cursor` to the row.
 
 - AI: the value, `cost_usd`, and with web search its searches (`search_queries`). The row's "(Data)" column lists the sources the model used.
 - HTTP API: `extracted_fields`, the values picked out of the response.
 - Enrichment: `found_by` (the provider that found it), `cost_usd`, and `reused_answer_from` when it came free from an earlier found answer. `include_answers: true` shows the stored answer.
 - Waterfall (`run_type: "waterfall"`): `answered_by`, `cost_usd` (treg and AI) and `trace`: every step the row reached, with what it did (answered, rejected by its check, not_found, no_inputs, error, budget) and what it cost.
 
-If the value is older than the newest run, `list_runs` with the `sheet_id` lists the sheet's runs, newest first.
+If the value is older than the newest run, `get_run` (action `list`) with the `sheet_id` lists the sheet's runs, newest first.
 
 ## 4. Answer
 

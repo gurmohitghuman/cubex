@@ -10,7 +10,9 @@ import migMod from '../../server/src/db/migrate'
 import transformMod from '../../server/src/services/column-transform'
 import constMod from '../../server/src/lib/api-v1-constants'
 import { transformPageFault } from './transform-page-fault'
+import { caughtUp } from './transform-to-end'
 import { unfinished } from './transform-pass-words'
+import { passed } from './ends-on-its-own'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { transformColumn } = transformMod as typeof import('../../server/src/services/column-transform')
@@ -57,6 +59,7 @@ db.prepare = ((sql: string) => {
   return stmt
 }) as typeof db.prepare
 async function cutShort(restart?: boolean) {
+  await caughtUp()
   shiftOnRead = true
   return transformColumn(uid, { ...call, restart })
 }
@@ -69,6 +72,7 @@ async function main() {
       assert.ok('unfinished' in await transformColumn(uid, call), 'the call without cursor is refused')
       const again = await cutShort(true)
       assert.ok('ok' in again && again.ok.updated === 0 && again.ok.next_cursor, JSON.stringify(again))
+      await caughtUp()
       fault.arm(251)
       const out = await transformColumn(uid, { ...call, cursor: again.ok.next_cursor })
       fault.disarm()
@@ -84,5 +88,5 @@ main()
   .finally(() => {
     if (failures) { console.log(`\n${failures} failure(s)`); process.exit(1) }
     console.log('All transform-pass-count assertions passed.')
-    process.exit(0)
+    passed()
   })

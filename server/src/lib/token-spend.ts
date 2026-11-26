@@ -67,7 +67,7 @@ export function capRunToolNote(view: SpendView | null): string {
   if (!view || view.spend_cap_usd === null) return '';
   return ` SPEND CAP: this access token may spend ${usd(view.spend_cap_usd)} in all on AI and enrichments `
     + `(for its whole life, not per month); ${usd(view.left_usd ?? 0)} was left when this tool list was loaded `
-    + '(get_balances says what is left now).';
+    + '(get_account (action balances) says what is left now).';
 }
 
 // A cap typed in Settings: dollars, 0 up to MAX_TOKEN_SPEND_CAP_USD, or null/'' for none. Kept in micro-USD.

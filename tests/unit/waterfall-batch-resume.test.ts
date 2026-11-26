@@ -15,6 +15,7 @@ import dbMod from '../../server/src/lib/db'
 import migMod from '../../server/src/db/migrate'
 import mcpMod from '../../server/src/mcp/build-server'
 import controlMod from '../../server/src/routes/api-v1-run-control'
+import { passed } from './ends-on-its-own'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { buildMcpServer } = mcpMod as typeof import('../../server/src/mcp/build-server')
@@ -90,5 +91,5 @@ async function main() {
 }
 
 main()
-  .then(() => { console.log('All waterfall-batch-resume assertions passed.'); process.exit(0) })
+  .then(() => { console.log('All waterfall-batch-resume assertions passed.'); passed() })
   .catch(e => { console.log('FAIL', e); process.exit(1) })

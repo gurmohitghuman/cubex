@@ -45,7 +45,7 @@ const common = {
 const step = z.discriminatedUnion('kind', [
   z.object({
     ...common, kind: z.literal('enrichment').describe('A treg.to tool'),
-    tool_id: z.string().max(200).describe('From search_enrichments'),
+    tool_id: z.string().max(200).describe('From find_enrichments'),
     inputs: z.record(z.string(), z.union([
       z.string(), z.object({ value: z.string().describe('A fixed value') }).strict(),
     ]))
@@ -77,7 +77,7 @@ const step = z.discriminatedUnion('kind', [
   }).strict(),
   z.object({
     ...common, kind: z.literal('lookup').describe('A free lookup'),
-    other_sheet_id: z.string().max(200).describe('Another sheet (list_tables)'),
+    other_sheet_id: z.string().max(200).describe('Another sheet (get_workspace)'),
     match_column: z.string().max(200).describe('Its column matched against the input'),
     match: z.enum(['equals', 'contains']).optional().describe('Default equals (case and spaces aside)'),
     input: z.string().max(40).describe('The input key whose value it looks for, e.g. domain'),
@@ -89,7 +89,7 @@ const step = z.discriminatedUnion('kind', [
 export const WATERFALL_DESCRIPTION =
   'Fill ONE value per row (a work email, phone, domain, LinkedIn URL or any text) by trying ordered steps and '
   + 'stopping at the first answer; for one source, run_enrichment or run_ai_column is simpler. Steps: enrichment '
-  + '(a treg.to tool from search_enrichments), ai (a prompt), http (your JSON API), formula (free JavaScript over '
+  + '(a treg.to tool from find_enrichments), ai (a prompt), http (your JSON API), formula (free JavaScript over '
   + '{{input_key}}) or lookup (free: another sheet\'s return_column where match_column matches the input; put it '
   + 'first to skip paid steps). inputs maps each input key ONCE to a column or {"value": fixed}; steps read keys, '
   + 'never columns (treg tools take first_name, last_name, full_name, domain, company, linkedin_url, email). '
@@ -101,7 +101,7 @@ export const WATERFALL_DESCRIPTION =
   + 'what it bought at $0 for 7 days. '
   + 'add_to_column runs an existing waterfall column again, keeping its setup unless you pass new parts. action '
   + '"describe" (read scope) returns a column\'s setup to edit and send back. Returns run_id: poll '
-  + 'get_run_status (run_type waterfall), then get_run_results for the traces.';
+  + 'get_run (action status, run_type waterfall), then get_run (action results) for the traces.';
 
 export function registerWaterfallTools(server: McpServer, ctx: McpAuthCtx) {
   registerTool(server, 'waterfall_column', {

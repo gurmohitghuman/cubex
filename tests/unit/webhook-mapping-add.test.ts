@@ -21,6 +21,7 @@ import sqlMod from '../../server/src/lib/row-filter/sql'
 import countsMod from '../../server/src/services/column-counts'
 import csvMod from '../../server/src/lib/csv-write'
 import timeoutsMod from '../../server/src/lib/server-timeouts'
+import { passed } from './ends-on-its-own'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { signToken } = authMod as typeof import('../../server/src/lib/auth')
@@ -195,4 +196,4 @@ check('... also for a column named like an object member (not the inherited func
 
 server.close()
 console.log(failures === 0 ? '\nwebhook mapping add: all passed' : `\nwebhook mapping add: ${failures} FAILED`)
-process.exit(failures === 0 ? 0 : 1)
+if (failures === 0) passed(); else process.exit(1)

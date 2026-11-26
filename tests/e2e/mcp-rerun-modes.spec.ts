@@ -156,7 +156,7 @@ test('an AI rerun takes a new concurrency; a pause refuses it and an HTTP API re
     client.callTool({ name, arguments: args }) as Promise<any>
   const settle = async (runId: string) => {
     for (let i = 0; i < 80; i++) {
-      const s = parseResult(await call('get_run_status', { run_type: 'ai', run_id: runId }))
+      const s = parseResult(await call('get_run', { action: 'status', run_type: 'ai', run_id: runId }))
       if (['completed', 'failed', 'cancelled'].includes(s?.status)) return s
       await new Promise(r => setTimeout(r, 250))
     }
@@ -198,7 +198,7 @@ test('an AI rerun takes a new concurrency; a pause refuses it and an HTTP API re
     run_type: 'http', run_id: '00000000-0000-4000-8000-000000000000', action: 'rerun', concurrency: 3,
   })
   expect(JSON.parse(errorText(http)).error).toBe('HTTP run not found. No run has the run_id '
-    + '"00000000-0000-4000-8000-000000000000". list_runs lists a sheet\'s runs, newest first.')
+    + '"00000000-0000-4000-8000-000000000000". get_run (action list) lists a sheet\'s runs, newest first.')
 
   // v1: a number, from 1 to 100.
   const v1 = async (data: Record<string, unknown>) => {

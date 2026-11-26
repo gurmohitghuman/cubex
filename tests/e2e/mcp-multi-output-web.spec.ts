@@ -56,7 +56,8 @@ test('structured run with web_fetch: estimate, (Data) column, clean failures', a
   // Every row fails (no key), and the failure clears (Data) with the outputs.
   let status: any = null
   for (let i = 0; i < 60; i++) {
-    status = parseResult(await client.callTool({ name: 'get_run_status', arguments: { run_type: 'ai', run_id: started.run_id } }))
+    status = parseResult(await client.callTool({ name: 'get_run', arguments: {
+      action: 'status', run_type: 'ai', run_id: started.run_id } }))
     if (['completed', 'failed', 'cancelled'].includes(status?.status)) break
     await new Promise(r => setTimeout(r, 500))
   }
@@ -65,7 +66,8 @@ test('structured run with web_fetch: estimate, (Data) column, clean failures', a
   expect(status.column_name).toBe('Screen (Status)')
   expect(status.output_columns).toEqual(['Keep', 'Reason'])
   expect(status.data_column).toBe('Screen (Data)')
-  const listed = parseResult(await client.callTool({ name: 'list_runs', arguments: { sheet_id: sheetId } }))
+  const listed = parseResult(await client.callTool({ name: 'get_run', arguments: {
+    action: 'list', sheet_id: sheetId } }))
   const mine = listed.runs.find((r: any) => r.id === started.run_id)
   expect(mine.output_columns).toEqual(['Keep', 'Reason'])
   const rows = parseResult(await client.callTool({ name: 'read_rows', arguments: { sheet_id: sheetId } }))

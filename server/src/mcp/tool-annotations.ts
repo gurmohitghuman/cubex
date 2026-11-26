@@ -24,20 +24,18 @@ const write = (
   ({ title, readOnlyHint: false, destructiveHint, idempotentHint, openWorldHint });
 
 export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
-  get_workspace: read('Get the workspace overview'),
-  list_tables: read('List tables and sheets'),
-  get_sheet: read('Get sheet details'),
+  // The overview, or with all_tables every table and its sheets.
+  get_workspace: read('Get the workspace overview or every table'),
+  get_sheet: read('Get sheet details or its change log'),
   read_rows: read('Read rows'),
-  list_runs: read('List runs'),
-  get_run_status: read('Get run status'),
-  get_run_results: read('Get run results'),
+  // A run's status or results, the runs, or a setup run: reads Cubex's own records only.
+  get_run: read('Get runs: status, results, the list, setup runs'),
+  // Balances asks treg.to and OpenRouter (open world); usage, saved keys and the version are Cubex's own.
+  get_account: read('Read balances, usage, saved keys or the version', true),
+  find_enrichments: read('Find enrichment tools', true),
   list_models: read('List AI models', true),
-  get_balances: read('Read balances', true),
-  get_usage: read('Read usage and costs'),
-  get_version: read('Read the Cubex version'),
   get_tool_guide: read("Read a tool's guide"),
   list_trash: read('List the trash'),
-  get_sheet_history: read("Read a sheet's change log"),
   // With auto-dedupe keeping the newest row per key, a row with a key the sheet has replaces the older row.
   append_rows: write('Append rows', true, false),
   // Deletes go to the trash (kept the days set in Settings): restore_from_trash brings them back. The same update
@@ -49,7 +47,7 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   remove_duplicates: write('Remove duplicate rows (to the trash)', true, true),
   // Rows it later removes go to the trash; the same call again changes nothing.
   set_auto_dedupe: write('Keep one row per key as rows arrive', true, true),
-  manage_table: write('Create, rename or delete a table (to the trash)', true, false),
+  manage_table: write('Create, rename, star or delete a table (to the trash)', true, false),
   manage_sheet_webhook: write("Set up or change a sheet's incoming webhook", true, false),
   // sort reorders the rows permanently.
   manage_sheet: write('Create, rename, copy, delete, reorder, sort, describe or test sheets (to the trash)', true,
@@ -83,8 +81,6 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   lookup_column: write('Look up values from another sheet (free)', true, true),
   // Changes nothing, but spends one small AI call on OpenRouter.
   write_formula: write('Write a formula with AI', false, false, true),
-  search_enrichments: read('Search enrichment tools', true),
-  get_enrichment: read('Get an enrichment tool', true),
   get_list_fields: read('Get the fields of list results'),
   // Spends the treg balance and calls providers through treg.
   run_enrichment: write('Run an enrichment (paid)', true, false, true),
@@ -106,14 +102,10 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   save_setup: write('Save columns as a setup', false, false),
   delete_setup: write('Delete a setup (permanent)', true, true),
   // Adds columns and starts their runs, which spend (AI, enrichments) or send requests. An estimate changes nothing.
-  apply_setup: write('Use a setup on a sheet', true, false, true),
+  apply_setup: write('Use a setup on a sheet or items', true, false, true),
   // Starts the chosen columns' reruns, which spend (AI, enrichments, waterfalls) or send requests.
   // An estimate changes nothing.
   run_columns: write('Run chosen columns on chosen rows', true, false, true),
-  get_setup_run: read('Get a setup run'),
-  call_setup: write('Call a setup on items', false, false, true),
-  get_setup_call: read('Get a setup call'),
-  call_enrichment: write('Call an enrichment on items', false, false, true),
   manage_run_schedule: write('Manage run schedules', true, false, true),
   control_setup_run: write('Pause, resume or stop a setup run', true, false, true),
   list_setup_versions: read("List or compare a sheet's setup versions"),
@@ -123,8 +115,6 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   restore_setup_version: write('Restore a setup version', true, true),
   list_run_webhooks: read('List run webhooks'),
   list_prompt_starters: read('List prompt starters for an AI column'),
-  // Names and where they're used; a value never leaves Settings.
-  list_saved_keys: read('List saved API keys (names only)'),
   // Adds, changes or deletes where Cubex sends run notices; test sends one now (outside Cubex).
   manage_run_webhook: write('Add, change, delete or test a run webhook', true, false, true),
   // A saved view's name, filters and hidden columns; rows and columns never change.

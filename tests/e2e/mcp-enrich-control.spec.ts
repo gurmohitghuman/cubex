@@ -84,7 +84,7 @@ test('the run limit pauses; resume raises it; reruns take the column\'s setup', 
   })
   expect((await waitMcpRun(client, slower.run_id, ['completed'])).enrichment.concurrency).toBe(1)
   // run_type enrichment refuses a run that isn't one.
-  expect(await callError(client, 'get_run_status', { run_type: 'enrichment', run_id: 'no-such-run' }))
+  expect(await callError(client, 'get_run', { action: 'status', run_type: 'enrichment', run_id: 'no-such-run' }))
     .toContain('Enrichment run not found')
   await expectBilledOnce(runIdsOf(sheetId))
   await api.dispose()

@@ -210,7 +210,7 @@ test('MCP: manage_column delete, list_trash and restore_from_trash, with what di
   expect(results[0].restored.references_dropped.map((r: { where: string; redo: string }) => [r.where, r.redo]))
     .toEqual([['view "Slim"', 'manage_view with action "change", view "Slim" and "Email (restored)" in hidden_columns'],
       ['auto-dedupe', 'set_auto_dedupe with column "Email (restored)"']])
-  const history = await call(client, 'get_sheet_history', { sheet_id: sheetId, column: 'Email (restored)' })
+  const history = await call(client, 'get_sheet', { history: true, sheet_id: sheetId, column: 'Email (restored)' })
   expect(history.changes[0].summary).toBe('Restored the column "Email" as "Email (restored)" from the trash (2 cells '
     + 'back)')
   await client.close()

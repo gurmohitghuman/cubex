@@ -122,7 +122,7 @@ test("token_cap (put in place): the words come from the token's cap as it is now
   putPause('ai_runs', runId, 'token_cap', 'placeholder')
   setRun(runId, 'UPDATE ai_runs SET error_message = NULL, access_token_id = ? WHERE id = ?', tok.id)
   const atCap = `The access token "${TOKEN}" reached its $0.00 spend cap ($0.00 spent).`
-  const status = await call(client, 'get_run_status', { run_type: 'ai', run_id: runId })
+  const status = await call(client, 'get_run', { action: 'status', run_type: 'ai', run_id: runId })
   expect(status.pause_message).toContain(atCap)
   expect((await listed(api, 'ai', sheetId, runId))!.pause_message).toBe(status.pause_message)
   await openSheet(page, context, api, tableId)
@@ -131,7 +131,7 @@ test("token_cap (put in place): the words come from the token's cap as it is now
   expect((await cap(1)).ok()).toBeTruthy()
   await page.reload()
   await expectLine(page, runId, 'Agent (Output)', "Its access token's spend cap was raised: resume the run to go on.")
-  expect((await call(client, 'get_run_status', { run_type: 'ai', run_id: runId })).pause_message)
+  expect((await call(client, 'get_run', { action: 'status', run_type: 'ai', run_id: runId })).pause_message)
     .toBe("Its access token's spend cap was raised: resume the run to go on.")
   await resumeLine(page, runId, 'Agent (Output)')
   await ended(sheetId, runId)

@@ -26,7 +26,8 @@ import trashMod from '../../server/src/services/trash-sheets'
 import purgeMod from '../../server/src/services/trash-purge'
 import storeMod from '../../server/src/lib/trash/store'
 import { transformPageFault } from './transform-page-fault'
-import { toTheEnd } from './transform-to-end'
+import { caughtUp, toTheEnd } from './transform-to-end'
+import { passed } from './ends-on-its-own'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { transformColumn } = transformMod as typeof import('../../server/src/services/column-transform')
@@ -73,6 +74,7 @@ const call = (sheetId: string) => ({ sheetId, operation: 'template' as const, te
 const records = (id: string) => db.prepare('SELECT count(*) FROM transform_passes WHERE sheet_id = ?').pluck().get(id)
 // A pass stopped on an error after 250 rows: its record is there.
 async function stopped(id: string): Promise<string> {
+  await caughtUp()
   fault.arm(251)
   let out
   try { out = await transformColumn(uid, call(id)) } finally { fault.disarm() }
@@ -89,7 +91,7 @@ async function movedUntilRestart(id: string) {
   const out = await transformColumn(uid, call(id)) as { fail?: string; error?: string }
   assert.ok(out.fail === 'invalid' && out.error?.startsWith('Rows of this sheet moved'), JSON.stringify(out))
   assert.equal(records(id), 1)
-  ok(await transformColumn(uid, { ...call(id), restart: true }))
+  ok(await toTheEnd(uid, { ...call(id), restart: true }))
   assert.equal(records(id), 0)
 }
 // Settings keeping deleted things 0 days while `fn` runs.
@@ -218,5 +220,5 @@ main()
   .finally(() => {
     if (failures) { console.log(`\n${failures} failure(s)`); process.exit(1) }
     console.log('All transform-pass-cleanup assertions passed.')
-    process.exit(0)
+    passed()
   })

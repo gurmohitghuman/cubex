@@ -34,7 +34,8 @@ test('social_research: create, find posts, find again, run a step', async () => 
   expect(found.day).toBe(today)
   expect(found.runs).toHaveLength(2)
   for (const r of found.runs) {
-    await expect.poll(async () => (await call(client, 'get_run_status', { run_type: 'enrichment', run_id: r.run_id }))
+    await expect.poll(async () => (await call(client, 'get_run', {
+      action: 'status', run_type: 'enrichment', run_id: r.run_id }))
       .status, { timeout: 30_000 }).toBe('completed')
   }
   await expect.poll(() => column(api, tiktok, 'Author'), { timeout: 15_000 })
@@ -56,7 +57,8 @@ test('social_research: create, find posts, find again, run a step', async () => 
   const again = await call(client, 'social_research', { action: 'find_posts', id: made.id, estimate_only: false,
     max_cost_usd: est.high_usd })
   for (const r of again.runs) {
-    await expect.poll(async () => (await call(client, 'get_run_status', { run_type: 'enrichment', run_id: r.run_id }))
+    await expect.poll(async () => (await call(client, 'get_run', {
+      action: 'status', run_type: 'enrichment', run_id: r.run_id }))
       .status, { timeout: 30_000 }).toBe('completed')
   }
   expect(await column(api, tiktok, 'Author')).toHaveLength(3)
@@ -67,7 +69,7 @@ test('social_research: create, find posts, find again, run a step', async () => 
   expect(transcript.run_status).toBe('set_up')
   const rerun = await call(client, 'control_run', { action: 'rerun', run_type: 'enrichment', run_id: transcript.run_id,
     mode: 'empty' })
-  await expect.poll(async () => (await call(client, 'get_run_status', { run_type: 'enrichment',
+  await expect.poll(async () => (await call(client, 'get_run', { action: 'status', run_type: 'enrichment',
     run_id: rerun.run_id })).status, { timeout: 30_000 }).toBe('completed')
   expect(await column(api, tiktok, 'Transcript text'))
     .toEqual(Array(3).fill('Wake up, water first, then ten minutes outside.'))
@@ -88,7 +90,8 @@ test('social_research: the creator\'s usual views and how many times that each p
   const found = await call(client, 'social_research', { action: 'find_posts', id: made.id, estimate_only: false,
     max_cost_usd: est.high_usd })
   for (const r of found.runs) {
-    await expect.poll(async () => (await call(client, 'get_run_status', { run_type: 'enrichment', run_id: r.run_id }))
+    await expect.poll(async () => (await call(client, 'get_run', {
+      action: 'status', run_type: 'enrichment', run_id: r.run_id }))
       .status, { timeout: 30_000 }).toBe('completed')
   }
   await expect.poll(() => column(api, tiktok, 'Author'), { timeout: 15_000 })
@@ -103,7 +106,7 @@ test('social_research: the creator\'s usual views and how many times that each p
     expect(fill.run_status).toBe('set_up')
     const rerun = await call(client, 'control_run', { action: 'rerun', run_type: 'enrichment', run_id: fill.run_id,
       mode: 'empty' })
-    await expect.poll(async () => (await call(client, 'get_run_status', { run_type: 'enrichment',
+    await expect.poll(async () => (await call(client, 'get_run', { action: 'status', run_type: 'enrichment',
       run_id: rerun.run_id })).status, { timeout: 30_000 }).toBe('completed')
   }
   await recentRun(tiktok)

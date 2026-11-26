@@ -44,7 +44,7 @@ test('REST and MCP: test on 5 rows, the sheet waits, apply makes the change the 
   expect((await rowsOf(copyId)).map(r => r.Name)).toEqual(['name0', 'name1', 'name2', 'name3', 'name4'])
   const tabs = await (await api.get(`/api/tables/${tableId}`)).json()
   expect(tabs.sheets.map((s: { id: string }) => s.id)).toEqual([sheetId])
-  const listed = await call(client, 'list_tables', {})
+  const listed = await call(client, 'get_workspace', { all_tables: true })
   expect(JSON.stringify(listed)).not.toContain(copyId)
 
   // The sheet: a cell edit is busy (autosave retries it), an append and a run are refused, reads go on.

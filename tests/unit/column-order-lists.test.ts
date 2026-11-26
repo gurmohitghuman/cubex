@@ -7,6 +7,7 @@ import assert from 'node:assert/strict'
 import { v4 as uuid } from 'uuid'
 import dbMod from '../../server/src/lib/db'
 import migMod from '../../server/src/db/migrate'
+import { passed } from './ends-on-its-own'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 
@@ -62,4 +63,4 @@ await check('a setup version restored keeps a column added since, after the vers
 
 if (failures) { console.error(`${failures} column-order-lists assertion(s) failed`); process.exit(1) }
 console.log('All column-order-lists assertions passed.')
-process.exit(0)
+passed()

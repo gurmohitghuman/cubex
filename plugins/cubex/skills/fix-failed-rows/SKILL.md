@@ -14,12 +14,12 @@ description: "Find the rows where an AI, HTTP API or enrichment run failed in a 
 
 ## 2. Find the cause
 
-`get_run_results` with the run's `run_type` (`ai`, `http` or `enrichment`), its `run_id` and `status_filter: "failed"` lists each failed row's error. Group them and look at the most common:
+`get_run` (action `results`) with the run's `run_type` (`ai`, `http` or `enrichment`), its `run_id` and `status_filter: "failed"` lists each failed row's error. Group them and look at the most common:
 
 - **Bad or missing input**: the prompt or request reads a cell that is empty or malformed. Fix the cells (`change_rows` with `action: "update"`, or a free `clean_column`), or keep those rows out with `run_if`.
 - **Rate limits or timeouts** ("429", "Rate limited", "timed out"): rerun with a lower `concurrency`.
 - **The setup is wrong** (a prompt that confuses the model, a wrong URL or JSONPath): test the corrected setup first without paying for the sheet: `preview_rows` for AI shows a few real outputs and writes nothing; `estimate_only` checks an HTTP request. Then start it on the same column with `target_row_ids` set to the failed rows from step 1. Without `target_row_ids` a run takes every row, the ones that worked included, and bills them again. Tell the user the row count and cost and wait for a yes before you start it.
-- **Money or keys** (no credits, a missing or invalid key, a spend limit, the daily limit): tell the user. `get_balances` shows what is left; `get_run_status` shows `error_message`, and `enrichment.pause_reason` for an enrichment.
+- **Money or keys** (no credits, a missing or invalid key, a spend limit, the daily limit): tell the user. `get_account` (action `balances`) shows what is left; `get_run` (action `status`) shows `error_message`, and `enrichment.pause_reason` for an enrichment.
 
 API keys never go through the chat. The user saves a key in Cubex (Settings, Enrichment, saved API keys) and a request names it as `{{key_name}}`, for example `Authorization: Bearer {{people_api_key}}`. Using a saved key needs a token with the `secrets` scope. Never ask the user to paste a key, and never put one in a request, a prompt or a file.
 
@@ -29,7 +29,7 @@ A rerun calls the AI, the API or the enrichment again for each row, and costs ag
 
 - `control_run` with `action: "rerun"`, the `run_type`, the `run_id` and `mode: "errored"` (only ❌ rows). An HTTP run takes `mode: "missing"`. Or pass exact `row_ids` from step 1.
 - Enrichment reruns take `spend_limit_usd`; a lower `concurrency` helps with 429s.
-- Follow it with `get_run_status` (`wait_seconds` up to 25) until it is done, then check its `failed_rows`.
+- Follow it with `get_run` (action `status`) (`wait_seconds` up to 25) until it is done, then check its `failed_rows`.
 
 ## 4. Report
 

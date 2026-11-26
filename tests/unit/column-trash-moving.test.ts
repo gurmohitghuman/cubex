@@ -160,7 +160,7 @@ await ok('over MCP, a delete past its wait says so, and list_trash and the chang
         + 'restore before then is refused, so try again in a moment.')
       const listed = await api.call('list_trash', { kind: 'column', sheet_id: sid })
       assert.deepEqual(listed.body.items.map((i: any) => [i.id, i.state]), [[id, 'moving']])
-      const log = await api.call('get_sheet_history', { sheet_id: sid })
+      const log = await api.call('get_sheet', { history: true, sheet_id: sid })
       const line = log.body.changes[0]
       assert.deepEqual([log.isError, line.action, line.detail.trash_id, line.in_trash, item(id)!.state],
         [false, 'column_deleted', id, true, 'moving'], 'read while it moves: in the trash, as list_trash says')
@@ -170,7 +170,7 @@ await ok('over MCP, a delete past its wait says so, and list_trash and the chang
     const id = db.prepare(`SELECT id FROM trash_items WHERE sheet_id = ? AND kind = 'column'`).pluck()
       .get(sid) as number
     assert.deepEqual([item(id)!.state, item(id)!.row_count], ['kept', 6_000])
-    const inTrash = async () => (await api.call('get_sheet_history', { sheet_id: sid })).body.changes
+    const inTrash = async () => (await api.call('get_sheet', { history: true, sheet_id: sid })).body.changes
       .find((c: any) => c.action === 'column_deleted').in_trash
     assert.equal(await inTrash(), true)
     assert.ok((await restoreOne(id)).restored)

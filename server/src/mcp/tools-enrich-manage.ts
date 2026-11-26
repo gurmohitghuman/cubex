@@ -27,7 +27,8 @@ export function registerEnrichManageTools(server: McpServer, ctx: McpAuthCtx) {
     description:
       'Add a column filled from the answers an enrichment or HTTP API column already stored: free, no treg calls '
       + 'and no requests. column is the enrichment\'s status column (or one of its outputs, or an HTTP API column). '
-      + 'Find json_path in a stored answer: get_run_results with include_answers:true shows them (paths start at the '
+      + 'Find json_path in a stored answer: get_run (action results) with include_answers:true shows them (paths start '
+      + 'at the '
       + 'answer\'s root, e.g. $.output.company.linkedin_url or $.raw.location). Later runs of the column fill it too. '
       + 'It fills in the background: its cells read "⏳ Processing..." and the sheet refuses other changes until '
       + 'done. '

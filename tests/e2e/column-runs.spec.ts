@@ -39,7 +39,7 @@ test('run_columns: an estimate first; Echo waits for Lookup and its formula, and
   expect(est.columns.map((c: any) => [c.column, c.kind, c.layer, c.rows, c.sends_requests]))
     .toEqual([['Lookup', 'http', 1, 3, true], ['Echo', 'http', 2, 3, true]])
   expect(est.unpriced).toEqual([])
-  expect((await call(client, 'get_setup_run', { sheet_id: sheetId })).setup_runs).toEqual([])
+  expect((await call(client, 'get_run', { action: 'setup', sheet_id: sheetId })).setup_runs).toEqual([])
 
   // Started on new short names, Lookup's answers held: Echo waits.
   short('2')
@@ -49,7 +49,7 @@ test('run_columns: an estimate first; Echo waits for Lookup and its formula, and
   expect(run.setup_id).toBeNull()
   expect(run.column_run).toEqual({ mode: 'all', row_ids: null, where: null })
   await rx.waitFor('/short/one.com', 2)
-  const waiting = await call(client, 'get_setup_run', { setup_run_id: run.id })
+  const waiting = await call(client, 'get_run', { action: 'setup', setup_run_id: run.id })
   expect(waiting.steps.map((s: any) => [s.column, s.state])).toEqual([['Lookup', 'running'], ['Echo', 'waiting']])
   release()
   const done = await waitSetup(client, run.id)
@@ -61,7 +61,7 @@ test('run_columns: an estimate first; Echo waits for Lookup and its formula, and
   expect(asked('!')).toEqual([1, 1, 1])
   await sleep(4000)
   expect(asked('2!')).toEqual([1, 1, 1])
-  const { changes: [line] } = await call(client, 'get_sheet_history', { sheet_id: sheetId, limit: 1 })
+  const { changes: [line] } = await call(client, 'get_sheet', { history: true, sheet_id: sheetId, limit: 1 })
   expect(line.summary).toBe('Ran 2 columns (Lookup, Echo) on every row')
 })
 
@@ -110,6 +110,7 @@ test('POST /api/v1/sheets/:id/column-runs: refusals, row_ids, and a stop', async
   await sleep(2000)
   const stopped = await (await run.get(`/api/v1/setup-runs/${id}`)).json()
   expect(stopped.steps.map((s: any) => s.state)).toEqual(['running', 'waiting'])
-  expect((await call(client, 'get_run_status', { run_type: 'http', run_id: stopped.steps[0].run_id })).status)
+  expect((await call(client, 'get_run', {
+    action: 'status', run_type: 'http', run_id: stopped.steps[0].run_id })).status)
     .toBe('cancelled')
 })

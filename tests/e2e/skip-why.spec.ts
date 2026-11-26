@@ -31,7 +31,7 @@ test('a kept-out row says why: read_rows, check_run_condition and the grid\'s pa
   const keptOut = () => readDb(db => db.prepare(`SELECT COUNT(*) FROM rows WHERE sheet_id = ?
     AND json_extract(data, '$."Fit (Output)"') = '⏭️ Condition not met'`).pluck().get(sheetId))
   await expect.poll(keptOut, { timeout: 30_000 }).toBe(2)
-  await call(client, 'get_run_status', { run_type: 'ai', run_id: ai.run_id, wait_seconds: 5 })
+  await call(client, 'get_run', { action: 'status', run_type: 'ai', run_id: ai.run_id, wait_seconds: 5 })
 
   const read = await call(client, 'read_rows', { sheet_id: sheetId, include_status: true, columns: ['Fit (Output)'] })
   const cells = read.rows.map((r: any) => r.data['Fit (Output)'])

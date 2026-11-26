@@ -27,7 +27,7 @@ export const lenientInt = (min: number, max: number, message?: string) =>
   z.preprocess(v => digitsAsNumber(v), z.number(message).int(message).min(min, message).max(max, message));
 
 // The sheet_id every sheet tool takes.
-export const SHEET_ID = 'The sheet\'s id (list_tables lists them)';
+export const SHEET_ID = 'The sheet\'s id (get_workspace lists them)';
 
 export interface McpAuthCtx {
   userId: string;
@@ -162,10 +162,12 @@ export function registerTool<N extends ToolName>(
 // reason back, except tools that only read, that append rows (appends land
 // above the busy operation's reserved range) or that stop runs.
 const RUNS_WHILE_SHEET_BUSY = new Set([
-  'list_tables', 'get_sheet', 'read_rows', 'list_models',
-  'list_runs', 'get_run_status', 'get_run_results', 'append_rows', 'get_list_fields', 'get_usage',
-  // The trash and the change log: a column's cells keep moving into the trash after its delete answered.
-  'list_trash', 'get_sheet_history',
+  'get_sheet', 'read_rows', 'list_models',
+  // Runs and setup runs (get_run), and the account's usage of a sheet (get_account).
+  'get_run', 'append_rows', 'get_list_fields', 'get_account',
+  // The trash, and the change log (get_sheet's history): a column's cells keep moving into the trash after its
+  // delete answered.
+  'list_trash',
   // Making a link doesn't touch the sheet; using it checks for busy then.
   'create_upload_link', 'create_download_link',
   // Its get reads; every other action refuses a busy sheet itself (mcp/tools-sheet-webhook.ts).

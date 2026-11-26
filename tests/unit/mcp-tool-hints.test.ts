@@ -52,30 +52,36 @@ async function main() {
   })
 
   await check('a read-only tool writes nothing, called on real data', async () => {
-    const args: Record<string, Record<string, unknown>> = {
-      get_sheet: { sheet_id: people, include_counts: true }, read_rows: { sheet_id: people },
-      list_runs: { sheet_id: people },
-      get_run_status: { run_type: 'http', run_id: runId }, get_run_results: { run_type: 'http', run_id: runId },
-      get_sheet_history: { sheet_id: people },
-      check_run_condition: { sheet_id: people, rule: '{{Email}} is not empty' },
-      search_enrichments: { query: 'email' }, get_enrichment: { tool_id: 'x' },
-      get_list_fields: { sheet_id: people, column: 'Fit' }, get_setup_run: { sheet_id: people },
-      list_setup_versions: { sheet_id: people }, get_usage: { sheet_id: people },
+    // Each read-only tool's calls: every action of the merged reads; [args, true] must succeed as well.
+    const args: Record<string, Array<[Record<string, unknown>, boolean?]>> = {
+      get_workspace: [[{}, true], [{ all_tables: true }, true]],
+      get_sheet: [[{ sheet_id: people, include_counts: true }, true], [{ sheet_id: people, history: true }, true]],
+      read_rows: [[{ sheet_id: people }, true], [{ sheet_id: people, format: 'csv' }, true]],
+      get_run: [[{ action: 'list', sheet_id: people }, true],
+        [{ action: 'status', run_type: 'http', run_id: runId }, true],
+        [{ action: 'results', run_type: 'http', run_id: runId }, true], [{ action: 'setup', sheet_id: people }, true]],
+      // Balances asks treg and OpenRouter, which this test can't reach: it fails, writing nothing.
+      get_account: [[{ action: 'usage', sheet_id: people }, true], [{ action: 'saved_keys' }, true],
+        [{ action: 'version' }, true], [{ action: 'balances' }]],
+      check_run_condition: [[{ sheet_id: people, rule: '{{Email}} is not empty' }, true]],
+      find_enrichments: [[{ action: 'search', query: 'email' }], [{ action: 'get', tool_id: 'x' }]],
+      get_list_fields: [[{ sheet_id: people, column: 'Fit' }]], list_setup_versions: [[{ sheet_id: people }, true]],
+      list_trash: [[{}, true]], list_setups: [[{}, true]], list_run_webhooks: [[{}, true]],
+      get_tool_guide: [[{}, true]],
     }
-    // These answer from Cubex's own data, so their call must succeed too.
-    const answers = ['get_workspace', 'list_tables', 'get_sheet', 'read_rows', 'list_runs',
-      'get_run_status', 'get_run_results', 'get_usage', 'list_trash', 'get_sheet_history', 'list_setups',
-      'list_setup_versions', 'list_run_webhooks', 'list_saved_keys', 'check_run_condition', 'get_version',
-      'get_tool_guide']
     const readOnly = [...tools.keys()].filter(name => hints[name].readOnlyHint)
-    assert.ok(readOnly.length >= 20, `${readOnly.length} read-only tools`)
+    assert.ok(readOnly.length >= 15, `${readOnly.length} read-only tools`)
     for (const name of readOnly) {
-      const before = snapshot()
-      const changes = db.prepare('SELECT total_changes()').pluck().get() as number
-      const text = await call(name, args[name] ?? {}, ALL)
-      assert.equal(db.prepare('SELECT total_changes()').pluck().get(), changes, `${name} wrote: ${text.slice(0, 200)}`)
-      assert.deepEqual(snapshot(), before, name)
-      if (answers.includes(name)) assert.ok(!text.startsWith('ERROR'), `${name}: ${text.slice(0, 300)}`)
+      for (const [a, mustAnswer] of args[name] ?? [[{}]]) {
+        const before = snapshot()
+        const changes = db.prepare('SELECT total_changes()').pluck().get() as number
+        const text = await call(name, a, ALL)
+        const what = `${name} ${JSON.stringify(a)}`
+        assert.equal(db.prepare('SELECT total_changes()').pluck().get(), changes,
+          `${what} wrote: ${text.slice(0, 200)}`)
+        assert.deepEqual(snapshot(), before, what)
+        if (mustAnswer) assert.ok(!text.startsWith('ERROR'), `${what}: ${text.slice(0, 300)}`)
+      }
     }
   })
 

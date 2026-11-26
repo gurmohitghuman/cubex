@@ -22,7 +22,8 @@ test('a setup used on another sheet: priced, matched, run in order, auto-run on'
   await call(client, 'formula_column', { sheet_id: a.sheetId, column: 'Domain', formula: '{{Website}}?.split(".")[0]' })
   const look = await call(client, 'run_http_enrichment', { sheet_id: a.sheetId, url: POSTS,
     master_column_name: 'Lookup', response_mapping: [{ json_path: '$.id', column_name: 'Post id' }] })
-  await expect.poll(async () => (await call(client, 'get_run_status', { run_type: 'http', run_id: look.run_id }))
+  await expect.poll(async () => (await call(client, 'get_run', {
+    action: 'status', run_type: 'http', run_id: look.run_id }))
     .status, { timeout: 30_000 }).toBe('completed')
   await call(client, 'set_auto_run', { sheet_id: a.sheetId, column: 'Lookup', enabled: true, daily_row_cap: 25 })
   await call(client, 'formula_column', { sheet_id: a.sheetId, column: 'Label',
@@ -98,7 +99,7 @@ test('a setup used on another sheet: priced, matched, run in order, auto-run on'
   expect(await column(api, c.sheetId, 'Post id')).toEqual(['1', '1', '1'])
   expect((await column(api, c.sheetId, 'Label')).slice(0, 2)).toEqual(['one-1', 'two-1'])
   const lookupRun = restDone.steps.find((s: any) => s.column === 'Lookup').run_id
-  expect((await call(client, 'get_run_status', { run_type: 'http', run_id: lookupRun })).total_rows).toBe(2)
+  expect((await call(client, 'get_run', { action: 'status', run_type: 'http', run_id: lookupRun })).total_rows).toBe(2)
   // A run on every row turns the saved auto-run on.
   expect(JSON.stringify((await getSheet(api, c.sheetId)).data.autorun ?? {})).toContain('Lookup')
 
@@ -115,7 +116,8 @@ test('a setup used on another sheet: priced, matched, run in order, auto-run on'
   const k = await call(secretClient, 'run_http_enrichment', { sheet_id: a.sheetId, url: POSTS,
     headers: { 'X-Key': '{{setup_e2e_key}}' }, master_column_name: 'Keyed',
     response_mapping: [{ json_path: '$.userId', column_name: 'User id' }] })
-  await expect.poll(async () => (await call(secretClient, 'get_run_status', { run_type: 'http', run_id: k.run_id }))
+  await expect.poll(async () => (await call(secretClient, 'get_run', {
+    action: 'status', run_type: 'http', run_id: k.run_id }))
     .status, { timeout: 30_000 }).toBe('completed')
   const keyedSetup = await call(client, 'save_setup', { sheet_id: a.sheetId, name: 'Keyed', columns: ['User id'],
     include_upstream: false })
@@ -126,8 +128,8 @@ test('a setup used on another sheet: priced, matched, run in order, auto-run on'
   expect(ok.estimate.rows).toBe(3)
   for (const s of (await (await api.get('/api/setups')).json()).setups) await api.delete(`/api/setups/${s.id}`)
   // Its runs outlive a deleted setup: still read, with setup_id null.
-  expect(await call(client, 'get_setup_run', { setup_run_id: restRun.setup_run.id }))
+  expect(await call(client, 'get_run', { action: 'setup', setup_run_id: restRun.setup_run.id }))
     .toMatchObject({ id: restRun.setup_run.id, setup_id: null, status: 'done' })
-  const listed = (await call(client, 'get_setup_run', { sheet_id: c.sheetId })).setup_runs
+  const listed = (await call(client, 'get_run', { action: 'setup', sheet_id: c.sheetId })).setup_runs
   expect(listed.find((r: any) => r.id === restRun.setup_run.id)).toMatchObject({ setup_id: null })
 })

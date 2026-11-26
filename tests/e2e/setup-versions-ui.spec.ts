@@ -118,7 +118,8 @@ test('a long AI prompt changed in the middle: the comparison marks what changed'
     for (const [i, middle] of ['Prefer small companies.', 'Prefer large companies in Europe.'].entries()) {
       const run = await call(client, 'run_ai_column', { sheet_id: sheetId, column_name: 'Fit',
         prompt: prompt(middle), model: 'deepseek/deepseek-v4-flash' })
-      await expect.poll(async () => (await call(client, 'get_run_status', { run_type: 'ai', run_id: run.run_id }))
+      await expect.poll(async () => (await call(client, 'get_run', {
+        action: 'status', run_type: 'ai', run_id: run.run_id }))
         .status, { timeout: 60_000 }).toMatch(/completed|failed/)
       if (i === 0) await call(client, 'manage_setup_version', { sheet_id: sheetId, action: 'save', name: 'Small' })
     }

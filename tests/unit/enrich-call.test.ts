@@ -9,6 +9,7 @@ import migMod from '../../server/src/db/migrate'
 import callMod from '../../server/src/services/enrich-call'
 import setupCallMod from '../../server/src/services/setup-call'
 import tableMod from '../../server/src/services/table-crud'
+import { passed } from './ends-on-its-own'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { callColumns, callRefusal } = callMod as typeof import('../../server/src/services/enrich-call')
@@ -84,4 +85,4 @@ check('then removed once its results have been kept as long', await sweepSetupCa
 
 if (failures > 0) { console.error(`${failures} enrich-call check(s) failed`); process.exit(1) }
 console.log('enrich-call: all assertions passed')
-process.exit(0)
+passed()

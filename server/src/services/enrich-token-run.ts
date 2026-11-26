@@ -100,7 +100,7 @@ export async function tokenStartEnrichmentRun(
   if ('fail' in pre) return pre;
   const sheetId = a.sheet_id as string;
   if (typeof a.tool_id !== 'string' || !TREG_TOOL_ID_PATTERN.test(a.tool_id)) {
-    return bad('tool_id must be a tool id from search_enrichments (GET /api/v1/enrichments).');
+    return bad('tool_id must be a tool id from find_enrichments (GET /api/v1/enrichments).');
   }
   const found = await getTool(a.tool_id);
   if (!('ok' in found)) {

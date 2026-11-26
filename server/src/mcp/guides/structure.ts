@@ -70,7 +70,7 @@ export const STRUCTURE_GUIDES: Record<string, ToolGuide> = {
         + 'whose request reads saved API keys needs the secrets scope.',
       'discard_test deletes the copy with its rows and runs, and the sheet stays as it was. Either way the sheet '
         + 'takes changes again and the webhook deliveries it kept are added in the order they arrived. While a test '
-        + 'ends, get_sheet\'s test says state "ending". The copy is never in list_tables.',
+        + 'ends, get_sheet\'s test says state "ending". The copy is never in get_workspace.',
       'sort: Refused while a run works on the sheet. Returns rows_reordered.',
       'describe: what the sheet holds, where its values come from, how to read it. People see it on the sheet\'s '
         + 'tab and agents in get_sheet (description). It is never sent to AI runs. Up to '

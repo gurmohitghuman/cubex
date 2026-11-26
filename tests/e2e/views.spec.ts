@@ -51,7 +51,8 @@ test('saved views and hidden columns: REST, MCP, the grid and export', async ({ 
   try {
     const ai = await call(client, 'run_ai_column', { sheet_id: sheetId, column_name: 'Fit', prompt: 'Is /val a fit?',
       model: 'deepseek/deepseek-v4-flash', target_row_ids: first.rows.map((r: { id: string }) => r.id) })
-    await expect.poll(async () => (await call(client, 'get_run_status', { run_type: 'ai', run_id: ai.run_id }))
+    await expect.poll(async () => (await call(client, 'get_run', {
+      action: 'status', run_type: 'ai', run_id: ai.run_id }))
       .status, { timeout: 30_000 }).toMatch(/completed|failed/)
   } finally {
     await api.delete('/api/settings/openrouter-key')

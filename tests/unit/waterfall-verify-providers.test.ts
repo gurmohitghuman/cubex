@@ -10,6 +10,7 @@ import assert from 'node:assert/strict'
 import net from 'node:net'
 import { spawn } from 'node:child_process'
 import type { AddressInfo } from 'node:net'
+import { passed } from './ends-on-its-own'
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 const port = await new Promise<number>(resolve => {
@@ -209,4 +210,4 @@ await ok('preset: checks priced on the checkers left; skips that leave none are 
 treg.kill()
 if (failures) { console.error(`${failures} waterfall verify provider check(s) failed`); process.exit(1) }
 console.log('All waterfall verify provider assertions passed.')
-process.exit(0)
+passed()

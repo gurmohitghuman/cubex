@@ -109,7 +109,7 @@ test('MCP: ai_visibility asks for the estimate unless told otherwise', async () 
   // get_sheet says the engine column is set up and has never run.
   const sheet = await call(client, 'get_sheet', { sheet_id: made.questions_sheet_id, column_details: true })
   expect(sheet.column_details.find((d: { name: string }) => d.name === 'ChatGPT').fill.run_status).toBe('set_up')
-  // By the Questions sheet's id too (what list_tables shows).
+  // By the Questions sheet's id too (what get_workspace with all_tables shows).
   const est = await call(client, 'ai_visibility', { action: 'ask', id: made.questions_sheet_id })
   expect(est).toMatchObject({ estimate_only: true, questions: 1 })
   expect((await rowsOf(api, made.questions_sheet_id))[0].ChatGPT ?? '').toBe('')

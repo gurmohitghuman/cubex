@@ -2,7 +2,7 @@ import { api } from './client'
 
 // A sheet's change log (server routes/sheets-history.ts, services/sheet-history.ts):
 // setup changes and big row changes, newest first, with who made them. Field
-// names match /api/v1/sheets/:id/history and MCP get_sheet_history.
+// names match /api/v1/sheets/:id/history and MCP get_sheet (history).
 export interface SheetChange {
   id: number
   at: string

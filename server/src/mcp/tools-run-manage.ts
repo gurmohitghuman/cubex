@@ -3,7 +3,7 @@
 // /v1/{ai,http}-runs/:id/{pause,resume,cancel,rerun} and, for cancel_all, POST
 // /v1/sheets/:id/runs/stop. It needs 'run' (and its rerun action shares the
 // start-rate window, since a rerun spends external calls like a fresh start).
-// get_run_status lives in tools-run-status.ts.
+// get_run (action status) lives in tools-run-status.ts.
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/server';
 import { HTTP_MAX_CONCURRENCY, MAX_AI_CONCURRENCY, MAX_FIRST_ROWS, MAX_ROWS_PER_SHEET } from '../lib/constants';
@@ -66,10 +66,11 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
         'Pause, resume or cancel a run, rerun a finished one, or stop every run on a sheet. A cancel keeps the '
         + 'answers the run wrote; rows it hadn\'t reached get back what they held. '
         + 'RERUN starts a NEW run with the column\'s latest setup and COSTS MONEY AGAIN (one call per row); check '
-        + 'get_run_results first to know how many rows you will pay for. AI, enrichment and waterfall reruns need '
+        + 'get_run (action results) first to know how many rows you will pay for. AI, enrichment and waterfall reruns '
+        + 'need '
         + 'row_ids or mode ("errored" is the usual retry, "empty" the rest after a test, "missing" empty, ⏭️ '
         + 'or ❌, "out_of_date" input cells changed since); HTTP defaults to all. Poll '
-        + 'the new run_id with get_run_status. '
+        + 'the new run_id with get_run (action status). '
         + 'CANCEL_ALL with sheet_id stops every active run and setup run on the sheet; it turns no auto-run off. '
         + 'Calls already sent finish and are billed.'
         + capRunToolNote(ctx.spend ?? null) + ` ${GUIDE_POINTER}`,

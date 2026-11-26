@@ -1,6 +1,6 @@
 // An agent's run_enrichment arguments (MCP and /api/v1, snake_case) as the
 // drawer's run request (pure), so lib/enrich-run-input.ts parses both with
-// the same strict rules. Outputs are named by the fields get_enrichment lists
+// the same strict rules. Outputs are named by the fields find_enrichments (action get) lists
 // and looked up in the tool's catalog entry here; the run start checks them
 // against treg's catalog again.
 import type { EnrichTool } from './enrich-tool';

@@ -41,7 +41,7 @@ async function seed(): Promise<{ tableId: string; sheetId: string; crmId: string
 
 async function waitDone(runId: string) {
   for (let i = 0; i < 60; i++) {
-    const s = await call(mcp, 'get_run_status', { run_type: 'waterfall', run_id: runId, wait_seconds: 2 })
+    const s = await call(mcp, 'get_run', { action: 'status', run_type: 'waterfall', run_id: runId, wait_seconds: 2 })
     if (['completed', 'failed', 'cancelled', 'paused'].includes(s.status)) return s
   }
   throw new Error(`run ${runId} didn't finish`)
@@ -69,8 +69,8 @@ test('MCP: a free lookup first, the API only for rows it misses; renames followe
     ['maya@stripe.com', 'Contacts'], ['owen@parkco.example', 'Contacts'], ['found@nowhere.example', 'Own API'],
   ])
   expect(rx.hitsOn('/fallback').length - hitsBefore).toBe(1)
-  const res = await call(mcp, 'get_run_results',
-    { run_type: 'waterfall', run_id: started.run_id, status_filter: 'all' })
+  const res = await call(mcp, 'get_run',
+    { action: 'results', run_type: 'waterfall', run_id: started.run_id, status_filter: 'all' })
   const trace = res.results.find((r: { row_index: number }) => r.row_index === 2).trace
   expect(trace.map((t: { kind: string; outcome: string }) => [t.kind, t.outcome]))
     .toEqual([['lookup', 'not_found'], ['http', 'answered']])

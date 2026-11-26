@@ -144,10 +144,10 @@ test('a read token lists saved key names and where they are used, never a value'
     expect((await v1.get(`/api/v1/saved-keys?after=${name}&name=${name}`)).status()).toBe(400)
 
     const mcp = await mcpClient(readToken, 'e2e-saved-keys')
-    const viaMcp = await call(mcp, 'list_saved_keys', { name })
+    const viaMcp = await call(mcp, 'get_account', { action: 'saved_keys', name })
     expect(JSON.stringify(viaMcp)).not.toContain(value)
     expect(viaMcp.keys).toEqual([listed])
-    expect((await call(mcp, 'list_saved_keys', { after: name })).keys).toEqual(after.keys)
+    expect((await call(mcp, 'get_account', { action: 'saved_keys', after: name })).keys).toEqual(after.keys)
     await mcp.close()
 
     // Using the key in a new request still needs 'secrets'.
