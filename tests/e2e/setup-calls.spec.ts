@@ -4,8 +4,9 @@ import { mcpClient, call, callError } from './helpers-mcp'
 import { sheetWith } from './helpers-setups'
 
 // A saved setup called on items without a sheet (services/setup-call.ts), over MCP and REST: a free chain (a
-// formula and a clean column) saved from a sheet; call_setup prices it by default and makes nothing; started, it
-// runs on a working table no list shows, and get_setup_call answers each item's outputs in the order sent. REST
+// formula and a clean column) saved from a sheet; apply_setup with items prices it by default and makes nothing,
+// and refuses a sheet's arguments beside items; started, it runs on a working table no list shows, and get_setup_run
+// answers each item's outputs in the order sent. REST
 // does the same (estimate_only defaults to false there), refuses an item with a name the setup doesn't read, a
 // token without "run", and answers 404 for a call that isn't there. control_setup_run takes a call's id.
 
@@ -27,19 +28,24 @@ test('a setup called on items: priced, run without a sheet, each item\'s outputs
 
   // MCP: an estimate by default, nothing made.
   const items = [{ Name: 'grace hopper', Website: 'navy.mil' }, { Website: 'nasa.gov' }, { Name: 'alan turing' }]
-  const est = await call(client, 'call_setup', { setup_id: setup.id, items })
+  const est = await call(client, 'apply_setup', { setup_id: setup.id, items })
   expect(est.items).toBe(3)
   expect([...est.makes].sort()).toEqual(['Clean name', 'Domain'])
   expect(est.setup_call).toBeUndefined()
   expect(await tables()).toBe(before)
+  expect(await callError(client, 'apply_setup', { setup_id: setup.id, items, sheet_id: a.sheetId }))
+    .toContain('not both')
+  expect(await callError(client, 'apply_setup', { setup_id: setup.id, items, first_rows: 1 }))
+    .toContain('first_rows go with sheet_id')
+  expect(await callError(client, 'apply_setup', { setup_id: setup.id })).toContain('Pass sheet_id')
 
   // Started: hidden while it runs, each item's outputs once it's done.
-  const started = (await call(client, 'call_setup', { setup_id: setup.id, items, estimate_only: false })).setup_call
+  const started = (await call(client, 'apply_setup', { setup_id: setup.id, items, estimate_only: false })).setup_call
   expect(started.items).toBe(3)
   expect(await tables()).toBe(before)
   let done: any
-  await expect.poll(async () => (done = await call(client, 'get_setup_call',
-    { setup_call_id: started.id, wait_seconds: 5 })).status, { timeout: 60_000 }).toBe('done')
+  await expect.poll(async () => (done = await call(client, 'get_setup_run',
+    { setup_run_id: started.id, wait_seconds: 5 })).status, { timeout: 60_000 }).toBe('done')
   expect(done.results).toEqual([
     { item: 0, status: 'done', error: null, outputs: { Domain: 'navy', 'Clean name': 'Grace Hopper' } },
     { item: 1, status: 'done', error: null, outputs: { Domain: 'nasa', 'Clean name': null } },
@@ -47,9 +53,7 @@ test('a setup called on items: priced, run without a sheet, each item\'s outputs
   ])
   expect(done.keep_until).toBeTruthy()
   expect(await tables()).toBe(before)
-  // Its id is a setup run's.
-  expect((await call(client, 'get_setup_run', { setup_run_id: started.id })).status).toBe('done')
-  expect(await callError(client, 'call_setup', { setup_id: setup.id, items: [{ Nmae: 'x' }] }))
+  expect(await callError(client, 'apply_setup', { setup_id: setup.id, items: [{ Nmae: 'x' }] }))
     .toContain('isn\'t an input of this setup')
 
   // REST: estimate_only defaults to false here.
@@ -107,11 +111,11 @@ test('a setup called on a file: an upload link and REST, results paged and downl
   const started = (await up.json()).setup_call
   expect(started.items).toBe(150)
   let done: any
-  await expect.poll(async () => (done = await call(client, 'get_setup_call',
-    { setup_call_id: started.id, wait_seconds: 5 })).status, { timeout: 60_000 }).toBe('done')
+  await expect.poll(async () => (done = await call(client, 'get_setup_run',
+    { setup_run_id: started.id, wait_seconds: 5 })).status, { timeout: 60_000 }).toBe('done')
   expect(done.results.length).toBe(100)
   expect(done.next_from).toBe(100)
-  const rest = await call(client, 'get_setup_call', { setup_call_id: started.id, results_from: done.next_from })
+  const rest = await call(client, 'get_setup_run', { setup_run_id: started.id, results_from: done.next_from })
   expect(rest.results.map((r: any) => r.outputs['Clean name'])).toEqual(names.slice(100).map(n =>
     n.replace(/^p/, 'P')))
   expect(rest.next_from).toBeNull()

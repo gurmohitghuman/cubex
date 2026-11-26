@@ -50,28 +50,30 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
           + 'it lists the tools that have one. No tool or argument changed.',
       },
       {
-        change: 'added',
-        tools: ['call_setup', 'get_setup_call'],
-        summary: 'call_setup runs a saved setup on 1-100 items without a sheet, like a function; get_setup_call '
-          + 'answers each item\'s outputs once it finishes.',
+        change: 'changed',
+        tools: ['apply_setup', 'get_setup_run'],
+        summary: 'apply_setup takes items instead of sheet_id: it runs a saved setup on 1-100 items without a sheet, '
+          + 'like a function, and get_setup_run with the call\'s id answers each item\'s outputs once it finishes.',
         details: 'Items are objects keyed by the setup\'s inputs; estimate_only defaults to true. The call id is a '
-          + 'setup run id: control_setup_run pauses or cancels it, a run webhook reports it as kind setup. Results '
-          + 'are kept 24 hours.',
+          + 'setup run id, so control_setup_run pauses or cancels it. Results are kept 24 hours. get_setup_run takes '
+          + 'wait_seconds now.',
       },
       {
-        change: 'added',
-        tools: ['call_enrichment'],
-        summary: 'call_enrichment runs one enrichment tool on 1-1,000 items without a sheet, refused up front instead '
-          + 'of pausing halfway when it could pass max_cost_usd, the daily limit, the treg balance or the token cap.',
-        details: 'It answers a run_id: get_run_status and get_run_results answer for it, with row_index as the '
-          + 'item. estimate_only defaults to true.',
+        change: 'changed',
+        tools: ['run_enrichment'],
+        summary: 'run_enrichment takes items instead of sheet_id: one enrichment tool on 1-1,000 items without a '
+          + 'sheet, refused up front instead of pausing halfway when it could pass max_cost_usd, the daily limit, the '
+          + 'treg balance or the token cap.',
+        details: 'With items, estimate_only defaults to true (on a sheet it stays false) and fields picks the output '
+          + 'fields. It answers a run_id: get_run_status and get_run_results answer for it, with row_index as the '
+          + 'item.',
       },
       {
         change: 'changed',
         tools: ['create_upload_link', 'create_download_link'],
         summary: 'create_upload_link takes setup_id (with max_cost_usd) instead of sheet_id: the file\'s rows become a '
           + 'setup call\'s items, and the call starts once the file is in.',
-        details: 'get_setup_call pages results with results_from and limit (next_from says where the next page '
+        details: 'get_setup_run pages results with results_from and limit (next_from says where the next page '
           + 'starts); create_download_link takes setup_call_id to save every item\'s inputs and outputs as a CSV.',
       },
       {

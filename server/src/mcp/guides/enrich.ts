@@ -2,6 +2,7 @@
 import { RUN_IF_HELP } from '../run-if-schema';
 import { saveOnlyHelp } from '../save-only-schema';
 import type { ToolGuide } from './guide';
+import { ENRICH_ITEMS_TEXT } from './items';
 
 export const ENRICH_GUIDES: Record<string, ToolGuide> = {
   waterfall_column: {
@@ -21,6 +22,7 @@ export const ENRICH_GUIDES: Record<string, ToolGuide> = {
       'A row whose exact lookup found something within the days set in Settings reuses it at $0.',
       'A row whose providers all answer 429 asks again for free (rate_limit_retries), then fails; lower concurrency '
         + 'if 429s go on.',
+      ...ENRICH_ITEMS_TEXT,
     ],
     fields: { run_if: RUN_IF_HELP, save_only: saveOnlyHelp('run_enrichment') },
     spendCap: true,

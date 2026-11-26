@@ -54,16 +54,16 @@ export const READ_GUIDES: Record<string, ToolGuide> = {
       'curl prints the import result (rows imported, new columns).', GARBLED_HELP,
       'With setup_id: the file\'s header names the setup\'s inputs (a column the setup doesn\'t read is ignored, '
         + 'an input the file lacks reads as empty), and the call starts once the file is in: curl prints the '
-        + 'import\'s summary with the setup_call (get_setup_call follows it). Nobody sees an estimate first, so '
+        + 'import\'s summary with the setup_call (get_setup_run follows it). Nobody sees an estimate first, so '
         + 'max_cost_usd is required: a file whose estimate could pass it starts nothing (curl prints the estimate), '
-        + 'and so does a file with no rows. Price it first with call_setup on a few items. mode stays append, and '
+        + 'and so does a file with no rows. Price it first with apply_setup on a few items. mode stays append, and '
         + 'making the link counts as a run start.',
     ],
   },
   export_csv: { text: [], fields: { view: VIEW_HELP } },
   create_download_link: {
-    text: ['With setup_call_id instead of sheet_id, it saves a setup call\'s items (call_setup): each item\'s inputs '
-      + 'and outputs, while its results are kept.'],
+    text: ['With setup_call_id instead of sheet_id, it saves a setup call\'s items (apply_setup with items): each '
+      + 'item\'s inputs and outputs, while its results are kept.'],
     fields: { view: VIEW_HELP },
   },
 };
