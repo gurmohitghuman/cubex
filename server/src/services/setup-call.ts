@@ -1,4 +1,3 @@
-// Over 200 lines: one call's whole life (its items, working table, start, results and sweep) in one place.
 // A saved setup called like a function on 1-SETUP_CALL_MAX_ITEMS items, without a sheet: one implementation for
 // /api/v1 (routes/api-v1-setup-calls.ts) and MCP (mcp/tools-setup-calls.ts). The items become the rows of a hidden
 // working table (tables.hidden, migration 067: never listed or counted), one column per setup input, and the setup
@@ -13,14 +12,17 @@ import { db } from '../lib/db';
 import {
   CALL_SHEETS_PRUNE_ROWS, SETUP_CALL_KEEP_HOURS, SETUP_CALL_MAX_ITEMS, SETUP_CALL_ORPHAN_HOURS, SETUP_CALL_SWEEP_MS,
 } from '../lib/constants-setups';
-import { stepColumns, type SetupSpec } from '../lib/setups/spec';
-import { callItem, type SetupCallItem } from '../lib/setups/call-item';
+import { sheetBusyWith } from '../lib/sheet-busy';
+import type { SetupSpec } from '../lib/setups/spec';
 import type { RateDecision } from '../lib/rate-window';
+import { receiveBackstopMs } from '../lib/request-deadline';
+import { FILE_LINK_TTL_MINUTES } from '../lib/api-v1-constants';
 import { startRefusalMessage, takeRunStart } from './run-shared';
 import { withoutChangeLog } from '../lib/change-log';
 import { getSetup } from './setup-library';
 import { applySetup, type ApplyFail, type ApplyInput } from './setup-apply';
-import { getSetupRun, loadSetupRun, type SetupRunView } from './setup-run-store';
+import { getSetupCall, type SetupCallView } from './setup-call-view';
+import { loadSetupRun } from './setup-run-store';
 import { createTable } from './table-crud';
 import { addSheetColumn } from './column-add';
 import { appendRows } from './rows-write';
@@ -34,30 +36,21 @@ import { cancelStepRuns } from './setup-run-control';
 
 // What a call takes besides its items: apply_setup's choices that make sense without a sheet.
 export type CallInput = Pick<ApplyInput, 'models' | 'estimateOnly' | 'webhookId' | 'maxCostUsd' | 'allowUnpriced'>;
-
-export type { SetupCallItem } from '../lib/setups/call-item';
-export interface SetupCallView {
-  id: string; setup_id: string | null; setup_name: string; status: SetupRunView['status']; items: number;
-  layer: number; layers: number; error_message: string | null; created_at: string; updated_at: string;
-  // When the results go (null while it runs): SETUP_CALL_KEEP_HOURS after it finished.
-  keep_until: string | null;
-  webhook_id: string | null; max_cost_usd?: number;
-  steps: Array<Pick<SetupRunView['steps'][number], 'column' | 'kind' | 'layer' | 'state' | 'run_id' | 'note'>>;
-  // Once it has finished (done, failed or cancelled): each item, in the order sent.
-  results?: SetupCallItem[];
-}
+export { CALL_NOT_FOUND, getSetupCall, type SetupCallView } from './setup-call-view';
 
 // rate_limited: the token's run-start window is full (rate: for REST's Retry-After).
 export type CallFail = Omit<ApplyFail, 'fail'> & { fail: ApplyFail['fail'] | 'rate_limited'; rate?: RateDecision };
-export type CallOutcome =
-  | { ok: { estimate: object; makes: string[]; items: number } }
-  | { ok: { setup_call: SetupCallView } }
-  | CallFail;
+type CallOk = { ok: { estimate: object; makes: string[]; items: number } } | { ok: { setup_call: SetupCallView } };
+export type CallOutcome = CallOk | CallFail;
+// A start on a working table that holds its items (startCall): its run-start slot was taken before.
+export type StartOutcome = CallOk | ApplyFail;
 
 const bad = (message: string): ApplyFail => ({ fail: 'bad_request', message });
-export const CALL_NOT_FOUND =
-  `Setup call not found: results are kept ${SETUP_CALL_KEEP_HOURS} hours after a call finishes.`;
-const FINISHED = new Set(['done', 'failed', 'cancelled']);
+// apply_setup's input for a call: no test rows, and auto-run never turned on.
+const applyInputOf = (input: CallInput): ApplyInput => ({
+  models: input.models, estimateOnly: input.estimateOnly, webhookId: input.webhookId ?? null,
+  maxCostUsd: input.maxCostUsd ?? null, allowUnpriced: input.allowUnpriced, firstRows: null, call: true,
+});
 
 // The items, checked: an array of 1 to SETUP_CALL_MAX_ITEMS objects keyed by the setup's input names, each value a
 // string, number, boolean or null (a cell). An item may leave inputs out (they read as empty).
@@ -91,28 +84,48 @@ export function removeWorkingTable(userId: string, tableId: string): void {
   if ('ok' in out && out.ok.trashId !== null) purgeTrashItems(userId, [out.ok.trashId]);
 }
 
-// The hidden working table with one column per setup input and one row per item, in the order sent.
-function workingTable(userId: string, spec: SetupSpec, items: Array<Record<string, string>>):
-  { tableId: string; sheetId: string } | ApplyFail {
+// A hidden working table with one column per setup input and no rows yet (an upload link's import fills it).
+export function newWorkingTable(userId: string, spec: SetupSpec): { tableId: string; sheetId: string } | ApplyFail {
   const made = withoutChangeLog(() => createTable(userId, `Setup call ${uuidv4()}`, { hidden: true }));
   if ('fail' in made) return { fail: 'bad_request', message: made.message };
   const { id: tableId, sheetId } = made.ok;
-  const fail = (message: string): ApplyFail => {
-    removeWorkingTable(userId, tableId);
-    return { fail: 'bad_request', message };
-  };
   for (const name of spec.inputs) {
     const added = withoutChangeLog(() => addSheetColumn(sheetId, userId, name, { seedEmptyRow: false }));
-    if ('fail' in added) return fail(added.error);
+    if ('fail' in added) {
+      removeWorkingTable(userId, tableId);
+      return bad(added.error);
+    }
   }
-  const appended = withoutChangeLog(() => appendRows(sheetId, userId, items));
-  if ('fail' in appended) return fail(txnFailMessage(appended, MAX_ROWS_PER_SHEET));
   return { tableId, sheetId };
+}
+
+// The setup applied on a working table that holds its items, started as a call (an estimate never makes one:
+// setup-call-estimate.ts). Unless it starts, the working table is removed.
+export async function startCall(
+  userId: string, setupId: string, work: { tableId: string; sheetId: string }, input: CallInput,
+  caller: { hasSecretsScope: boolean },
+): Promise<StartOutcome> {
+  const { tableId, sheetId } = work;
+  let started = false;
+  try {
+    const items = db.prepare('SELECT COUNT(*) FROM rows WHERE sheet_id = ? AND user_id = ?').pluck()
+      .get(sheetId, userId) as number;
+    const out = await applySetup(userId, sheetId, setupId, applyInputOf(input), caller);
+    if ('fail' in out) return out;
+    if ('estimate' in out.ok) return { ok: { estimate: out.ok.estimate, makes: out.ok.makes, items } };
+    const runId = out.ok.setup_run.id;
+    db.prepare('INSERT INTO setup_calls (id, user_id, table_id, sheet_id, items) VALUES (?, ?, ?, ?, ?)')
+      .run(runId, userId, tableId, sheetId, items);
+    started = true;
+    return { ok: { setup_call: getSetupCall(userId, runId)! } };
+  } finally {
+    if (!started) removeWorkingTable(userId, tableId);
+  }
 }
 
 // A start takes a slot of the access token's run-start window, as a column run's start does (run-shared.ts); a
 // token at its spend cap is refused first, unless every step is free.
-function startSlot(userId: string, tokenId: string, spec: SetupSpec): CallFail | null {
+export function startSlot(userId: string, tokenId: string, spec: SetupSpec): CallFail | null {
   const paid = spec.steps.some(s => s.kind === 'ai' || s.kind === 'enrichment');
   const refused = takeRunStart(userId, tokenId, paid);
   if (!refused) return null;
@@ -128,65 +141,25 @@ export async function callSetup(
   if (!setup) return { fail: 'not_found', message: 'Setup not found' };
   const items = itemsOf(rawItems, setup.spec.inputs);
   if (typeof items === 'string') return bad(items);
-  const apply: ApplyInput = {
-    models: input.models, estimateOnly: input.estimateOnly, webhookId: input.webhookId ?? null,
-    maxCostUsd: input.maxCostUsd ?? null, allowUnpriced: input.allowUnpriced, firstRows: null, call: true,
-  };
-  if (input.estimateOnly) return estimateSetupCall(userId, setup, items, apply, caller);
+  if (input.estimateOnly) return estimateSetupCall(userId, setup, items, applyInputOf(input), caller);
   const slot = caller.tokenId ? startSlot(userId, caller.tokenId, setup.spec) : null;
   if (slot) return slot;
-  const work = workingTable(userId, setup.spec, items);
+  const work = newWorkingTable(userId, setup.spec);
   if ('fail' in work) return work;
-  const { tableId, sheetId } = work;
-  let started = false;
-  try {
-    const out = await applySetup(userId, sheetId, setupId, apply, caller);
-    if ('fail' in out) return out;
-    if ('estimate' in out.ok) return { ok: { estimate: out.ok.estimate, makes: out.ok.makes, items: items.length } };
-    const runId = out.ok.setup_run.id;
-    db.prepare('INSERT INTO setup_calls (id, user_id, table_id, sheet_id, items) VALUES (?, ?, ?, ?, ?)')
-      .run(runId, userId, tableId, sheetId, items.length);
-    started = true;
-    return { ok: { setup_call: getSetupCall(userId, runId)! } };
-  } finally {
-    if (!started) removeWorkingTable(userId, tableId);
+  const appended = withoutChangeLog(() => appendRows(work.sheetId, userId, items));
+  if ('fail' in appended) {
+    removeWorkingTable(userId, work.tableId);
+    return bad(txnFailMessage(appended, MAX_ROWS_PER_SHEET));
   }
+  return startCall(userId, setupId, work, input, caller);
 }
 
-// SQLite's "YYYY-MM-DD HH:MM:SS" (UTC) plus hours, as ISO.
-const plusHours = (at: string, hours: number): string =>
-  new Date(Date.parse(`${at.replace(' ', 'T')}Z`) + hours * 3_600_000).toISOString();
-
-// Each item's status and outputs: every column the setup's steps make, read from the working table's rows in order.
-function resultsOf(userId: string, sheetId: string, spec: SetupSpec): SetupCallItem[] {
-  const columns = [...new Set(spec.steps.flatMap(stepColumns))];
-  const rows = db.prepare('SELECT data FROM rows WHERE sheet_id = ? AND user_id = ? ORDER BY row_index LIMIT ?')
-    .pluck().all(sheetId, userId, SETUP_CALL_MAX_ITEMS) as string[];
-  return rows.map((data, item) => {
-    let cells: Record<string, unknown> = {};
-    try { cells = JSON.parse(data) as Record<string, unknown>; } catch { /* an unreadable row reads as empty */ }
-    return callItem(item, cells, columns);
-  });
-}
-
-export function getSetupCall(userId: string, id: string): SetupCallView | null {
-  const call = db.prepare('SELECT sheet_id, items FROM setup_calls WHERE id = ? AND user_id = ?').get(id, userId) as
-    { sheet_id: string; items: number } | undefined;
-  const run = call && getSetupRun(userId, id);
-  if (!call || !run) return null;
-  const finished = FINISHED.has(run.status);
-  const plan = JSON.parse(loadSetupRun(id)!.plan) as { spec: SetupSpec };
-  return {
-    id, setup_id: run.setup_id, setup_name: run.setup_name, status: run.status, items: call.items,
-    layer: run.layer, layers: run.layers, error_message: run.error_message, created_at: run.created_at,
-    updated_at: run.updated_at,
-    keep_until: finished ? plusHours(loadSetupRun(id)!.updated_at, SETUP_CALL_KEEP_HOURS) : null,
-    webhook_id: run.webhook_id, ...(run.max_cost_usd !== undefined ? { max_cost_usd: run.max_cost_usd } : {}),
-    steps: run.steps.map(s => ({ column: s.column, kind: s.kind, layer: s.layer, state: s.state, run_id: s.run_id,
-      note: s.note })),
-    ...(finished ? { results: resultsOf(userId, call.sheet_id, plan.spec) } : {}),
-  };
-}
+// A working table whose call never started (a restart between the table and the run, or an upload link never used)
+// goes once no upload link can still be filling it: past the link's time to be used, the time the largest file may
+// take to arrive at the slowest speed allowed (lib/request-deadline.ts), and SETUP_CALL_ORPHAN_HOURS more for its
+// reading and its start. About 2.5 hours by default.
+const orphanSeconds = (): number =>
+  Math.ceil((FILE_LINK_TTL_MINUTES * 60_000 + receiveBackstopMs()) / 1000) + SETUP_CALL_ORPHAN_HOURS * 3600;
 
 // A call paused SETUP_CALL_KEEP_HOURS ago (by hand, or at a limit, the token's cap or its ceiling) and not resumed
 // since is stopped, as control_setup_run's cancel stops it; its results are then kept as any finished call's.
@@ -217,8 +190,7 @@ function pruneCallSheets(): void {
 }
 
 // The sweep: calls paused too long are stopped; then the working tables of calls finished SETUP_CALL_KEEP_HOURS ago,
-// and of calls that never started (a restart between the table and the run) SETUP_CALL_ORPHAN_HOURS after they were
-// made, are removed. Returns how many working tables it removed.
+// and of calls that never started, are removed. Returns how many working tables it removed.
 export async function sweepSetupCalls(): Promise<number> {
   await stopStalePaused(`-${SETUP_CALL_KEEP_HOURS} hours`);
   pruneCallSheets();
@@ -227,9 +199,13 @@ export async function sweepSetupCalls(): Promise<number> {
     UNION ALL
     SELECT t.user_id, t.id FROM tables t WHERE t.hidden = 1 AND t.trash_id IS NULL
       AND t.created_at <= datetime('now', ?) AND NOT EXISTS (SELECT 1 FROM setup_calls c WHERE c.table_id = t.id)`)
-    .all(`-${SETUP_CALL_KEEP_HOURS} hours`, `-${SETUP_CALL_ORPHAN_HOURS} hours`) as
+    .all(`-${SETUP_CALL_KEEP_HOURS} hours`, `-${orphanSeconds()} seconds`) as
     Array<{ user_id: string; table_id: string }>;
+  const sheetOf = db.prepare('SELECT id FROM sheets WHERE table_id = ?').pluck();
   for (const d of due) {
+    // A file still being imported into it (an upload link's) holds its sheet: the next sweep looks again.
+    const sheet = sheetOf.get(d.table_id) as string | undefined;
+    if (sheet && sheetBusyWith(sheet)) continue;
     try { removeWorkingTable(d.user_id, d.table_id); } catch (err) {
       console.error(`A setup call's working table ${d.table_id} couldn't be removed (tried again next sweep):`, err);
     }

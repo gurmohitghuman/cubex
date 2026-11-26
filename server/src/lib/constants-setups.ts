@@ -33,7 +33,8 @@ export const SETUP_VERSION_DIFF_CHARS_APP = 20_000;
 
 // A setup called on items without a sheet (services/setup-call.ts): at most this many items in one call, and its
 // hidden working table kept this many hours after the call finishes (its results with it). A working table whose
-// call never started (a crash between the two) goes after one hour.
+// call never started (a crash between the two, or an upload link never used) goes this many hours after no upload
+// link can still be filling it (services/setup-call.ts).
 export const SETUP_CALL_MAX_ITEMS = 100;
 export const SETUP_CALL_KEEP_HOURS = envInt('SETUP_CALL_KEEP_HOURS', 24);
 export const SETUP_CALL_ORPHAN_HOURS = 1;

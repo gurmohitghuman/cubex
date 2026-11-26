@@ -1,5 +1,5 @@
 // The guides of the tools that call a saved setup on items without a sheet (guide.ts says what a guide holds).
-import { SETUP_CALL_KEEP_HOURS } from '../../lib/constants-setups';
+import { SETUP_CALL_KEEP_HOURS, SETUP_CALL_MAX_ITEMS } from '../../lib/constants-setups';
 import type { ToolGuide } from './guide';
 
 export const SETUP_CALL_GUIDES: Record<string, ToolGuide> = {
@@ -29,6 +29,9 @@ export const SETUP_CALL_GUIDES: Record<string, ToolGuide> = {
       'A cell where a step failed, found nothing or was kept out by its "Only run if" rule is never given as an '
         + 'output: it reads null, and the item\'s status says so (error, running, condition_not_met, no_result, '
         + 'done, or not_run when nothing was made), with error naming the column that failed and why.',
+      `Results come ${SETUP_CALL_MAX_ITEMS} items at a time (limit, up to ${SETUP_CALL_MAX_ITEMS}): next_from is `
+        + 'where the next page starts (pass it as results_from), null after the last. create_download_link with '
+        + 'setup_call_id (instead of sheet_id) saves every item\'s inputs and outputs as a CSV.',
       `A call left paused for ${SETUP_CALL_KEEP_HOURS} hours is stopped: its status is cancelled and error_message `
         + 'says why.',
     ],

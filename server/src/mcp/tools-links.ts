@@ -14,10 +14,16 @@ import { MAX_CSV_UPLOAD_BYTES } from '../lib/constants';
 import { FILE_LINK_TTL_MINUTES } from '../lib/api-v1-constants';
 import { importWindow } from './tools-import';
 import { GUIDE_POINTER } from './guides/guide';
-import { SHEET_ID, McpAuthCtx, ok, err, missingScope, registerTool, mcpLinkBase } from './tool-helpers';
+import {
+  SHEET_ID, McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean, mcpLinkBase,
+} from './tool-helpers';
 import { VIEW_BRIEF, whereLike } from './where-schema';
 import { applyView } from '../services/view-read';
 import type { WhereItem } from '../lib/row-filter/where';
+import { RUN_SPEND_LIMIT_MAX_USD } from '../lib/constants';
+import { prepareFileCall } from '../services/setup-call-file';
+import { callInputOf } from '../services/setup-call-input';
+import { setupCallSheet } from '../services/setup-call-view';
 
 const MAX_MB = Math.round(MAX_CSV_UPLOAD_BYTES / (1024 * 1024));
 
@@ -42,24 +48,50 @@ export function registerLinkTools(server: McpServer, ctx: McpAuthCtx) {
         + 'from any machine that can reach Cubex. '
         + 'Same header rules as import_csv; mode "replace" deletes all existing rows when the file arrives (to the '
         + `trash, restorable). The link works once and expires in ${FILE_LINK_TTL_MINUTES} minutes. Needs the write `
-        + 'scope.'
+        + 'scope. With setup_id instead of sheet_id, the rows are a setup call\'s items (call_setup): it starts once '
+        + 'the file is in, COSTS MONEY, and needs max_cost_usd and the run scope.'
         + (canWrite ? '' : ` ${NO_WRITE_NOTE}`) + ` ${GUIDE_POINTER}`,
       inputSchema: {
-        sheet_id: z.string().describe(SHEET_ID),
+        sheet_id: z.string().optional().describe(`${SHEET_ID}. Or setup_id.`),
         mode: z.enum(['append', 'replace']).optional().describe('Default append'),
+        setup_id: z.string().optional().describe('Or: call this setup on the file\'s rows'),
+        max_cost_usd: z.number().positive().max(RUN_SPEND_LIMIT_MAX_USD).optional()
+          .describe('With setup_id, required: the most it may cost, in dollars'),
+        allow_unpriced: lenientBoolean().optional().describe('With setup_id: start a step with no known price'),
+        models: z.record(z.string(), z.string()).optional().describe('With setup_id: AI step column -> model'),
+        webhook_id: z.string().optional().describe('With setup_id: a run webhook to notify'),
       },
     },
-    async ({ sheet_id, mode }) => {
+    async ({ sheet_id, mode, setup_id, ...call }) => {
       if (!canWrite) return err(NO_WRITE);
-      if (!verifySheetOwnership(sheet_id, ctx.userId)) {
+      if (!sheet_id === !setup_id) return err('Pass sheet_id, or setup_id to call a setup on the file\'s rows.');
+      if (setup_id) {
+        const denied = missingScope(ctx, 'run');
+        if (denied) return denied;
+        if (mode === 'replace') return err('A setup call on a file adds its rows: leave mode out.');
+      } else if (Object.values(call).some(v => v !== undefined)) {
+        return err('max_cost_usd, allow_unpriced, models and webhook_id go with setup_id.');
+      }
+      if (sheet_id && !verifySheetOwnership(sheet_id, ctx.userId)) {
         return err('Sheet not found');
       }
       // Each link is one import, so it takes a slot from the same budget.
       const slot = importWindow(ctx.tokenId);
       if (!slot.allowed) return err(tooManyMessage('CSV imports', slot));
       const chosen = mode ?? 'append';
+      let target = sheet_id ?? '';
+      const options: Record<string, unknown> = { mode: chosen };
+      if (setup_id) {
+        const input = callInputOf({ ...call, estimate_only: false }, 'mcp');
+        if ('fail' in input) return err(input.message);
+        const prepared = prepareFileCall(ctx.userId, setup_id, input,
+          { hasSecretsScope: ctx.scopes.has('secrets'), tokenId: ctx.tokenId });
+        if ('fail' in prepared) return err(prepared.message);
+        target = prepared.sheetId;
+        options.call = prepared.call;
+      }
       const link = createFileLink({
-        userId: ctx.userId, tokenId: ctx.tokenId, sheetId: sheet_id, kind: 'upload', options: { mode: chosen },
+        userId: ctx.userId, tokenId: ctx.tokenId, sheetId: target, kind: 'upload', options,
       });
       const url = fileLinkUrl(base, 'upload', link.token);
       return ok({
@@ -85,10 +117,11 @@ export function registerLinkTools(server: McpServer, ctx: McpAuthCtx) {
         + 'to the user to open in a browser. '
         + `The link works once and expires in ${FILE_LINK_TTL_MINUTES} minutes. Until then anyone who has it can `
         + 'download the data, so give it only to the user. The file holds the rows up to the last one the sheet '
-        + 'had when the download begins. CSV values are escaped against spreadsheet formula injection. '
-        + GUIDE_POINTER,
+        + 'had when the download begins. CSV values are escaped against spreadsheet formula injection. Or '
+        + 'setup_call_id: a setup call\'s items. ' + GUIDE_POINTER,
       inputSchema: {
-        sheet_id: z.string().describe(SHEET_ID),
+        sheet_id: z.string().optional().describe(`${SHEET_ID}. Or setup_call_id.`),
+        setup_call_id: z.string().optional().describe('Or: a setup call\'s items'),
         columns: z.array(z.string()).min(1).optional()
           .describe('Only these columns, in this order. Omit for every column.'),
         where: whereLike('Only the rows it passes.').optional(),
@@ -96,9 +129,12 @@ export function registerLinkTools(server: McpServer, ctx: McpAuthCtx) {
         format: z.enum(['csv', 'jsonl']).optional().describe('csv (default) or jsonl: one JSON object a row'),
       },
     },
-    async ({ sheet_id, columns, where, view, format }) => {
+    async ({ sheet_id: given, setup_call_id, columns, where, view, format }) => {
       const denied = missingScope(ctx, 'read');
       if (denied) return denied;
+      if (!given === !setup_call_id) return err('Pass sheet_id, or setup_call_id for a setup call\'s results.');
+      const sheet_id = given ?? setupCallSheet(ctx.userId, setup_call_id!);
+      if (!sheet_id) return err('Setup call not found');
       // A view is read now: the link saves what it shows at this moment.
       const selection = applyView(sheet_id, ctx.userId, view, { columns, where: where as WhereItem[] | undefined });
       if (!selection) return err('Sheet not found');

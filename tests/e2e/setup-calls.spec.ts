@@ -82,3 +82,58 @@ test('a setup called on items: priced, run without a sheet, each item\'s outputs
   expect(await callError(client, 'control_setup_run', { setup_run_id: started.id, action: 'cancel' }))
     .toContain('already ended')
 })
+
+// A file's rows as a setup call's items: an upload link with setup_id (max_cost_usd required) starts the call once
+// the file is in, its results page with next_from, a download link with setup_call_id saves them; REST takes the file
+// as multipart.
+test('a setup called on a file: an upload link and REST, results paged and downloaded', async () => {
+  test.setTimeout(120_000)
+  const api = await authedApi()
+  const token = await makeAccessToken(api, ['read', 'write', 'run'], 'setup-calls-file')
+  const client = await mcpClient(token)
+  const a = await sheetWith(api, null, [{ Name: 'ada lovelace' }])
+  await call(client, 'clean_column', { sheet_id: a.sheetId, source_column: 'Name', cleaner: 'person_name',
+    column: 'Clean name' })
+  const setup = await call(client, 'save_setup', { sheet_id: a.sheetId, name: `File call ${Date.now()}`,
+    columns: ['Clean name'] })
+  expect(await callError(client, 'create_upload_link', { setup_id: setup.id })).toContain('max_cost_usd')
+  expect(await callError(client, 'create_upload_link', { sheet_id: a.sheetId, setup_id: setup.id, max_cost_usd: 1 }))
+    .toContain('Pass sheet_id, or setup_id')
+  const link = await call(client, 'create_upload_link', { setup_id: setup.id, max_cost_usd: 1 })
+  const names = Array.from({ length: 150 }, (_, i) => `person ${i}`)
+  const csv = `Name,Extra\n${names.map(n => `${n},x`).join('\n')}\n`
+  const up = await api.put(link.upload_url, { data: Buffer.from(csv), headers: { 'Content-Type': 'text/csv' } })
+  expect(up.status()).toBe(201)
+  const started = (await up.json()).setup_call
+  expect(started.items).toBe(150)
+  let done: any
+  await expect.poll(async () => (done = await call(client, 'get_setup_call',
+    { setup_call_id: started.id, wait_seconds: 5 })).status, { timeout: 60_000 }).toBe('done')
+  expect(done.results.length).toBe(100)
+  expect(done.next_from).toBe(100)
+  const rest = await call(client, 'get_setup_call', { setup_call_id: started.id, results_from: done.next_from })
+  expect(rest.results.map((r: any) => r.outputs['Clean name'])).toEqual(names.slice(100).map(n =>
+    n.replace(/^p/, 'P')))
+  expect(rest.next_from).toBeNull()
+  const dl = await call(client, 'create_download_link', { setup_call_id: started.id })
+  const file = await (await api.get(dl.download_url)).text()
+  expect(file.split('\n')[0]).toContain('Clean name')
+  expect(file).toContain('Person 149')
+
+  // REST: multipart, max_cost_usd required.
+  const auth = { Authorization: `Bearer ${token}` }
+  const multipart = (extra: Record<string, string>) => ({ headers: auth, multipart: {
+    file: { name: 'people.csv', mimeType: 'text/csv', buffer: Buffer.from('Name\ngrace hopper\n') }, ...extra } })
+  expect((await api.post(`${BASE}/api/v1/setups/${setup.id}/calls/file`, multipart({}))).status()).toBe(400)
+  const restUp = await api.post(`${BASE}/api/v1/setups/${setup.id}/calls/file`, multipart({ max_cost_usd: '1' }))
+  expect(restUp.status()).toBe(201)
+  const restCall = (await restUp.json()).setup_call
+  let restDone: any
+  await expect.poll(async () => (restDone = await (await api.get(
+    `${BASE}/api/v1/setup-calls/${restCall.id}?limit=1`, { headers: auth })).json()).status, { timeout: 60_000 })
+    .toBe('done')
+  expect(restDone.results).toEqual([{ item: 0, status: 'done', error: null,
+    outputs: { 'Clean name': 'Grace Hopper' } }])
+  expect((await (await api.get('/api/tables')).json()).some((t: any) => t.name.startsWith('Setup call')))
+    .toBe(false)
+})

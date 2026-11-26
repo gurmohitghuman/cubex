@@ -1,4 +1,4 @@
-// Over 200 lines: one call's life, from its items to its removal and its spend, on one setup.
+// Over 200 lines: one call's life, from its items to its removal and its spend, on one setup; then pages and files.
 // A saved setup called on items without a sheet (services/setup-call.ts), on a migrated throwaway DB, with a free
 // chain of two clean columns: the items checked (count, unknown inputs, cell types); an estimate starts nothing
 // and leaves no working table; a call runs on a hidden working table that no list or count shows, finishes with
@@ -194,13 +194,57 @@ db.prepare("UPDATE enrichment_calls SET created_at = datetime('now', '-91 days')
 await sweepSetupCalls()
 check('and dropped once none can', !db.prepare('SELECT 1 FROM call_sheets WHERE sheet_id = ?').get(sheetOfCall))
 
-// An orphan working table (a restart between the table and the run) goes after an hour.
+// An orphan working table (a restart between the table and the run, or an upload link never used) goes once no
+// upload link can still be filling it: kept at 2 hours (a link used at its 15th minute may take 70 minutes to
+// bring the largest file at the slowest speed allowed), gone at 3.
 const orphan = uuid()
 db.prepare(`INSERT INTO tables (id, user_id, name, hidden, created_at)
   VALUES (?, ?, ?, 1, datetime('now', '-2 hours'))`)
   .run(orphan, uid, 'Setup call orphan')
+check('the sweep keeps a 2-hour-old orphan: an upload may still be arriving', await sweepSetupCalls() === 0
+  && !!db.prepare('SELECT 1 FROM tables WHERE id = ? AND trash_id IS NULL').get(orphan))
+db.prepare("UPDATE tables SET created_at = datetime('now', '-3 hours') WHERE id = ?").run(orphan)
 check('the sweep removes an orphan working table', await sweepSetupCalls() === 1
   && !db.prepare('SELECT 1 FROM tables WHERE id = ? AND trash_id IS NULL').get(orphan))
+
+// Pages: a finished call's results a page at a time, and the next page's start.
+const paged = await callSetup(uid, setupId, Array.from({ length: 5 }, (_, i) => ({ Name: `N${i}` })),
+  { estimateOnly: false }, caller)
+if (!('ok' in paged) || !('setup_call' in paged.ok)) throw new Error(JSON.stringify(paged))
+let pv = getSetupCall(uid, paged.ok.setup_call.id)!
+for (let i = 0; i < 200 && pv.status === 'running'; i++) {
+  await setupSweep(); await sleep(50); pv = getSetupCall(uid, paged.ok.setup_call.id)!
+}
+const p1 = getSetupCall(uid, pv.id, { limit: 2 })!
+const p3 = getSetupCall(uid, pv.id, { from: 4, limit: 2 })!
+check('a page of 2: items 0 and 1, the next from 2', JSON.stringify(p1.results!.map(r => r.item)) === '[0,1]'
+  && p1.next_from === 2, p1)
+check('the last page: item 4, no next', JSON.stringify(p3.results!.map(r => r.outputs.Lower)) === '["n4"]'
+  && p3.next_from === null, p3)
+
+// A file call: needs a ceiling, starts once its rows are in, and an empty file starts nothing.
+const { prepareFileCall, startFileCall } = await import('../../server/src/services/setup-call-file')
+const { appendRows } = await import('../../server/src/services/rows-write')
+const noCeiling = prepareFileCall(uid, setupId, { estimateOnly: false }, caller)
+check('a file call without max_cost_usd is refused', 'fail' in noCeiling && noCeiling.message.includes('max_cost_usd'))
+const tablesBefore = hiddenTables()
+const fullFile = prepareFileCall(uid, setupId, { estimateOnly: false, maxCostUsd: 1 }, { ...caller, tokenId: tok })
+check('a full run-start window refuses a file call before its table is made', 'fail' in fullFile
+  && fullFile.fail === 'rate_limited' && hiddenTables() === tablesBefore, fullFile)
+const prepared = prepareFileCall(uid, setupId, { estimateOnly: false, maxCostUsd: 1 }, caller)
+if ('fail' in prepared) throw new Error(JSON.stringify(prepared))
+check('its working table is made, hidden, with the setup\'s inputs', hiddenTables() === tablesBefore + 1
+  && JSON.parse(db.prepare('SELECT column_order FROM sheets WHERE id = ?').pluck().get(prepared.sheetId) as string)
+    .join() === 'Name')
+const empty = await startFileCall(uid, prepared.sheetId, prepared.call)
+check('a file with no rows starts nothing and its table goes', 'fail' in empty && hiddenTables() === tablesBefore,
+  empty)
+const again = prepareFileCall(uid, setupId, { estimateOnly: false, maxCostUsd: 1 }, caller)
+if ('fail' in again) throw new Error(JSON.stringify(again))
+appendRows(again.sheetId, uid, [{ Name: ' One ' }, { Name: 'Two' }])
+const fileCall = await startFileCall(uid, again.sheetId, again.call)
+check('a file call starts with its rows as items', 'ok' in fileCall && 'setup_call' in fileCall.ok
+  && fileCall.ok.setup_call.items === 2, fileCall)
 
 if (failures > 0) { console.error(`${failures} setup-call check(s) failed`); process.exit(1) }
 console.log('setup-call: all assertions passed')

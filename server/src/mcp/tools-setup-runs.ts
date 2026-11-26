@@ -27,7 +27,8 @@ export function registerSetupRunTools(server: McpServer, ctx: McpAuthCtx): void 
   registerTool(server, 'apply_setup', {
     description:
       'Build a saved setup\'s columns (list_setups) on a sheet and fill them, each step once the columns it reads '
-      + 'are filled: a whole chain of columns on another sheet (for one column, use its own tool). '
+      + 'are filled: a whole chain of columns on another sheet (for one column, use its own tool). For items without '
+      + 'a sheet, use call_setup. '
       + 'COSTS MONEY: AI steps call your model per row, enrichments spend your treg balance, HTTP API '
       + 'steps send a request per row; clean and formula steps are free. '
       + 'ESTIMATE_ONLY DEFAULTS TO TRUE: the first call prices each step and starts nothing; tell the user, then '
@@ -136,10 +137,11 @@ export function registerSetupRunTools(server: McpServer, ctx: McpAuthCtx): void 
 
   registerTool(server, 'control_setup_run', {
     description:
-      'Pause, resume or cancel a setup being used on a sheet: the runs of the steps working now follow, and no '
-      + 'further step starts. Cancelling keeps the columns and values made so far. Resume is refused while a '
-      + "step's AI run is paused at its spend limit (pause_reason spend_limit), which a setup can't raise: cancel "
-      + 'it and call apply_setup again with a higher max_cost_usd, which carries on where it stopped.',
+      'Pause, resume or cancel a setup being used on a sheet, or a setup call (call_setup): the runs of the steps '
+      + 'working now follow, and no further step starts. Cancelling keeps the columns and values made so far. '
+      + "Resume is refused while a step's AI run is paused at its spend limit (pause_reason spend_limit), which a "
+      + "setup can't raise: cancel it and call apply_setup again with a higher max_cost_usd, which carries on where "
+      + 'it stopped.',
     inputSchema: z.object({
       setup_run_id: z.string().describe('The setup run (get_setup_run)'),
       action: z.enum(['pause', 'resume', 'cancel']).describe('What to do with it'),

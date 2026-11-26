@@ -21,7 +21,8 @@ export function registerSetupCallTools(server: McpServer, ctx: McpAuthCtx): void
       `Run a saved setup (list_setups) on 1-${SETUP_CALL_MAX_ITEMS} items without a sheet, like a function: each `
       + 'item is an object keyed by the setup\'s input names, and the answer gives each item\'s outputs by the '
       + 'columns the setup makes. Use it to enrich a few records for a script or another app; to fill a sheet '
-      + 'use apply_setup. To run a sheet\'s own columns again, use run_columns. COSTS MONEY as apply_setup does: '
+      + 'use apply_setup. To run a sheet\'s own columns again, use run_columns. For more items, '
+      + 'create_upload_link with setup_id calls it on a file\'s rows. COSTS MONEY as apply_setup does: '
       + 'AI steps call your model per item, enrichments spend your treg balance, HTTP API steps send a request '
       + 'per item; clean and formula steps are free. '
       + 'ESTIMATE_ONLY DEFAULTS TO TRUE: the first call prices it and starts nothing; tell the user, then call '
@@ -35,15 +36,13 @@ export function registerSetupCallTools(server: McpServer, ctx: McpAuthCtx): void
     inputSchema: z.object({
       setup_id: z.string().describe('The setup (list_setups)'),
       items: z.array(z.record(z.string(), cell)).min(1).max(SETUP_CALL_MAX_ITEMS)
-        .describe('[{ "<setup input>": value }]: one object per item; an input left out reads as empty'),
+        .describe('[{ "<setup input>": value }]; an input left out reads as empty'),
       models: names.optional().describe('{ "<AI step main column>": "<OpenRouter model id>" }'),
       estimate_only: lenientBoolean().optional().describe('Default true: price it, start nothing'),
-      webhook_id: z.string().optional().describe(
-        'A run webhook (list_run_webhooks) to notify when the call finishes (kind setup, run_id = the call id)'),
+      webhook_id: z.string().optional().describe('A run webhook to notify when the call finishes'),
       max_cost_usd: z.number().positive().max(RUN_SPEND_LIMIT_MAX_USD).optional()
-        .describe('Refuse to start when the estimate could cost more than this many dollars in all'),
-      allow_unpriced: lenientBoolean().optional()
-        .describe('With max_cost_usd: start even when a step has no known price (default false)'),
+        .describe('Refuse to start when the estimate could cost more, in dollars'),
+      allow_unpriced: lenientBoolean().optional().describe('With max_cost_usd: start a step with no known price'),
     }).strict(),
   }, async ({ setup_id, items, ...a }) => {
     const denied = missingScope(ctx, 'run');
@@ -58,25 +57,30 @@ export function registerSetupCallTools(server: McpServer, ctx: McpAuthCtx): void
 
   registerTool(server, 'get_setup_call', {
     description:
-      'Where a setup call (call_setup) is, and once it has finished, each item\'s outputs by column (results). '
+      'Where a setup call (call_setup) is, and once it has finished, each item\'s outputs by column (results), '
+      + `${SETUP_CALL_MAX_ITEMS} items a page: pass next_from as results_from for the next page. `
       + 'With wait_seconds it answers when the call finishes or the time is up, so you poll less. '
       + `Results are kept ${SETUP_CALL_KEEP_HOURS} hours after the call finishes (keep_until). A call left paused `
       + `${SETUP_CALL_KEEP_HOURS} hours is stopped. Read-only. ${GUIDE_POINTER}`,
     inputSchema: z.object({
       setup_call_id: z.string().describe('The call (call_setup returned it)'),
       wait_seconds: z.number().int().min(0).max(25).optional()
-        .describe('Wait up to this many seconds for the call to finish (0-25)'),
+        .describe('Wait up to this many seconds for it to finish'),
+      results_from: z.number().int().min(0).optional().describe('First item of the page (next_from)'),
+      limit: z.number().int().min(1).max(SETUP_CALL_MAX_ITEMS).optional()
+        .describe(`Items in the page (default ${SETUP_CALL_MAX_ITEMS})`),
     }).strict(),
-  }, async ({ setup_call_id, wait_seconds }) => {
+  }, async ({ setup_call_id, wait_seconds, results_from, limit }) => {
     const denied = missingScope(ctx, 'read');
     if (denied) return denied;
-    let call = getSetupCall(ctx.userId, setup_call_id);
+    const page = { from: results_from, limit };
+    let call = getSetupCall(ctx.userId, setup_call_id, page);
     const until = Date.now() + (wait_seconds ?? 0) * 1000;
     const was = call?.status;
     // Until it finishes, pauses or resumes, or the time is up.
     while (call && call.status === was && !call.results && Date.now() < until) {
       await sleep(Math.min(WAIT_STEP_MS, until - Date.now()));
-      call = getSetupCall(ctx.userId, setup_call_id);
+      call = getSetupCall(ctx.userId, setup_call_id, page);
     }
     return call ? ok(call) : err(CALL_NOT_FOUND);
   });
