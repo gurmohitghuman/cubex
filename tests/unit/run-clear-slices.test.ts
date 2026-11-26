@@ -21,6 +21,7 @@ import constMod from '../../server/src/lib/constants'
 import formulaMod from '../../server/src/services/formula-column'
 import formulaRecMod from '../../server/src/lib/formula-columns'
 import cleanMod from '../../server/src/services/clean-column'
+import watchMod from '../../server/src/lib/wal-watch'
 const { clearProcessingPlaceholders, seedProcessingPlaceholders, PLACEHOLDER } =
   cellsMod as typeof import('../../server/src/lib/placeholder-cells')
 const { HEAVY_SLICE_ROWS, PLACEHOLDER_CLEAR_BACK_ROWS } =
@@ -31,6 +32,9 @@ const { formulaColumnFor } = formulaRecMod as typeof import('../../server/src/li
 const { startCleanColumn } = cleanMod as typeof import('../../server/src/services/clean-column')
 const { db, uid, ok, done, idle, sheet, cells } = undoKit('run-clear-slices')
 console.error = () => {}
+// As the server does at boot: SQLite's own checkpoint at the room from the start (lib/wal-watch.ts).
+const { startWalWatch } = watchMod as typeof import('../../server/src/lib/wal-watch')
+startWalWatch()
 
 // Rows whose Status and Answer hold ⏳, as an HTTP run (Status its status column) left them.
 const sheetOf = (n: number) => sheet(Array.from({ length: n }, (_, i) =>

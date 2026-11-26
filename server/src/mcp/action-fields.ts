@@ -6,7 +6,10 @@ export interface ActionFields<F extends string> { needs?: readonly F[]; may?: re
 export function actionFieldsProblem<A extends string, F extends string>(
   action: A, given: Partial<Record<F, unknown>>, takes: Record<A, ActionFields<F>>,
 ): string | null {
-  const { needs = [], may = [] } = takes[action];
+  // No action, or one this tool doesn't have: say which it has (the schema leaves action to each tool's own check).
+  const spec = Object.prototype.hasOwnProperty.call(takes, action) ? takes[action] : undefined;
+  if (!spec) return `action is needed: one of ${Object.keys(takes).join(', ')}.`;
+  const { needs = [], may = [] } = spec;
   const all = [...needs, ...may];
   const extra = (Object.keys(given) as F[]).filter(f => given[f] !== undefined && !all.includes(f));
   if (extra.length) {
