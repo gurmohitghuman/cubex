@@ -62,6 +62,9 @@ async function readers(sid: string, tag: string): Promise<string[]> {
   rx.on(`/read-${tag}`, { status: 200, body: '{"ok":"yes"}' })
   const ids: string[] = []
   for (let i = 0; i < SLOTS; i++) ids.push(await start(sid, `Read ${i}`, `/read-${tag}`, '{"fit":"{{Fit}}"}'))
+  // Each writes its cells in the background after its 202, and the sheet is busy until then: a rerun asked meanwhile
+  // is refused ("busy starting a run"), which under the whole suite's load came first.
+  await waitRunsSetUp(sid)
   return ids
 }
 async function rerunFit(fit: string, tag: string): Promise<string> {
