@@ -50,9 +50,8 @@ jobs:
             os: macos-latest
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
+    # The install's folders are set in each step from RUNNER_TEMP: the runner context can't be read in a job's env.
     env:
-      CUBEX_HOME: ${{ runner.temp }}/cubex/home
-      CUBEX_BIN_DIR: ${{ runner.temp }}/cubex/bin
       TEST_PORT: '3002'
     steps:
       # The whole history: the check clones this checkout for its build that doesn't start.
@@ -61,12 +60,15 @@ jobs:
           path: src
           fetch-depth: 0
       - name: An update that rolls back, then the real one
-        run: bash src/tests/install/update-now.sh src
+        run: |
+          export CUBEX_HOME="$RUNNER_TEMP/cubex/home" CUBEX_BIN_DIR="$RUNNER_TEMP/cubex/bin"
+          bash src/tests/install/update-now.sh src
       - name: What the updates said, and Cubex's log
         if: always()
         run: |
-          for f in update-status.json update.log; do echo "--- $f"; cat "$CUBEX_HOME/$f" 2>/dev/null || true; done
-          echo '--- cubex logs'; "$CUBEX_BIN_DIR/cubex" logs 2>/dev/null | tail -60 || true
+          home="$RUNNER_TEMP/cubex/home"
+          for f in update-status.json update.log; do echo "--- $f"; cat "$home/$f" 2>/dev/null || true; done
+          echo '--- cubex logs'; "$RUNNER_TEMP/cubex/bin/cubex" logs 2>/dev/null | tail -60 || true
 
   windows:
     name: Update now (Windows x64)
@@ -76,7 +78,6 @@ jobs:
       run:
         shell: pwsh
     env:
-      CUBEX_HOME: ${{ runner.temp }}\cubex
       TEST_PORT: '3002'
       # A runner's window is elevated; a background-process install from one is allowed here, as install-windows.yml
       # allows it.
@@ -87,11 +88,14 @@ jobs:
           path: src
           fetch-depth: 0
       - name: An update that rolls back, then the real one
-        run: .\src\tests\install\update-now.ps1 src
+        run: |
+          $env:CUBEX_HOME = Join-Path $env:RUNNER_TEMP 'cubex'
+          .\src\tests\install\update-now.ps1 src
       - name: What the updates said, and Cubex's log
         if: always()
         run: |
+          $home_ = Join-Path $env:RUNNER_TEMP 'cubex'
           foreach ($f in 'update-status.json', 'update.log') {
-            "--- $f"; Get-Content (Join-Path $env:CUBEX_HOME $f) -ErrorAction SilentlyContinue
+            "--- $f"; Get-Content (Join-Path $home_ $f) -ErrorAction SilentlyContinue
           }
-          '--- cubex logs'; & (Join-Path $env:CUBEX_HOME 'bin\cubex.cmd') logs 2>$null | Select-Object -Last 60
+          '--- cubex logs'; & (Join-Path $home_ 'bin\cubex.cmd') logs 2>$null | Select-Object -Last 60
