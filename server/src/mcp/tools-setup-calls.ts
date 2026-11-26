@@ -65,7 +65,7 @@ export function registerSetupCallTools(server: McpServer, ctx: McpAuthCtx): void
     inputSchema: z.object({
       setup_call_id: z.string().describe('The call (call_setup returned it)'),
       wait_seconds: z.number().int().min(0).max(25).optional()
-        .describe('Seconds to wait for it to finish'),
+        .describe('Wait up to this many seconds for it to finish'),
       results_from: z.number().int().min(0).optional().describe('First item of the page (next_from)'),
       limit: z.number().int().min(1).max(SETUP_CALL_MAX_ITEMS).optional()
         .describe(`Items in the page (default ${SETUP_CALL_MAX_ITEMS})`),

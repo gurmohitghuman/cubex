@@ -1,4 +1,5 @@
-// The guides of the tools that call a saved setup on items without a sheet (guide.ts says what a guide holds).
+// The guides of the tools that call a saved setup, or one enrichment tool, on items without a sheet (guide.ts says
+// what a guide holds).
 import { SETUP_CALL_KEEP_HOURS, SETUP_CALL_MAX_ITEMS } from '../../lib/constants-setups';
 import type { ToolGuide } from './guide';
 
@@ -35,5 +36,20 @@ export const SETUP_CALL_GUIDES: Record<string, ToolGuide> = {
       `A call left paused for ${SETUP_CALL_KEEP_HOURS} hours is stopped: its status is cancelled and error_message `
         + 'says why.',
     ],
+  },
+  call_enrichment: {
+    text: [
+      'get_enrichment lists a tool\'s input names; fields picks the output fields to keep (default every one).',
+      'The estimate only reads: it prices the items as run_enrichment\'s estimate prices rows (items that reuse an '
+        + 'answer found for the same inputs cost $0) and makes nothing. Started, its spend limit is the estimate\'s '
+        + 'high end.',
+      'The call is an enrichment run on a working table of its own: get_run_results gives each item\'s status, '
+        + 'fields and error, and webhook_id names a run webhook for it. Each output field keeps its name; '
+        + 'status_column names the column with each item\'s status (Status, or Status 2 for a tool that answers a '
+        + 'status field, as an email check does).',
+      `A call left paused for ${SETUP_CALL_KEEP_HOURS} hours is stopped, and its results are then kept `
+        + `${SETUP_CALL_KEEP_HOURS} hours too. What it spends shows in Settings as "A call without a sheet".`,
+    ],
+    spendCap: true,
   },
 };

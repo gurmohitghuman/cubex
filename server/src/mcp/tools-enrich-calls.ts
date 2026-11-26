@@ -1,10 +1,11 @@
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/server';
-import { ENRICH_CALL_MAX_ITEMS } from '../lib/constants-setups';
+import { ENRICH_CALL_MAX_ITEMS, SETUP_CALL_KEEP_HOURS } from '../lib/constants-setups';
 import { RUN_SPEND_LIMIT_MAX_USD } from '../lib/constants';
 import { callEnrichment } from '../services/enrich-call';
 import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean } from './tool-helpers';
-import { capToolNote } from '../lib/token-spend';
+import { capRunToolNote } from '../lib/token-spend';
+import { GUIDE_POINTER } from './guides/guide';
 
 const cell = z.union([z.string(), z.number(), z.boolean(), z.null()]);
 
@@ -14,10 +15,16 @@ export function registerEnrichCallTools(server: McpServer, ctx: McpAuthCtx): voi
   registerTool(server, 'call_enrichment', {
     description:
       `Run one enrichment tool (search_enrichments) on 1-${ENRICH_CALL_MAX_ITEMS} items without a sheet, each keyed `
-      + 'by its input names. COSTS MONEY; estimate_only defaults to true. Refused before it starts, never halfway, '
-      + 'when it could pass max_cost_usd, today\'s daily limit, the treg balance or the token\'s cap. Returns a '
-      + 'run_id: get_run_status, then get_run_results with status_filter all (row_index is the item).'
-      + capToolNote(ctx.spend ?? null, true),
+      + 'by its input names. Use it to enrich a few records for a script or another app; to fill a sheet\'s column '
+      + 'use run_enrichment, and for several steps on items, call_setup. COSTS MONEY; estimate_only defaults to true. '
+      + 'The first call prices it and starts nothing; tell the user, then call again with estimate_only:false. '
+      + 'Refused before it starts, never halfway, when it could pass max_cost_usd, today\'s daily limit, the treg '
+      + 'balance or the token\'s cap. A tool with no known price is refused too, unless allow_unpriced. It needs '
+      + 'the "run" scope. Returns a run_id: get_run_status, then get_run_results with status_filter all (row_index '
+      + 'is the item). control_run stops it. '
+      + `Results are kept ${SETUP_CALL_KEEP_HOURS} hours after it finishes. A call left paused `
+      + `${SETUP_CALL_KEEP_HOURS} hours is stopped.`
+      + capRunToolNote(ctx.spend ?? null) + ` ${GUIDE_POINTER}`,
     inputSchema: z.object({
       tool_id: z.string().max(200).describe('The tool (search_enrichments)'),
       items: z.array(z.record(z.string(), cell)).min(1).max(ENRICH_CALL_MAX_ITEMS)
