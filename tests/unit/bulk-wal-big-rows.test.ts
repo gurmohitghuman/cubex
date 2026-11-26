@@ -3,7 +3,8 @@
 // measured (bulk-wal-kit.ts: every checkpoint on the worker held 300 ms, the event loop never held 200 ms, the WAL
 // under journal_size_limit) and no slice writes much past HEAVY_SLICE_BYTES: a run's ⏳ seeded and cleared, a
 // column's key copied (a rename) and stripped (a delete), an import taken out again; every cell ends where it
-// should. withinBytes's edges first. The trash and duplicate removal: bulk-wal-big-trash.test.ts.
+// should. withinBytes's edges first. Last, a sheet whose rows sit before and after another's sums no span of the
+// other's rows. The trash and duplicate removal: bulk-wal-big-trash.test.ts.
 import assert from 'node:assert/strict'
 import { v4 as uuid } from 'uuid'
 import { undoKit } from './run-undo-kit'
@@ -14,7 +15,7 @@ const { seedProcessingPlaceholders, clearProcessingPlaceholders, PLACEHOLDER } =
 const { copyColumnKey, purgeColumnKey, recordPurge } = await import('../../server/src/lib/column-purge')
 const { undoImport } = await import('../../server/src/lib/import-undo')
 const { withinBytes } = await import('../../server/src/lib/slice-bytes')
-const { HEAVY_SLICE_BYTES } = await import('../../server/src/lib/constants')
+const { HEAVY_SLICE_BYTES, SLICE_SPAN_ROWIDS_PER_ROW } = await import('../../server/src/lib/constants')
 const { closeWalCheckpointer } = await import('../../server/src/lib/wal-checkpointer')
 console.error = () => {}
 const { measure } = bulkWalKit()
@@ -44,18 +45,21 @@ await ok('a run seeded, then cleared: slices sized by bytes, the WAL copied back
     VALUES (?,?,?,'{}','running','Status')`).run(id, sid, uid)
   const r = { kind: 'http' as const, id }
   sized(await measure('the seed', () => seedProcessingPlaceholders({ run: r, sheetId: sid, userId: uid,
-    columns: ['Status', 'Answer'], targets: null, lastRow: N - 1, live: () => true }), { pastAuto: true }), 'seed')
+    columns: ['Status', 'Json'], targets: null, lastRow: N - 1, live: () => true }), { pastAuto: true }), 'seed')
   assert.equal(held.get(sid, PLACEHOLDER), N, 'every row seeded')
-  sized(await measure('the clear', () => clearProcessingPlaceholders(sid, uid, ['Status', 'Answer'], undefined, r),
+  // The run ended early: the clear puts each 16 KB answer back from the journal into rows holding only ⏳.
+  sized(await measure('the clear', () => clearProcessingPlaceholders(sid, uid, ['Status', 'Json'], undefined, r),
     { pastAuto: true }), 'clear')
   assert.equal(held.get(sid, PLACEHOLDER), 0, 'every ⏳ cleared')
-  assert.deepEqual([...ends(sid, 'Status'), ...ends(sid, 'Answer')], ['s0', `s${N - 1}`, 'a0', `a${N - 1}`])
+  assert.deepEqual([...ends(sid, 'Status'), ...ends(sid, 'Json')],
+    ['s0', `s${N - 1}`, `0:${'j'.repeat(CELL)}`, `${N - 1}:${'j'.repeat(CELL)}`])
 })
 
 await ok('a column\'s key copied, then stripped: slices sized by bytes', async () => {
   const sid = big()
-  sized(await measure('the key copied', () => copyColumnKey(sid, uid, 'Answer', 'Reply'), { pastAuto: true }), 'copy')
-  assert.deepEqual(ends(sid, 'Reply'), ['a0', `a${N - 1}`])
+  // The big column's key: each row grows by its 16 KB cell.
+  sized(await measure('the key copied', () => copyColumnKey(sid, uid, 'Json', 'Reply'), { pastAuto: true }), 'copy')
+  assert.deepEqual(ends(sid, 'Reply'), ends(sid, 'Json'))
   recordPurge(sid, uid, 'Answer')
   sized(await measure('the key stripped', () => purgeColumnKey(sid, uid, 'Answer'), { pastAuto: true }), 'strip')
   assert.equal(db.prepare(`SELECT COUNT(*) FROM rows WHERE sheet_id = ? AND json_type(data, '$.Answer') IS NOT NULL`)
@@ -74,6 +78,32 @@ await ok('an import taken out again: slices sized by bytes', async () => {
     VALUES (?,?,0,?,?,?)`).run(sid, uid, job.first_row, job.end_row, job.columns)
   sized(await measure('the import taken out', () => undoImport(job), { pastAuto: true }), 'import undo')
   assert.deepEqual(cells(sid, 'Name'), ['kept'])
+})
+
+await ok('a sheet whose rows sit around another sheet\'s: its size check reads its own rows only', async () => {
+  // Every rowid span a size check sums (lib/slice-bytes.ts rangeBytes), and the slice's rows.
+  const spans: number[] = []
+  const prepare = db.prepare.bind(db)
+  ;(db as any).prepare = (sql: string) => {
+    const st = prepare(sql)
+    if (/rowid BETWEEN/.test(sql)) {
+      const get = st.get.bind(st)
+      ;(st as any).get = (lo: number, hi: number) => { spans.push(hi - lo + 1); return get(lo, hi) }
+    }
+    return st
+  }
+  try {
+    const sid = sheet(Array.from({ length: 20 }, (_, i) => ({ Answer: `a${i}` })), ['Answer'])
+    const other = sheet(Array.from({ length: 2_000 }, (_, i) => ({ Answer: `o${i}` })), ['Answer'])
+    const ins = db.prepare('INSERT INTO rows (id,sheet_id,user_id,row_index,data) VALUES (?,?,?,?,?)')
+    for (let i = 20; i < 40; i++) ins.run(uuid(), sid, uid, i, JSON.stringify({ Answer: `a${i}` }))
+    await copyColumnKey(sid, uid, 'Answer', 'Reply')
+    assert.deepEqual(cells(sid, 'Reply'), Array.from({ length: 40 }, (_, i) => `a${i}`))
+    assert.ok(spans.every(n => n <= SLICE_SPAN_ROWIDS_PER_ROW * 40), `summed spans of ${spans.join(', ')} rowids`)
+    spans.length = 0
+    await copyColumnKey(other, uid, 'Answer', 'Reply')
+    assert.deepEqual(spans, [2_000], 'a sheet in one stretch sums its span (the cheap way)')
+  } finally { (db as any).prepare = prepare }
 })
 
 await closeWalCheckpointer()
