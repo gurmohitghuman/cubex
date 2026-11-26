@@ -1,6 +1,6 @@
 import { useEffect, type Dispatch, type SetStateAction } from 'react'
 import { tablesAPI, type Table } from '@/utils/api'
-import { waitFor } from '@/lib/wait'
+import { waitFor, whenShown } from '@/lib/wait'
 
 // After a 429 when the answer didn't say (the server holds a runs wait up to 25 s); after any other failure (a
 // restart, the network), so a home left open picks the runs up again.
@@ -12,7 +12,8 @@ const MIN_ASK_MS = 1_000
 // The home's Runs column, kept live while the page is open: GET /api/tables/runs answers every table's runs going
 // now and paused, then is asked again with the answer's key, and the server holds that request until a run starts,
 // ends, pauses or resumes (up to 25 s). A table it doesn't name has none. A 429 (other tabs of the home hold the
-// account's waits) asks again after its Retry-After; leaving the page stops it.
+// account's waits) asks again after its Retry-After; leaving the page stops it. A hidden tab lets its wait go at once
+// and asks again, without a key so the answer comes at once, when it is shown.
 export function useTableRuns(loaded: boolean, setTables: Dispatch<SetStateAction<Table[]>>): void {
   useEffect(() => {
     if (!loaded) return
@@ -20,14 +21,28 @@ export function useTableRuns(loaded: boolean, setTables: Dispatch<SetStateAction
     void (async () => {
       let since: string | null = null
       for (;;) {
+        if (document.hidden) {
+          if (!(await whenShown(stop.signal))) return
+          since = null
+        }
         const asked = Date.now()
+        // This ask, let go when the page leaves or is hidden.
+        const ask = new AbortController()
+        const leave = () => ask.abort()
+        const hidden = () => { if (document.hidden) ask.abort() }
+        stop.signal.addEventListener('abort', leave, { once: true })
+        document.addEventListener('visibilitychange', hidden)
         let answer
-        try { answer = await tablesAPI.runs(since, stop.signal) } catch (e: any) {
+        try { answer = await tablesAPI.runs(since, ask.signal) } catch (e: any) {
           if (stop.signal.aborted) return
+          if (ask.signal.aborted) continue
           const ms = e?.response?.status === 429
             ? (Number(e.response.headers?.['retry-after']) || RETRY_DEFAULT_SEC) * 1000 : RETRY_AFTER_ERROR_MS
           if (await waitFor(ms, stop.signal)) continue
           return
+        } finally {
+          stop.signal.removeEventListener('abort', leave)
+          document.removeEventListener('visibilitychange', hidden)
         }
         if (stop.signal.aborted) return
         since = answer.key

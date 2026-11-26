@@ -1,6 +1,7 @@
 // The home's Runs column over HTTP (routes/tables.ts, services/table-runs.ts): GET /api/tables gives each table its
 // runs going now and paused, linked to its first sheet (by position) with one, and leaves them out for a table with
-// none, a finished run, a setup-only run, a hidden working table's run and a test copy's. The read walks the run
+// none, a finished run, a setup-only run, a hidden working table's run and a test copy's (none of which wakes a
+// wait either); its Updated is the latest change to it or its live sheets. The read walks the run
 // tables' partial status indexes, never a whole table. GET /runs answers at once without since, holds while the runs
 // are as `since` says and answers within about a second of a change; a page that leaves lets go of its slot, and past
 // MAX_RUNS_WAITS_PER_USER an account gets a 429 with Retry-After.
@@ -93,6 +94,19 @@ try {
     assert.equal(list.some(t => t.id === hidden), false)
   })
 
+  await check('GET /api/tables: a table\'s Updated is when it or one of its sheets last changed, not a test copy',
+    async () => {
+      const at = (sql: string, ...args: unknown[]) => db.prepare(sql).run(...args)
+      at("UPDATE tables SET updated_at = '2020-01-01 00:00:00' WHERE id IN (?, ?)", leads, quiet)
+      at("UPDATE sheets SET updated_at = '2021-05-06 07:08:09' WHERE id = ?", leads1)
+      at("UPDATE sheets SET updated_at = '2021-01-01 00:00:00' WHERE id IN (?, ?)", leads2, quiet1)
+      at("UPDATE sheets SET updated_at = '2030-01-01 00:00:00' WHERE id = ?", copy)
+      at("UPDATE tables SET updated_at = '2022-02-02 02:02:02' WHERE id = ?", quiet)
+      const list = await (await fetch(base, { headers })).json() as Array<{ id: string; updated_at: string }>
+      assert.equal(list.find(t => t.id === leads)?.updated_at, '2021-05-06 07:08:09', 'its latest sheet, not the copy')
+      assert.equal(list.find(t => t.id === quiet)?.updated_at, '2022-02-02 02:02:02', 'renamed after its sheet changed')
+    })
+
   await check('the read walks the partial status indexes, never a whole run table', () => {
     const plan = (db.prepare(`EXPLAIN QUERY PLAN ${HOME_RUNS_SQL}`).all(uid, uid) as Array<{ detail: string }>)
       .map(p => p.detail)
@@ -130,6 +144,24 @@ try {
       const done = await (await fetch(`${base}/runs?since=${encodeURIComponent(changed.key)}`, { headers }))
         .json() as Answer
       assert.deepEqual(done.tables, [], 'no table has runs: each one is left out')
+    })
+
+  await check('a run on a sheet the home doesn\'t list (a hidden table\'s, a test copy\'s): not in the key, no wake',
+    async () => {
+      const before = (await (await fetch(`${base}/runs`, { headers })).json() as Answer).key
+      const page = new AbortController()
+      let answered = false
+      fetch(`${base}/runs?since=${encodeURIComponent(before)}`, { headers, signal: page.signal })
+        .then(() => { answered = true }).catch(() => {})
+      await until('the wait held', () => runsWaitsOf(uid) === 1)
+      const extra = [aiRun(hidden1, 'running'), httpRun(copy, 'paused')]
+      await new Promise(r => setTimeout(r, 1500))
+      assert.equal(answered, false, 'held: nothing the home lists changed')
+      assert.equal((await (await fetch(`${base}/runs`, { headers })).json() as Answer).key, before)
+      page.abort()
+      await until('its slot let go', () => runsWaitsOf(uid) === 0)
+      db.prepare("UPDATE ai_runs SET status = 'completed' WHERE id = ?").run(extra[0])
+      db.prepare("UPDATE http_runs SET status = 'completed' WHERE id = ?").run(extra[1])
     })
 
   await check('a page that leaves lets go of its slot; past the account\'s waits, a 429 with Retry-After', async () => {

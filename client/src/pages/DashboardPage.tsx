@@ -1,3 +1,4 @@
+// Over 200 lines: the home is one page read top to bottom: its bar, the checklist, the list and the empty home.
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Table, tablesAPI, settingsAPI } from '@/utils/api'
@@ -42,7 +43,8 @@ export const DashboardPage: React.FC = () => {
   const countsPlain = useTableRowCounts(tables, setTables)
   useTableRuns(!isLoading, setTables)
   const fileInput = useRef<HTMLInputElement>(null)
-  const { importFile, importing } = useImportCsvTable()
+  const tableNames = useMemo(() => tables.map(t => t.name), [tables])
+  const { importFile, importing } = useImportCsvTable(tableNames)
   const { createSample, creatingSample } = useSampleTable()
 
   useEffect(() => {
