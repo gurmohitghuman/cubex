@@ -26,9 +26,12 @@ export function perCell(v: number | null): string {
 
 export const columnName = (r: UsageRow): string => r.column ?? 'No column'
 
-// "AI · deleted", "Enrichment".
+export const ON_SAMPLE_ROWS = 'on sample rows'
+
+// "AI · deleted", "Enrichment", "AI · on sample rows" (a test copy's runs, counted under the sheet).
 export function columnMeta(r: UsageRow): string {
-  return [r.kind ? KIND_LABELS[r.kind] : null, r.column_deleted ? 'deleted' : null].filter(Boolean).join(' · ')
+  return [r.kind ? KIND_LABELS[r.kind] : null, r.column_deleted ? 'deleted' : null,
+    r.on_test_copy ? ON_SAMPLE_ROWS : null].filter(Boolean).join(' · ')
 }
 
 export function totalsLine(t: UsageFigures): string {

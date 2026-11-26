@@ -85,6 +85,14 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
       },
       {
         change: 'changed',
+        tools: ['get_usage'],
+        summary: 'get_usage counts runs on a sheet\'s test copy under that sheet, also after the test ends: their '
+          + 'rows have on_test_copy: true, apart from the sheet\'s own column of the same name.',
+        details: 'The whole account\'s usage lists them under the tested sheet too, not as a deleted sheet. REST: GET '
+          + '/usage, whose CSV has an On sample rows column.',
+      },
+      {
+        change: 'changed',
         tools: ['manage_sheet_webhook'],
         summary: 'manage_sheet_webhook takes set_auto_delete and auto_delete_off: a webhook sheet keeps its newest '
           + 'keep_rows rows and deletes older ones once they are finished, not to the trash.',
