@@ -12,11 +12,12 @@ import { createFileLink, fileLinkUrl } from '../lib/file-links';
 import { tooManyMessage } from '../lib/rate-window';
 import { MAX_CSV_UPLOAD_BYTES } from '../lib/constants';
 import { FILE_LINK_TTL_MINUTES } from '../lib/api-v1-constants';
-import { GARBLED_HELP, importWindow } from './tools-import';
+import { importWindow } from './tools-import';
+import { GUIDE_POINTER } from './guides/guide';
 import {
   SHEET_ID, McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean, mcpLinkBase,
 } from './tool-helpers';
-import { VIEW_HELP, whereLike } from './where-schema';
+import { VIEW_BRIEF, whereLike } from './where-schema';
 import { applyView } from '../services/view-read';
 import type { WhereItem } from '../lib/row-filter/where';
 import { RUN_SPEND_LIMIT_MAX_USD } from '../lib/constants';
@@ -44,13 +45,12 @@ export function registerLinkTools(server: McpServer, ctx: McpAuthCtx) {
       description:
         `Import a CSV file of any size (up to ${MAX_MB} MB) into a sheet without its contents passing through `
         + 'your context. Returns a one-time link; upload the file to it with the curl command in the result, '
-        + 'from any machine that can reach Cubex. curl prints the import result (rows imported, new columns). '
-        + GARBLED_HELP + ' '
+        + 'from any machine that can reach Cubex. '
         + 'Same header rules as import_csv; mode "replace" deletes all existing rows when the file arrives (to the '
         + `trash, restorable). The link works once and expires in ${FILE_LINK_TTL_MINUTES} minutes. Needs the write `
         + 'scope. With setup_id instead of sheet_id, the rows are a setup call\'s items (call_setup): it starts once '
         + 'the file is in, COSTS MONEY, and needs max_cost_usd and the run scope.'
-        + (canWrite ? '' : ` ${NO_WRITE_NOTE}`),
+        + (canWrite ? '' : ` ${NO_WRITE_NOTE}`) + ` ${GUIDE_POINTER}`,
       inputSchema: {
         sheet_id: z.string().optional().describe(`${SHEET_ID}. Or setup_id.`),
         mode: z.enum(['append', 'replace']).optional().describe('Default append'),
@@ -118,14 +118,14 @@ export function registerLinkTools(server: McpServer, ctx: McpAuthCtx) {
         + `The link works once and expires in ${FILE_LINK_TTL_MINUTES} minutes. Until then anyone who has it can `
         + 'download the data, so give it only to the user. The file holds the rows up to the last one the sheet '
         + 'had when the download begins. CSV values are escaped against spreadsheet formula injection. Or '
-        + 'setup_call_id: a setup call\'s items.',
+        + 'setup_call_id: a setup call\'s items. ' + GUIDE_POINTER,
       inputSchema: {
         sheet_id: z.string().optional().describe(`${SHEET_ID}. Or setup_call_id.`),
         setup_call_id: z.string().optional().describe('Or: a setup call\'s items'),
         columns: z.array(z.string()).min(1).optional()
           .describe('Only these columns, in this order. Omit for every column.'),
         where: whereLike('Only the rows it passes.').optional(),
-        view: z.string().min(1).optional().describe(VIEW_HELP),
+        view: z.string().min(1).optional().describe(VIEW_BRIEF),
         format: z.enum(['csv', 'jsonl']).optional().describe('csv (default) or jsonl: one JSON object a row'),
       },
     },

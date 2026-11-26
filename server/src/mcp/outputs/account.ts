@@ -1,5 +1,5 @@
-// What the model, version, trash, history and saved-key tools answer (tools-models.ts, tools-version.ts,
-// tools-trash.ts, tools-saved-keys.ts).
+// What the model, version, guide, trash, history and saved-key tools answer (tools-models.ts, tools-version.ts,
+// tools-guide.ts, tools-trash.ts, tools-saved-keys.ts).
 import { z } from 'zod';
 import { obj, open } from '../output-schema';
 import { bool, changed, info, nul, num, opt, str, strs } from './shared';
@@ -25,6 +25,9 @@ export const getVersion = obj({
     since: str, releases: z.array(obj({ version: str, changes: z.array(change) })), note: opt(str),
   })).describe('With since: what changed for agents in every release after it, oldest first'),
 });
+
+// A tool's guide, or without a tool the tools that have one.
+export const getToolGuide = obj({ tool: opt(str), guide: opt(str), tools: opt(strs) });
 
 // An item: by kind, rows and cells, a column's name and kind.
 const trashItem = open({

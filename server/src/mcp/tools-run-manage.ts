@@ -24,7 +24,8 @@ import { isWaterfallRun, rerunWaterfallRunById, resumeWaterfallRun } from '../se
 import { McpAuthCtx, ok, err, missingScope, registerTool } from './tool-helpers';
 import { changedOf, type Changed, type Touch } from './changed';
 import { runSheetColumns } from '../lib/run-placeholders';
-import { capToolNote } from '../lib/token-spend';
+import { capRunToolNote } from '../lib/token-spend';
+import { GUIDE_POINTER } from './guides/guide';
 
 // An enrichment or a waterfall is an HTTP run: run_type 'enrichment' or
 // 'waterfall' reads and controls the same run, and refuses another kind so the
@@ -67,16 +68,11 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
         + 'RERUN starts a NEW run with the column\'s latest setup and COSTS MONEY AGAIN (one call per row); check '
         + 'get_run_results first to know how many rows you will pay for. AI, enrichment and waterfall reruns need '
         + 'row_ids or mode ("errored" is the usual retry, "empty" the rest after a test, "missing" empty, ⏭️ '
-        + 'or ❌, "out_of_date" input cells changed since); HTTP defaults to all. An output_columns AI run reruns '
-        + 'whole. An enrichment rerun buys rows from treg again (answers it still holds cost less or nothing). Poll '
+        + 'or ❌, "out_of_date" input cells changed since); HTTP defaults to all. Poll '
         + 'the new run_id with get_run_status. '
-        + 'Lower concurrency after error_class "concurrency" or a provider\'s 429. A resumed run\'s spend counts '
-        + 'toward this token\'s spend cap. '
-        + 'CANCEL_ALL with sheet_id stops every active run and setup run on the sheet but turns no auto-run off: a '
-        + 'column whose auto-run batch it stopped pauses (auto_run_paused), and auto_run_on lists columns where new '
-        + 'rows still start runs (set_auto_run paused true with no column pauses them all). Calls already sent '
-        + 'finish and are billed.'
-        + capToolNote(ctx.spend ?? null, true),
+        + 'CANCEL_ALL with sheet_id stops every active run and setup run on the sheet; it turns no auto-run off. '
+        + 'Calls already sent finish and are billed.'
+        + capRunToolNote(ctx.spend ?? null) + ` ${GUIDE_POINTER}`,
       inputSchema: {
         run_type: z.enum(['ai', 'http', 'enrichment', 'waterfall']).optional()
           .describe('Every action but cancel_all.'),

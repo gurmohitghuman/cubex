@@ -43,6 +43,14 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
     changes: [
       {
         change: 'added',
+        tools: ['get_tool_guide'],
+        summary: 'get_tool_guide gives a tool\'s full details. The longest tool descriptions are shorter now and end '
+          + 'with "Details: get_tool_guide.": their edge cases, examples and long field notes moved there.',
+        details: 'Read a tool\'s guide before its first paid or destructive call, and after a refusal. Without tool '
+          + 'it lists the tools that have one. No tool or argument changed.',
+      },
+      {
+        change: 'added',
         tools: ['call_setup', 'get_setup_call'],
         summary: 'call_setup runs a saved setup on 1-100 items without a sheet, like a function; get_setup_call '
           + 'answers each item\'s outputs once it finishes.',

@@ -43,14 +43,16 @@ test('a token at its spend cap: refused and paused, then resumed after a raise i
   expect(me.token.spend).toMatchObject({ spend_cap_usd: 0.02, spent_usd: 0, left_usd: 0.02 })
   expect(me.token.spend.note).toContain('whole life, not a month')
 
-  // The agent is told: the tools that spend say the cap, what is left and how far past it spend can go.
+  // The agent is told: the tools that spend say the cap and what is left, and their guides how far past it
+  // spend can go.
   const client = await mcpClient(raw)
   const tools = (await client.listTools()).tools
   const text = (name: string) => tools.find(x => x.name === name)?.description ?? ''
   for (const name of ['run_ai_column', 'run_enrichment', 'waterfall_column', 'control_run', 'apply_setup']) {
     expect(text(name), name).toContain('SPEND CAP: this access token may spend $0.02 in all')
     expect(text(name), name).toContain('not per month')
-    expect(text(name), name).toContain('Calls already in flight finish and count')
+    expect((await call(client, 'get_tool_guide', { tool: name })).guide, name)
+      .toContain('Calls already in flight finish and count')
   }
   expect(text('write_formula')).toContain('At the cap this is refused.')
   expect(text('read_rows')).not.toContain('SPEND CAP')
