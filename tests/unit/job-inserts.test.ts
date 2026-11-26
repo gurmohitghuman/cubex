@@ -15,6 +15,7 @@ import path from 'node:path'
 import { createRequire } from 'node:module'
 import type BetterSqlite from 'better-sqlite3'
 import type * as SidequestTypes from 'sidequest'
+import { passed } from './ends-on-its-own'
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 const req = createRequire(path.resolve('server/src/queue.ts'))
@@ -166,4 +167,4 @@ reader.close()
 await Sidequest.stop()
 if (failures) { console.log(`${failures} failed`); process.exit(1) }
 console.log('all passed')
-process.exit(0)
+passed()

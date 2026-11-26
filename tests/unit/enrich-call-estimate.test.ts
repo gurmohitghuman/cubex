@@ -3,14 +3,15 @@
 // the repo's mock (tests/mock-treg, started here and stopped by its PID) and one tool with no known price beside it:
 //   - it is a pure read: every table's row count and SQLite's change count stay as they were, for an estimate and
 //     for a start refused up front (max_cost_usd, no known price, today's limit, the treg balance, the token's cap);
-//   - its numbers are the estimate on a working table holding the same items (what call_enrichment's estimate gave
-//     when it made one): a waterfall and a single tool, items missing an input or empty, items that reuse a found
+//   - its numbers are the estimate on a working table holding the same items (what an items call's estimate
+//     gave when it made one): a waterfall and a single tool, items missing an input or empty, items that reuse a found
 //     answer for the same inputs, a "status" field, a tool with no known price, today's limit and the treg balance.
 import fs from 'node:fs'
 import net from 'node:net'
 import { spawn } from 'node:child_process'
 import type { AddressInfo } from 'node:net'
 import { v4 as uuid } from 'uuid'
+import { passed } from './ends-on-its-own'
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
@@ -110,7 +111,7 @@ async function tableFor(toolId: string, raw: Item[], fields?: string[], hidden =
   return { tool: found.ok, tableId: t.ok.id, sheetId: t.ok.sheetId, args }
 }
 
-// The estimate as call_enrichment made it before: on a hidden working table holding the items, then removed.
+// The estimate as an items call made it before: on a hidden working table holding the items, then removed.
 async function onATable(toolId: string, items: Item[], fields?: string[]) {
   const t = await tableFor(toolId, items, fields)
   const out = await tokenStartEnrichmentRun(caller, { ...t.args, estimate_only: true })
@@ -209,6 +210,7 @@ await refused('past the treg balance', /treg balance/, {})
 await fetch(`${TREG}/__mock/reset`, { method: 'POST' })
 await refused('past the token\'s spend cap', /spend cap/, {}, token(0.000001))
 
+treg.kill()
 if (failures > 0) { console.error(`${failures} enrich-call-estimate check(s) failed`); process.exit(1) }
 console.log('enrich-call-estimate: all assertions passed')
-process.exit(0)
+passed()

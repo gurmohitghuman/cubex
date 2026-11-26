@@ -85,6 +85,7 @@ import { prepareUploadDir } from './lib/uploads';
 import { db } from './lib/db';
 import { DB_PATH } from './lib/db-path';
 import { sizeWalFile } from './lib/wal-file';
+import { startWalWatch } from './lib/wal-watch';
 
 // Run database migrations on boot before anything else.
 runMigrations();
@@ -93,6 +94,9 @@ adoptLegacyRunInputs();
 // On Windows the -wal file is made its full size now, before any other thread or process opens the database and
 // before the server serves, so no commit has to grow it (lib/wal-file.ts).
 sizeWalFile(db, DB_PATH);
+// The checkpoint worker copies the WAL back from now on, for this connection and those the threads and processes
+// started below open (lib/wal-watch.ts): before any of them starts, and before the jobs resumed below.
+startWalWatch();
 
 // Load (or, on first boot, generate) the encryption key now: a malformed
 // APP_ENCRYPTION_KEY fails here instead of on the first saved API key, and the

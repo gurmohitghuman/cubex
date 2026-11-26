@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/server';
 import { MAX_ROWS_PER_SHEET } from '../lib/constants';
-import { TRANSFER_MAX_ROWS } from '../lib/api-v1-constants';
+import { TRANSFER_MAX_ROWS, TRANSFER_MAX_STORED_BYTES } from '../lib/api-v1-constants';
 import { transferRows, TransferRequest } from '../services/rows-transfer';
 import { trashAnswer } from '../services/trash-answer';
 import { TransferSelection } from '../services/transfer-selection';
@@ -18,7 +18,9 @@ export function registerTransferTool(server: McpServer, ctx: McpAuthCtx): void {
       + 'you, so use it rather than read_rows then append_rows. Pick the rows with selection (all, row_ids or a '
       + 'where). A move takes the source rows to the trash as one batch (trash says how to get them back). '
       + 'Missing destination columns are made by default (column_mode create_missing) and listed in created_columns. '
-      + `At most ${TRANSFER_MAX_ROWS.toLocaleString('en-US')} rows a call. When auto-run is on in the destination, `
+      + `At most ${TRANSFER_MAX_ROWS.toLocaleString('en-US')} rows a call. `
+      + `A call's rows hold at most ${TRANSFER_MAX_STORED_BYTES / 1024 / 1024} MB for a copy and half that for a move; `
+      + 'past it the call is refused, saying how much it picked. When auto-run is on in the destination, '
       + 'auto_run lists the columns that will fill the new rows (an enrichment spends treg credit, an HTTP API '
       + 'column sends real requests). Returns copied, moved and the columns made. Next: read_rows on the '
       + 'destination.',

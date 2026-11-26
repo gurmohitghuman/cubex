@@ -11,6 +11,7 @@ import dbMod from '../../server/src/lib/db'
 import migMod from '../../server/src/db/migrate'
 import cleanersMod from '../../server/src/lib/clean/cleaners'
 import serviceMod from '../../server/src/services/clean-agent'
+import { passed } from './ends-on-its-own'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { parseCleanOptions, cleanerForRecord } = cleanersMod as typeof import('../../server/src/lib/clean/cleaners')
@@ -156,4 +157,4 @@ await ok('without the new options the answer keeps its keys, in order', async ()
 
 if (failures) { console.error(`\n${failures} check(s) failed`); process.exit(1) }
 console.log('\nall clean-options checks passed')
-process.exit(0)
+passed()

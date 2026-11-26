@@ -7,6 +7,7 @@ import { evictIdleWebhookBuckets } from './webhook-bucket';
 import { pruneWebhookKeys } from './webhook-idempotency';
 import { pruneWriteKeys } from './write-idempotency';
 import { writeTokenUsesNow } from './token-last-used';
+import { writeTableOpensNow } from './table-opened';
 import { writeRowCountsNow } from './row-counts';
 import { WEBHOOK_BUCKET_IDLE_EVICT_MS } from './constants';
 import { startAutorunLoop } from '../services/autorun-loop';
@@ -26,6 +27,7 @@ import { startReleaseCheckLoop } from '../services/release-check';
 import { resumeAiVisibilityChecks } from '../services/ai-visibility-check';
 import { resumeHiringChecks } from '../services/hiring-check-watch';
 import { closeWalCheckpointer } from './wal-checkpointer';
+import { stopWalWatch } from './wal-watch';
 import { closeWalTurnReader } from './wal-turn';
 
 // Run any value through redactSecrets before logging, so a stack trace or
@@ -136,10 +138,13 @@ export const installShutdownHandlers = (server: Server) => {
     catch (err) { console.error('Queue shutdown failed:', err); }
     // Access token uses not yet written (lib/token-last-used.ts), now that runs no longer write.
     writeTokenUsesNow();
+    // Tables opened whose time isn't written yet (lib/table-opened.ts): the home's Recent after the restart.
+    writeTableOpensNow();
     // Row counts made since their last write to sheets.counted_rows (lib/row-counts.ts), shown after the restart.
     writeRowCountsNow();
-    // The checkpoint worker closes its connection (lib/wal-checkpointer.ts), and lib/wal-turn.ts its own.
-    try { await closeWalCheckpointer(); closeWalTurnReader(); }
+    // The WAL watch stops (lib/wal-watch.ts), the checkpoint worker closes its connection (lib/wal-checkpointer.ts),
+    // and lib/wal-turn.ts its own.
+    try { stopWalWatch(); await closeWalCheckpointer(); closeWalTurnReader(); }
     catch (err) { console.error('Closing the WAL checkpoint worker failed:', err); }
     // Refresh planner stats so the next boot inherits up-to-date metadata.
     // Best effort — never block shutdown on it.

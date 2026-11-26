@@ -296,6 +296,8 @@ export const ACCESS_TOKEN_LAST_USED_WRITE_INTERVAL_MS = 60 * 1000;
 // A last-used write refused because another connection held the write lock is tried again this much later
 // (lib/token-last-used.ts), until it is written.
 export const ACCESS_TOKEN_LAST_USED_RETRY_MS = 1_000;
+// A table's last open (lib/table-opened.ts) refused the write lock is tried again this much later, until written.
+export const TABLE_OPENED_RETRY_MS = 1_000;
 // A token's spend cap (services/token-spend.ts): set in Settings, at most this many dollars.
 export const MAX_TOKEN_SPEND_CAP_USD = 1_000_000;
 // /api/v1 body/rate/paging/batch caps live in api-v1-constants.ts.

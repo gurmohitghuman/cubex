@@ -23,6 +23,7 @@ import turnMod from '../../server/src/lib/wal-turn'
 import transformMod from '../../server/src/services/column-transform'
 import { heldText, loopWatch } from './loop-watch'
 import { sizeWalLikeAServer, walGrowth } from './sqlite-write-probe'
+import { passed } from './ends-on-its-own'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const w = walMod as typeof import('../../server/src/lib/wal-checkpointer')
@@ -205,4 +206,4 @@ setBeforeTurnWriteForTests(null)
 await w.closeWalCheckpointer()
 if (failures > 0) { console.log(`${failures} wal-turn-late assertion(s) failed`); process.exit(1) }
 console.log('All wal-turn-late assertions passed.')
-process.exit(0)
+passed()

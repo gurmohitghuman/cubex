@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict'
 import { startStandIn, world, PRICED } from './ai-spend-kit'
 import { busyKit, type Answer, type Args } from './token-replay-busy-kit'
+import { passed } from './ends-on-its-own'
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 
@@ -35,4 +36,4 @@ await ok('an AI start retried with its key while the sheet is busy replays; a ne
 kit.close()
 stand.close()
 done()
-process.exit(0)
+passed()

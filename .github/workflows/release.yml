@@ -2,8 +2,9 @@ name: Release
 
 # Publishes a draft release made by scripts/release.sh (see docs/releasing.md).
 # It tests the exact commit the draft points at (CI, plus a real install with
-# the one-line installers on Linux and Windows, and an update from the latest
-# release on both), and only then publishes the draft. Publishing is
+# the one-line installers on Linux and Windows, one from the built app archive
+# it attaches, as `cubex update` installs a release, and an update from the
+# latest release on both), and only then publishes the draft. Publishing is
 # what creates the vX.Y.Z tag, so a failed run leaves no tag behind, and
 # `cubex update` only ever sees versions that passed.
 
@@ -63,6 +64,48 @@ jobs:
     with:
       ref: ${{ needs.resolve.outputs.sha }}
 
+  build-dist:
+    name: Build release archive
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out the release commit
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies and build
+        run: |
+          npm ci --include=dev --no-audit --no-fund
+          npm run build
+
+      - name: Package the built app
+        run: bash scripts/pack-dist.sh release-assets
+
+      - name: Upload built archive artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cubex-dist
+          path: |
+            release-assets/cubex-dist.tar.gz
+            release-assets/cubex-dist.tar.gz.sha256
+          retention-days: 1
+
+  install-dist:
+    name: Install from the built archive
+    needs: [resolve, build-dist]
+    uses: ./.github/workflows/install-dist.yml
+    with:
+      ref: ${{ needs.resolve.outputs.sha }}
+      artifact: true
+
   install:
     name: One-line install
     needs: resolve
@@ -102,13 +145,19 @@ jobs:
 
   publish:
     name: Publish
-    needs: [resolve, ci, install, install-windows, install-unix]
+    needs: [resolve, ci, build-dist, install-dist, install, install-windows, install-unix]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       contents: write
     steps:
-      - name: Publish the draft (this creates the tag)
+      - name: Download built archive
+        uses: actions/download-artifact@v4
+        with:
+          name: cubex-dist
+          path: release-assets
+
+      - name: Attach archive and publish the draft (this creates the tag)
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -116,6 +165,8 @@ jobs:
           SHA: ${{ needs.resolve.outputs.sha }}
         run: |
           set -euo pipefail
+          (cd release-assets && sha256sum -c cubex-dist.tar.gz.sha256)
+          gh release upload "$TAG" release-assets/cubex-dist.tar.gz release-assets/cubex-dist.tar.gz.sha256 --clobber
           gh release edit "$TAG" --draft=false --latest
           tagged="$(gh api "repos/$GH_REPO/commits/$TAG" --jq .sha)"
           [ "$tagged" = "$SHA" ] || { echo "::error::$TAG was tagged at $tagged, expected $SHA"; exit 1; }

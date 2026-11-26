@@ -26,6 +26,7 @@ import sheetsMod from '../../server/src/routes/api-v1-sheets'
 import appReadMod from '../../server/src/routes/sheets-read'
 import { malformed, moved } from './transform-pass-words'
 import { toTheEnd } from './transform-to-end'
+import { passed } from './ends-on-its-own'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { transformColumn, TRANSFORM_STOPPED_NOTE } =
@@ -202,5 +203,5 @@ main()
   .finally(() => {
     if (failures) { console.log(`\n${failures} failure(s)`); process.exit(1) }
     console.log('All transform-cursor assertions passed.')
-    process.exit(0)
+    passed()
   })
