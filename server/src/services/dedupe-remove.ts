@@ -14,9 +14,11 @@ import { oneTransaction } from '../lib/slices';
 import { countRows, getSheetColumns, touchSheet, verifySheetOwnership } from '../lib/sql-helpers';
 import { sheetGone, stayBusyToFinish, whenSheetFree, withLiveSheetBusy } from '../lib/sheet-busy';
 import { runInCheckpointedSlices } from '../lib/bulk-slices';
+import { HEAVY_SLICE_BYTES } from '../lib/constants';
+import { keysWithinBytes } from '../lib/slice-bytes';
 import { autorunAfterRemoval } from '../lib/autorun-mark';
 import {
-  dedupeJobs, dropDedupeChunk, dropDedupeJob, nextDedupeChunk, saveDedupePlan, type DedupeJob,
+  dedupeJobs, dropDedupeChunk, dropDedupeJob, keepDedupeChunk, nextDedupeChunk, saveDedupePlan, type DedupeJob,
 } from '../lib/dedupe/journal';
 import { sheetRunBlock, type BlockingRun, type RunBlock } from './autorun-block';
 import { DEDUPE_RUN_ACTIVE, parseDedupeRequest, type DedupeArgs } from './dedupe-input';
@@ -80,13 +82,17 @@ export async function removeDuplicates(
 
 // One chunk: the rows still there under the floor go to the trash batch
 // (their AI/HTTP results, stored by position, go: lib/sql-rows.ts), and the
-// chunk's record, in one transaction.
+// chunk's record, in one transaction. As many as fit half of HEAVY_SLICE_BYTES
+// (each written twice: into the batch, out of the rows; lib/slice-bytes.ts):
+// the chunk then keeps the rest for the next slice.
 function deleteChunk(job: DedupeJob, chunk: number, rowIds: Float64Array, item: number | null): void {
-  const live = db.prepare(`SELECT rowid FROM rows WHERE rowid IN (SELECT value FROM json_each(?))
-    AND +sheet_id = ? AND +user_id = ? AND row_index < ?`).pluck()
-    .all(JSON.stringify(Array.from(rowIds)), job.sheet_id, job.user_id, job.floor) as number[];
-  if (live.length > 0) removeRows(job.sheet_id, job.user_id, { rowids: live }, item);
-  dropDedupeChunk(job.sheet_id, chunk);
+  const live = db.prepare(`SELECT rowid, octet_length(data) FROM rows WHERE rowid IN (SELECT value FROM json_each(?))
+    AND +sheet_id = ? AND +user_id = ? AND row_index < ? ORDER BY rowid`).raw()
+    .all(JSON.stringify(Array.from(rowIds)), job.sheet_id, job.user_id, job.floor) as Array<[number, number]>;
+  const now = keysWithinBytes(live, HEAVY_SLICE_BYTES / 2);
+  if (now.length > 0) removeRows(job.sheet_id, job.user_id, { rowids: now }, item);
+  if (now.length < live.length) keepDedupeChunk(job.sheet_id, chunk, live.slice(now.length).map(r => r[0]));
+  else dropDedupeChunk(job.sheet_id, chunk);
 }
 
 // Deletes the journaled rows chunk by chunk, then drops the journal and moves
