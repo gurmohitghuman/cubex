@@ -20,6 +20,7 @@ import recMod from '../../server/src/lib/formula-columns'
 import renameMod from '../../server/src/services/formula-rename'
 import loopMod from '../../server/src/lib/derived-loops'
 import entryMod from '../../server/src/services/autorun-entry'
+import { passed } from './ends-on-its-own'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { startFormulaColumn, setFormulaColumnAutorun } =
@@ -254,5 +255,5 @@ async function main() {
 main().then(() => {
   if (failures) { console.log(`\n${failures} failure(s)`); process.exit(1) }
   console.log('\nAll formula column assertions passed.')
-  process.exit(0)
+  passed()
 }).catch(e => { console.error(e); process.exit(1) })

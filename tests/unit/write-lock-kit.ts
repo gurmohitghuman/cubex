@@ -18,6 +18,7 @@ import { v4 as uuid } from 'uuid'
 import dbMod from '../../server/src/lib/db'
 import migMod from '../../server/src/db/migrate'
 import busyMod from '../../server/src/lib/sheet-busy'
+import { passed } from './ends-on-its-own'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { sheetBusyWith } = busyMod as typeof import('../../server/src/lib/sheet-busy')
@@ -150,7 +151,7 @@ export function fixture(name: string) {
   }
   const done = () => {
     console.log(failures === 0 ? `\n${name}: all passed` : `\n${name}: ${failures} FAILED`)
-    process.exit(failures === 0 ? 0 : 1)
+    if (failures === 0) passed(); else process.exit(1)
   }
   const sheet = (columns: string[], rows: Array<Record<string, string>>): string => {
     const id = uuid()

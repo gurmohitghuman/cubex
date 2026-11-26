@@ -27,6 +27,7 @@ import sharedMod from '../../server/src/lib/wal-shared'
 import turnMod from '../../server/src/lib/wal-turn'
 import { sqliteWriteProbe, transactionLine } from './sqlite-write-probe'
 import { heldText, loopWatch, type LoopWatched } from './loop-watch'
+import { passed } from './ends-on-its-own'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { TRANSFORM_WAITED_NOTE, transformColumn } =
@@ -285,5 +286,5 @@ main()
   .finally(() => {
     if (failures) { console.log(`\n${failures} failure(s)`); process.exit(1) }
     console.log('All wal-turn assertions passed.')
-    process.exit(0)
+    passed()
   })

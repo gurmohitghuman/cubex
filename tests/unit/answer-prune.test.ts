@@ -15,6 +15,7 @@ import reachMod from '../../server/src/services/treg-reach'
 import busyMod from '../../server/src/lib/sheet-busy'
 import storeMod from '../../server/src/lib/answer-store'
 import colsMod from '../../server/src/lib/http-columns'
+import { passed } from './ends-on-its-own'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { pruneSupersededAnswers } = pruneMod as typeof import('../../server/src/services/answer-prune')
@@ -193,6 +194,6 @@ async function main() {
 
   if (failures) { console.log(`\n${failures} failed`); process.exit(1) }
   console.log('\nall passed')
-  process.exit(0)
+  passed()
 }
 main().catch(err => { console.error(err); process.exit(1) })

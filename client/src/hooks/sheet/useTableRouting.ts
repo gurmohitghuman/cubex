@@ -1,4 +1,4 @@
-import { useEffect, type MutableRefObject } from 'react'
+import { useEffect, useRef, type MutableRefObject } from 'react'
 import type { NavigateFunction } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { Sheet, SheetData, Table, tablesAPI } from '@/utils/api'
@@ -12,6 +12,7 @@ interface Args {
   activeSheet: Sheet | null
   setActiveSheet: (s: Sheet | null) => void
   setSheetData: (d: SheetData | null) => void
+  isLoading: boolean
   setIsLoading: (v: boolean) => void
   setLoadedRowsCount: (n: number) => void
   currentSheetIdRef: MutableRefObject<string | null>
@@ -28,7 +29,7 @@ export const sheetsOf = (table: Table): Sheet[] => [...(table.sheets ?? []), ...
 // active sheet's data load whenever it changes.
 export function useTableRouting(a: Args): void {
   const {
-    tableId, urlSheetId, navigate, table, setTable, activeSheet, setActiveSheet, setSheetData, setIsLoading,
+    tableId, urlSheetId, navigate, table, setTable, activeSheet, setActiveSheet, setSheetData, isLoading, setIsLoading,
     setLoadedRowsCount, currentSheetIdRef, selectSheet, clearSelection, loadSheetData,
   } = a
   // Table load — runs once per tableId. NOTE: this effect re-fires when the user
@@ -47,6 +48,15 @@ export function useTableRouting(a: Args): void {
       .then(setTable)
       .catch(() => { toast.error('Failed to load table'); navigate('/dashboard') })
   }, [tableId, navigate])
+
+  // The home's Recent tab: the table opened, noted once per table once its first rows are on screen, so the note
+  // never competes with loading them. Nothing waits for it, and a failure only leaves Recent as it was.
+  const noted = useRef<string | null>(null)
+  useEffect(() => {
+    if (!tableId || isLoading || table?.id !== tableId || noted.current === tableId) return
+    noted.current = tableId
+    tablesAPI.opened(tableId).catch(() => {})
+  }, [tableId, isLoading, table?.id])
 
   // Auto-pick a sheet of a freshly-loaded table: the URL's sheet if present + valid,
   // else the first sheet. Only when nothing is active yet (no loop; back/forward on an

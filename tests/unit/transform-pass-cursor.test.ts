@@ -25,7 +25,8 @@ import addMod from '../../server/src/services/column-add'
 import storeMod from '../../server/src/lib/trash/store'
 import { transformPageFault } from './transform-page-fault'
 import { notOpen, otherArgs, otherColumn, targetRenamed, unfinished } from './transform-pass-words'
-import { toTheEnd } from './transform-to-end'
+import { caughtUp, toTheEnd } from './transform-to-end'
+import { passed } from './ends-on-its-own'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { transformColumn } = transformMod as typeof import('../../server/src/services/column-transform')
@@ -88,6 +89,7 @@ const columns = (id: string) => JSON.parse(db.prepare('SELECT column_order FROM 
   .get(id) as string) as string[]
 // The n-th row written fails: 251, its second page.
 async function stopped(p: Params, n = 251) {
+  await caughtUp()
   fault.arm(n)
   try {
     const out = await transformColumn(uid, p)
@@ -108,7 +110,7 @@ async function main() {
     const sid = sheet()
     const first = await stopped(call(sid))
     const second = await stopped({ ...call(sid), cursor: first })
-    assert.ok('ok' in await transformColumn(uid, { ...call(sid), cursor: second }))
+    assert.ok('ok' in await toTheEnd(uid, { ...call(sid), cursor: second }))
     await refused({ ...call(sid), cursor: second }, notOpen)
     await refused({ ...call(sid), cursor: first }, notOpen)
     assert.equal(ending(sid, 'T', 't*-x'), ROWS)
@@ -124,7 +126,7 @@ async function main() {
     const fresh = await stopped({ ...p('y'), restart: true })
     await refused({ ...p('x'), cursor: old }, unfinished('T', 250, fresh))
     await refused({ ...p('y'), cursor: old }, unfinished('T', 250, fresh))
-    assert.ok('ok' in await transformColumn(uid, { ...p('y'), cursor: fresh }))
+    assert.ok('ok' in await toTheEnd(uid, { ...p('y'), cursor: fresh }))
     await refused({ ...p('y'), cursor: old }, notOpen)
     assert.equal(ending(sid, 'T', 's*-y'), ROWS, 'every row has the restarted pass\'s value')
   })
@@ -139,11 +141,11 @@ async function main() {
     assert.notEqual(fresh, old, 'each pass its own cursor')
     await refused({ ...p(sid), cursor: old }, unfinished('T', 250, fresh))
     const other = await stopped(p(elsewhere))
-    assert.ok('ok' in await transformColumn(uid, { ...p(sid), cursor: fresh }))
+    assert.ok('ok' in await toTheEnd(uid, { ...p(sid), cursor: fresh }))
     await refused({ ...p(sid), cursor: fresh }, notOpen)
     await refused({ ...p(sid), cursor: old }, notOpen)
     assert.equal(ending(sid, 'T', 's*-z'), ROWS)
-    assert.ok('ok' in await transformColumn(uid, { ...p(elsewhere), cursor: other }))
+    assert.ok('ok' in await toTheEnd(uid, { ...p(elsewhere), cursor: other }))
   })
 
   await check('T renamed T2: the kept cursor on T is refused and makes no column T; T2\'s pass goes on with it',
@@ -230,5 +232,5 @@ main()
   .finally(() => {
     if (failures) { console.log(`\n${failures} failure(s)`); process.exit(1) }
     console.log('All transform-pass-cursor assertions passed.')
-    process.exit(0)
+    passed()
   })

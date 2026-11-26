@@ -39,9 +39,10 @@ export const manageSheetWebhook = obj({
   token: opt(str).describe('new_token: shown once; senders put it in Authorization: Bearer <token>'),
   deleted: opt(bool), changed,
 });
-// create, rename, delete or create_sample: the fields of that action.
+// create, rename, star, unstar, delete or create_sample: the fields of that action.
 export const manageTable = obj({
-  id: opt(str), name: opt(str), sheets: opt(z.array(sheetRef)), deleted: opt(bool), trash: opt(trash),
+  id: opt(str), name: opt(str), starred: opt(bool), sheets: opt(z.array(sheetRef)), deleted: opt(bool),
+  trash: opt(trash),
   table: opt(obj({ id: str, name: str })), sheet: opt(sheetRef),
   fictional: opt(str), filled_free: opt(strs),
   duplicates: opt(nul(info('What remove_duplicates would find'))),

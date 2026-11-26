@@ -1,7 +1,8 @@
 import React, { useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { ArchiveRestore, ArrowLeft, Loader2, Search, Trash2, X } from 'lucide-react'
+import { ArchiveRestore, Loader2, Search, Trash2, X } from 'lucide-react'
+import { AppShell } from '@/components/layout/AppShell'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { TrashList } from '@/components/trash/TrashList'
 import { TrashRowsDrawer } from '@/components/trash/TrashRowsDrawer'
@@ -93,13 +94,9 @@ export const TrashPage: React.FC = () => {
   const chosen = t.items.filter(i => selected.has(i.id))
 
   return (
-    <div className="h-screen bg-white overflow-auto">
+    <AppShell>
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
         <div className="flex items-center space-x-4">
-          <button onClick={() => navigate('/dashboard')} className="p-2 text-gray-400 hover:text-gray-600"
-            aria-label="Back">
-            <ArrowLeft className="h-5 w-5" />
-          </button>
           <div>
             <h1 className="text-title text-gray-900">Trash</h1>
             <p className="text-gray-600 text-sm">
@@ -176,6 +173,6 @@ export const TrashPage: React.FC = () => {
           ? `Delete ${titleOf(deleting[0])}? It can't be restored after this.`
           : `Delete ${deleting?.length ?? 0} items? They can't be restored after this.`}
         confirmText="Delete" onConfirm={() => void deleteForGood()} onCancel={() => setDeleting(null)} />
-    </div>
+    </AppShell>
   )
 }

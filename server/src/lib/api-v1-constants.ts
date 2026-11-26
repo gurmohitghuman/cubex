@@ -39,6 +39,11 @@ export const API_V1_MAX_BATCH_UPDATES = 1000;
 export const TRANSFER_STARTS_PER_MIN = 10;
 export const TRANSFER_MAX_ROWS = 10000;
 export const TRANSFER_MAX_STORED_BYTES = 32 * 1024 * 1024;
+// A move's one transaction writes each row about three times (into the destination, into the trash, and zeroed out
+// of the source): 30 MB of rows wrote 77 MB of WAL, past journal_size_limit. Half a copy's cap keeps it under, for
+// the rows it moves: rows auto-dedupe replaces in the destination (keep newest) go to the trash in the same
+// transaction and aren't counted (TODO.md: "transfer_rows counts the rows auto-dedupe replaces").
+export const TRANSFER_MAX_MOVE_BYTES = TRANSFER_MAX_STORED_BYTES / 2;
 export const TRANSFER_MAX_WRITER_MS = 2000;
 export const TRANSFER_SCAN_BATCH = 250;
 
