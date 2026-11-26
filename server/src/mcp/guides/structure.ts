@@ -1,6 +1,7 @@
 // The guides of the tools that write rows and change columns, sheets and their webhook (guide.ts says what a
 // guide holds).
 import { MAX_VIEWS_PER_SHEET } from '../../lib/constants-filters';
+import { MAX_COLUMN_DESCRIPTION_CHARS, MAX_SHEET_DESCRIPTION_CHARS } from '../../lib/constants-columns';
 import { SHEET_TEST_MAX_ROWS, SHEET_TEST_ROWS } from '../../lib/constants';
 import { AUTO_DELETE_KEEP_DEFAULT } from '../../lib/constants-webhook-auto-delete';
 import type { ToolGuide } from './guide';
@@ -14,15 +15,40 @@ export const STRUCTURE_GUIDES: Record<string, ToolGuide> = {
       `${RETRY_WORDS} A replay leaves out auto_run (the first call set the runs off).`,
     ],
   },
-  update_cells: { text: [RETRY_WORDS] },
-  delete_column: {
+  change_rows: {
     text: [
-      'What other columns, views and settings said about it is removed now and does not come back with it: its own '
+      `update: ${RETRY_WORDS}`,
+      'delete: read_rows with where and return_mode ids finds the rows; remove_duplicates removes duplicates. They '
+        + 'go to the trash as one batch, kept for the days set in Settings (30 by default; 0 deletes at once): the '
+        + 'answer gives its trash_id, and restore_from_trash puts them back. Refused while an AI or HTTP run is '
+        + 'working on the sheet.',
+    ],
+  },
+  manage_column: {
+    text: [
+      'add: Add an empty column at the end, to write into with append_rows or change_rows. formula_column, '
+        + 'clean_column, lookup_column (free) or run_ai_column, run_enrichment, waterfall_column (paid) fill a '
+        + 'column from each row instead. A name that differs from an existing one only in case or spacing is '
+        + 'refused. description describes it at once. Returns the name.',
+      'rename: Everything that names it follows: cells, order, filters, views, webhook mappings and the '
+        + '/references in saved AI prompts and HTTP requests. Refused while a run writes or reads the column (stop '
+        + 'it with control_run first). Returns the new name.',
+      'describe: what it holds, where its values come from, how to read it. People see it in the app on the column '
+        + 'header and agents in get_sheet (column_details). It is never sent to AI runs. Up to '
+        + `${MAX_COLUMN_DESCRIPTION_CHARS.toLocaleString('en-US')} characters. Renaming a column keeps its `
+        + 'description; deleting it deletes the description too. The sheet\'s own: manage_sheet describe.',
+      'reorder: Only the order the app and reads show changes: no row, cell, run or saved view changes, and a '
+        + 'hidden column stays hidden. A column left out, named twice or unknown is refused and nothing changes.',
+      'delete: Delete a column: it goes to the trash with its cells, its place, its description and its own setup '
+        + '(what makes it an AI, HTTP API, enrichment, waterfall, formula, lookup or clean column), and the '
+        + 'answer\'s trash says until when and how to restore it (restore_from_trash). '
+        + 'What other columns, views and settings said about it is removed now and does not come back with it: its own '
         + 'auto-run, filters and hidden columns in views, webhook mappings, fields another run writes into it, '
         + 'lookups in other sheets reading it, auto-dedupe on it; the restore answer lists each one so you can set '
-        + 'it up again.',
+        + 'it up again. With Settings keeping deleted things 0 days it is deleted at once (trash_id null).',
       'A big column\'s cells take a while: past a few seconds the answer\'s trash says state "moving" (they go on in '
-        + 'the background, and a restore waits until they are all in).',
+        + 'the background, and a restore waits until they are all in). Refused for run-owned columns, columns an '
+        + 'active run reads, webhook marker columns, and the last remaining column.',
     ],
   },
   manage_sheet: {
@@ -45,6 +71,10 @@ export const STRUCTURE_GUIDES: Record<string, ToolGuide> = {
       'discard_test deletes the copy with its rows and runs, and the sheet stays as it was. Either way the sheet '
         + 'takes changes again and the webhook deliveries it kept are added in the order they arrived. While a test '
         + 'ends, get_sheet\'s test says state "ending". The copy is never in list_tables.',
+      'sort: Refused while a run works on the sheet. Returns rows_reordered.',
+      'describe: what the sheet holds, where its values come from, how to read it. People see it on the sheet\'s '
+        + 'tab and agents in get_sheet (description). It is never sent to AI runs. Up to '
+        + `${MAX_SHEET_DESCRIPTION_CHARS.toLocaleString('en-US')} characters.`,
     ],
   },
   manage_sheet_webhook: {

@@ -152,7 +152,7 @@ await ok('over MCP, a delete past its wait says so, and list_trash and the chang
     const sid = big(6_000)
     const release = holdEach(COPY, 1_000)
     try {
-      const out = await api.call('delete_column', { sheet_id: sid, column: 'Big' })
+      const out = await api.call('manage_column', { action: 'delete', sheet_id: sid, column: 'Big' })
       const id = out.body.trash.trash_id
       assert.deepEqual([out.isError, out.body.deleted, out.body.trash.state], [false, true, 'moving'])
       assert.equal(out.body.trash.note, 'Its cells are still going to the trash, in the background: the column is '

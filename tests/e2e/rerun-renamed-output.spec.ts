@@ -32,7 +32,8 @@ test('rerun by id after renaming "Blurb (Output)" to "Blurb", over MCP and REST'
     const first = await call(client, 'run_ai_column', { sheet_id: sheetId, column_name: 'Blurb',
       prompt: 'Describe /name', model: 'deepseek/deepseek-v4-flash' })
     await waitForTerminal(v1, `/api/v1/ai-runs/${first.run_id}`)
-    await call(client, 'rename_column', { sheet_id: sheetId, column: 'Blurb (Output)', new_name: 'Blurb' })
+    await call(client, 'manage_column', {
+      action: 'rename', sheet_id: sheetId, column: 'Blurb (Output)', new_name: 'Blurb' })
 
     // MCP: the renamed column's run reruns into it.
     const mcp = await call(client, 'control_run', { run_type: 'ai', run_id: first.run_id, action: 'rerun',
@@ -52,7 +53,7 @@ test('rerun by id after renaming "Blurb (Output)" to "Blurb", over MCP and REST'
     expect(cols).not.toContain('Blurb (Output)')
 
     // The column deleted: its run is refused, and nothing is brought back.
-    await call(client, 'delete_column', { sheet_id: sheetId, column: 'Blurb' })
+    await call(client, 'manage_column', { action: 'delete', sheet_id: sheetId, column: 'Blurb' })
     expect(await callError(client, 'control_run', { run_type: 'ai', run_id: restRun.run_id, action: 'rerun',
       mode: 'all' })).toMatch(/was deleted/)
     const gone = await v1.post(`/api/v1/ai-runs/${restRun.run_id}/rerun`, { data: { mode: 'all' } })

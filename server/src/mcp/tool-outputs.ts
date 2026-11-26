@@ -14,13 +14,12 @@ import * as account from './outputs/account';
 
 export const TOOL_OUTPUTS = {
   get_workspace: read.getWorkspace, list_tables: read.listTables, get_sheet: read.getSheet, read_rows: read.readRows,
-  export_csv: read.exportCsv, list_runs: read.listRuns, import_csv: read.importCsv,
+  list_runs: read.listRuns, import_csv: read.importCsv,
   create_upload_link: read.createUploadLink, create_download_link: read.createDownloadLink,
-  append_rows: rows.appendRows, update_cells: rows.updateCells, delete_rows: rows.deleteRows,
+  append_rows: rows.appendRows, change_rows: rows.changeRows,
   transfer_rows: rows.transferRows, transform_column: rows.transformColumn,
   remove_duplicates: rows.removeDuplicates, set_auto_dedupe: rows.setAutoDedupe,
-  add_column: columns.addColumn, set_description: columns.setDescription, rename_column: columns.renameColumn,
-  delete_column: columns.deleteColumn, sort_sheet: columns.sortSheet, set_column_order: columns.setColumnOrder,
+  manage_column: columns.manageColumn,
   manage_table: columns.manageTable, manage_sheet: columns.manageSheet, manage_view: columns.manageView,
   manage_sheet_webhook: columns.manageSheetWebhook,
   run_ai_column: runs.runAiColumn, run_http_enrichment: runs.runHttpEnrichment,

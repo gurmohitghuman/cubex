@@ -28,7 +28,7 @@ test('brief: numeric filters, transfer subset/created_columns, empty sheets, hea
 
   // Numeric filter semantics: only parseable cells match; '' and 'N/A' never do.
   for (const name of ['company', 'score']) {
-    parsed(await client.callTool({ name: 'add_column', arguments: { sheet_id: sourceId, name } }))
+    parsed(await client.callTool({ name: 'manage_column', arguments: { action: 'add', sheet_id: sourceId, name } }))
   }
   const appended = parsed(await client.callTool({
     name: 'append_rows',

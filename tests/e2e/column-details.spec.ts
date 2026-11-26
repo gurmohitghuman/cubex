@@ -26,11 +26,12 @@ test('MCP: column_details, counts and descriptions', async () => {
     { timeout: 15_000 }).toEqual([])
 
   // changed names the column whose description changed; the sheet's own names none.
-  const described = await call(client, 'set_description', { sheet_id: sheetId, column: 'val',
+  const described = await call(client, 'manage_column', { action: 'describe', sheet_id: sheetId, column: 'val',
     description: '  The value \n' })
   expect(described).toMatchObject({ column: 'val', description: 'The value' })
   expect(described.changed).toEqual([expect.objectContaining({ sheet_id: sheetId, columns: ['val'], rows: 0 })])
-  const sheetWords = await call(client, 'set_description', { sheet_id: sheetId, description: 'Seeded rows' })
+  const sheetWords = await call(client, 'manage_sheet', {
+    action: 'describe', sheet_id: sheetId, description: 'Seeded rows' })
   expect(sheetWords).toMatchObject({ description: 'Seeded rows' })
   expect(sheetWords.changed).toEqual([expect.objectContaining({ sheet_id: sheetId, columns: [], rows: 0 })])
 
@@ -44,18 +45,21 @@ test('MCP: column_details, counts and descriptions', async () => {
   expect(by.Upper).toMatchObject({ kind: 'formula', reads: ['val'], fill: { formula: '{{val}}.toUpperCase()' } })
 
   // A rename carries the description; a delete takes it.
-  await call(client, 'rename_column', { sheet_id: sheetId, column: 'val', new_name: 'Value' })
+  await call(client, 'manage_column', { action: 'rename', sheet_id: sheetId, column: 'val', new_name: 'Value' })
   const renamed = await call(client, 'get_sheet', { sheet_id: sheetId, columns: ['Value'] })
   expect(renamed.column_details.find((d: any) => d.name === 'Value').description).toBe('The value')
   // An empty description clears it: null in the answer, none in get_sheet.
-  expect(await call(client, 'set_description', { sheet_id: sheetId, column: 'Value', description: '' }))
+  expect(await call(client, 'manage_column', {
+    action: 'describe', sheet_id: sheetId, column: 'Value', description: '' }))
     .toMatchObject({ column: 'Value', description: null })
   const cleared = await call(client, 'get_sheet', { sheet_id: sheetId, columns: ['Value'] })
   expect(cleared.column_details[0].description ?? null).toBeNull()
   expect(await callError(client, 'get_sheet', { sheet_id: sheetId, columns: ['Nope'] })).toContain('"Nope"')
-  expect(await callError(client, 'set_description', { sheet_id: sheetId, column: 'Nope', description: 'x' }))
+  expect(await callError(client, 'manage_column', {
+    action: 'describe', sheet_id: sheetId, column: 'Nope', description: 'x' }))
     .toContain('not found')
-  const added = await call(client, 'add_column', { sheet_id: sheetId, name: 'Notes', description: 'Free text' })
+  const added = await call(client, 'manage_column', {
+    action: 'add', sheet_id: sheetId, name: 'Notes', description: 'Free text' })
   expect(added).toMatchObject({ name: 'Notes', description: 'Free text' })
   expect(added.changed).toEqual([expect.objectContaining({ sheet_id: sheetId, columns: ['Notes'] })])
   await client.close()
@@ -63,7 +67,8 @@ test('MCP: column_details, counts and descriptions', async () => {
   // A read token reads them and can't write them.
   const reader = await mcpClient(await makeAccessToken(api, ['read'], 'e2e details read'))
   expect((await call(reader, 'get_sheet', { sheet_id: sheetId })).description).toBe('Seeded rows')
-  expect(await callError(reader, 'set_description', { sheet_id: sheetId, description: 'x' })).toContain('write')
+  expect(await callError(reader, 'manage_sheet', {
+    action: 'describe', sheet_id: sheetId, description: 'x' })).toContain('write')
   await reader.close()
 })
 

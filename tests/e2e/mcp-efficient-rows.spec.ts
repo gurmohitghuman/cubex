@@ -68,8 +68,9 @@ test('efficient MCP rows: query, batch update, idempotent copy and atomic move',
   expect(count.count).toBe(4)
 
   const batch = parsed(await client.callTool({
-    name: 'update_cells',
+    name: 'change_rows',
     arguments: {
+      action: 'update',
       sheet_id: sourceId,
       updates: ids.rows.slice(0, 2).map((row: any, i: number) => ({ row_id: row.id, data: { val: `edited${i}` } })),
     },
@@ -103,8 +104,9 @@ test('efficient MCP rows: query, batch update, idempotent copy and atomic move',
   expect(destinationRows.rows[0].data.Value).toBe('edited0')
 
   const rollback = await client.callTool({
-    name: 'update_cells',
+    name: 'change_rows',
     arguments: {
+      action: 'update',
       sheet_id: sourceId,
       updates: [
         { row_id: ids.rows[0].id, data: { val: 'must-not-stick' } },

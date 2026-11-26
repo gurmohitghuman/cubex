@@ -1,6 +1,6 @@
 // The writers of column_order that take a list from outside the sheet (column-order-writers.test.ts allows them)
 // never drop a name the sheet lists, so they never leave a transform_column pass under a name that's gone:
-// set_column_order, REST's PUT /v1/sheets/:id/columns/order and the app's reorder (services/column-reorder.ts)
+// manage_column's reorder, REST's PUT /v1/sheets/:id/columns/order and the app's reorder (services/column-reorder.ts)
 // refuse a list missing a column, changing nothing; a setup version restored (services/setup-version-*.ts) keeps a
 // column the version doesn't have, after the version's column it followed.
 import assert from 'node:assert/strict'

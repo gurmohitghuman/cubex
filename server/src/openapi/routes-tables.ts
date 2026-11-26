@@ -6,7 +6,7 @@ import { COLUMN_DELETE_WAIT_MS, MAX_SHEET_NAME_LENGTH, MAX_TABLE_NAME_LENGTH } f
 import { MAX_COLUMN_DESCRIPTION_CHARS, MAX_SHEET_DESCRIPTION_CHARS } from '../lib/constants-columns';
 import { ROW_COUNT_API_WAIT_MS } from '../lib/constants-row-counts';
 import { op, type RouteDoc } from './route-doc';
-import { toolBody } from './tool-schemas';
+import { SORT_FIELDS } from '../mcp/tools-sheet-sort';
 
 const tableName = z.string().max(MAX_TABLE_NAME_LENGTH).describe('The table name.');
 const sheetName = z.string().max(MAX_SHEET_NAME_LENGTH);
@@ -104,7 +104,7 @@ export const tableRoutes = (): RouteDoc[] => [
   op({
     method: 'post', path: '/sheets/{id}/sort', operationId: 'sortSheet', tag: 'tables', scope: 'write',
     summary: 'Sort the rows by a column, for good. The new order is saved.',
-    body: toolBody('sort_sheet', { omit: ['sheet_id'] }),
+    body: z.object(SORT_FIELDS),
   }),
   op({
     method: 'post', path: '/sheets/{id}/copy', operationId: 'copySheet', tag: 'tables', scope: 'write',

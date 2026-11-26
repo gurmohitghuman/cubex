@@ -19,7 +19,8 @@ test('save, compare and restore a setup version from the sheet menu', async ({ p
     .toBeTruthy()
   const client = await mcpClient(await makeToken(api, ['read', 'write', 'run'], 'setup versions ui'))
   await call(client, 'formula_column', { sheet_id: sheetId, column: 'Domain', formula: '{{Website}}?.split(".")[0]' })
-  await call(client, 'set_description', { sheet_id: sheetId, column: 'Name', description: 'Who signed up' })
+  await call(client, 'manage_column', {
+    action: 'describe', sheet_id: sheetId, column: 'Name', description: 'Who signed up' })
 
   await page.setViewportSize({ width: 1280, height: 800 })
   await context.addCookies((await api.storageState()).cookies)
@@ -42,8 +43,8 @@ test('save, compare and restore a setup version from the sheet menu', async ({ p
   await shot(page, 'setup-versions-list')
 
   // The sheet changes while the dialog is open.
-  await call(client, 'delete_column', { sheet_id: sheetId, column: 'Domain' })
-  await call(client, 'set_description', { sheet_id: sheetId, column: 'Name', description: 'Changed' })
+  await call(client, 'manage_column', { action: 'delete', sheet_id: sheetId, column: 'Domain' })
+  await call(client, 'manage_column', { action: 'describe', sheet_id: sheetId, column: 'Name', description: 'Changed' })
   await page.getByTestId('setup-version-compare').click()
   await expect(page.getByTestId('setup-version-section-add_back')).toContainText('Domain')
   await expect(page.getByTestId('setup-version-section-restore')).toContainText('Name')

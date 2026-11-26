@@ -189,7 +189,7 @@ test('MCP 2026-07-28: a write is credited to the token that made it', async () =
     return res.structuredContent as Record<string, any>
   }
   const { rows } = await call('read_rows', { sheet_id: sheetId, limit: 1 })
-  await call('delete_rows', { sheet_id: sheetId, row_ids: [rows[0].id] })
+  await call('change_rows', { action: 'delete', sheet_id: sheetId, row_ids: [rows[0].id] })
   const { changes: [newest] } = await call('get_sheet_history', { sheet_id: sheetId, limit: 1 })
   expect({ action: newest.action, via: newest.via, token_name: newest.token_name, by: newest.by })
     .toEqual({ action: 'rows_deleted', via: 'mcp', token_name: name, by: `the token "${name}" (MCP)` })

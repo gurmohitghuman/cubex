@@ -2,7 +2,7 @@
 // first read and their first write (write-lock-kit.ts). Each takes the write
 // lock first (.immediate()), so the other writer waits for it instead of the
 // call failing with SQLITE_BUSY_SNAPSHOT ("database is locked"): append_rows,
-// delete_rows, a column rename's switch, a duplicate removal's chunks, a new
+// change_rows' delete, a column rename's switch, a duplicate removal's chunks, a new
 // webhook's column, the keys a pasted cURL command saves, the column
 // registry's repair (which, failed, left the columns unlisted until a restart),
 // the grid's row delete (which answered 500) and first-run setup.
@@ -48,12 +48,12 @@ await ok("append_rows meeting another connection's commit adds its rows", async 
   assert.deepEqual(cells(S, 'Email'), ['a@x.com', 'b@x.com', 'c@x.com'])
 })
 
-await ok("delete_rows meeting another connection's commit deletes its rows", async () => {
+await ok("change_rows' delete meeting another connection's commit deletes its rows", async () => {
   const S = sheet(['Email'], emails('a@x.com', 'b@x.com', 'c@x.com'))
   const shot = rival.arm({ inTx: true, sql: /^SELECT 1 FROM ai_runs WHERE sheet_id = \? AND user_id = \? AND status/ })
   const out = await attempt(() => deleteRowsByIds(S, uid, ids(S).slice(0, 2)))
   await rival.settled()
-  assert.ok('value' in out && 'ok' in out.value, `delete_rows ${threw(out)}`)
+  assert.ok('value' in out && 'ok' in out.value, `change_rows' delete ${threw(out)}`)
   assert.equal(shot.outcome, 'blocked', 'it held the write lock from its start')
   assert.equal(out.value.ok.deleted, 2)
   assert.deepEqual(cells(S, 'Email'), ['c@x.com'])

@@ -1,5 +1,5 @@
 // The guides of the reading tools (guide.ts says what a guide holds).
-import { ROWS_BY_ID_MAX } from '../../lib/api-v1-constants';
+import { MCP_EXPORT_MAX_CHARS, ROWS_BY_ID_MAX } from '../../lib/api-v1-constants';
 import { COLUMN_COUNTS_MAX_COLUMNS } from '../../lib/constants-columns';
 import { IMPORT_GARBLED_SAMPLES } from '../../lib/constants-clean';
 import { INCLUDE_STATUS_HELP, VIEW_HELP, WHERE_LANGUAGE } from '../where-schema';
@@ -28,6 +28,12 @@ export const READ_GUIDES: Record<string, ToolGuide> = {
         + 'updated_since and dedupe by id; deleted rows don\'t show. It takes only columns, include_status, limit '
         + 'and cursor.',
       'max_chars_per_cell cuts long cells and lists them in cut_cells; read those whole with row_ids.',
+      'format csv: Export sheet rows as CSV text. The CSV comes back IN YOUR CONTEXT, so a wide or long sheet is '
+        + 'EXPENSIVE: always pass columns and where. Use it only when you need CSV itself (to hand on or save as it '
+        + 'is); to reason over data, format json is cheaper and pages; for a file of any size, create_download_link. '
+        + `At most ${MCP_EXPORT_MAX_CHARS.toLocaleString('en-US')} characters come back: past that the answer says `
+        + 'truncated: true and rest says how to get the others. Values are escaped against spreadsheet formula '
+        + 'injection. It takes only columns (names, not JSON picks), where and view.',
     ],
     fields: {
       columns: COLUMNS_HELP, where: WHERE_LANGUAGE, include_status: INCLUDE_STATUS_HELP, group_by: GROUP_BY_HELP,
@@ -45,7 +51,7 @@ export const READ_GUIDES: Record<string, ToolGuide> = {
       'Also: filling_columns (their cells read "⏳ Processing..." until done), the setups of clean, formula and '
         + 'lookup columns (a lookup\'s broken says why it stopped, and kept_changing why rows it looked up may hold '
         + 'older values), active_runs and active_setup_runs (control_run cancel_all stops them all), views (pass '
-        + 'view to read_rows or export_csv) and auto_dedupe (set_auto_dedupe\'s setting, or null).',
+        + 'view to read_rows) and auto_dedupe (set_auto_dedupe\'s setting, or null).',
     ],
   },
   import_csv: { text: ['Fails on columns an active run owns.', GARBLED_HELP] },
@@ -60,7 +66,6 @@ export const READ_GUIDES: Record<string, ToolGuide> = {
         + 'making the link counts as a run start.',
     ],
   },
-  export_csv: { text: [], fields: { view: VIEW_HELP } },
   create_download_link: {
     text: ['With setup_call_id instead of sheet_id, it saves a setup call\'s items (call_setup): each item\'s inputs '
       + 'and outputs, while its results are kept.'],

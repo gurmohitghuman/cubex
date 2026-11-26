@@ -28,7 +28,6 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   list_tables: read('List tables and sheets'),
   get_sheet: read('Get sheet details'),
   read_rows: read('Read rows'),
-  export_csv: read('Export rows as CSV'),
   list_runs: read('List runs'),
   get_run_status: read('Get run status'),
   get_run_results: read('Get run results'),
@@ -41,23 +40,20 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   get_sheet_history: read("Read a sheet's change log"),
   // With auto-dedupe keeping the newest row per key, a row with a key the sheet has replaces the older row.
   append_rows: write('Append rows', true, false),
-  update_cells: write('Update cells', true, true),
-  // Deletes go to the trash (kept the days set in Settings): restore_from_trash brings them back.
-  delete_rows: write('Delete rows (to the trash)', true, true),
-  add_column: write('Add a column', false, false),
-  rename_column: write('Rename a column', true, true),
-  set_description: write('Describe a sheet or column', true, true),
-  delete_column: write('Delete a column (to the trash)', true, true),
-  // Only the order columns show in; repeating the same order changes nothing more.
-  set_column_order: write('Reorder columns', true, true),
-  sort_sheet: write('Sort a sheet (permanent reorder)', true, true),
+  // Deletes go to the trash (kept the days set in Settings): restore_from_trash brings them back. The same update
+  // or delete again changes nothing more.
+  change_rows: write('Update or delete rows (deletes go to the trash)', true, true),
+  // A second add of the same name is refused, so not idempotent; a deleted column goes to the trash.
+  manage_column: write('Add, rename, describe, reorder or delete columns (to the trash)', true, false),
   // A dry run (the default) changes nothing; a removal moves rows to the trash. Repeating it removes nothing more.
   remove_duplicates: write('Remove duplicate rows (to the trash)', true, true),
   // Rows it later removes go to the trash; the same call again changes nothing.
   set_auto_dedupe: write('Keep one row per key as rows arrive', true, true),
   manage_table: write('Create, rename or delete a table (to the trash)', true, false),
   manage_sheet_webhook: write("Set up or change a sheet's incoming webhook", true, false),
-  manage_sheet: write('Create, rename, copy, delete, reorder or test sheets (to the trash)', true, false),
+  // sort reorders the rows permanently.
+  manage_sheet: write('Create, rename, copy, delete, reorder, sort, describe or test sheets (to the trash)', true,
+    false),
   import_csv: write('Import a CSV', true, false),
   // A one-time link is not read-only (it is a credential for one transfer), so
   // careful clients ask first; open world, since the file moves outside Cubex.

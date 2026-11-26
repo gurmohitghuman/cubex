@@ -127,7 +127,7 @@ export function arrivedTouch(
   return { sheetId, columns, rows: rowIds.length, rowIds, moreComing };
 }
 
-// Rows a write edited (update_cells): each of them, one auto-dedupe then took out too, and the older rows it
+// Rows a write edited (change_rows' update): each of them, one auto-dedupe then took out too, and the older rows it
 // replaced with them, which left the sheet. replaced: its answer's list (the first AUTO_DEDUPE_LIST_IDS, 100).
 export function editedTouch(
   sheetId: string, columns: readonly string[], edited: readonly string[],

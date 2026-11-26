@@ -54,7 +54,7 @@ async function main() {
   await check('a read-only tool writes nothing, called on real data', async () => {
     const args: Record<string, Record<string, unknown>> = {
       get_sheet: { sheet_id: people, include_counts: true }, read_rows: { sheet_id: people },
-      export_csv: { sheet_id: people }, list_runs: { sheet_id: people },
+      list_runs: { sheet_id: people },
       get_run_status: { run_type: 'http', run_id: runId }, get_run_results: { run_type: 'http', run_id: runId },
       get_sheet_history: { sheet_id: people },
       check_run_condition: { sheet_id: people, rule: '{{Email}} is not empty' },
@@ -63,7 +63,7 @@ async function main() {
       list_setup_versions: { sheet_id: people }, get_usage: { sheet_id: people },
     }
     // These answer from Cubex's own data, so their call must succeed too.
-    const answers = ['get_workspace', 'list_tables', 'get_sheet', 'read_rows', 'export_csv', 'list_runs',
+    const answers = ['get_workspace', 'list_tables', 'get_sheet', 'read_rows', 'list_runs',
       'get_run_status', 'get_run_results', 'get_usage', 'list_trash', 'get_sheet_history', 'list_setups',
       'list_setup_versions', 'list_run_webhooks', 'list_saved_keys', 'check_run_condition', 'get_version',
       'get_tool_guide']
@@ -79,23 +79,25 @@ async function main() {
     }
   })
 
-  await check('add_column only adds: a taken name is refused, a new one leaves every cell as it was', async () => {
-    assert.equal(hints.add_column.destructiveHint, false)
+  // manage_column also deletes, so its hint says destructive; its add still only adds.
+  await check('manage_column add only adds: a taken name is refused, a new one leaves every cell alone', async () => {
+    assert.equal(hints.manage_column.destructiveHint, true)
     const before = snapshot()
-    assert.match(await call('add_column', { sheet_id: people, name: 'email' }, ALL), /^ERROR/)
+    assert.match(await call('manage_column', { action: 'add', sheet_id: people, name: 'email' }, ALL), /^ERROR/)
     assert.deepEqual(snapshot(), before)
-    assert.doesNotMatch(await call('add_column', { sheet_id: people, name: 'Phone' }, ALL), /^ERROR/)
+    assert.doesNotMatch(await call('manage_column', { action: 'add', sheet_id: people, name: 'Phone' }, ALL), /^ERROR/)
     assert.deepEqual(snapshot().rows, before.rows)
   })
 
   await check('restore_from_trash only adds: a restored column whose name is taken comes back renamed', async () => {
     assert.equal(hints.restore_from_trash.destructiveHint, false)
     const s = sheet('Restore', ['Name', 'Note'], [{ Name: 'Ann', Note: 'old' }])
-    assert.doesNotMatch(await call('delete_column', { sheet_id: s, column: 'Note' }, ALL), /^ERROR/)
+    assert.doesNotMatch(await call('manage_column', { action: 'delete', sheet_id: s, column: 'Note' }, ALL), /^ERROR/)
     const trashId = db.prepare('SELECT id FROM trash_items WHERE user_id = ? ORDER BY id DESC').pluck().get(uid)
-    assert.doesNotMatch(await call('add_column', { sheet_id: s, name: 'Note' }, ALL), /^ERROR/)
+    assert.doesNotMatch(await call('manage_column', { action: 'add', sheet_id: s, name: 'Note' }, ALL), /^ERROR/)
     const rowId = db.prepare('SELECT id FROM rows WHERE sheet_id = ?').pluck().get(s)
-    assert.doesNotMatch(await call('update_cells', { sheet_id: s, updates: [{ row_id: rowId, data: { Note: 'new' } }] },
+    assert.doesNotMatch(await call('change_rows', {
+      action: 'update', sheet_id: s, updates: [{ row_id: rowId, data: { Note: 'new' } }] },
       ALL), /^ERROR/)
     const before = snapshot()
     assert.doesNotMatch(await call('restore_from_trash', { trash_ids: [trashId] }, ALL), /^ERROR/)

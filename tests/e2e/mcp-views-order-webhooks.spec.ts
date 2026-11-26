@@ -8,7 +8,7 @@ import { Receiver, type Hit } from './helpers-receiver'
 // The MCP tools for what REST already had, on the same services: manage_view
 // (create a view without switching the app, read through it, change, clear,
 // delete; duplicate names, unknown columns, the Default view and read tokens
-// refused), set_column_order (rows untouched; a partial, unknown or repeated
+// refused), manage_column's reorder (rows untouched; a partial, unknown or repeated
 // order changes nothing) and manage_run_webhook (private URLs and tokens
 // without run refused, the secret shown once, a signed test notice, a new
 // secret replaces the old one, change, delete), through the real outbound
@@ -58,7 +58,7 @@ test('manage_view: create, read through it, change, clear and delete; what it re
   expect((await views()).map(v => [v.name, v.active])).toEqual([['Default', true], ['SaaS', false]])
   const through = await call(client, 'read_rows', { sheet_id: sheetId, view: 'SaaS' })
   expect(through.rows.map((r: { data: { Industry: string } }) => r.data.Industry).sort()).toEqual(['SaaS', 'saas'])
-  const csv = (await call(client, 'export_csv', { sheet_id: sheetId, view: 'SaaS' })).csv as string
+  const csv = (await call(client, 'read_rows', { format: 'csv', sheet_id: sheetId, view: 'SaaS' })).csv as string
   expect(csv.split('\r\n')[0]).toBe('"val","Industry"')
 
   expect(await callError(client, 'manage_view', { sheet_id: sheetId, action: 'create', name: 'saas' }))
@@ -91,13 +91,14 @@ test('manage_view: create, read through it, change, clear and delete; what it re
     .toMatch(/not found/)
 })
 
-test('set_column_order: the new order, rows untouched; partial, unknown or repeated orders are refused', async () => {
+test('manage_column reorder: the new order, rows untouched; partial, unknown or repeated orders refused', async () => {
   const columns = async () => (await call(client, 'get_sheet', { sheet_id: sheetId })).columns
   const cells = async () => (await call(client, 'read_rows', { sheet_id: sheetId })).rows
     .map((r: { data: Record<string, string> }) => r.data)
   const before = await cells()
   expect(await columns()).toEqual(['val', 'Industry', 'Notes'])
-  const ordered = await call(client, 'set_column_order', { sheet_id: sheetId, order: ['Notes', 'val', 'Industry'] })
+  const ordered = await call(client, 'manage_column', {
+    action: 'reorder', sheet_id: sheetId, order: ['Notes', 'val', 'Industry'] })
   expect(ordered).toMatchObject({ order: ['Notes', 'val', 'Industry'] })
   expect(ordered.changed).toEqual([expect.objectContaining({ sheet_id: sheetId, columns: ['Notes', 'val', 'Industry'],
     rows: 0 })])
@@ -105,13 +106,14 @@ test('set_column_order: the new order, rows untouched; partial, unknown or repea
   expect(await cells()).toEqual(before)
 
   const refused = async (order: string[], why: RegExp) =>
-    expect(await callError(client, 'set_column_order', { sheet_id: sheetId, order })).toMatch(why)
+    expect(await callError(client, 'manage_column', { action: 'reorder', sheet_id: sheetId, order })).toMatch(why)
   await refused(['val', 'Industry'], /Missing: Notes/)
   await refused(['Notes', 'val', 'Industry', 'Nope'], /Invalid columns in order: Nope/)
   await refused(['Notes', 'val', 'val', 'Industry'], /Duplicate column/)
-  expect(await callError(readOnly, 'set_column_order', { sheet_id: sheetId, order: ['val', 'Industry', 'Notes'] }))
+  expect(await callError(readOnly, 'manage_column', {
+    action: 'reorder', sheet_id: sheetId, order: ['val', 'Industry', 'Notes'] }))
     .toMatch(/'write' scope/)
-  expect(await callError(client, 'set_column_order', { sheet_id: 'no-such-sheet', order: ['val'] }))
+  expect(await callError(client, 'manage_column', { action: 'reorder', sheet_id: 'no-such-sheet', order: ['val'] }))
     .toMatch(/Sheet not found/)
   expect(await columns()).toEqual(['Notes', 'val', 'Industry'])
 })

@@ -39,6 +39,87 @@ export const CHANGES_RECORDED_AFTER = 'v0.8.12';
 // Newest first.
 export const AGENT_CHANGES: ReleaseChanges[] = [
   {
+    version: 'v0.8.46',
+    changes: [
+      {
+        change: 'renamed',
+        tools: ['update_cells'],
+        replaced_by: 'change_rows',
+        summary: 'update_cells is now change_rows with action "update": the same row_id and data, or sheet_id and '
+          + 'updates, and idempotency_key.',
+      },
+      {
+        change: 'renamed',
+        tools: ['delete_rows'],
+        replaced_by: 'change_rows',
+        summary: 'delete_rows is now change_rows with action "delete": the same sheet_id and row_ids.',
+      },
+      {
+        change: 'renamed',
+        tools: ['add_column'],
+        replaced_by: 'manage_column',
+        summary: 'add_column is now manage_column with action "add": the same sheet_id, name and description.',
+      },
+      {
+        change: 'renamed',
+        tools: ['rename_column'],
+        replaced_by: 'manage_column',
+        summary: 'rename_column is now manage_column with action "rename": the same sheet_id, column and new_name.',
+      },
+      {
+        change: 'renamed',
+        tools: ['delete_column'],
+        replaced_by: 'manage_column',
+        summary: 'delete_column is now manage_column with action "delete": the same sheet_id and column.',
+      },
+      {
+        change: 'renamed',
+        tools: ['set_column_order'],
+        replaced_by: 'manage_column',
+        summary: 'set_column_order is now manage_column with action "reorder": the same sheet_id and order.',
+      },
+      {
+        change: 'renamed',
+        tools: ['set_description'],
+        replaced_by: 'manage_column',
+        summary: 'set_description is now manage_column with action "describe": the same sheet_id, column and '
+          + 'description.',
+        details: 'A column\'s is manage_column with action "describe" and the same sheet_id, column and description; '
+          + 'a sheet\'s own (no column) is manage_sheet with action "describe", sheet_id and description.',
+      },
+      {
+        change: 'renamed',
+        tools: ['sort_sheet'],
+        replaced_by: 'manage_sheet',
+        summary: 'sort_sheet is now manage_sheet with action "sort": the same sheet_id, column and direction, '
+          + 'without table_id.',
+      },
+      {
+        change: 'renamed',
+        tools: ['export_csv'],
+        replaced_by: 'read_rows',
+        summary: 'export_csv is now read_rows with format "csv": the same sheet_id, columns, where and view, and '
+          + 'the same answer.',
+        details: 'Call read_rows with format "csv" and the same sheet_id, columns, where and view; its answer adds '
+          + 'data_version and row_generation, and other read_rows fields are refused with it.',
+      },
+      {
+        change: 'changed',
+        tools: ['manage_sheet'],
+        summary: 'manage_sheet takes action "sort" (column, direction) and "describe" (description) on a sheet_id '
+          + 'alone: only its other actions need table_id.',
+      },
+      {
+        change: 'changed',
+        tools: ['read_rows'],
+        summary: 'read_rows takes format "csv": the rows as CSV text in csv, from columns, where and view only, cut '
+          + 'at 40,000 characters as export_csv was.',
+        details: 'The answer adds sheet_id, sheet_name, row_count and columns, and when cut, matching_rows, '
+          + 'truncated and rest.',
+      },
+    ],
+  },
+  {
     version: 'v0.8.45',
     changes: [
       {

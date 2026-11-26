@@ -101,12 +101,12 @@ test('MCP: check, estimate, and AI / HTTP / enrichment runs that skip rows by ru
   })).sample.map((r: any) => r.passes)).toEqual([true, true, true, false])
 
   // Renaming a column rewrites the rules that name it, so a rerun still runs.
-  await call(client, 'rename_column', { sheet_id: sheetId, column: 'Tier', new_name: 'Plan' })
+  await call(client, 'manage_column', { action: 'rename', sheet_id: sheetId, column: 'Tier', new_name: 'Plan' })
   const after = await call(client, 'get_run_status', { run_type: 'http', run_id: http.run_id })
   expect(after.run_if).toBe('{{Plan}} is not empty')
   // Row 4 gets a plan: "missing" reruns take rows a rule kept out, and the rule decides again.
   const four = (await call(client, 'read_rows', { sheet_id: sheetId })).rows[3].id
-  await call(client, 'update_cells', { row_id: four, data: { Plan: 'C' } })
+  await call(client, 'change_rows', { action: 'update', row_id: four, data: { Plan: 'C' } })
   const again = await call(client, 'control_run', {
     run_type: 'http', run_id: http.run_id, action: 'rerun', mode: 'missing',
   })

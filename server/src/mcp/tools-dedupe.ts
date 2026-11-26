@@ -24,7 +24,7 @@ export function registerDedupeTool(server: McpServer, ctx: McpAuthCtx): void {
       + 'false to remove. Removed rows go to the trash as one batch, kept for the days set in Settings (30 by '
       + 'default; 0 deletes at once): the answer gives its trash_id, and restore_from_trash puts them back. '
       + 'Refused while a run is active on the sheet. Prefer it over read_rows plus '
-      + `delete_rows. ${GUIDE_POINTER}`,
+      + `change_rows delete. ${GUIDE_POINTER}`,
     inputSchema: z.object({
       sheet_id: z.string().describe(SHEET_ID),
       columns: z.array(z.union([

@@ -106,26 +106,27 @@ test('formula_column auto-run follows every input; a hand edit stays until an in
   await call(client, 'formula_column', { sheet_id: sheetId, column: 'Work email', formula: WORK })
   const ids = (await rowsOf(client, sheetId)).map(r => r.id)
 
-  await call(client, 'update_cells', { row_id: ids[1], data: { Score: '10' } })
+  await call(client, 'change_rows', { action: 'update', row_id: ids[1], data: { Score: '10' } })
   await waitForCell(client, sheetId, 1, 'Label', 'Grace (10)')
-  await call(client, 'update_cells', { row_id: ids[1], data: { First: 'Rear Admiral Grace' } })
+  await call(client, 'change_rows', { action: 'update', row_id: ids[1], data: { First: 'Rear Admiral Grace' } })
   await waitForCell(client, sheetId, 1, 'Label', 'Rear Admiral Grace (10)')
   // A response arriving later (as an HTTP run would write it) is followed too.
-  await call(client, 'update_cells', { row_id: ids[2], data: { Response: reply('alan@bletchley.uk') } })
+  await call(client, 'change_rows', {
+    action: 'update', row_id: ids[2], data: { Response: reply('alan@bletchley.uk') } })
   await waitForCell(client, sheetId, 2, 'Work email', 'alan@bletchley.uk')
   await call(client, 'append_rows', { sheet_id: sheetId, rows: [{ First: 'Barbara', Score: '5' }] })
   await waitForCell(client, sheetId, 3, 'Label', 'Barbara (5)')
 
-  await call(client, 'update_cells', { row_id: ids[0], data: { Label: 'hand fixed' } })
-  await call(client, 'update_cells', { row_id: ids[0], data: { Last: 'King' } })
+  await call(client, 'change_rows', { action: 'update', row_id: ids[0], data: { Label: 'hand fixed' } })
+  await call(client, 'change_rows', { action: 'update', row_id: ids[0], data: { Last: 'King' } })
   await new Promise(r => setTimeout(r, 1_500))
   expect((await rowsOf(client, sheetId))[0].data['Label']).toBe('hand fixed')
-  await call(client, 'update_cells', { row_id: ids[0], data: { Score: '8' } })
+  await call(client, 'change_rows', { action: 'update', row_id: ids[0], data: { Score: '8' } })
   await waitForCell(client, sheetId, 0, 'Label', 'Ada (8)')
 
   const off = await call(client, 'set_auto_run', { sheet_id: sheetId, column: 'Label', enabled: false })
   expect(off.auto_run.find((a: any) => a.column === 'Label')).toMatchObject({ kind: 'formula', enabled: false })
-  await call(client, 'update_cells', { row_id: ids[2], data: { Score: '1' } })
+  await call(client, 'change_rows', { action: 'update', row_id: ids[2], data: { Score: '1' } })
   await new Promise(r => setTimeout(r, 1_500))
   expect((await rowsOf(client, sheetId))[2].data['Label']).toBe('Alan (n/a)')
   await call(client, 'set_auto_run', { sheet_id: sheetId, column: 'Label', enabled: true })
@@ -141,23 +142,24 @@ test('formula columns follow renames and deletes', async () => {
   const sheetId = await seedPeople(api)
   const client = await mcpClient(await makeAccessToken(api, ['read', 'write'], 'e2e formula rename'), 'e2e-fr')
   await call(client, 'formula_column', { sheet_id: sheetId, column: 'Work email', formula: WORK })
-  await call(client, 'rename_column', { sheet_id: sheetId, column: 'Response', new_name: 'API reply' })
-  await call(client, 'rename_column', { sheet_id: sheetId, column: 'Work email', new_name: 'Work' })
+  await call(client, 'manage_column', {
+    action: 'rename', sheet_id: sheetId, column: 'Response', new_name: 'API reply' })
+  await call(client, 'manage_column', { action: 'rename', sheet_id: sheetId, column: 'Work email', new_name: 'Work' })
   let formulas = (await call(client, 'get_sheet', { sheet_id: sheetId })).formula_columns
   expect(formulas).toEqual([expect.objectContaining({ column: 'Work', reads: ['API reply'],
     formula: '{{API reply}}?.emails?.find(e => e.type == "work")?.value' })])
 
   const id = (await rowsOf(client, sheetId))[1].id
-  await call(client, 'update_cells', { row_id: id, data: { 'API reply': reply('grace@navy.mil') } })
+  await call(client, 'change_rows', { action: 'update', row_id: id, data: { 'API reply': reply('grace@navy.mil') } })
   await waitForCell(client, sheetId, 1, 'Work', 'grace@navy.mil')
 
   // Deleting an input keeps the values and pauses auto-run; deleting the formula column forgets it.
-  await call(client, 'delete_column', { sheet_id: sheetId, column: 'API reply' })
+  await call(client, 'manage_column', { action: 'delete', sheet_id: sheetId, column: 'API reply' })
   expect((await rowsOf(client, sheetId))[0].data['Work']).toBe('ada@acme.com')
   const view = await (await api.get(`/api/sheets/${sheetId}?limit=10&offset=0`)).json()
   expect(view.data.autorun.columns['Work']).toMatchObject({ kind: 'formula', pausedReason: 'missing_input' })
   expect(view.data.columnTypes['Work']).toBe('formula')
-  await call(client, 'delete_column', { sheet_id: sheetId, column: 'Work' })
+  await call(client, 'manage_column', { action: 'delete', sheet_id: sheetId, column: 'Work' })
   formulas = (await call(client, 'get_sheet', { sheet_id: sheetId })).formula_columns
   expect(formulas).toEqual([])
   await client.close()

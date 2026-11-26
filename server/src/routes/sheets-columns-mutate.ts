@@ -4,7 +4,7 @@ import { verifySheetOwnership } from '../lib/sql-helpers';
 import { addSheetColumn } from '../services/column-add';
 
 // POST /:id/columns — add a new column with empty values on every existing
-// row. Implementation shared with /api/v1 and the MCP add_column tool in
+// row. Implementation shared with /api/v1 and the MCP manage_column tool's add in
 // services/column-add.ts; this wrapper keeps the historical UI status codes
 // (400 for validation, collision, AND cap).
 const router = express.Router();

@@ -7,6 +7,7 @@ import { McpServer } from '@modelcontextprotocol/server';
 import { McpAuthCtx } from './tool-helpers';
 import { registerReadTools } from './tools-read';
 import { registerRowTools } from './tools-rows';
+import { registerChangeRows } from './tools-change-rows';
 import { registerColumnTools } from './tools-columns';
 import { registerRunStartTools } from './tools-run-start';
 import { registerRunManageTools } from './tools-run-manage';
@@ -95,6 +96,7 @@ export function registerAllTools(server: McpServer, ctx: McpAuthCtx) {
   registerOverviewTool(server, ctx);
   registerReadTools(server, ctx);
   registerRowTools(server, ctx);
+  registerChangeRows(server, ctx);
   registerColumnTools(server, ctx);
   registerRunStartTools(server, ctx);
   registerRunConditionTools(server, ctx);

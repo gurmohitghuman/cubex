@@ -53,15 +53,16 @@ test('lookup_column: preview, answers, contains, follow, renames, deletes, refus
 
   // Auto-run follows the source column.
   const rows = await rowsOf(client, s.leadsId)
-  await call(client, 'update_cells', { row_id: rows[2].id, data: { Domain: 'Initech.com' } })
+  await call(client, 'change_rows', { action: 'update', row_id: rows[2].id, data: { Domain: 'Initech.com' } })
   await expect.poll(async () => (await col(client, s.leadsId, 'Industry'))[2], { timeout: 10_000 }).toBe('Software')
 
   // Renaming the other sheet's columns rewrites the lookup; deleting one it reads stops it.
-  await call(client, 'rename_column', { sheet_id: s.companiesId, column: 'Industry', new_name: 'Sector' })
+  await call(client, 'manage_column', {
+    action: 'rename', sheet_id: s.companiesId, column: 'Industry', new_name: 'Sector' })
   const renamed = (await call(client, 'get_sheet', { sheet_id: s.leadsId })).lookup_columns
     .find((c: any) => c.column === 'Industry')
   expect(renamed.return_column).toBe('Sector')
-  await call(client, 'delete_column', { sheet_id: s.companiesId, column: 'Firm' })
+  await call(client, 'manage_column', { action: 'delete', sheet_id: s.companiesId, column: 'Firm' })
   const stopped = (await call(client, 'get_sheet', { sheet_id: s.leadsId })).lookup_columns
     .find((c: any) => c.column === 'Has firm')
   expect(stopped.broken).toMatch(/"Firm" in "Companies" was deleted/)

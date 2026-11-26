@@ -1,4 +1,4 @@
-// The `where` every row-selecting tool takes (read_rows, export_csv,
+// The `where` every row-selecting tool takes (read_rows, as rows or as CSV,
 // create_download_link, transfer_rows, transform_column, manage_view) and read_rows'
 // include_status. read_rows' where names every operator and group, and its guide
 // (mcp/guides) describes them in full; the other tools take the same schema and

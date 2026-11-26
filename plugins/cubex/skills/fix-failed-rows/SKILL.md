@@ -16,7 +16,7 @@ description: "Find the rows where an AI, HTTP API or enrichment run failed in a 
 
 `get_run_results` with the run's `run_type` (`ai`, `http` or `enrichment`), its `run_id` and `status_filter: "failed"` lists each failed row's error. Group them and look at the most common:
 
-- **Bad or missing input**: the prompt or request reads a cell that is empty or malformed. Fix the cells (`update_cells`, or a free `clean_column`), or keep those rows out with `run_if`.
+- **Bad or missing input**: the prompt or request reads a cell that is empty or malformed. Fix the cells (`change_rows` with `action: "update"`, or a free `clean_column`), or keep those rows out with `run_if`.
 - **Rate limits or timeouts** ("429", "Rate limited", "timed out"): rerun with a lower `concurrency`.
 - **The setup is wrong** (a prompt that confuses the model, a wrong URL or JSONPath): test the corrected setup first without paying for the sheet: `preview_rows` for AI shows a few real outputs and writes nothing; `estimate_only` checks an HTTP request. Then start it on the same column with `target_row_ids` set to the failed rows from step 1. Without `target_row_ids` a run takes every row, the ones that worked included, and bills them again. Tell the user the row count and cost and wait for a yes before you start it.
 - **Money or keys** (no credits, a missing or invalid key, a spend limit, the daily limit): tell the user. `get_balances` shows what is left; `get_run_status` shows `error_message`, and `enrichment.pause_reason` for an enrichment.
