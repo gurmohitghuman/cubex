@@ -61,22 +61,26 @@ const listedSheets = (userId: string, ids: string[]) => ids.length === 0 ? [] : 
 
 export interface HomeRuns { key: string; tables: TableRuns[] }
 
-// The runs as they are now, and their key.
-export function homeRunsNow(userId: string): HomeRuns {
+// The runs the home lists (on a listed sheet), with their key and tables. A run it doesn't list (a setup call's
+// hidden table, a test copy) changes nothing it shows, so it isn't in the key either and never wakes a wait.
+function listedRuns(userId: string): HomeRuns {
   const rows = runsNow(userId);
-  return { key: keyOf(rows), tables: byTable(rows, listedSheets(userId, [...new Set(rows.map(r => r.sheet_id))])) };
+  const sheets = listedSheets(userId, [...new Set(rows.map(r => r.sheet_id))]);
+  const listed = new Set(sheets.map(s => s.id));
+  const shown = rows.filter(r => listed.has(r.sheet_id));
+  return { key: keyOf(shown), tables: byTable(shown, sheets) };
 }
+
+// The runs as they are now, and their key.
+export const homeRunsNow = (userId: string): HomeRuns => listedRuns(userId);
 
 // The home's wait: the runs once their key is no longer `since`, checked every `everyMs`, or as they are at
 // `until`. `stopped` ends it early (the page left); it then answers nothing anyone reads.
 export async function homeRunsWhenChanged(userId: string, since: string | null, until: number, everyMs: number,
   stopped: () => boolean): Promise<HomeRuns> {
   for (;;) {
-    const rows = runsNow(userId);
-    const key = keyOf(rows);
-    if (key !== since || Date.now() >= until || stopped()) {
-      return { key, tables: byTable(rows, listedSheets(userId, [...new Set(rows.map(r => r.sheet_id))])) };
-    }
+    const now = listedRuns(userId);
+    if (now.key !== since || Date.now() >= until || stopped()) return now;
     await new Promise(r => setTimeout(r, everyMs));
   }
 }

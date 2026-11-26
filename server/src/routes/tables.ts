@@ -2,7 +2,7 @@ import express from 'express';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { UUID_PATTERN } from '../lib/constants';
 import {
-  listSheets, getSheetForClient, getTableForClient, listTablesForClient, listTestSheets,
+  listSheets, getSheetForClient, getTableForClient, laterOf, listTablesForClient, listTestSheets, sheetsLastChanged,
 } from '../lib/sheet-crud-helpers';
 import { sheetListKey } from '../lib/sheet-list-key';
 import { getTrashDays } from '../lib/trash/store';
@@ -13,7 +13,7 @@ import { createSampleTable } from '../services/sample-table';
 import { homeCounts, homeCountsWhenMade, liveSheets } from '../services/table-row-counts';
 import { homeRuns, homeRunsWhenChanged } from '../services/table-runs';
 import { acquireCountWait, acquireRunsWait } from '../lib/long-poll-holds';
-import { ROW_COUNT_HOLD_MS } from '../lib/constants-row-counts';
+import { HOME_RUNS_CHECK_MS, HOME_RUNS_HOLD_MS, ROW_COUNT_HOLD_MS } from '../lib/constants-row-counts';
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -22,11 +22,14 @@ router.use(authenticateToken);
 // table whose rows changed since they were last counted answers that count with row_count_updating, and the home
 // then waits for the new one (GET /row-counts). runs: its runs going now and paused (services/table-runs.ts), left
 // out when it has none; the home then follows them (GET /runs). starred and last_opened_at: the home's Favorites
-// and Recent tabs (migration 064).
+// and Recent tabs (migration 064). updated_at: when the table or one of its live sheets last changed (every write
+// to a sheet touches its updated_at; the table's own moves only on a rename or a restore). The API's lists keep the
+// table's own.
 router.get('/', (req: AuthRequest, res) => {
   try {
     // Explicit client columns (no user_id): each row is spread into the response below.
     const tables = listTablesForClient(req.userId!);
+    const sheetsChanged = sheetsLastChanged(req.userId!);
     const sheets = liveSheets(req.userId!);
     const counts = homeCounts(req.userId!, sheets);
     const runs = homeRuns(req.userId!, sheets);
@@ -36,7 +39,8 @@ router.get('/', (req: AuthRequest, res) => {
       sheetsByTable.get(s.table_id)!.push({ id: s.id });
     }
     res.json(tables.map(t => ({
-      ...t, sheets: sheetsByTable.get(t.id) || [],
+      ...t, updated_at: laterOf(t.updated_at, sheetsChanged.get(t.id)),
+      sheets: sheetsByTable.get(t.id) || [],
       row_count: counts.get(t.id)?.row_count ?? 0, row_count_updating: counts.get(t.id)?.row_count_updating ?? false,
       ...(runs.has(t.id) ? { runs: runs.get(t.id) } : {}),
     })));
@@ -69,21 +73,20 @@ router.get('/row-counts', async (req: AuthRequest, res) => {
 });
 
 // GET /runs?since=<key>: every table's runs going now and paused once they differ from `since` (the key the last
-// answer gave; none: answers at once), checked once a second and held up to RUNS_HOLD_MS. 429 with Retry-After when
+// answer gave; none: answers at once), checked once a second and held up to HOME_RUNS_HOLD_MS. 429 with Retry-After when
 // the account already holds MAX_RUNS_WAITS_PER_USER of these (other tabs of the home). Leaving lets go at once.
-const RUNS_HOLD_MS = 25_000;
-const RUNS_CHECK_MS = 1_000;
 router.get('/runs', async (req: AuthRequest, res) => {
   const release = acquireRunsWait(req.userId!);
   if (!release) {
-    res.set('Retry-After', String(RUNS_HOLD_MS / 1000));
+    res.set('Retry-After', String(HOME_RUNS_HOLD_MS / 1000));
     return res.status(429).json({ error: 'Too many home pages are open. Close one, then reload this page.' });
   }
   let closed = false;
   res.on('close', () => { closed = true; release(); });
   const since = typeof req.query.since === 'string' ? req.query.since : null;
   try {
-    const runs = await homeRunsWhenChanged(req.userId!, since, Date.now() + RUNS_HOLD_MS, RUNS_CHECK_MS, () => closed);
+    const runs = await homeRunsWhenChanged(req.userId!, since, Date.now() + HOME_RUNS_HOLD_MS, HOME_RUNS_CHECK_MS,
+      () => closed);
     if (!closed) res.json(runs);
   } catch (error) {
     console.error('Get runs error:', error);

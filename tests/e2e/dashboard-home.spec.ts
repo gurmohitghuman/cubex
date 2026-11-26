@@ -212,7 +212,8 @@ test('Runs: a run started, paused and stopped elsewhere shows as it goes, and li
   }
 })
 
-test('Import CSV from the New table button: a table named after the file, opened with its rows', async ({ page }) => {
+test('Import CSV from the New table button: a table named after the file (a taken name gets "(2)"), opened',
+  async ({ page }) => {
   await signIn(page)
   const name = `people ${Date.now()}`
   await page.goto(`${BASE}/`)
@@ -229,4 +230,41 @@ test('Import CSV from the New table button: a table named after the file, opened
   // The list's count is made again after the import; it reads 2 once made.
   await expect.poll(async () => ((await (await api.get('/api/tables')).json()) as Array<{ name: string;
     row_count: number }>).find(t => t.name === name)?.row_count, { timeout: 15_000 }).toBe(2)
+
+  // The same file again: its name is taken, so the table is "<name> (2)", not an error.
+  await page.goto(`${BASE}/`)
+  const again = page.waitForEvent('filechooser')
+  await page.getByTestId('new-table-menu').click()
+  await page.getByTestId('new-table-import').click()
+  await (await again).setFiles({
+    name: `${name}.csv`, mimeType: 'text/csv', buffer: Buffer.from('Name\nKai\n'),
+  })
+  await expect(page).toHaveURL(/\/table\/[^/]+\/[^/]+$/, { timeout: 15_000 })
+  await expect(page.getByText(`1 row imported into "${name} (2)".`)).toBeVisible({ timeout: 15_000 })
+})
+
+// A hidden home (its tab behind another) lets its held Runs wait go at once, so background tabs don't hold the
+// browser's few connections to the server, and asks again, without a key, the moment it is shown.
+test('a hidden home lets its Runs wait go, and asks again at once when shown', async ({ page }) => {
+  await signIn(page)
+  const asks: string[] = []
+  const dropped: string[] = []
+  page.on('request', r => { if (r.url().includes('/api/tables/runs')) asks.push(r.url()) })
+  page.on('requestfailed', r => { if (r.url().includes('/api/tables/runs')) dropped.push(r.url()) })
+  const show = (hidden: boolean) => page.evaluate(h => {
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => h })
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => (h ? 'hidden' : 'visible') })
+    document.dispatchEvent(new Event('visibilitychange'))
+  }, hidden)
+  await page.goto(`${BASE}/`)
+  // The first ask answers at once; the next carries its key and is held.
+  await expect.poll(() => asks.filter(u => u.includes('since=')).length, { timeout: 10_000 }).toBeGreaterThan(0)
+  await show(true)
+  await expect.poll(() => dropped.length, { timeout: 5_000 }).toBeGreaterThan(0)
+  const whileHidden = asks.length
+  await page.waitForTimeout(1_500)
+  expect(asks.length, 'nothing asked while hidden').toBe(whileHidden)
+  await show(false)
+  await expect.poll(() => asks.length, { timeout: 5_000 }).toBeGreaterThan(whileHidden)
+  expect(asks[whileHidden], 'shown: asked without a key, so it answers at once').not.toContain('since=')
 })

@@ -105,6 +105,17 @@ export function listTablesForClient(userId: string): TableClientRow[] {
   return rows.map(tableForClient);
 }
 
+// When each table's live sheets last changed (every write to a sheet touches its updated_at), for the home's Updated:
+// a table's own updated_at moves only on a rename or a restore. A test copy's changes aren't the table's.
+export function sheetsLastChanged(userId: string): Map<string, string> {
+  const rows = db.prepare(`SELECT table_id, MAX(updated_at) AS at FROM sheets
+    WHERE user_id = ? AND trash_id IS NULL AND test_of IS NULL GROUP BY table_id`).all(userId) as Array<{
+    table_id: string; at: string }>;
+  return new Map(rows.map(r => [r.table_id, r.at]));
+}
+// The later of two of SQLite's datetime('now') times (one fixed-width format, so text order is time order).
+export const laterOf = (a: string, b?: string): string => (b && b > a ? b : a);
+
 // A table's sheets as the app and the API list them (SHEET_CLIENT_COLUMNS).
 export type SheetListRow = { id: string; table_id: string; name: string; position: number; [k: string]: unknown };
 export function listSheets(tableId: string, userId: string): SheetListRow[] {
