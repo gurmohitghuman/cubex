@@ -91,6 +91,22 @@ Measured with a script on the same laptop while other work ran, on a sheet of 1,
 
 Writing to a sheet without auto-dedupe costs nothing measurable. The keys take about 85 MB for a million emails. While an import's rows are checked, the sheet stays busy, so auto-run doesn't start on rows that are about to go.
 
+### Rows with big cells
+
+A row holding an API answer can be 16 to 200 KB, and SQLite writes a changed row whole, every page of it. So a big job that rewrites, moves or deletes rows takes as many a transaction as fit about 8 MB of them (half that for a move, which writes each row twice), and still up to 5,000 rows when they are small. Measured with each disk checkpoint slowed by 300 ms, on 6,000 rows of 16 KB (or 1,200 rows of 100 KB for the trash and duplicates):
+
+| Job | Biggest transaction before | After | Longest hold before | After |
+|---|---|---|---|---|
+| Prepare a run's rows (16 KB) | 20,185 pages, 79 MB of WAL | 2,025 pages | 244 ms | 43 ms |
+| Rename a column (16 KB) | 20,097 pages | 2,014 pages | 228 ms | 35 ms |
+| Delete a column (16 KB) | 20,101 pages | 2,011 pages | 160 ms | 24 ms |
+| Take an import out again (16 KB) | 20,393 pages | 2,112 pages | 100 ms | 23 ms |
+| Rows into the trash, or back (100 KB) | 12,292 pages | 1,946 pages | 72 to 88 ms | 16 to 20 ms |
+| Empty the trash (100 KB) | 29,410 pages, 116 MB of WAL | 1,946 pages | 165 ms | 14 ms |
+| Remove duplicates (100 KB) | 12,294 pages | 1,948 pages | 67 ms | 39 ms |
+
+Before, the WAL grew past its 64 MB limit; now it stays under 54 MB. Each job took the same time or less. The size check costs about 0.3 ms a slice of small rows, about 0.05 s over a million rows.
+
 ### The trash
 
 Deleted rows go to the trash, a slice at a time. Measured with a script on the same laptop while other work ran, on a sheet of 1,000,000 rows and 10 columns (a 1.1 GB database):

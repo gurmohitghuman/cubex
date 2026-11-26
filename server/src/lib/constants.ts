@@ -111,6 +111,12 @@ export const COLUMN_REPAIR_SLICE_ROWS = 20_000;
 // delete, run placeholders): each slice stays well under 100 ms, so the server
 // answers other requests between slices (lib/slices.ts).
 export const HEAVY_SLICE_ROWS = 5_000;
+// Within that, a slice that rewrites, moves or deletes whole rows ends at this many bytes of them (lib/slice-bytes.ts,
+// octet_length read from each row's header): SQLite writes a changed row's whole record again, every page of its
+// cells, and zeroes what it frees (secure_delete). 5,000 rows holding a 16 KB answer each wrote about 20,000 frames
+// (80 MB of WAL, past journal_size_limit) in one commit and held the server 160 to 244 ms. A move writes each row
+// twice (into the trash and out of the rows), so it counts half. Rows under about 1.6 KB still go 5,000 a slice.
+export const HEAVY_SLICE_BYTES = 8_000_000;
 // A slice of a CSV import, a clean, formula or lookup column's fill or follow, or a column added from an answer also
 // stops once it has taken this long (one row at least; lib/slice-clock.ts), and a run start's seed takes as many rows
 // as fit it while such columns read the run's (lib/placeholder-cells.ts). Sized by rows alone, a slice of 5,000

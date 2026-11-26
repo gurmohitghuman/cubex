@@ -1,6 +1,6 @@
 import { db } from './db';
 import { oneTransaction } from './slices';
-import { COLUMN_TRASH_SLICE_ROWS } from './constants';
+import { COLUMN_TRASH_SLICE_ROWS, HEAVY_SLICE_BYTES } from './constants';
 import { jsonPath } from './sql-rows';
 import { eachRowIdSlice, sheetRowIds } from './row-order';
 import { stayBusyToFinish, whenSheetFree } from './sheet-busy';
@@ -96,7 +96,7 @@ export async function purgeColumnKey(sheetId: string, userId: string, name: stri
         copyCellsToItem(item, sheetId, userId, name, path, ids);
         stripSlice(ids);
       });
-    }, { rows: COLUMN_TRASH_SLICE_ROWS, checkpointed: true });
+    }, { rows: COLUMN_TRASH_SLICE_ROWS, checkpointed: true, bytes: HEAVY_SLICE_BYTES / 2 });
   }
   if (item === null) forgetPurge(sheetId, name);
   else {

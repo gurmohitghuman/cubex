@@ -15,8 +15,8 @@ import { FIRST_TIMED_PAGE, pageByTime } from '../services/derived-write';
 // seeded on every target row at run start, replaced by each processed row, and
 // cleared from whatever is left when a run is cancelled or fails (each such
 // cell back to what it held before the run). On a sheet of a million rows both
-// are heavy, so they work HEAVY_SLICE_ROWS rows at a time, one short
-// transaction each (lib/slices.ts): the server keeps answering, and SQLite's
+// are heavy, so they work HEAVY_SLICE_ROWS rows at a time (fewer as fit
+// HEAVY_SLICE_BYTES), one short transaction each (lib/slices.ts): the server keeps answering, and SQLite's
 // write lock is free between slices for autosave, webhooks and workers.
 export { PLACEHOLDER };
 
@@ -47,7 +47,8 @@ export { PLACEHOLDER };
 // clear from the ⏳. They start on the spans once the clear has ended (it
 // kicks them in the API process: lib/run-placeholders.ts; a run worker's
 // clear, a failed run's, leaves them to the auto-run sweep). A slice is
-// HEAVY_SLICE_ROWS rows. On the server's thread each slice commits with
+// HEAVY_SLICE_ROWS rows, or fewer as fit HEAVY_SLICE_BYTES (lib/row-order.ts:
+// rows holding big cells). On the server's thread each slice commits with
 // SQLite's own checkpoint off, its WAL copied back on the checkpoint worker's
 // thread (lib/bulk-slices.ts); on a job thread it is checkpointed after it
 // when columns read these from the start (lib/row-order.ts). Journal lookups
@@ -132,7 +133,8 @@ export async function clearProcessingPlaceholders(
 // finishes). Telling reads the slice's cells once more (a third or more of the
 // slice's time), so while columns read these a slice takes as many rows as fit
 // BULK_SLICE_MS at the last such slice's pace (pageByTime), up to
-// HEAVY_SLICE_ROWS; without readers a slice is HEAVY_SLICE_ROWS rows.
+// HEAVY_SLICE_ROWS; without readers a slice is HEAVY_SLICE_ROWS rows. Either
+// way no more than fit HEAVY_SLICE_BYTES (lib/row-order.ts).
 export async function seedProcessingPlaceholders(args: {
   run: RunRef; sheetId: string; userId: string; columns: string[];
   targets: number[] | null; lastRow: number; skip?: Set<number>; live: () => boolean;
