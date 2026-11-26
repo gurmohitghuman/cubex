@@ -49,6 +49,7 @@ import { resumeSorts } from './services/sheet-sort';
 import { resumeDuplicateRemovals } from './services/dedupe-remove';
 import { resumeImports } from './lib/import-undo';
 import { resumeTrashRestores } from './services/trash-restore';
+import { sealLeftDeletes } from './services/trash-rows-sliced';
 import { resumeRunUndos } from './services/run-undo';
 import { resumeFieldJobs } from './services/answer-field-fill';
 import { resumeDerivedFills } from './services/derived-fill';
@@ -247,12 +248,14 @@ createAccountFromEnv().then((result) => {
   // 004, 010's column fills, 024's clean and 025's formula column fills, 026's
   // duplicate removals, 036's restores from the trash, 041's run undos, 047's
   // sheet copies). Each marks its sheet busy synchronously, before the first request.
+  // A row delete cut short keeps what went, its trash batch sealed (services/trash-rows-sliced.ts).
   // A sheet being tested on a copy is read-only again; a test that was ending finishes (migration 070).
   resumeSheetTests();
   resumeSorts();
   resumeDuplicateRemovals();
   resumeImports();
   resumeSheetCopies();
+  sealLeftDeletes();
   resumeTrashRestores();
   resumeRunUndos();
   resumeRunRewrites();

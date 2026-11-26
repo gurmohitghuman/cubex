@@ -4,7 +4,7 @@ import express from 'express';
 import { verifySheetOwnership } from '../lib/sql-helpers';
 import { requireScope, TokenAuthRequest } from '../middleware/access-token-auth';
 import { parseCellMap, failResponse, rawIdempotencyKey } from './api-v1-shared';
-import { appendAnswer, appendRows, patchAnswer, patchRowById, deleteRowsByIds } from '../services/rows-write';
+import { appendAnswer, appendRows, patchAnswer, patchRowById, deleteRowsByIdsSliced } from '../services/rows-write';
 import { trashAnswer } from '../services/trash-answer';
 import {
   API_V1_MAX_APPEND_ROWS, API_V1_MAX_BATCH_UPDATES, API_V1_MAX_DELETE_ROWS, API_V1_MAX_PATCH_CELLS,
@@ -141,7 +141,7 @@ router.post('/sheets/:id/rows/update', requireScope('write'), (req: TokenAuthReq
 });
 
 // POST /v1/sheets/:id/rows/delete — bulk delete by stable row ids, into the trash.
-router.post('/sheets/:id/rows/delete', requireScope('write'), (req: TokenAuthRequest, res) => {
+router.post('/sheets/:id/rows/delete', requireScope('write'), async (req: TokenAuthRequest, res) => {
   try {
     const sheetId = req.params.id;
     if (!verifySheetOwnership(sheetId, req.userId!)) return res.status(404).json({ error: 'Sheet not found' });
@@ -153,7 +153,7 @@ router.post('/sheets/:id/rows/delete', requireScope('write'), (req: TokenAuthReq
       return res.status(400).json({ error: `Cannot delete more than ${API_V1_MAX_DELETE_ROWS} rows per call.` });
     }
 
-    const result = deleteRowsByIds(sheetId, req.userId!, rawIds as string[]);
+    const result = await deleteRowsByIdsSliced(sheetId, req.userId!, rawIds as string[]);
     if ('fail' in result) return failResponse(res, result);
     res.json({
       deleted: result.ok.deleted,
