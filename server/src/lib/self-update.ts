@@ -80,9 +80,12 @@ export function lockHeld(text: string | null, now: number, isAlive: (pid: number
 }
 
 // The update's last lines, its terminal colors dropped.
-function logTail(home: string): string {
-  // Windows PowerShell writes UTF-8 with a byte order mark (bin/cubex-update-run.ps1).
-  const text = (read(file(home, 'update.log')) ?? '').replace(/^\uFEFF/, '').replace(/\u001b\[[0-9;]*[A-Za-z]/g, '');
+// `frozen`: the lines the updater kept as it ended (Windows: Cubex, started by the update, can go on writing to
+// update.log), else update.log as it is now.
+function logTail(home: string, frozen: string | null = null): string {
+  // A byte order mark at the start of either, as Windows PowerShell may write one.
+  const text = (frozen ?? read(file(home, 'update.log')) ?? '').replace(/^\uFEFF/, '')
+    .replace(/\u001b\[[0-9;]*[A-Za-z]/g, '');
   return text.split(/\r?\n/).filter(l => l.trim()).slice(-LOG_LINES).join('\n').slice(-LOG_CHARS);
 }
 
@@ -99,7 +102,8 @@ export function updateRun(now = Date.now()): UpdateRun | null {
   const ended = code !== null || !lockHeld(read(file(home, 'update.lock')), now);
   return {
     state: !ended ? 'running' : code === 0 ? 'done' : 'failed',
-    from, to, started_at: text('started_at'), ended_at: text('ended_at'), code, log: logTail(home),
+    from, to, started_at: text('started_at'), ended_at: text('ended_at'), code,
+    log: logTail(home, ended ? text('log') : null),
   };
 }
 

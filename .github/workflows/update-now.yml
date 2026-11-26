@@ -4,8 +4,8 @@ name: Update now
 # tests/install/update-now.sh (update-now.ps1 on Windows) installs this commit from its checkout with the installer,
 # labels it the release before the latest and sets it to follow releases. Then, through the button's own request
 # with a session: an update to a build that doesn't start must put the version before back with the data as it was,
-# and the real update to the latest release must come through with the password and a sheet made before. An API
-# token is refused. Nothing is pushed or tagged.
+# and an update to a newer build of the commit must come through with the password and a sheet made before. An API
+# token is refused. The release check answers from a local stand-in. Nothing is pushed or tagged.
 # On pull requests and pushes to main that touch the updater, the installers or this check; or by hand.
 
 on:

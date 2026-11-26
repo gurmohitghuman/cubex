@@ -149,6 +149,11 @@ await ok('how a run reads back: done, failed with its last lines, gone without a
   // As Windows PowerShell writes it: UTF-8 with a byte order mark (bin/cubex-update-run.ps1).
   put('update.log', '\uFEFFInstalling Cubex\r\nThe new version didn\'t start, so the previous one is back.\r\n')
   assert.equal(su.updateRun()!.log, 'Installing Cubex\nThe new version didn\'t start, so the previous one is back.')
+  // Ended with its lines kept (Windows): those, though Cubex, started by the update, went on writing to update.log.
+  put('update-status.json', JSON.stringify({ from: 'v0.8.46', to: 'v0.8.47', code: 1,
+    log: '\uFEFFBuilt Cubex\nThe new version didn\'t start, so the previous one is back.' }))
+  put('update.log', 'Built Cubex\nThe new version didn\'t start, so the previous one is back.\nCubex server running\n')
+  assert.equal(su.updateRun()!.log, 'Built Cubex\nThe new version didn\'t start, so the previous one is back.')
   put('update-status.json', '{"from":"v0.8.46","to":"v0.8.47","started_at":"x"}')
   put('update.lock', `${deadPid()}\n`)
   assert.deepEqual([su.updateRun()!.state, su.updateRun()!.code], ['failed', null])

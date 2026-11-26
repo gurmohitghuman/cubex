@@ -5,8 +5,10 @@
 # 1. An update whose new version doesn't start: install.env's CUBEX_SOURCE points `cubex update` at a copy of the
 #    checkout whose server exits at start. The installer must put the version before back with the data as it was,
 #    and Settings must say the update failed, with what it said.
-# 2. The real update: the latest release, as `cubex update` installs it for everyone. Cubex must come back on it, the
-#    updater must have written exit code 0, and the password and a sheet made before must read back as they were.
+# 2. An update that comes through: CUBEX_SOURCE points `cubex update` at a newer build of the commit (a local commit
+#    on top). Cubex must come back on it, the updater must have written exit code 0, and the password and a sheet
+#    made before must read back as they were. Not the latest release: this commit can hold a migration that release
+#    doesn't, and an older build refuses a newer database (update-now.sh says more).
 # Nothing is pushed or tagged. Usage: tests\install\update-now.ps1 <checkout>; CUBEX_HOME and TEST_PORT may be set
 # (by default a new folder under the temp folder, and port 3002).
 param([Parameter(Mandatory = $true)][string]$Checkout)
@@ -28,6 +30,9 @@ trap {
   foreach ($f in 'update-status.json', 'update.log', 'logs\cubex.log') {
     "--- $f"; Get-Content (Join-Path $CubexHome $f) -Tail 60 -ErrorAction SilentlyContinue
   }
+  # The stand-in and Cubex stopped, so a run after this one finds its ports free.
+  if ($script:standin) { Stop-Process -Id $script:standin.Id -ErrorAction SilentlyContinue }
+  if (Test-Path $Cli) { & $Cli stop *> $null }
   break
 }
 
@@ -210,15 +215,23 @@ if ($v.self_update.run.log -notmatch 'the previous one is back') {
 Assert-AsBefore
 Installed
 
-Step "2. The real update, to $Latest`: Cubex comes back on it with the data"
-Set-InstallEnv 'CUBEX_SOURCE' ''
+Step '2. An update that comes through, to a newer build of the commit: Cubex comes back on it with the data'
+$newer = Join-Path $Work 'newer'
+& git clone --quiet --no-hardlinks $Src $newer
+& git -C $newer checkout --quiet (& git -C $Src rev-parse HEAD).Trim()
+& git -C $newer -c 'user.name=Update now check' -c user.email=check@example.invalid commit --quiet --allow-empty `
+  -m 'A newer build (update-now.ps1)'
+$newerSha = (& git -C $newer rev-parse HEAD).Trim()
+Set-InstallEnv 'CUBEX_SOURCE' $newer
 Sign-In
-Press-Update "to $Latest"
+Press-Update "to the newer build $($newerSha.Substring(0, 7))"
 Wait-Updater
 if ((Get-Status).code -ne 0) { throw "The update ended with code $((Get-Status).code)." }
-if (-not (Installed).StartsWith("Installed: $Latest ")) { throw "Not on $Latest`: $(Installed)" }
+# "local <short commit> <date>": the short commit as the installer's git abbreviated it.
+$kind, $short = (Get-Content -Raw (Join-Path $CubexHome 'app\.cubex-version')).Trim() -split '\s+'
+if ($kind -ne 'local' -or -not $short -or -not $newerSha.StartsWith($short)) { throw "Not on $newerSha`: $(Installed)" }
 Assert-AsBefore
 Installed
-''; 'Update now works here: a failed update rolled back with the data, and the real one came through.'
+''; 'Update now works here: a failed update rolled back with the data, and the next one came through.'
 & $Cli stop
 Stop-Process -Id $standin.Id -ErrorAction SilentlyContinue

@@ -6,8 +6,11 @@
 # 1. An update whose new version doesn't start: install.env's CUBEX_SOURCE points `cubex update` at a copy of the
 #    checkout whose server exits at start. The installer must put the version before back with the data as it was,
 #    and Settings must say the update failed, with what it said.
-# 2. The real update: the latest release, as `cubex update` installs it for everyone. Cubex must come back on it, the
-#    updater must have written exit code 0, and the password and a sheet made before must read back as they were.
+# 2. An update that comes through: CUBEX_SOURCE points `cubex update` at a newer build of the commit (a local commit
+#    on top). Cubex must come back on it, the updater must have written exit code 0, and the password and a sheet
+#    made before must read back as they were. Not the latest release: this commit can hold a migration that release
+#    doesn't, and an older build refuses a newer database. The release's own download is checked by the installers'
+#    workflows, and an update from the last release with the button before the next one is announced.
 # Nothing is pushed or tagged. Usage: tests/install/update-now.sh <checkout>; CUBEX_HOME, CUBEX_BIN_DIR and
 # TEST_PORT may be set (by default a new folder under the temp folder, and port 3002).
 set -euo pipefail
@@ -136,7 +139,8 @@ require('http').createServer((req, res) => {
 JS
 "$CUBEX_HOME/node/bin/node" "$WORK/standin.js" "$LATEST" "$STANDIN_PORT" &
 STANDIN=$!
-trap 'kill "$STANDIN" 2>/dev/null || true' EXIT
+# However it ends: the stand-in and Cubex stopped, so a run after this one finds its ports free.
+trap 'kill "$STANDIN" 2>/dev/null || true; "$CLI" stop > /dev/null 2>&1 || true' EXIT
 printf '\nRELEASE_CHECK_URL=http://127.0.0.1:%s/latest\n' "$STANDIN_PORT" >> "$CUBEX_HOME/config.env"
 
 step "Label it $LABEL, following releases, and start it again"
@@ -197,15 +201,23 @@ jq -r .self_update.run.log <<< "$version" | grep -q 'the previous one is back' \
 as_before
 installed
 
-step "2. The real update, to $LATEST: Cubex comes back on it with the data"
-sed -i.bak -e "s/^CUBEX_SOURCE=.*/CUBEX_SOURCE=''/" "$CUBEX_HOME/install.env"
+step "2. An update that comes through, to a newer build of the commit: Cubex comes back on it with the data"
+git clone --quiet --no-hardlinks "$SRC" "$WORK/newer"
+git -C "$WORK/newer" checkout --quiet "$(git -C "$SRC" rev-parse HEAD)"
+git -C "$WORK/newer" -c user.name='Update now check' -c user.email=check@example.invalid commit --quiet \
+  --allow-empty -m 'A newer build (update-now.sh)'
+NEWER="$(git -C "$WORK/newer" rev-parse HEAD)"
+sed -i.bak -e "s|^CUBEX_SOURCE=.*|CUBEX_SOURCE=$WORK/newer|" "$CUBEX_HOME/install.env"
 rm -f "$CUBEX_HOME/install.env.bak"
 signed_in
-press_update "to $LATEST"
+press_update "to the newer build ${NEWER:0:7}"
 updater_done
 [ "$(jq -r .code <<< "$(status_file)")" = 0 ] || fail "The update ended with code $(jq -r .code <<< "$(status_file)")."
-case "$(cat "$CUBEX_HOME/app/.cubex-version")" in "$LATEST "*) ;; *) fail "Not on $LATEST: $(installed)" ;; esac
+# "local <short commit> <date>": the short commit as the installer's git abbreviated it.
+read -r kind short _ < "$CUBEX_HOME/app/.cubex-version"
+[ "$kind" = local ] && [ -n "$short" ] && [ "${NEWER#"$short"}" != "$NEWER" ] \
+  || fail "Not on ${NEWER:0:7}: $(installed)"
 as_before
 installed
-echo; echo "Update now works here: a failed update rolled back with the data, and the real one came through."
+echo; echo "Update now works here: a failed update rolled back with the data, and the next one came through."
 "$CLI" stop || true
