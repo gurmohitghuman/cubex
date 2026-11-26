@@ -38,9 +38,10 @@ jobs:
           if [ "$EVENT" != "pull_request" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; exit 0; fi
           changed=$(git diff --name-only "$BASE...$HEAD")
           echo "$changed"
-          # Docs, unit tests, other workflows and notes alone don't change what the suite tests.
+          # Docs, unit tests, other workflows and notes alone don't change what the suite tests. sidequest.jobs.cjs is
+          # read by the server at run time (every AI and HTTP run's worker finds its jobs there); .npmrc by the install.
           ships='^(client/|server/|scripts/|tests/e2e/|tests/mock-treg/|package(-lock)?\.json$'
-          ships="$ships|playwright\.config\.ts$|\.github/workflows/e2e\.yml$)"
+          ships="$ships|playwright\.config\.ts$|\.github/workflows/e2e\.yml$|sidequest\.jobs\.cjs$|\.npmrc$)"
           if echo "$changed" | grep -qE "$ships"; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
