@@ -62,8 +62,10 @@ const client = new Client({ name: 'unit', version: '1.0.0' })
 type Answer = { isError?: boolean; structuredContent?: Record<string, unknown>; content: { text: string }[] }
 async function transform(args: Record<string, unknown>, stop: 'rows' | 'time' = 'rows') {
   // The WAL started over on the worker first: a first page that found every frame copied would await that, and the
-  // clock's jump below could land before it.
-  if (stop === 'time') await checkpointInBackground()
+  // clock's jump below could land before it. So for a call held at the row limit: its clock stands still, but its
+  // waits end on real timers, so on a slow disk such a wait could take its time and it would only answer that it
+  // waited.
+  await checkpointInBackground()
   frozen = stop === 'rows' ? realNow() : null
   const out = client.callTool({ name: 'transform_column', arguments: args }) as Promise<Answer>
   // The time limit: the clock jumps past it once the call has begun.

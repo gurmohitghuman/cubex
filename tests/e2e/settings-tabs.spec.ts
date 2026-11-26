@@ -37,7 +37,8 @@ test('settings tabs: redirect, per-tab content, navigation', async ({ page, cont
   await shot(page, 'tab-2-http')
 
   // Agent access: MCP connect card (endpoint + Claude command) + tokens.
-  await page.getByRole('link', { name: 'Agent access' }).click()
+  await page.getByRole('navigation', { name: 'Settings sections' })
+    .getByRole('link', { name: 'Agent access' }).click()
   await expect(page).toHaveURL(/\/settings\/agents$/)
   await expect(page.getByRole('heading', { name: 'Connect an AI agent' })).toBeVisible()
   await expect(page.getByText(/claude mcp add --scope user --transport http cubex/)).toBeVisible()
@@ -49,7 +50,8 @@ test('settings tabs: redirect, per-tab content, navigation', async ({ page, cont
   await page.getByRole('link', { name: 'Account' }).click()
   await expect(page).toHaveURL(/\/settings\/account$/)
   await expect(page.getByRole('heading', { name: 'Change password' })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible()
+  // The tab's own Sign out (the sidebar has one too).
+  await expect(page.getByRole('main').getByRole('button', { name: 'Sign out' })).toBeVisible()
   await shot(page, 'tab-4-account')
 
   // Browser back walks the tab history (route-backed, not local state).
