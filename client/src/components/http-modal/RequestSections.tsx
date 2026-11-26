@@ -29,10 +29,12 @@ interface RequestProps {
 const CURL_PASTE_RE =
   /^\s*(?:(?:\$|%|>|#|PS[^>\n]*>|[A-Za-z]:\\[^>\n]*>)\s*)?(?:sudo\s+)?(?:[A-Za-z_]\w*=\S*\s+)*curl(?:\.exe)?\s/i
 
-export function MasterColumnField({ masterColumnName, setMasterColumnName, errors }: {
+export function MasterColumnField({ masterColumnName, setMasterColumnName, errors, locked }: {
   masterColumnName: string
   setMasterColumnName: (v: string) => void
   errors: Record<string, string>
+  // Editing a column: its name stays (rename it from its menu).
+  locked?: boolean
 }) {
   return (
     <div>
@@ -40,7 +42,7 @@ export function MasterColumnField({ masterColumnName, setMasterColumnName, error
       <input
         type="text"
         value={masterColumnName}
-        onChange={(e) => setMasterColumnName(e.target.value)}
+        onChange={(e) => setMasterColumnName(e.target.value)} disabled={locked}
         placeholder="e.g., Email Verification, Company Lookup"
         className={`input w-full ${errors.masterColumnName ? '!border-red-300' : ''}`}
       />

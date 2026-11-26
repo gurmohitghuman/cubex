@@ -10,7 +10,11 @@ import type { DedupeTab } from '@/components/dedupe/RemoveDuplicatesModal'
 export const useSheetModals = () => {
   const [showImportModal, setShowImportModal] = useState(false)
   const [showAddColumnModal, setShowAddColumnModal] = useState(false)
-  const [showHTTPAPIColumnModal, setShowHTTPAPIColumnModal] = useState(false)
+  const [showHTTPAPIColumnModal, setShowHTTP] = useState(false)
+  // The HTTP API column its menu's Edit opened the dialog on (null: a new column), forgotten on close.
+  const [httpEditColumn, setHttpEditColumn] = useState<string | null>(null)
+  const setShowHTTPAPIColumnModal = useCallback((b: boolean) => { setShowHTTP(b); if (!b) setHttpEditColumn(null) }, [])
+  const openHttpEdit = useCallback((column: string) => { setHttpEditColumn(column); setShowHTTP(true) }, [])
   const [showEnrichmentDrawer, setShowEnrichmentDrawer] = useState(false)
   // What the grid asks the enrichment drawer to open with: a column to edit
   // (it becomes the sheet's draft), or a run to watch, shown over the draft
@@ -56,6 +60,7 @@ export const useSheetModals = () => {
   const [saveSetupFor, setSaveSetupFor] = useState<{ column: string | null } | null>(null)
   const openSaveSetup = useCallback((column: string | null) => setSaveSetupFor({ column }), [])
   const [showUseSetup, setShowUseSetup] = useState(false)
+  const [showRunColumns, setShowRunColumns] = useState(false)
   // Setup versions: open on this sheet (the tab menu can open another tab's).
   const [versionsFor, setVersionsFor] = useState<string | null>(null)
   const [confirmTopbarDeleteOpen, setConfirmTopbarDeleteOpen] = useState(false)
@@ -63,7 +68,7 @@ export const useSheetModals = () => {
   return {
     showImportModal, setShowImportModal,
     showAddColumnModal, setShowAddColumnModal,
-    showHTTPAPIColumnModal, setShowHTTPAPIColumnModal,
+    showHTTPAPIColumnModal, setShowHTTPAPIColumnModal, httpEditColumn, openHttpEdit,
     showEnrichmentDrawer, setShowEnrichmentDrawer,
     enrichOpen, clearEnrichOpen: () => setEnrichOpen(null), openEnrichment,
     enrichWatch, stopEnrichWatch: () => setEnrichWatch(null),
@@ -77,6 +82,7 @@ export const useSheetModals = () => {
     openAutoDedupe: () => { setShowWebhookDrawer(false); openDedupe('auto') },
     saveSetupFor, openSaveSetup, closeSaveSetup: () => setSaveSetupFor(null),
     showUseSetup, setShowUseSetup,
+    showRunColumns, setShowRunColumns,
     versionsFor, openVersions: setVersionsFor, closeVersions: () => setVersionsFor(null),
     confirmTopbarDeleteOpen, setConfirmTopbarDeleteOpen,
   }

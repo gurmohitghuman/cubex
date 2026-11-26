@@ -1,0 +1,421 @@
+{
+ "endpoint": {
+  "id": "crawl4ai.youtube.channel.videos",
+  "provider": "crawl4ai",
+  "provider_display": "Crawl4AI",
+  "name": "A YouTube channel's latest videos",
+  "summary": "List the latest videos of a YouTube channel, newest first, with title, link, publish time, views and thumbnail.",
+  "method": "POST",
+  "path": "/recipes/youtube-channel-videos",
+  "scope": "any_account",
+  "tier": "core",
+  "kind": "data",
+  "domain": "channel",
+  "call_template": "treg call crawl4ai.youtube.channel.videos",
+  "cost": {
+   "type": "per_success",
+   "value": 0.9,
+   "currency": "credit",
+   "per": 1,
+   "unit": "call",
+   "source": "observed",
+   "source_url": "https://api.crawl4ai.com/recipes",
+   "checked": "2026-10-31",
+   "confidence": "verified",
+   "note": "treg's account price: 0.9 credits a call whatever pages the run fetched, second-source records included; a reply with no rows, a refused input and a failed run are free. The x-c4-cost header settles the actual charge.",
+   "usd": 0.0009
+  },
+  "async": null,
+  "platform_eligible": true,
+  "platform_blocked": null,
+  "miss": null,
+  "status": null,
+  "status_note": null,
+  "superseded_by": null,
+  "verified": "2026-10-11",
+  "added": "2026-10-11",
+  "docs_url": "https://crawl4ai.com/llms.txt",
+  "has_example": true,
+  "input": {
+   "bodyType": "json",
+   "body": {
+    "channel": {
+     "type": "string",
+     "required": true,
+     "note": "a channel id (UC\u2026), a handle (@name or name) or a channel URL",
+     "example": "sample"
+    },
+    "limit": {
+     "type": "integer",
+     "required": false,
+     "note": "at most 30; default 15"
+    }
+   }
+  },
+  "body_allowlist": true,
+  "capability": "youtube.channel.videos",
+  "capability_description": "List a channel's videos",
+  "platform": "youtube",
+  "platform_label": "YouTube",
+  "observed": {
+   "samples": 32193,
+   "decided": 31986,
+   "ok_rate": 1.0,
+   "p50_ms": 525,
+   "p95_ms": 2561,
+   "last_ok_days": 0,
+   "hit_rate": 0.8381,
+   "hit_samples": 31984
+  },
+  "wallet": {
+   "payable": true,
+   "protocols": [
+    "mpp"
+   ],
+   "minimum_payment_micro": 10000,
+   "fee_bps": 0,
+   "note": "pay per call with a wallet, no account. A payment is at least $0.01; the call is charged only its real price, and the rest stays as this wallet's credit for its next calls (credit is not paid back as money)."
+  }
+ },
+ "provider": {
+  "service": "crawl4ai",
+  "display_name": "Crawl4AI",
+  "limits": "Prepaid credits, 1 credit = $0.001 at the $10 pack. A page already in Crawl4AI's archive costs half; the effort a page needed sets the rest (x0.5 archived, x1 light/standard, x2 browser, x4 the site fought back). Every priced answer carries its exact charge in x-c4-cost (credits) and the running balance in x-c4-balance; a batch line carries \"cost\" and the stream ends with a {\"summary\": {\"cost\": \u2026}} line; a finished job reports usage.cost. Blocked (403), unreachable (502) and fleet-busy (503) answers are not charged. Out of credit answers 402 no_credit, the account's own monthly cap 402 spend_cap, the plan's monthly allowance 402 plan_cap; per-plan pace limits answer 429 with X-RateLimit-* headers. GET /v1/billing/balance trails the per-call header by about a minute.",
+  "pricing_url": "https://api.crawl4ai.com/v1/prices",
+  "docs": "https://api.crawl4ai.com/docs"
+ },
+ "siblings": [
+  {
+   "id": "justoneapi.x.youtube-get-channel-videos-v1",
+   "provider": "justoneapi",
+   "provider_display": "Just One API",
+   "name": "YouTube channel videos by channel id",
+   "scope": "",
+   "kind": "data",
+   "cost": {
+    "type": "per_success",
+    "value": 0.1,
+    "currency": "CNY",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.01476
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "channelId",
+    "cursor"
+   ],
+   "observed": {
+    "samples": 389,
+    "decided": 308,
+    "ok_rate": 1.0,
+    "p50_ms": 1920,
+    "p95_ms": 4014,
+    "last_ok_days": 4,
+    "hit_rate": 0.013,
+    "hit_samples": 308
+   }
+  },
+  {
+   "id": "scrapecreators.x.v1-youtube-channel-videos",
+   "provider": "scrapecreators",
+   "provider_display": "ScrapeCreators",
+   "name": "YouTube channel videos by id or username \u2014 views, dates",
+   "scope": "",
+   "kind": "data",
+   "cost": {
+    "type": "per_call",
+    "value": 1,
+    "currency": "credit",
+    "per": 1,
+    "unit": "call",
+    "reported_charge": {
+     "path": "credits_charged",
+     "unit": "credit"
+    },
+    "usd": 0.00188
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": null,
+   "params": [
+    "channelId",
+    "handle",
+    "sort",
+    "continuationToken",
+    "is_paid_promotions",
+    "includeExtras"
+   ],
+   "observed": {
+    "samples": 75334,
+    "decided": 75137,
+    "ok_rate": 0.9619,
+    "p50_ms": 6759,
+    "p95_ms": 11507,
+    "last_ok_days": 0,
+    "hit_rate": null,
+    "hit_samples": 0
+   },
+   "reviews": {
+    "teams": 10,
+    "share": {
+     "useful": 0.94,
+     "partly": 0.0,
+     "not_useful": 0.06
+    }
+   }
+  },
+  {
+   "id": "tikhub.youtube.channel.videos",
+   "provider": "tikhub",
+   "provider_display": "TikHub",
+   "name": "YouTube channel videos by channel id",
+   "scope": "any_account",
+   "kind": "data",
+   "cost": {
+    "type": "per_call",
+    "value": 0.001,
+    "currency": "USD",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.001
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "channel_id",
+    "language_code",
+    "country_code",
+    "continuation_token",
+    "need_format"
+   ],
+   "observed": {
+    "samples": 51335,
+    "decided": 51177,
+    "ok_rate": 0.9962,
+    "p50_ms": 1159,
+    "p95_ms": 2936,
+    "last_ok_days": 0,
+    "hit_rate": 0.9592,
+    "hit_samples": 50984
+   },
+   "reviews": {
+    "teams": 0
+   }
+  },
+  {
+   "id": "treg.youtube.channel.videos",
+   "provider": "treg",
+   "provider_display": "treg",
+   "name": "youtube.channel.videos \u2014 routed: best of 2 providers, own keys first",
+   "scope": "",
+   "kind": "routed",
+   "cost": {
+    "type": "per_success",
+    "value": 0.001,
+    "currency": "USD",
+    "per": 1,
+    "unit": "call",
+    "varies": true,
+    "usd": 0.001
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": null,
+   "params": [
+    "channel_id"
+   ],
+   "observed": {
+    "samples": 18424,
+    "decided": 18414,
+    "ok_rate": 0.9788,
+    "p50_ms": null,
+    "p95_ms": null,
+    "last_ok_days": 0,
+    "hit_rate": null,
+    "hit_samples": 0
+   },
+   "reviews": {
+    "teams": 0
+   }
+  },
+  {
+   "id": "youtube.youtube.channel.videos",
+   "provider": "youtube",
+   "provider_display": "YouTube",
+   "name": "List your YouTube videos, private and unlisted included",
+   "scope": "own_account",
+   "kind": "data",
+   "cost": {
+    "type": "free",
+    "value": 0,
+    "currency": "USD",
+    "unit": "call",
+    "usd": 0.0
+   },
+   "platform_eligible": false,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "part",
+    "forMine",
+    "type",
+    "order",
+    "maxResults",
+    "pageToken"
+   ],
+   "observed": {
+    "samples": 4206,
+    "decided": 2018,
+    "ok_rate": 0.9985,
+    "p50_ms": 371,
+    "p95_ms": 797,
+    "last_ok_days": 0,
+    "hit_rate": null,
+    "hit_samples": 0
+   }
+  },
+  {
+   "id": "youtube.youtube.channel.videos.uploads",
+   "provider": "youtube",
+   "provider_display": "YouTube",
+   "name": "List a channel's videos via its uploads playlist id",
+   "scope": "any_account",
+   "kind": "data",
+   "cost": {
+    "type": "free",
+    "value": 0,
+    "currency": "USD",
+    "unit": "call",
+    "usd": 0.0
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "part",
+    "playlistId",
+    "maxResults",
+    "pageToken"
+   ],
+   "observed": {
+    "samples": 4172,
+    "decided": 2182,
+    "ok_rate": 1.0,
+    "p50_ms": 335,
+    "p95_ms": 677,
+    "last_ok_days": 0,
+    "hit_rate": null,
+    "hit_samples": 0
+   }
+  }
+ ],
+ "related_capabilities": [
+  {
+   "endpoint_id": "treg.youtube.channel.profile",
+   "capability": "youtube.channel.profile",
+   "does": "A channel's profile & lifetime stats"
+  },
+  {
+   "endpoint_id": "treg.youtube.search.videos",
+   "capability": "youtube.search.videos",
+   "does": "Search videos by keyword"
+  },
+  {
+   "endpoint_id": "treg.youtube.video.comments",
+   "capability": "youtube.video.comments",
+   "does": "List a video's comments"
+  },
+  {
+   "endpoint_id": "treg.youtube.video.detail",
+   "capability": "youtube.video.detail",
+   "does": "Get a video's metadata & stats"
+  }
+ ],
+ "call_template": "treg call crawl4ai.youtube.channel.videos",
+ "example_response": {
+  "meta": {
+   "blocked": [],
+   "elapsed_ms": 0,
+   "from_cache": false,
+   "llm_calls": 0,
+   "pages_fetched": 1,
+   "partial": false,
+   "warnings": []
+  },
+  "recipe": "youtube-channel-videos",
+  "rows": [
+   {
+    "description": null,
+    "published": "1 days ago",
+    "thumbnail": "https://www.example.com/sample.jpg",
+    "title": "My week, part 1",
+    "url": "https://www.youtube.com/watch?v=sampleyt0",
+    "video_id": "sampleyt0",
+    "views": 3000
+   },
+   {
+    "description": null,
+    "published": "2 days ago",
+    "thumbnail": "https://www.example.com/sample.jpg",
+    "title": "My week, part 2",
+    "url": "https://www.youtube.com/watch?v=sampleyt1",
+    "video_id": "sampleyt1",
+    "views": 4500
+   },
+   {
+    "description": null,
+    "published": "3 days ago",
+    "thumbnail": "https://www.example.com/sample.jpg",
+    "title": "My week, part 3",
+    "url": "https://www.youtube.com/watch?v=sampleyt2",
+    "video_id": "sampleyt2",
+    "views": 6000
+   },
+   {
+    "description": null,
+    "published": "4 days ago",
+    "thumbnail": "https://www.example.com/sample.jpg",
+    "title": "My week, part 4",
+    "url": "https://www.youtube.com/watch?v=sampleyt3",
+    "video_id": "sampleyt3",
+    "views": 9000
+   },
+   {
+    "description": null,
+    "published": "5 days ago",
+    "thumbnail": "https://www.example.com/sample.jpg",
+    "title": "My week, part 5",
+    "url": "https://www.youtube.com/watch?v=sampleyt4",
+    "video_id": "sampleyt4",
+    "views": 1500
+   }
+  ],
+  "usage": {
+   "boxes": [
+    "gate"
+   ],
+   "cache": "miss",
+   "engine": "recipe",
+   "lines": [],
+   "units": 1
+  },
+  "version": 3
+ },
+ "hints": []
+}

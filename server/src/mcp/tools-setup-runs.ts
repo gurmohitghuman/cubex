@@ -1,23 +1,28 @@
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/server';
-import { MAX_SETUP_TEST_ROWS } from '../lib/constants-setups';
+import { MAX_COLUMN_RUN_COLUMNS, MAX_COLUMN_RUN_ROW_IDS, MAX_SETUP_TEST_ROWS } from '../lib/constants-setups';
 import { RUN_SPEND_LIMIT_MAX_USD } from '../lib/constants';
 import { applySetup } from '../services/setup-apply';
 import { applyInputOf } from '../services/setup-apply-input';
 import { getSetupRun, sheetSetupRuns } from '../services/setup-run-store';
 import { controlSetupRun } from '../services/setup-run-control';
+import { runColumns } from '../services/column-run';
+import { COLUMN_RUN_MODES, columnRunInputOf } from '../services/column-run-input';
+import { whereLike } from './where-schema';
 import { SHEET_ID, McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean } from './tool-helpers';
 import { changedOf, type Changed } from './changed';
 
 // A setup run's sheet and the columns its steps fill, with work going on.
 const setupChanged = (userId: string, run: { sheet_id: string; steps: Array<{ column: string }> }): Changed[] =>
   changedOf(userId, [{ sheetId: run.sheet_id, columns: run.steps.map(s => s.column), moreComing: true }]);
-import { capToolNote } from '../lib/token-spend';
+import { capRunToolNote } from '../lib/token-spend';
+import { GUIDE_POINTER } from './guides/guide';
 
 const names = z.record(z.string(), z.string());
 
 // Using a saved setup on a sheet (services/setup-apply.ts, setup-runner.ts):
-// apply_setup, get_setup_run, control_setup_run.
+// apply_setup, get_setup_run, control_setup_run; and run_columns, which runs
+// a sheet's own run columns on chosen rows as a setup run (services/column-run.ts).
 export function registerSetupRunTools(server: McpServer, ctx: McpAuthCtx): void {
   registerTool(server, 'apply_setup', {
     description:
@@ -26,16 +31,14 @@ export function registerSetupRunTools(server: McpServer, ctx: McpAuthCtx): void 
       + 'COSTS MONEY: AI steps call your model per row, enrichments spend your treg balance, HTTP API '
       + 'steps send a request per row; clean and formula steps are free. '
       + 'ESTIMATE_ONLY DEFAULTS TO TRUE: the first call prices each step and starts nothing; tell the user, then '
-      + 'call again with estimate_only:false. A step whose columns this setup made before CARRIES THEM ON, filling '
-      + 'only rows it hasn\'t done: call again with the same inputs and names to fill new rows or finish a stopped '
-      + 'run (get_setup_run shows the choices a run used). Auto-run is turned on only after a run on every row. '
+      + 'call again with estimate_only:false. Called again with the same inputs and names, it carries on the '
+      + 'columns it made. Auto-run is turned on only after a run on every row. '
       + 'Saved keys in its requests need the "secrets" scope. COST CEILING: max_cost_usd refuses to start (nothing '
       + 'is created) when the estimate\'s high end, plus one row\'s most for each AI step, is above it, or when a '
-      + 'step has no known price unless allow_unpriced is true. Each started AI and enrichment step gets a spend '
-      + 'limit within what is left of the ceiling (one with no known price runs without one). Returns a setup_run '
+      + 'step has no known price unless allow_unpriced is true. Returns a setup_run '
       + 'with each step\'s run_id (get_run_status '
       + 'works on those); follow it with get_setup_run.'
-      + capToolNote(ctx.spend ?? null, true),
+      + capRunToolNote(ctx.spend ?? null) + ` ${GUIDE_POINTER}`,
     inputSchema: z.object({
       sheet_id: z.string().describe(SHEET_ID),
       setup_id: z.string().describe('The setup (list_setups)'),
@@ -71,9 +74,47 @@ export function registerSetupRunTools(server: McpServer, ctx: McpAuthCtx): void 
     return ok({ ...out.ok, changed: run ? setupChanged(ctx.userId, run) : [] });
   });
 
+  registerTool(server, 'run_columns', {
+    description:
+      'Run several of a sheet\'s run columns (AI, HTTP API, enrichment, waterfall) again in one call, each with '
+      + 'its own settings, on the rows mode picks, among row_ids or the rows a where matches. '
+      + 'COSTS MONEY as each column\'s rerun does. ESTIMATE_ONLY DEFAULTS TO TRUE: the first call prices each '
+      + 'column and starts nothing; tell the user, then call again with estimate_only:false. max_cost_usd refuses '
+      + 'to start (nothing is created) when the estimate could pass it; once started, each AI, enrichment and '
+      + 'waterfall column gets a spend limit from what is left. To change a column\'s setup use its own tool. '
+      + 'Returns a setup_run: follow it with get_setup_run; control_setup_run pauses, resumes or stops it.'
+      + capRunToolNote(ctx.spend ?? null) + ` ${GUIDE_POINTER}`,
+    inputSchema: z.object({
+      sheet_id: z.string().describe(SHEET_ID),
+      columns: z.array(z.string()).min(1).max(MAX_COLUMN_RUN_COLUMNS)
+        .describe('Run columns by name (any column a run fills names that run)'),
+      mode: z.enum(COLUMN_RUN_MODES).describe('Rows of each column: empty (never run, or left by its rule), errored '
+        + '(❌), out_of_date (made from inputs changed since), empty_or_out_of_date, all (every row again)'),
+      row_ids: z.array(z.string()).min(1).max(MAX_COLUMN_RUN_ROW_IDS).optional()
+        .describe('Only among these rows (read_rows ids)'),
+      where: whereLike('Only among the rows it passes; it may not read a column the run changes.').optional(),
+      estimate_only: lenientBoolean().optional().describe('Default true: price it, start nothing'),
+      webhook_id: z.string().optional().describe('A run webhook (list_run_webhooks) to notify when it finishes'),
+      max_cost_usd: z.number().positive().max(RUN_SPEND_LIMIT_MAX_USD).optional()
+        .describe('Refuse to start when the estimate could cost more than this many dollars in all'),
+      allow_unpriced: lenientBoolean().optional()
+        .describe('With max_cost_usd: start even when a column has no known price (default false)'),
+    }).strict(),
+  }, async ({ sheet_id, ...a }) => {
+    const denied = missingScope(ctx, 'run');
+    if (denied) return denied;
+    const input = columnRunInputOf(a, 'mcp');
+    if ('fail' in input) return err(input.message);
+    const out = await runColumns(ctx.userId, sheet_id, input, { hasSecretsScope: ctx.scopes.has('secrets') });
+    if ('fail' in out) return err(out.message + (out.estimate ? ` Estimate: ${JSON.stringify(out.estimate)}` : ''));
+    const run = 'setup_run' in out.ok ? out.ok.setup_run : undefined;
+    return ok({ ...out.ok, changed: run ? setupChanged(ctx.userId, run) : [] });
+  });
+
   registerTool(server, 'get_setup_run', {
     description:
-      'Where a setup being used on a sheet is: running, paused, done, failed or cancelled, the layer it\'s on, '
+      'Where a setup being used on a sheet (or a run_columns run) is: running, paused, done, failed or cancelled, '
+      + 'the layer it\'s on, '
       + 'and each step\'s state, run_id and note (why it failed, or that its auto-run wasn\'t turned on), and the '
       + 'choices it was used with. Pass setup_run_id, or sheet_id for the sheet\'s latest ones (with setup_id, '
       + 'that setup\'s). Read-only. Next: control_setup_run, or apply_setup again to carry it on.',

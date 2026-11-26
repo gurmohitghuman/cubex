@@ -1,4 +1,4 @@
-// List jobs (people.search, companies.search, google.serp.organic): like
+// List jobs (people.search, companies.search, google.serp.organic, YouTube search, comments): like
 // live treg, each provider answers with its own row shape (treg doesn't make
 // them alike) under the contract's list field, at most `limit` rows. Rows are
 // a pure function of the search (a domain, a name or a query) and the
@@ -38,6 +38,15 @@ const ROWS = {
     name: `${slug(key)} peer ${i + 1}`, domain: `${slug(key)}-peer-${i + 1}.example`, industry: 'Software',
     employees: 50 + i * 10, ...(provider === 'akta' ? { country: 'US' } : {}),
   }),
+  // A social research table's YouTube search (one provider's shape: lib/social/platforms.ts) and its comments.
+  videos: (provider, i, key) => ({
+    video_id: `vid${slug(key).slice(0, 6)}${i}`, title: `${key}: my week ${i + 1}`, author: `Channel ${i + 1}`,
+    number_of_views: 90000 - i * 1000, published_time: `${i + 1} days ago`, channel_id: `UC${i}sample`,
+  }),
+  comments: (provider, i, key) => ({
+    id: `c-${slug(key).slice(-12)}-${i}`, comment_id: `c-${slug(key).slice(-12)}-${i}`, text: `Comment ${i + 1}`,
+    author: PEOPLE[i % PEOPLE.length].split(' ')[0].toLowerCase(), likes: 10 - i, replies: i % 3,
+  }),
   results: (provider, i, key) => ({
     position: i + 1, title: `Result ${i + 1} for ${key}`, link: `https://site${i + 1}.example/${slug(key)}`,
     snippet: `What ${provider} found about ${key}.`,
@@ -62,7 +71,8 @@ export function listAnswer(toolId, p, body) {
     const jobs = jobRows(p.provider, body)
     return jobs.length ? { output: { jobs, count: jobs.length } } : {}
   }
-  const key = String(body.company_domain ?? body.domain ?? body.q ?? body.name ?? body.title ?? 'x').toLowerCase()
+  const key = String(body.company_domain ?? body.domain ?? body.q ?? body.name ?? body.title ?? body.url
+    ?? body.video_id ?? 'x').toLowerCase()
   if (JSON.stringify(body ?? {}).toLowerCase().includes('nobody')) return {}
   const capped = Object.entries(state.listSizes ?? {}).find(([w]) => key.includes(w.toLowerCase()))
   const n = Math.min(Number(body.limit ?? 10), capped ? Number(capped[1]) : 10)

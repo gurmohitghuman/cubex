@@ -36,6 +36,7 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   get_balances: read('Read balances', true),
   get_usage: read('Read usage and costs'),
   get_version: read('Read the Cubex version'),
+  get_tool_guide: read("Read a tool's guide"),
   list_trash: read('List the trash'),
   get_sheet_history: read("Read a sheet's change log"),
   // With auto-dedupe keeping the newest row per key, a row with a key the sheet has replaces the older row.
@@ -98,6 +99,7 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   ai_visibility: write('AI visibility table (ask and check_again are paid)', true, false, true),
   // create and get are free; check (estimate_only false) starts a paid treg run and rewrites Companies' summary cells.
   hiring_signals: write('Find companies hiring (check is paid)', true, false, true),
+  social_research: write('Research social posts (find_posts is paid)', true, false, true),
   add_enrichment_field: write('Add a column from stored answers', false, false),
   // Lands rows like append_rows: auto-dedupe keeping the newest can replace a row already there.
   add_list_rows: write('Add list results as rows', true, false),
@@ -109,7 +111,11 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   delete_setup: write('Delete a setup (permanent)', true, true),
   // Adds columns and starts their runs, which spend (AI, enrichments) or send requests. An estimate changes nothing.
   apply_setup: write('Use a setup on a sheet', true, false, true),
+  // Starts the chosen columns' reruns, which spend (AI, enrichments, waterfalls) or send requests.
+  // An estimate changes nothing.
+  run_columns: write('Run chosen columns on chosen rows', true, false, true),
   get_setup_run: read('Get a setup run'),
+  manage_run_schedule: write('Manage run schedules', true, false, true),
   control_setup_run: write('Pause, resume or stop a setup run', true, false, true),
   list_setup_versions: read("List or compare a sheet's setup versions"),
   // Saves a version, renames one, or deletes one for good; the sheet itself never changes.

@@ -33,6 +33,9 @@ interface Props {
   outputsError: string
   // Editing an existing column: no starters and no output columns (they'd make a different column).
   editing: boolean
+  // An edit's Save: the setup becomes the column's and nothing runs.
+  onSave: () => void
+  isSaving: boolean
   // Configure section
   model: string; setModel: (m: string) => void
   systemPrompt: string; setSystemPrompt: (s: string) => void
@@ -129,6 +132,16 @@ export const ConfigureStep: React.FC<Props> = (p) => {
       <div className="flex flex-col items-end space-y-1">
         <div className="flex space-x-3">
           <button onClick={p.onCancel} className="btn-secondary">Cancel</button>
+          {p.editing && (
+            <button onClick={p.onSave} data-testid="ai-save-setup"
+              disabled={p.isSaving || p.isGeneratingPreview || !p.columnName.trim() || !p.prompt.trim()
+                || !!p.nameError || !!p.outputsError || !p.model || blockedBySearch}
+              className="btn-secondary flex items-center space-x-2"
+              title="Save the new setup. Nothing runs and nothing is billed: the column's next run uses it.">
+              {p.isSaving && <Loader2 className="h-4 w-4 animate-spin" />}
+              <span>{p.isSaving ? 'Saving…' : 'Save'}</span>
+            </button>
+          )}
           <button onClick={p.onPreview}
             disabled={p.isGeneratingPreview || !p.columnName.trim() || !p.prompt.trim() || !!p.nameError
               || !!p.outputsError || !p.model || blockedBySearch}

@@ -121,6 +121,8 @@ function fakeResponse(slow: boolean) {
   let body = '', ended = false
   const res = {
     destroyed: false,
+    // Its connection is its own (no download before it on it): lib/csv-write.ts responseTurn.
+    socket: {},
     setHeader: (k: string, v: string) => { headers[k] = v },
     write: (chunk: string) => {
       body += chunk

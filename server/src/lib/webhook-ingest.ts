@@ -172,6 +172,9 @@ export function appendWebhookDelivery(
       result = { ok: false, code: 404, reason: 'Not found' };
       return;
     }
+    // The key before what the sheet's state could refuse (the row cap below): a retry of a delivery it took
+    // gets the same answer once the sheet is full. The 404s above stay first: a URL that no longer works learns
+    // nothing, not even that a key came in.
     const key = opts.idempotencyKey ?? null;
     if (key && isRepeat(source.id, source.user_id, key, payloadSha)) {
       result = { ok: true, rowIndex: -1, status: 'repeat', replaced: 0 };
