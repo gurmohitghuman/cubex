@@ -26,7 +26,7 @@ export const EnrichmentSpendCard: React.FC = () => {
     return () => { alive = false }
   }, [days])
 
-  const where = (c: EnrichSpend['columns'][number]) => (c.sheetId
+  const where = (c: EnrichSpend['columns'][number]) => (c.call ? 'A call without a sheet' : c.sheetId
     ? `${c.tableName} › ${c.sheetName} · ${c.column ?? 'Unnamed column'}` : `Deleted sheet · ${c.column ?? ''}`)
     + (c.onTestCopy ? ' (on sample rows)' : '')
 

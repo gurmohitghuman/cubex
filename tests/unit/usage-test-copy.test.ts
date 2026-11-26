@@ -122,6 +122,18 @@ await check('discarded and the copy gone: still under the sheet, never a deleted
 })
 await counted('... the same figures after the test')
 
+await check('Settings\' spend: a call without a sheet keeps its own line next to a copy\'s', async () => {
+  const callSheet = uuid()
+  db.prepare('INSERT INTO call_sheets (sheet_id, user_id) VALUES (?,?)').run(callSheet, uid)
+  enrichCall(callSheet, 5000)
+  try {
+    const spend = await enrichSpend(uid, 7)
+    const call = spend.columns.find(c => c.call)
+    assert.deepEqual([call?.sheetId, call?.column, call?.onTestCopy, call?.calls], [null, null, false, 1])
+    assert.equal(spend.columns.find(c => c.onTestCopy)?.sheetId, sid)
+  } finally { db.prepare('DELETE FROM enrichment_calls WHERE sheet_id = ?').run(callSheet) }
+})
+
 await check('the CSV says which runs were on sample rows', async () => {
   let body = ''
   const res = {

@@ -6,18 +6,14 @@ import { USAGE_MCP_MAX_ROWS } from '../lib/constants';
 import { USAGE_GROUPS, USAGE_RANGES } from '../lib/usage-query';
 import { readUsage, usageAsk } from '../services/usage';
 import { McpAuthCtx, err, missingScope, ok, registerTool } from './tool-helpers';
+import { GUIDE_POINTER } from './guides/guide';
 
 export function registerUsageTools(server: McpServer, ctx: McpAuthCtx) {
   registerTool(server, 'get_usage', {
     description:
       'What AI, HTTP and enrichment runs cost and how much they ran, from the run records (never the rows), by '
       + 'column, day or run, for one sheet or the whole account. For what is left to spend use get_balances. '
-      + 'Each row and the totals give runs, cells (rows run), reused_cells (filled at $0 from an earlier answer), '
-      + 'ai_cost_usd (OpenRouter), provider_cost_usd (the user\'s own provider key), enrichment_cost_usd (treg), '
-      + 'total_cost_usd and cost_per_cell_usd. Days are UTC and a run counts on the day it started. AI previews '
-      + 'and AI helpers (write_formula, write_run_condition) count too, as kind preview or assist. Totals cover '
-      + 'the whole range; rows_total says how many rows there are (GET /api/v1/usage with format=csv has every '
-      + 'row). Deleted columns and sheets are included (column_deleted, sheet_deleted). Read-only: costs nothing.',
+      + `Read-only: costs nothing. ${GUIDE_POINTER}`,
     inputSchema: {
       sheet_id: z.string().optional().describe('One sheet; leave out for the whole account'),
       group_by: z.enum(USAGE_GROUPS).optional().describe('column (default), day or run'),

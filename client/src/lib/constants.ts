@@ -233,3 +233,10 @@ export const TOAST_TOP_PX = 64;
 export const CLOSE_AFTER_OPEN_MAX_MS = 1_000;
 // The most columns one Run columns start takes (mirrors server MAX_COLUMN_RUN_COLUMNS, lib/constants-setups.ts).
 export const MAX_COLUMN_RUN_COLUMNS = 20;
+// A post that got this many times its creator's usual views stands out (server lib/constants.ts).
+export const SOCIAL_STANDS_OUT_TIMES = 3;
+
+// Trying column changes on sample rows (server lib/constants.ts): a test starts with this many rows from the top
+// (or the rows selected) and holds at most SHEET_TEST_MAX_ROWS.
+export const SHEET_TEST_ROWS = 10;
+export const SHEET_TEST_MAX_ROWS = 50;

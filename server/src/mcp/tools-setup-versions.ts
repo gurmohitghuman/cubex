@@ -11,6 +11,7 @@ import {
 import { restoreSetupVersion } from '../services/setup-version-restore';
 import { SHEET_ID, McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean } from './tool-helpers';
 import { changedOf } from './changed';
+import { GUIDE_POINTER } from './guides/guide';
 
 const WHAT =
   'A setup version is a named copy of how a sheet\'s columns are set up, never their values: every column in '
@@ -20,12 +21,10 @@ const WHAT =
 
 export function registerSetupVersionTools(server: McpServer, ctx: McpAuthCtx): void {
   registerTool(server, 'list_setup_versions', {
-    description: WHAT + 'Without version_id: the sheet\'s versions, newest first (name, when, who saved it, how many '
-      + 'columns and filled columns; auto true for a copy a restore kept of the setup it replaced). With '
-      + 'version_id: that version against the sheet now, the same answer as restore_setup_version with dry_run: '
-      + 'each column the version names that is gone (restoring adds it back, empty), set up differently (field by '
-      + 'field, version vs now), filled another way now (restoring leaves it) or not in the version (it stays). '
-      + 'Changes nothing. Request URLs are masked, headers show by name and request bodies only as changed.',
+    // Its details, and restore_setup_version's, are in their guides (mcp/guides/setups.ts).
+    description: 'A setup version is a named copy of how a sheet\'s columns are set up, never their values. Without '
+      + 'version_id: the sheet\'s versions, newest first. With version_id: that version against the sheet now, '
+      + `column by column (restore_setup_version's dry run). Changes nothing. ${GUIDE_POINTER}`,
     inputSchema: z.object({
       sheet_id: z.string().describe(SHEET_ID),
       version_id: z.string().optional().describe('One version against the sheet now; leave out for the list'),
@@ -75,15 +74,10 @@ export function registerSetupVersionTools(server: McpServer, ctx: McpAuthCtx): v
   registerTool(server, 'restore_setup_version', {
     description: 'Put a sheet\'s column setup back as a setup version (list_setup_versions) has it. DEFAULT '
       + 'dry_run true: only says what restoring would do, column by column, and `blocked`: why it can\'t be '
-      + 'restored now. With dry_run false it first keeps the current setup as a version, then: gone columns come '
-      + 'back EMPTY, with their setup; the others get the version\'s setup, descriptions and order; columns not in '
-      + 'the version stay; a column (or an AI column\'s output column) filled another way now is left, with a note. '
-      + 'NOTHING RUNS AND NOTHING IS BILLED, and no cell changes. AI, HTTP API, enrichment and waterfall columns run '
-      + 'the restored way next time (control_run rerun mode all bills every row); clean, formula and lookup columns '
-      + 'keep their cells until their own tool works them out again (free). Auto-run follows the version, from the '
-      + 'rows there now; one paused by hand stays paused. Refused while a run or setup is going on the sheet, or a '
-      + 'clean, formula or lookup column is still filling. Needs the write and run scopes (secrets too when a '
-      + 'request it puts back reads saved keys); a dry run needs read.',
+      + 'restored now. With dry_run false gone columns come back EMPTY, with their setup. '
+      + 'NOTHING RUNS AND NOTHING IS BILLED, and no cell changes. Auto-run follows the version, from the rows there '
+      + 'now; one paused by hand stays paused. Needs the write and run scopes (secrets too when a request it puts '
+      + `back reads saved keys); a dry run needs read. ${GUIDE_POINTER}`,
     inputSchema: z.object({
       sheet_id: z.string().describe(SHEET_ID),
       version_id: z.string().describe('The version (list_setup_versions)'),

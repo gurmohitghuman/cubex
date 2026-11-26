@@ -11,6 +11,7 @@ import { writeRowCountsNow } from './row-counts';
 import { WEBHOOK_BUCKET_IDLE_EVICT_MS } from './constants';
 import { startAutorunLoop } from '../services/autorun-loop';
 import { startSetupLoop } from '../services/setup-sweep';
+import { startSetupCallLoop } from '../services/setup-call';
 import { startRunScheduleLoop } from '../services/run-schedule-fire';
 import { startDerivedFollow } from '../services/derived-follow';
 import { startListDrainLoop } from '../services/enrich-list-drain';
@@ -20,6 +21,7 @@ import { startLookupLoop } from '../services/lookup-host';
 import { startAutoDedupeLoop } from '../services/auto-dedupe-checks';
 import { startRunHookLoop } from '../services/run-hooks-dispatch';
 import { startTrashLoop } from '../services/trash-purge';
+import { startWebhookAutoDeleteLoop } from '../services/webhook-auto-delete-sweep';
 import { startReleaseCheckLoop } from '../services/release-check';
 import { resumeAiVisibilityChecks } from '../services/ai-visibility-check';
 import { resumeHiringChecks } from '../services/hiring-check-watch';
@@ -66,6 +68,8 @@ export const startBackground = (recovered?: RecoveredRuns) => {
   startRunHookLoop();
   // The trash: what was kept long enough goes for good, in slices; the change log is pruned (services/trash-purge.ts).
   startTrashLoop();
+  // Auto-delete on webhook sheets: finished rows past the newest kept leave (services/webhook-auto-delete-sweep.ts).
+  startWebhookAutoDeleteLoop();
   // The release check: the latest release on GitHub, at most once a day (services/release-check.ts).
   startReleaseCheckLoop();
   startQueue()
@@ -76,6 +80,8 @@ export const startBackground = (recovered?: RecoveredRuns) => {
       startAutorunLoop();
       // Setups being used on sheets start their next steps (services/setup-runner.ts).
       startSetupLoop();
+      // A setup call's working table goes once its results have been kept long enough (services/setup-call.ts).
+      startSetupCallLoop();
       // Scheduled reruns: what is due fires as a column run (services/run-schedule-fire.ts).
       startRunScheduleLoop();
       // A write to a clean, formula or lookup column's input works it out again at once (services/derived-follow.ts).

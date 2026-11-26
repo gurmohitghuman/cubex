@@ -1,6 +1,7 @@
 // /api/v1 routes: setups (a saved chain of filled columns) and setup versions
 // (a sheet's column setup kept by name) (api-v1-setups.ts, api-v1-setup-versions.ts).
 import { z } from 'zod';
+import { MAX_CSV_UPLOAD_BYTES } from '../lib/constants';
 import {
   MAX_SETUP_DESCRIPTION_CHARS, MAX_SETUP_NAME_CHARS, SETUP_FILE_FORMAT, SETUP_FILE_VERSION,
 } from '../lib/constants-setups';
@@ -72,6 +73,54 @@ export const setupRoutes = (): RouteDoc[] => [
     responses: { 200: 'The estimate.', 201: 'Started: the setup_run.' },
   }),
   op({
+    method: 'post', path: '/setups/{setupId}/calls', operationId: 'callSetup', tag: 'setups', scope: 'run',
+    summary: 'Run a saved setup on 1-100 items without a sheet, or price that first.',
+    description: "Same as MCP's call_setup, but estimate_only defaults to false here. Each item is an object keyed by "
+      + "the setup's input names. Poll GET /setup-calls/{callId} for each item's outputs; "
+      + 'POST /setup-runs/{runId}/control with the call id pauses, resumes or cancels it.',
+    body: toolBody('call_setup', {
+      omit: ['setup_id', 'estimate_only'],
+      extend: { estimate_only: z.boolean().optional().describe('true prices it and starts nothing. Default false.') },
+    }),
+    responses: { 200: 'The estimate.', 201: 'Started: the setup_call.' },
+  }),
+  op({
+    method: 'post', path: '/setups/{setupId}/calls/file', operationId: 'callSetupOnFile', tag: 'setups',
+    scope: 'run', summary: "Run a saved setup on a CSV file's rows without a sheet.",
+    description: "The file's header names the setup's inputs (a column it doesn't read is ignored). Nobody sees an "
+      + 'estimate first, so max_cost_usd is required: a file whose estimate could pass it starts nothing (409 with '
+      + 'over_ceiling and the estimate). Results: GET /setup-calls/{callId}, a page at a time.',
+    form: z.object({
+      file: z.file().mime('text/csv')
+        .describe(`The .csv file, up to ${Math.round(MAX_CSV_UPLOAD_BYTES / (1024 * 1024))} MB.`),
+      max_cost_usd: z.string().describe('Start nothing when the estimate could cost more than this, in dollars.'),
+      allow_unpriced: z.enum(['true', 'false']).optional()
+        .describe('true starts even when a step has no known price. Default false.'),
+      webhook_id: z.string().optional().describe('A run webhook to notify when the call finishes.'),
+    }),
+    responses: { 201: 'Started: the setup_call.' },
+  }),
+  op({
+    method: 'post', path: '/enrichments/{toolId}/calls', operationId: 'callEnrichment', tag: 'enrich', scope: 'run',
+    summary: 'Run one enrichment tool on 1-1,000 items without a sheet, or price that first.',
+    description: "Same as MCP's call_enrichment, but estimate_only defaults to false here. Refused (409, over_ceiling) "
+      + "instead of pausing halfway when it could pass max_cost_usd, today's daily limit, the treg balance or the "
+      + "token's cap. GET /http-runs/{id} and its /results answer for the run; row_index is the item.",
+    body: toolBody('call_enrichment', {
+      omit: ['tool_id', 'estimate_only'],
+      extend: { estimate_only: z.boolean().optional().describe('true prices it and starts nothing. Default false.') },
+    }),
+    responses: { 200: 'The estimate.', 202: 'Started: the run_id.' },
+  }),
+  op({
+    method: 'get', path: '/setup-calls/{callId}', operationId: 'getSetupCall', tag: 'setups', scope: 'read',
+    summary: "A setup call: its status, and once it has finished its items' outputs, a page at a time.",
+    query: z.object({
+      results_from: z.string().optional().describe('The first item of the page (next_from). Default 0.'),
+      limit: z.string().optional().describe('Items in the page, 1 to 100. Default 100.'),
+    }),
+  }),
+  op({
     method: 'post', path: '/sheets/{id}/column-runs', operationId: 'runColumns', tag: 'setups', scope: 'run',
     summary: "Run several of a sheet's run columns again on chosen rows, or price that first.",
     description: "Same as MCP's run_columns, but estimate_only defaults to false here. Followed as a setup run "
@@ -110,6 +159,10 @@ export const setupRoutes = (): RouteDoc[] => [
   op({
     method: 'delete', path: '/run-schedules/{id}', operationId: 'deleteRunSchedule', tag: 'setups', scope: 'run',
     summary: 'Delete a schedule. Runs it started stay.',
+  }),
+  op({
+    method: 'get', path: '/run-schedules/{id}/estimate', operationId: 'estimateRunSchedule', tag: 'setups',
+    scope: 'run', summary: 'What firing a schedule now would cost, sheet by sheet; nothing starts.',
   }),
   op({
     method: 'post', path: '/run-schedules/{id}/fire', operationId: 'fireRunSchedule', tag: 'setups', scope: 'run',

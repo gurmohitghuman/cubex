@@ -163,6 +163,8 @@ export interface EnrichSpendColumn {
   onTestCopy: boolean
   spentUsd: number
   calls: number
+  // Every call without a sheet (a setup or enrichment call over the API or MCP), added up.
+  call?: boolean
 }
 
 export interface EnrichSpend {

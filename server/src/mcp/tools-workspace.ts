@@ -20,7 +20,8 @@ import { getAccountDefaultModel } from '../lib/ai-model-resolve';
 import { runningBuild } from '../lib/cubex-version';
 import { MCP_EXPORT_MAX_CHARS } from '../lib/api-v1-constants';
 import { SHEET_ID, McpAuthCtx, ok, err, missingScope, registerTool } from './tool-helpers';
-import { VIEW_HELP, whereLike } from './where-schema';
+import { VIEW_BRIEF, whereLike } from './where-schema';
+import { GUIDE_POINTER } from './guides/guide';
 
 const ownsSheet = (sheetId: string, userId: string): boolean =>
   !!db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ? AND trash_id IS NULL').get(sheetId, userId);
@@ -35,13 +36,13 @@ export function registerWorkspaceTools(server: McpServer, ctx: McpAuthCtx) {
         + 'reason over data, read_rows is cheaper and pages; for a file of any size, create_download_link. '
         + `At most ${MCP_EXPORT_MAX_CHARS.toLocaleString('en-US')} characters come back: past that the answer says `
         + 'truncated: true and rest says how to get the others. Values are escaped against spreadsheet formula '
-        + 'injection. Read-only.',
+        + `injection. Read-only. ${GUIDE_POINTER}`,
       inputSchema: {
         sheet_id: z.string().describe(SHEET_ID),
         columns: z.array(z.string()).min(1).optional()
           .describe('Only these columns, in this order. Omit for every column (expensive on wide sheets).'),
         where: whereLike('Only the rows it passes.').optional(),
-        view: z.string().min(1).optional().describe(VIEW_HELP),
+        view: z.string().min(1).optional().describe(VIEW_BRIEF),
       },
     },
     async ({ sheet_id, columns, where, view }) => {

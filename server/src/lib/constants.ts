@@ -14,6 +14,8 @@ export * from './constants-curl';
 // HTTP column retries and the response code column; "run finished" webhooks.
 export * from './constants-http-retry';
 export * from './constants-run-hooks';
+// Auto-delete on a webhook sheet.
+export * from './constants-webhook-auto-delete';
 // Usage history, same split.
 export * from './constants-usage';
 // Waterfall columns, same split.
@@ -317,3 +319,8 @@ export const SOCIAL_START_WAIT_MS = envMs('SOCIAL_START_WAIT_MS', 15_000);
 // How many of a run column's input lists (lib/run-inputs/sets.ts) the out-of-date check reads, newest first. A row
 // made from an older list never reads out of date, as a row no run stamped (docs/mcp.md says 16).
 export const RUN_INPUT_SETS_READ = 16;
+// "Creator's usual views" (lib/social/usual.ts): the creator's recent posts asked for (one call's page), the fewest
+// with views it takes to say what their usual is, and how many times their usual makes a post stand out.
+export const SOCIAL_RECENT_POSTS = 30;
+export const SOCIAL_USUAL_MIN_POSTS = 3;
+export const SOCIAL_STANDS_OUT_TIMES = 3;

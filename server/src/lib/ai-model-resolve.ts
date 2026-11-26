@@ -6,15 +6,17 @@ import { DEFAULT_AI_CONCURRENCY } from './constants-ai';
 // (settings.default_ai_model, migration 032). Returns null when none is set —
 // callers MUST reject with NO_MODEL_ERROR rather than fall back to a hardcoded
 // model: every AI call (columns, previews, HTTP-config assist) only ever runs
-// on a model the user chose, directly or via one of their defaults.
+// on a model the user chose, directly or via one of their defaults. sheetId
+// null: no sheet (a setup call priced on its items), so no sheet default.
 export function resolveAiModel(
-  explicitModel: unknown, sheetId: string, userId: string,
+  explicitModel: unknown, sheetId: string | null, userId: string,
 ): string | null {
   if (typeof explicitModel === 'string' && explicitModel.trim()) {
     return explicitModel.trim();
   }
-  const sheet = db.prepare('SELECT default_ai_model FROM sheets WHERE id = ? AND user_id = ?')
-    .get(sheetId, userId) as { default_ai_model: string | null } | undefined;
+  const sheet = sheetId === null ? undefined
+    : db.prepare('SELECT default_ai_model FROM sheets WHERE id = ? AND user_id = ?')
+      .get(sheetId, userId) as { default_ai_model: string | null } | undefined;
   if (sheet?.default_ai_model) return sheet.default_ai_model;
   return getAccountDefaultModel(userId);
 }
@@ -44,13 +46,14 @@ export const NO_MODEL_ERROR =
 // concurrency ~1 after per-row latency), which read as "runs are serial" but was
 // really "runs are pinned at the parse default".
 export function resolveAiConcurrency(
-  explicitConcurrency: unknown, sheetId: string, userId: string,
+  explicitConcurrency: unknown, sheetId: string | null, userId: string,
 ): number {
   if (typeof explicitConcurrency === 'number' && Number.isFinite(explicitConcurrency)) {
     return explicitConcurrency;
   }
-  const sheet = db.prepare('SELECT default_ai_concurrency FROM sheets WHERE id = ? AND user_id = ?')
-    .get(sheetId, userId) as { default_ai_concurrency: number | null } | undefined;
+  const sheet = sheetId === null ? undefined
+    : db.prepare('SELECT default_ai_concurrency FROM sheets WHERE id = ? AND user_id = ?')
+      .get(sheetId, userId) as { default_ai_concurrency: number | null } | undefined;
   const stored = sheet?.default_ai_concurrency;
   if (typeof stored === 'number' && Number.isFinite(stored) && stored > 0) return stored;
   return DEFAULT_AI_CONCURRENCY;

@@ -1,3 +1,4 @@
+// Over 200 lines: one list of column defs (row number, data columns, add column) built in one place.
 import React from 'react'
 import { ColDef } from 'ag-grid-community'
 import { ColumnHeaderWithDelete } from '../ColumnHeaderWithDelete'
@@ -45,6 +46,8 @@ interface BuildColumnDefsArgs {
   // Failed rows per run column (the header's "N failed, retry") and its one-click retry.
   failedRuns?: Record<string, number>
   onRetryFailed?: (columnName: string) => void
+  // The sheet is being tested on a copy: no cell takes an edit (its changes wait for the test to end).
+  readOnly?: boolean
 }
 
 // Room for a row number of `digits` digits (40 px holds up to three).
@@ -100,8 +103,8 @@ export const buildColumnDefs = (args: BuildColumnDefsArgs): ColDef[] => {
       colId: colIdFor(column),
       field: column,
       headerName,
-      // webhook-source is read-only (provenance marker); all other columns edit.
-      editable: !isWebhookSource,
+      // webhook-source is read-only (provenance marker); all other columns edit, unless the sheet is being tested.
+      editable: !isWebhookSource && !args.readOnly,
       // Use AG Grid's built-in large-text editor as a popup. Single-click on
       // the cell pops out a textarea anchored to the cell, sized large enough
       // to read multi-line / multi-paragraph content (AI Output cells, long

@@ -2,6 +2,7 @@
 // sheet, then apply them or discard them (services/sheet-test-*.ts; REST /v1/sheets/:id/test does the same).
 import { verifySheetInTable } from '../lib/sheet-crud-helpers';
 import { TEST_ACTIONS } from '../lib/sheet-test-hold';
+import { SHEET_TEST_MAX_ROWS, SHEET_TEST_ROWS } from '../lib/constants';
 import { startSheetTest } from '../services/sheet-test-start';
 import { addTestRows } from '../services/sheet-test-add';
 import { applySheetTest } from '../services/sheet-test-apply';
@@ -12,10 +13,14 @@ import type { ToolAnswer } from './tool-outputs';
 export { TEST_ACTIONS };
 export type TestAction = typeof TEST_ACTIONS[number];
 
-export const TEST_WORDS = 'test copies the top rows (or row_ids) and the setup to a hidden copy, test.test_sheet_id, '
-  + 'to change and run columns on (not list enrichments); the sheet takes no changes meanwhile. test_add_rows adds '
-  + 'more. apply_test (a dry run unless dry_run is false) makes the copy\'s setup the sheet\'s, keeping sample '
-  + 'answers; discard_test drops it. ';
+// What manage_sheet's description says of them; the rest is in its guide (guides/structure.ts).
+export const TEST_WORDS = 'test tries column changes on sample rows: it copies the sheet\'s top rows (rows, default '
+  + `${SHEET_TEST_ROWS}, or row_ids; at most ${SHEET_TEST_MAX_ROWS}) and its setup into a hidden copy, `
+  + 'test.test_sheet_id, where you change and run columns with the usual tools (runs there cost as usual; a list '
+  + 'enrichment can\'t run there). Meanwhile the sheet takes no changes and its webhook deliveries wait. '
+  + 'test_add_rows adds rows to it. apply_test is a dry run unless dry_run is false (then it needs the run scope): '
+  + 'it makes the copy\'s setup the sheet\'s and puts the sample rows\' results back; nothing runs on the other '
+  + 'rows. discard_test drops the copy. Either ends the test. The test actions answer test, not the tab list.';
 
 export interface TestArgs {
   table_id: string; sheet_id?: string; row_ids?: string[]; rows?: number; how?: 'top' | 'random';

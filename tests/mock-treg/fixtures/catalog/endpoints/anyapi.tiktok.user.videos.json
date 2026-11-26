@@ -1,0 +1,575 @@
+{
+ "endpoint": {
+  "id": "anyapi.tiktok.user.videos",
+  "provider": "anyapi",
+  "provider_display": "AnyAPI",
+  "name": "TikTok Profile Videos",
+  "summary": "List a TikTok creator's recent videos (views, likes, comments) by handle with cursor pagination.",
+  "method": "POST",
+  "path": "/v1/run/tiktok.profile_videos",
+  "scope": "any_account",
+  "tier": "core",
+  "kind": "data",
+  "domain": "user",
+  "call_template": "treg call anyapi.tiktok.user.videos",
+  "cost": {
+   "type": "per_call",
+   "value": 0.0012,
+   "currency": "USD",
+   "unit": "call",
+   "reported_charge": {
+    "path": "costUsd",
+    "unit": "usd"
+   },
+   "source": "observed",
+   "source_url": "https://api.getanyapi.com/v1/apis/tiktok.profile_videos",
+   "checked": "2026-09-11",
+   "confidence": "verified",
+   "note": "3 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.0036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A not-found or empty answer is billed too, at its own `costUsd`.",
+   "usd": 0.0012
+  },
+  "async": null,
+  "platform_eligible": true,
+  "platform_blocked": null,
+  "miss": null,
+  "status": null,
+  "status_note": null,
+  "superseded_by": null,
+  "verified": "2026-09-19",
+  "added": "2026-09-19",
+  "docs_url": "https://getanyapi.com/api/tiktok/profile-videos",
+  "has_example": true,
+  "input": {
+   "body": {
+    "cursor": {
+     "type": "string",
+     "required": false,
+     "note": "Pagination cursor from a previous response's nextCursor."
+    },
+    "handle": {
+     "type": "string",
+     "required": true,
+     "note": "TikTok username without the leading @.",
+     "example": "sample"
+    }
+   },
+   "bodyType": "json",
+   "queryArrayEncoding": "comma",
+   "queryParams": {
+    "fields": {
+     "type": "string",
+     "required": false,
+     "note": "Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, not the charge."
+    },
+    "max_items": {
+     "type": "integer",
+     "required": false,
+     "min": 0,
+     "note": "Caps the result rows returned; `_truncated` says how many were withheld. Not the charge."
+    },
+    "summary": {
+     "type": "boolean",
+     "required": false,
+     "note": "`true` returns only an outline: keys, item counts, per-field sizes."
+    },
+    "jq": {
+     "type": "string",
+     "required": false,
+     "note": "jq expression over the result envelope; its output replaces `output`. A failed expression returns the full result with `jqError`."
+    }
+   }
+  },
+  "capability": "tiktok.user.videos",
+  "capability_description": "List a user's recent videos",
+  "platform": "tiktok",
+  "platform_label": "TikTok",
+  "observed": {
+   "samples": 185178,
+   "decided": 184877,
+   "ok_rate": 0.9993,
+   "p50_ms": 1426,
+   "p95_ms": 2767,
+   "last_ok_days": 0,
+   "hit_rate": null,
+   "hit_samples": 0
+  },
+  "wallet": {
+   "payable": true,
+   "protocols": [
+    "mpp"
+   ],
+   "minimum_payment_micro": 10000,
+   "fee_bps": 0,
+   "note": "pay per call with a wallet, no account. A payment is at least $0.01; the call is charged only its real price, and the rest stays as this wallet's credit for its next calls (credit is not paid back as money)."
+  }
+ },
+ "provider": {
+  "service": "anyapi",
+  "display_name": "AnyAPI",
+  "limits": "no published per-key request-rate limit on /v1/run - AnyAPI does not advertise a quota it does not enforce. Spend is bounded instead by the wallet balance, the key's own spend cap, and the per-request `max_cost_usd` ceiling the caller sets. The unauthenticated /agent/signup trial route is limited to 3 per IP per hour.",
+  "pricing_url": "https://getanyapi.com/catalog",
+  "docs": "https://getanyapi.com/docs"
+ },
+ "siblings": [
+  {
+   "id": "crawl4ai.tiktok.user.videos",
+   "provider": "crawl4ai",
+   "provider_display": "Crawl4AI",
+   "name": "A TikTok account's latest videos",
+   "scope": "any_account",
+   "kind": "data",
+   "cost": {
+    "type": "per_success",
+    "value": 0.5,
+    "currency": "credit",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.0005
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-10-11",
+   "params": [
+    "account",
+    "limit"
+   ],
+   "observed": {
+    "samples": 580869,
+    "decided": 576308,
+    "ok_rate": 0.9861,
+    "p50_ms": 1557,
+    "p95_ms": 6656,
+    "last_ok_days": 0,
+    "hit_rate": 0.8943,
+    "hit_samples": 568309
+   },
+   "reviews": {
+    "teams": 25,
+    "share": {
+     "useful": 0.84,
+     "partly": 0.04,
+     "not_useful": 0.12
+    }
+   }
+  },
+  {
+   "id": "justoneapi.tiktok.user.videos",
+   "provider": "justoneapi",
+   "provider_display": "Just One API",
+   "name": "TikTok user posts by user id",
+   "scope": "any_account",
+   "kind": "data",
+   "cost": {
+    "type": "per_success",
+    "value": 0.1,
+    "currency": "CNY",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.01476
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "secUid",
+    "cursor",
+    "sort"
+   ],
+   "observed": {
+    "samples": 1054,
+    "decided": 1049,
+    "ok_rate": 1.0,
+    "p50_ms": 2300,
+    "p95_ms": 4180,
+    "last_ok_days": 0,
+    "hit_rate": 0.9598,
+    "hit_samples": 1045
+   }
+  },
+  {
+   "id": "scrapecreators.x.v3-tiktok-profile-videos",
+   "provider": "scrapecreators",
+   "provider_display": "ScrapeCreators",
+   "name": "TikTok user videos by username or id",
+   "scope": "",
+   "kind": "data",
+   "cost": {
+    "type": "per_call",
+    "value": 1,
+    "currency": "credit",
+    "per": 1,
+    "unit": "call",
+    "reported_charge": {
+     "path": "credits_charged",
+     "unit": "credit"
+    },
+    "usd": 0.00188
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": null,
+   "params": [
+    "handle",
+    "user_id",
+    "sort_by",
+    "max_cursor",
+    "region",
+    "trim"
+   ],
+   "observed": {
+    "samples": 135554,
+    "decided": 133971,
+    "ok_rate": 0.9996,
+    "p50_ms": 3539,
+    "p95_ms": 7420,
+    "last_ok_days": 0,
+    "hit_rate": null,
+    "hit_samples": 0
+   },
+   "reviews": {
+    "teams": 10,
+    "share": {
+     "useful": 0.88,
+     "partly": 0.1,
+     "not_useful": 0.02
+    }
+   }
+  },
+  {
+   "id": "tikhub.tiktok.user.videos",
+   "provider": "tikhub",
+   "provider_display": "TikHub",
+   "name": "TikTok user's recent videos by secUid",
+   "scope": "any_account",
+   "kind": "data",
+   "cost": {
+    "type": "per_call",
+    "value": 0.001,
+    "currency": "USD",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.001
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-10-04",
+   "params": [
+    "secUid",
+    "cursor",
+    "count",
+    "coverFormat",
+    "post_item_list_request_type"
+   ],
+   "observed": {
+    "samples": 185629,
+    "decided": 185188,
+    "ok_rate": 0.9993,
+    "p50_ms": 587,
+    "p95_ms": 1324,
+    "last_ok_days": 0,
+    "hit_rate": 0.9835,
+    "hit_samples": 185061
+   },
+   "reviews": {
+    "teams": 0
+   }
+  },
+  {
+   "id": "tikhub.x.tiktok-app-v3-fetch-user-post-videos",
+   "provider": "tikhub",
+   "provider_display": "TikHub",
+   "name": "TikTok user's videos by secUid or username",
+   "scope": "",
+   "kind": "data",
+   "cost": {
+    "type": "per_call",
+    "value": 0.001,
+    "currency": "USD",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.001
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "sec_user_id",
+    "unique_id",
+    "max_cursor",
+    "count",
+    "sort_type",
+    "region"
+   ],
+   "observed": {
+    "samples": 184923,
+    "decided": 184699,
+    "ok_rate": 0.9988,
+    "p50_ms": 2510,
+    "p95_ms": 4123,
+    "last_ok_days": 0,
+    "hit_rate": 0.9945,
+    "hit_samples": 184483
+   },
+   "reviews": {
+    "teams": 5,
+    "share": {
+     "useful": 0.86,
+     "partly": 0.14,
+     "not_useful": 0.0
+    }
+   }
+  },
+  {
+   "id": "tikhub.x.tiktok-app-v3-fetch-user-post-videos-v2",
+   "provider": "tikhub",
+   "provider_display": "TikHub",
+   "name": "TikTok user's videos by secUid or username",
+   "scope": "",
+   "kind": "data",
+   "cost": {
+    "type": "per_call",
+    "value": 0.001,
+    "currency": "USD",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.001
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "sec_user_id",
+    "unique_id",
+    "max_cursor",
+    "count",
+    "sort_type"
+   ],
+   "observed": {
+    "samples": 28997,
+    "decided": 28942,
+    "ok_rate": 0.9937,
+    "p50_ms": 2377,
+    "p95_ms": 3667,
+    "last_ok_days": 0,
+    "hit_rate": 0.9886,
+    "hit_samples": 28761
+   },
+   "reviews": {
+    "teams": 0
+   }
+  },
+  {
+   "id": "tikhub.x.tiktok-app-v3-fetch-user-post-videos-v3",
+   "provider": "tikhub",
+   "provider_display": "TikHub",
+   "name": "TikTok user's videos by secUid or username, simplified",
+   "scope": "",
+   "kind": "data",
+   "cost": {
+    "type": "per_call",
+    "value": 0.001,
+    "currency": "USD",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.001
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "sec_user_id",
+    "unique_id",
+    "max_cursor",
+    "count",
+    "sort_type"
+   ],
+   "observed": {
+    "samples": 42192,
+    "decided": 40336,
+    "ok_rate": 0.9824,
+    "p50_ms": 2069,
+    "p95_ms": 3979,
+    "last_ok_days": 0,
+    "hit_rate": null,
+    "hit_samples": 0
+   },
+   "reviews": {
+    "teams": 0
+   }
+  },
+  {
+   "id": "tiktok.tiktok.user.videos",
+   "provider": "tiktok",
+   "provider_display": "TikTok",
+   "name": "Your TikTok videos \u2014 views, likes, comments, shares",
+   "scope": "own_account",
+   "kind": "data",
+   "cost": {
+    "type": "free",
+    "value": 0,
+    "currency": "USD",
+    "unit": "call",
+    "usd": 0.0
+   },
+   "platform_eligible": false,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": null,
+   "params": [
+    "fields",
+    "max_count",
+    "cursor"
+   ],
+   "observed": {
+    "samples": 43471,
+    "decided": 43460,
+    "ok_rate": 0.9983,
+    "p50_ms": 531,
+    "p95_ms": 898,
+    "last_ok_days": 0,
+    "hit_rate": null,
+    "hit_samples": 0
+   },
+   "reviews": {
+    "teams": 0
+   }
+  },
+  {
+   "id": "treg.tiktok.user.videos",
+   "provider": "treg",
+   "provider_display": "treg",
+   "name": "tiktok.user.videos \u2014 routed: best of 4 providers, own keys first",
+   "scope": "",
+   "kind": "routed",
+   "cost": {
+    "type": "per_success",
+    "value": 0.0005,
+    "currency": "USD",
+    "per": 1,
+    "unit": "call",
+    "varies": true,
+    "usd": 0.0005
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": null,
+   "params": [
+    "sec_uid",
+    "limit"
+   ],
+   "observed": {
+    "samples": 133560,
+    "decided": 133549,
+    "ok_rate": 0.9988,
+    "p50_ms": null,
+    "p95_ms": null,
+    "last_ok_days": 0,
+    "hit_rate": null,
+    "hit_samples": 0
+   }
+  }
+ ],
+ "related_capabilities": [
+  {
+   "endpoint_id": "treg.tiktok.comment.replies",
+   "capability": "tiktok.comment.replies",
+   "does": "List replies to a comment"
+  },
+  {
+   "endpoint_id": "treg.tiktok.search.users",
+   "capability": "tiktok.search.users",
+   "does": "Search users by keyword"
+  },
+  {
+   "endpoint_id": "treg.tiktok.search.videos",
+   "capability": "tiktok.search.videos",
+   "does": "Search videos by keyword"
+  },
+  {
+   "endpoint_id": "treg.tiktok.user.profile",
+   "capability": "tiktok.user.profile",
+   "does": "Get a user's public profile"
+  },
+  {
+   "endpoint_id": "treg.tiktok.video.comments",
+   "capability": "tiktok.video.comments",
+   "does": "List a video's comments"
+  }
+ ],
+ "call_template": "treg call anyapi.tiktok.user.videos",
+ "example_response": {
+  "output": {
+   "found": true,
+   "data": {
+    "videos": [
+     {
+      "id": "730000000000",
+      "views": 900000
+     },
+     {
+      "id": "730000000100",
+      "views": 12000
+     },
+     {
+      "id": "730000000101",
+      "views": 30000
+     },
+     {
+      "id": "730000000102",
+      "views": 25000
+     },
+     {
+      "id": "730000000103",
+      "views": 41000
+     },
+     {
+      "id": "730000000104",
+      "views": 18000
+     },
+     {
+      "id": "730000000105",
+      "views": 36000
+     },
+     {
+      "id": "730000000106",
+      "views": 22000
+     },
+     {
+      "id": "730000000199",
+      "views": 0
+     }
+    ],
+    "nextCursor": ""
+   }
+  },
+  "provider": "anyapi",
+  "costUsd": 0.001,
+  "items": 9,
+  "replayed": false,
+  "source": {
+   "id": "sample",
+   "name": "Sample",
+   "kind": "api",
+   "artworkKey": "sample"
+  },
+  "resultId": "sample-result"
+ },
+ "hints": []
+}

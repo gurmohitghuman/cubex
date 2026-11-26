@@ -50,7 +50,7 @@ function columnUses(userId: string, names: string[]): Map<string, SavedKeyUse[]>
   const reads = savedKeyMatcher(names);
   const sheets = db.prepare(`SELECT s.id, s.name, s.column_order, t.id AS table_id, t.name AS table_name
     FROM sheets s JOIN tables t ON t.id = s.table_id AND t.user_id = s.user_id
-    WHERE s.user_id = ? AND s.trash_id IS NULL AND s.test_of IS NULL AND t.trash_id IS NULL
+    WHERE s.user_id = ? AND s.trash_id IS NULL AND s.test_of IS NULL AND t.trash_id IS NULL AND t.hidden = 0
     ORDER BY t.created_at, t.id, s.position, s.id`).all(userId) as SheetRow[];
   const newest = db.prepare(`SELECT config FROM http_runs WHERE sheet_id = ? AND user_id = ?
     AND master_column_name = ? ORDER BY created_at DESC, rowid DESC LIMIT 1`).pluck();

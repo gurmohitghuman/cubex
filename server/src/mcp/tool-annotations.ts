@@ -36,6 +36,7 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   get_balances: read('Read balances', true),
   get_usage: read('Read usage and costs'),
   get_version: read('Read the Cubex version'),
+  get_tool_guide: read("Read a tool's guide"),
   list_trash: read('List the trash'),
   get_sheet_history: read("Read a sheet's change log"),
   // With auto-dedupe keeping the newest row per key, a row with a key the sheet has replaces the older row.
@@ -114,6 +115,9 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   // An estimate changes nothing.
   run_columns: write('Run chosen columns on chosen rows', true, false, true),
   get_setup_run: read('Get a setup run'),
+  call_setup: write('Call a setup on items', false, false, true),
+  get_setup_call: read('Get a setup call'),
+  call_enrichment: write('Call an enrichment on items', false, false, true),
   manage_run_schedule: write('Manage run schedules', true, false, true),
   control_setup_run: write('Pause, resume or stop a setup run', true, false, true),
   list_setup_versions: read("List or compare a sheet's setup versions"),

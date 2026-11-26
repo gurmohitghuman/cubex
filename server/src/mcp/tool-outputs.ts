@@ -40,10 +40,12 @@ export const TOOL_OUTPUTS = {
   list_setups: setups.listSetups, save_setup: setups.saveSetup, delete_setup: setups.deleteSetup,
   manage_run_schedule: setups.manageRunSchedule,
   apply_setup: setups.applySetup, get_setup_run: setups.getSetupRun, control_setup_run: setups.controlSetupRun,
+  call_setup: setups.callSetup, get_setup_call: setups.getSetupCall, call_enrichment: setups.callEnrichment,
   run_columns: setups.runColumns,
   list_setup_versions: setups.listSetupVersions, manage_setup_version: setups.manageSetupVersion,
   restore_setup_version: setups.restoreSetupVersion,
   list_models: account.listModels, set_default_model: account.setDefaultModel, get_version: account.getVersion,
+  get_tool_guide: account.getToolGuide,
   list_trash: account.listTrash, restore_from_trash: account.restoreFromTrash,
   get_sheet_history: account.getSheetHistory, list_saved_keys: account.listSavedKeys,
 } satisfies Record<string, z.ZodObject<any, any>>;

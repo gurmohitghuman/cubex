@@ -5,6 +5,7 @@
 // use. Checked against treg's live catalog at create (services/social-create.ts):
 // a platform whose search Cubex can't add rows from isn't offered.
 // Shapes and prices from paid checks on 2026-11-24 (TODO.md, Social research tables).
+import { SOCIAL_RECENT_POSTS } from '../constants';
 import { POST_COLUMNS as P, STEP_COLUMNS as S } from './names';
 
 export const PLATFORMS = ['tiktok', 'instagram', 'youtube', 'x'] as const;
@@ -20,6 +21,7 @@ export interface ListSpec {
 export interface StepTool {
   toolId: string;
   inputs: Record<string, string>;
+  values?: Record<string, string>;    // tool input → a value it always sends (the fields to keep, how many)
   // An output the catalog lists (path) or one read from the answer (fromAnswer: a list's first item, say).
   outputs: Array<{ key: string; path: string; columnName: string; fromAnswer?: true }>;
 }
@@ -30,6 +32,7 @@ export interface PlatformSpec {
   formulas: Array<{ column: string; formula: string }>;
   transcript: StepTool;
   creator: StepTool | null;           // null: the search gives the followers already
+  usual: StepTool;                    // the creator's recent posts, as one list (lib/social/usual.ts)
   comments: ListSpec;
 }
 
@@ -41,6 +44,12 @@ const RELATIVE_DAY = `(() => { const m = /(\\d+)\\s*(minute|hour|day|week|month|
   return new Date(Date.parse(seen) - days * 86400000).toISOString().slice(0, 10); })()`;
 
 const field = (path: string, columnName: string) => ({ path, columnName });
+// The creator's recent posts, one call a creator (answers are reused: services/enrich-reuse.ts), as one list
+// in Recent views. AnyAPI's tools keep only each post's id and views (fields), one page of them.
+const recent = (toolId: string, inputs: Record<string, string>, path: string, values: Record<string, string>):
+  StepTool => ({ toolId, inputs, values,
+  outputs: [{ key: path, path, columnName: S.recentViews, fromAnswer: true }] });
+const anyapiPage = (keep: string) => ({ fields: `${keep},views`, max_items: String(SOCIAL_RECENT_POSTS) });
 // Routed comment tools answer text, author, likes and replies whoever serves them; X's own its replies' names.
 const COMMENT_FIELDS = (names = { author: '$.author', likes: '$.likes', replies: '$.replies' }) => [
   field('$.text', 'Comment'), field(names.author, 'Author'), field(names.likes, 'Likes'),
@@ -61,6 +70,7 @@ export const PLATFORM_SPECS: Record<Platform, PlatformSpec> = {
     transcript: { toolId: 'anyapi.tiktok.video.captions', inputs: { url: P.post },
       outputs: [{ key: 'output.data.transcript', path: '$.output.data.transcript', columnName: S.transcriptText }] },
     creator: null,
+    usual: recent('anyapi.tiktok.user.videos', { handle: P.author }, '$.output.data.videos', anyapiPage('id')),
     comments: { toolId: 'treg.tiktok.video.comments', provider: 'anyapi', inputs: { url: P.post },
       fields: COMMENT_FIELDS(), dedupe: { path: '$.id' } },
   },
@@ -80,6 +90,8 @@ export const PLATFORM_SPECS: Record<Platform, PlatformSpec> = {
     creator: { toolId: 'treg.instagram.user.profile', inputs: { username: P.author },
       outputs: [{ key: 'followers', path: '$.output.followers', columnName: P.followers },
         { key: 'biography', path: '$.output.biography', columnName: S.bio }] },
+    usual: recent('anyapi.instagram.user.reels', { handle: P.author }, '$.output.data.reels',
+      anyapiPage('shortcode')),
     comments: { toolId: 'treg.instagram.post.comments', provider: 'anyapi', inputs: { url: P.post },
       fields: COMMENT_FIELDS(), dedupe: { path: '$.id' } },
   },
@@ -101,6 +113,9 @@ export const PLATFORM_SPECS: Record<Platform, PlatformSpec> = {
     creator: { toolId: 'treg.youtube.channel.profile', inputs: { channel_id: 'Channel id' },
       outputs: [{ key: 'subscribers', path: '$.output.subscribers', columnName: P.followers },
         { key: 'description', path: '$.output.description', columnName: S.bio }] },
+    // crawl4ai's channel videos give plain view counts (the routed tool's first provider answers "1.8万次观看").
+    usual: recent('crawl4ai.youtube.channel.videos', { channel: 'Channel id' }, '$.rows',
+      { limit: String(SOCIAL_RECENT_POSTS) }),
     comments: { toolId: 'treg.youtube.video.comments', provider: 'crawl4ai', inputs: { video_id: 'Video id' },
       fields: COMMENT_FIELDS(), dedupe: { path: '$.comment_id', also: ['$.url'] } },
   },
@@ -117,6 +132,7 @@ export const PLATFORM_SPECS: Record<Platform, PlatformSpec> = {
     transcript: { toolId: 'anyapi.twitter.tweet_transcript', inputs: { url: P.post },
       outputs: [{ key: 'output.data.transcript', path: '$.output.data.transcript', columnName: S.transcriptText }] },
     creator: null,
+    usual: recent('anyapi.x.user.posts.timeline', { handle: P.author }, '$.output.data.tweets', anyapiPage('id')),
     comments: { toolId: 'anyapi.x.post.comments', provider: null, inputs: { url: P.post },
       fields: COMMENT_FIELDS({ author: '$.authorHandle', likes: '$.likeCount', replies: '$.replyCount' }),
       dedupe: { path: '$.id', also: ['$.url'] } },
