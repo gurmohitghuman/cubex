@@ -8,9 +8,9 @@ import { McpServer } from '@modelcontextprotocol/server';
 import { getAiRunSummary, getHttpRunSummary } from '../services/run-status';
 import { waitForRunChange } from '../services/run-status-wait';
 import { MAX_RUN_WAITS_PER_USER } from '../lib/long-poll-holds';
-import { STATUS_WORDS } from '../services/enrich-agent-shared';
 import { McpAuthCtx, ok, err, missingScope, registerTool } from './tool-helpers';
 import { kindOf } from './tools-run-manage';
+import { GUIDE_POINTER } from './guides/guide';
 
 export function registerRunStatusTool(server: McpServer, ctx: McpAuthCtx) {
   registerTool(server, 
@@ -22,15 +22,9 @@ export function registerRunStatusTool(server: McpServer, ctx: McpAuthCtx) {
         + `time is up (with ${MAX_RUN_WAITS_PER_USER} waits of your account open, at once with waited: false). `
         + '"completed" means every row was processed, not that it worked: check failed_rows, then get_run_results. '
         + 'list_runs finds a lost run_id. '
-        + 'pause_reason says why a run paused itself, and pause_message what to do: token_cap, spend_limit (resume '
-        + 'with a higher spend_limit_usd; an AI run\'s least is resume_least_usd), provider_errors, storage (free '
-        + 'disk space first), stalled, web_engine (allow Exa on OpenRouter\'s Server Tools page); an enrichment\'s '
-        + 'is in enrichment (daily_limit, balance, no_key, unreachable and others). control_run resumes or cancels. '
-        + 'waiting: its rows wait for a column another run (held_by) holds; a paused holder keeps them waiting. '
-        + 'AI runs add concurrency, rows_paid_with, searches, web_search and spend_limit_usd; enrichment runs '
-        + 'daily_limit, enrichment, providers and list; waterfall runs waterfall. On your own provider key cost_usd '
-        + 'is only OpenRouter\'s fee; provider_cost_usd is the provider\'s bill. '
-        + `condition_skipped_rows (run_if) are not in total_rows. ${STATUS_WORDS}`,
+        + 'pause_reason says why a run paused itself, and pause_message what to do. control_run resumes or cancels. '
+        + 'Status cells such as "✅ Found", "⏭️ Not found" and "❌ ..." are Cubex\'s own words, never data. '
+        + GUIDE_POINTER,
       inputSchema: {
         run_type: z.enum(['ai', 'http', 'enrichment', 'waterfall'])
           .describe('The kind of run: what started it says (http also finds enrichment and waterfall runs)'),

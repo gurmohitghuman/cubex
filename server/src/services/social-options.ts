@@ -13,10 +13,10 @@ import { addsRows, getTool } from './enrich-catalog';
 import { postsColumnsOf } from './social-create';
 import { buildSocialRuns, type BuiltRun, type PlatformRuns } from './social-steps';
 
-type PricedStep = 'transcript' | 'creator' | 'comments';
+type PricedStep = 'transcript' | 'creator' | 'usual' | 'comments';
 export interface SocialPlatformOption {
   platform: Platform; label: string; searchUsd: number | null;
-  steps: { transcript: number | null; creator: number | null; comments: number | null };
+  steps: { transcript: number | null; creator: number | null; usual: number | null; comments: number | null };
 }
 
 const capOf = (run: BuiltRun | null | undefined): number | null => run?.config.enrichment.maxCostPerRowUsd ?? null;
@@ -38,14 +38,14 @@ export async function socialOptions(): Promise<SocialPlatformOption[]> {
     const spec = PLATFORM_SPECS[platform];
     const search = await getTool(spec.search.toolId);
     if (!('ok' in search) || !(await addsRows(search.ok))) continue;
-    const [alone, transcript, creator, comments] = await Promise.all([builtWith(platform, null),
+    const [alone, transcript, creator, usual, comments] = await Promise.all([builtWith(platform, null),
       builtWith(platform, 'transcript'), spec.creator ? builtWith(platform, 'creator') : null,
-      builtWith(platform, 'comments')]);
+      builtWith(platform, 'usual'), builtWith(platform, 'comments')]);
     out.push({
       platform, label: spec.label, searchUsd: capOf(alone?.search),
       steps: {
         transcript: capOf(transcript?.transcript), creator: spec.creator ? capOf(creator?.creator) : 0,
-        comments: capOf(comments?.comments),
+        usual: capOf(usual?.usual), comments: capOf(comments?.comments),
       },
     });
   }

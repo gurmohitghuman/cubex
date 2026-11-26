@@ -29,6 +29,7 @@ import { registerEnrichManageTools } from './tools-enrich-manage';
 import { registerBalanceTools } from './tools-balances';
 import { registerUsageTools } from './tools-usage';
 import { registerVersionTool } from './tools-version';
+import { registerToolGuideTool } from './tools-guide';
 import { registerTrashTools } from './tools-trash';
 import { registerRunConditionTools } from './tools-run-conditions';
 import { registerCleanTool } from './tools-clean';
@@ -113,6 +114,7 @@ export function registerAllTools(server: McpServer, ctx: McpAuthCtx) {
   registerBalanceTools(server, ctx);
   registerUsageTools(server, ctx);
   registerVersionTool(server, ctx);
+  registerToolGuideTool(server, ctx);
   registerTrashTools(server, ctx);
   registerCleanTool(server, ctx);
   registerFormulaTool(server, ctx);

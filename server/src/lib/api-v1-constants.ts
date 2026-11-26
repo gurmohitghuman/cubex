@@ -24,6 +24,8 @@ export const API_V1_MAX_ROWS_PAGE = 500;
 export const MCP_MAX_ROWS_PAGE = 100;
 // read_rows / rows/query `row_ids`: the most rows one read names (services/rows-by-id.ts).
 export const ROWS_BY_ID_MAX = 1000;
+// get_run_results with include_answers: stored answers can be large (a few KB each), so such a page is short.
+export const ANSWERS_PAGE_MAX = 10;
 // Over MCP a read by id keeps rows up to about this many characters and lists
 // the rest in unread_ids, as export_csv does (MCP_EXPORT_MAX_CHARS below).
 export const MCP_ROWS_BY_ID_MAX_CHARS = 40_000;

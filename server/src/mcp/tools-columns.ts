@@ -14,6 +14,7 @@ import { MAX_COLUMN_DESCRIPTION_CHARS, MAX_SHEET_DESCRIPTION_CHARS } from '../li
 import { MAX_COLUMNS_PER_SHEET } from '../lib/constants';
 import { McpAuthCtx, ok, err, missingScope, registerTool, SHEET_ID } from './tool-helpers';
 import { changedOf } from './changed';
+import { GUIDE_POINTER } from './guides/guide';
 
 const ownsSheet = (sheetId: string, userId: string): boolean =>
   !!db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ? AND trash_id IS NULL').get(sheetId, userId);
@@ -110,13 +111,10 @@ export function registerColumnTools(server: McpServer, ctx: McpAuthCtx) {
         'Delete a column: it goes to the trash with its cells, its place, its description and its own setup '
         + '(what makes it an AI, HTTP API, enrichment, waterfall, formula, lookup or clean column), and the '
         + 'answer\'s trash says until when and how to restore it (restore_from_trash). What other columns, views '
-        + 'and settings said about it is removed now and does not come back with it: its own auto-run, filters '
-        + 'and hidden columns in views, webhook mappings, fields another run writes into it, lookups in other '
-        + 'sheets reading it, auto-dedupe on it; the restore answer lists each one so you can set it up again. '
-        + 'With Settings keeping deleted things 0 days it is deleted at once (trash_id null). A big column\'s '
-        + 'cells take a while: past a few seconds the answer\'s trash says state "moving" (they go on in the '
-        + 'background, and a restore waits until they are all in). Refused for '
-        + 'run-owned columns, columns an active run reads, webhook marker columns, and the last remaining column.',
+        + 'and settings said about it is removed now and does not come back with it. '
+        + 'With Settings keeping deleted things 0 days it is deleted at once (trash_id null). Refused for '
+        + 'run-owned columns, columns an active run reads, webhook marker columns, and the last remaining column. '
+        + GUIDE_POINTER,
       inputSchema: { sheet_id: z.string().describe(SHEET_ID), column: z.string().describe('The column\'s name') },
     },
     async ({ sheet_id, column }) => {
