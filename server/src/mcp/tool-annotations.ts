@@ -36,6 +36,7 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   get_balances: read('Read balances', true),
   get_usage: read('Read usage and costs'),
   get_version: read('Read the Cubex version'),
+  get_tool_guide: read("Read a tool's guide"),
   list_trash: read('List the trash'),
   get_sheet_history: read("Read a sheet's change log"),
   // With auto-dedupe keeping the newest row per key, a row with a key the sheet has replaces the older row.

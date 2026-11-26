@@ -15,12 +15,16 @@ export const RULE_LANGUAGE = 'Rule language: {{Column}} is "x" | is not "x" | co
 
 export const RULE_POINTER = 'The rule language is check_run_condition\'s (its description says every check).';
 
-export const runIfSchema = z.string().max(MAX_RULE_CHARS).optional().describe(
-  '"Only run if": rows that fail this rule are not run, cost nothing, and show "⏭️ Condition not met" '
-  + `(a real value an earlier run wrote is kept). ${RULE_POINTER}`
+// The whole notes, in run tools' guides (mcp/guides); the schema keeps a short line.
+export const RUN_IF_HELP = '"Only run if": rows that fail this rule are not run, cost nothing, and show "⏭️ Condition '
+  + `not met" (a real value an earlier run wrote is kept). ${RULE_POINTER}`
   + ' Example: ({{Industry}} is "SaaS" OR {{Industry}} is "Fintech") AND {{Employees}} > 50. '
   + 'CHAINS: give each next column a rule on the previous one\'s result, e.g. {{Fit (Output)}} is "yes", once '
   + 'that run has finished; rows the previous rule kept out count as empty, so they stay out too. Check a rule '
   + 'with check_run_condition (free), or have write_run_condition write one from plain words. Reruns of the '
-  + 'column repeat its rule; estimate_only counts only the rows that pass.',
+  + 'column repeat its rule; estimate_only counts only the rows that pass.';
+
+export const runIfSchema = z.string().max(MAX_RULE_CHARS).optional().describe(
+  '"Only run if": rows that fail this rule, e.g. {{Industry}} is "SaaS" AND {{Employees}} > 50, are not run and '
+  + `cost nothing. ${RULE_POINTER}`,
 );
