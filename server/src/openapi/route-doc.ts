@@ -21,7 +21,7 @@ export const TAGS = {
   hiring: ['Hiring signals', 'Tables of the companies hiring for chosen roles, with what is new at each check.'],
   social: ['Social research', 'Tables of social posts on a topic, why they work, who made them.'],
   setups: ['Setups', 'Saved chains of filled columns, used again on other sheets.'],
-  versions: ['Setup versions', "A sheet's column setup kept by name, compared and restored."],
+  versions: ['Setup versions', "A sheet's column setup kept by name, compared and restored, or tried on sample rows."],
   webhook: ['Sheet webhooks', 'A secret URL per sheet: each JSON event POSTed to it becomes a new row.'],
   hooks: ['Run webhooks', 'URLs Cubex tells, with a signed POST, when a run finishes.'],
   trash: ['Trash and history', "Deleted rows, sheets, tables and columns, putting them back, and a sheet's history."],

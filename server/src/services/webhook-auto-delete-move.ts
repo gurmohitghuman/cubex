@@ -23,6 +23,8 @@ import { settleRows } from './auto-dedupe-settle';
 import { forgetUnlistedTransformPasses } from './column-transform-pass-moves';
 import { logSheetChange, rewriteSheetChange } from '../lib/change-log';
 import { rowsChanged } from '../lib/rows-changed';
+import { sheetUnderTest } from '../lib/sheet-test-hold';
+import { isTestCopy } from './sheet-test-store';
 
 export interface CopyTo {
   sheetId: string; name: string;
@@ -34,9 +36,23 @@ export interface CopyTo {
 // copied: the rows copied, the oldest first: all of them, or as many as the destination has room for.
 export type CopyOutcome = { copied: number[] } | { wait: true } | { pause: string };
 
+// A test's hidden copy takes no copied rows: it is deleted when its test ends, so they would be lost (transfer_rows
+// refuses one too). A sheet whose changes are being tried on a copy takes no change until that test ends: rows
+// wait. Checked when auto-delete is set (services/webhook-auto-delete.ts) and in each slice that copies.
+export const TEST_COPY_REFUSED = 'Rows can\'t be copied into a test copy. Pick another sheet.';
+export function testedTarget(sheetId: string, userId: string): 'test_copy' | 'tested' | null {
+  if (isTestCopy(sheetId)) return 'test_copy';
+  const open = db.prepare(`SELECT 1 FROM sheet_tests WHERE sheet_id = ? AND user_id = ? AND state = 'open'`)
+    .get(sheetId, userId);
+  return open || sheetUnderTest(sheetId) ? 'tested' : null;
+}
+
 export function copyRows(
   sourceSheetId: string, userId: string, raw: string, picked: number[], to: CopyTo,
 ): CopyOutcome {
+  const tested = testedTarget(to.sheetId, userId);
+  if (tested === 'test_copy') return { pause: TEST_COPY_REFUSED };
+  if (tested === 'tested') return { wait: true };
   const pristine = isPristineSeedSheet(to.sheetId, userId);
   const columns = getSheetColumns(sourceSheetId, userId, false).filter(c => c !== raw);
   const plan = planTransferColumns(sourceSheetId, to.sheetId, userId, {}, 'create_missing', pristine, columns, true);

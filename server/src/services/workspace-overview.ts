@@ -64,20 +64,20 @@ function tablesAndSheets(userId: string): Pick<Overview, 'table_count' | 'sheet_
   const tables = db.prepare(`
     SELECT t.id, t.name, IFNULL(s.n, 0) AS sheet_count FROM tables t
     LEFT JOIN (SELECT table_id, COUNT(*) AS n, MAX(updated_at) AS changed FROM sheets
-      WHERE user_id = ? AND trash_id IS NULL GROUP BY table_id) s ON s.table_id = t.id
+      WHERE user_id = ? AND trash_id IS NULL AND test_of IS NULL GROUP BY table_id) s ON s.table_id = t.id
     WHERE t.user_id = ? AND t.trash_id IS NULL
     ORDER BY MAX(t.updated_at, IFNULL(s.changed, '')) DESC, t.created_at DESC, t.rowid DESC LIMIT ?
   `).all(userId, userId, OVERVIEW_TABLES) as Array<{ id: string; name: string; sheet_count: number }>;
   const totals = db.prepare(`SELECT
       (SELECT COUNT(*) FROM tables WHERE user_id = ? AND trash_id IS NULL) AS tables,
       (SELECT COUNT(*) FROM sheets s JOIN tables t ON t.id = s.table_id
-        WHERE s.user_id = ? AND s.trash_id IS NULL AND t.trash_id IS NULL) AS sheets`)
+        WHERE s.user_id = ? AND s.trash_id IS NULL AND s.test_of IS NULL AND t.trash_id IS NULL) AS sheets`)
     .get(userId, userId) as { tables: number; sheets: number };
   if (!tables.length) return { table_count: totals.tables, sheet_count: totals.sheets, tables: [] };
   // The sheets of those tables changed most recently, shown under their table in the app's order.
   const sheets = db.prepare(`
     SELECT id, table_id, name, position, data_version, updated_at, column_order FROM sheets
-    WHERE user_id = ? AND trash_id IS NULL AND table_id IN (${tables.map(() => '?').join(',')})
+    WHERE user_id = ? AND trash_id IS NULL AND test_of IS NULL AND table_id IN (${tables.map(() => '?').join(',')})
     ORDER BY updated_at DESC, rowid DESC LIMIT ?
   `).all(userId, ...tables.map(t => t.id), OVERVIEW_SHEETS) as Array<{
     id: string; table_id: string; name: string; position: number; data_version: number; updated_at: string;

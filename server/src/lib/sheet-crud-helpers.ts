@@ -29,7 +29,8 @@ export function createSheetTxn(
     // Insert right of afterSheetId (Google's insert-right-of-active); omitted -> append.
     // Then normalize all positions to 0..n-1 (gap-free, race-safe).
     const siblings = db.prepare(
-      'SELECT id FROM sheets WHERE table_id = ? AND user_id = ? AND trash_id IS NULL ORDER BY position ASC',
+      `SELECT id FROM sheets WHERE table_id = ? AND user_id = ? AND trash_id IS NULL AND test_of IS NULL
+        ORDER BY position ASC`,
     ).all(tableId, userId) as Array<{ id: string }>;
     let insertAt = siblings.length;
     if (afterSheetId) {
@@ -63,7 +64,8 @@ export function verifySheetInTable(sheetId: string, tableId: string, userId: str
 }
 
 // Only live sheets and tables: one in the trash (trash_id set, migration 036)
-// is passed over by every read here, as by verifySheetOwnership.
+// is passed over by every read here, as by verifySheetOwnership. A test's
+// hidden copy (test_of set, migration 070) is in no list and holds no name.
 // Client-facing sheet/table column lists. sort_state is always NULL now (sort is
 // a one-time physical reorder, nothing writes it); it stays in the payload so
 // responses keep their shape. NEVER `SELECT *` for a row that goes
@@ -90,7 +92,7 @@ export type SheetListRow = { id: string; table_id: string; name: string; positio
 export function listSheets(tableId: string, userId: string): SheetListRow[] {
   return db.prepare(
     `SELECT ${SHEET_CLIENT_COLUMNS} FROM sheets WHERE table_id = ? AND user_id = ? AND trash_id IS NULL
-     ORDER BY position ASC`,
+       AND test_of IS NULL ORDER BY position ASC`,
   ).all(tableId, userId) as SheetListRow[];
 }
 
@@ -118,12 +120,13 @@ export function sheetNameTaken(
 ): boolean {
   if (excludeId) {
     return !!db.prepare(
-      `SELECT 1 FROM sheets WHERE table_id = ? AND user_id = ? AND trash_id IS NULL AND LOWER(name) = LOWER(?)
-        AND id != ? LIMIT 1`,
+      `SELECT 1 FROM sheets WHERE table_id = ? AND user_id = ? AND trash_id IS NULL AND test_of IS NULL
+        AND LOWER(name) = LOWER(?) AND id != ? LIMIT 1`,
     ).get(tableId, userId, name, excludeId);
   }
   return !!db.prepare(
-    'SELECT 1 FROM sheets WHERE table_id = ? AND user_id = ? AND trash_id IS NULL AND LOWER(name) = LOWER(?) LIMIT 1',
+    `SELECT 1 FROM sheets WHERE table_id = ? AND user_id = ? AND trash_id IS NULL AND test_of IS NULL
+      AND LOWER(name) = LOWER(?) LIMIT 1`,
   ).get(tableId, userId, name);
 }
 
@@ -131,7 +134,8 @@ export function sheetNameTaken(
 // reuse the gap rather than monotonically climbing to Sheet14).
 export function lowestUnusedSheetName(tableId: string, userId: string): string {
   const names = new Set(
-    (db.prepare('SELECT name FROM sheets WHERE table_id = ? AND user_id = ? AND trash_id IS NULL')
+    (db.prepare(`SELECT name FROM sheets WHERE table_id = ? AND user_id = ? AND trash_id IS NULL
+      AND test_of IS NULL`)
       .all(tableId, userId) as Array<{ name: string }>).map(r => r.name.toLowerCase()),
   );
   for (let n = 1; ; n++) {
