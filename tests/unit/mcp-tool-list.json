@@ -1,76 +1,53 @@
 {
-  "release": "v0.8.44",
+  "release": "v0.8.45",
   "lines": [
     {
-      "change": "changed",
+      "change": "added",
       "tools": [
-        "run_enrichment",
-        "waterfall_column"
+        "get_tool_guide"
+      ]
+    },
+    {
+      "change": "added",
+      "tools": [
+        "call_setup",
+        "get_setup_call"
+      ]
+    },
+    {
+      "change": "added",
+      "tools": [
+        "call_enrichment"
       ]
     },
     {
       "change": "changed",
       "tools": [
-        "list_tables"
-      ]
-    },
-    {
-      "change": "changed",
-      "tools": [
+        "create_upload_link",
         "create_download_link"
       ]
     },
     {
       "change": "changed",
       "tools": [
-        "run_ai_column",
-        "run_http_enrichment",
-        "run_enrichment",
-        "waterfall_column"
-      ]
-    },
-    {
-      "change": "added",
-      "tools": [
-        "social_research"
+        "manage_sheet",
+        "get_sheet"
       ]
     },
     {
       "change": "changed",
       "tools": [
-        "export_csv"
+        "get_usage"
       ]
     },
     {
       "change": "changed",
       "tools": [
-        "read_rows",
-        "control_run"
-      ]
-    },
-    {
-      "change": "added",
-      "tools": [
-        "list_prompt_starters"
+        "get_usage"
       ]
     },
     {
       "change": "changed",
-      "tools": [
-        "transfer_rows"
-      ]
-    },
-    {
-      "change": "server"
-    },
-    {
-      "change": "changed",
-      "tools": [
-        "hiring_signals"
-      ]
-    },
-    {
-      "change": "added",
       "tools": [
         "manage_sheet_webhook"
       ]
@@ -78,39 +55,7 @@
     {
       "change": "changed",
       "tools": [
-        "set_auto_run"
-      ]
-    },
-    {
-      "change": "changed",
-      "tools": [
-        "manage_table",
-        "manage_sheet"
-      ]
-    },
-    {
-      "change": "changed",
-      "tools": [
-        "set_auto_run"
-      ]
-    },
-    {
-      "change": "added",
-      "tools": [
-        "manage_run_schedule"
-      ]
-    },
-    {
-      "change": "added",
-      "tools": [
-        "run_columns"
-      ]
-    },
-    {
-      "change": "changed",
-      "tools": [
-        "get_setup_run",
-        "control_setup_run"
+        "manage_sheet_webhook"
       ]
     }
   ],
@@ -377,6 +322,130 @@
       ],
       "type": "object"
     },
+    "call_enrichment": {
+      "additionalProperties": false,
+      "properties": {
+        "allow_unpriced": {
+          "type": "boolean"
+        },
+        "estimate_only": {
+          "type": "boolean"
+        },
+        "fields": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "items": {
+          "items": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "maxItems": 1000,
+          "minItems": 1,
+          "type": "array"
+        },
+        "max_cost_usd": {
+          "exclusiveMinimum": 0,
+          "maximum": 1000000,
+          "type": "number"
+        },
+        "tool_id": {
+          "maxLength": 200,
+          "type": "string"
+        },
+        "webhook_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "items",
+        "tool_id"
+      ],
+      "type": "object"
+    },
+    "call_setup": {
+      "additionalProperties": false,
+      "properties": {
+        "allow_unpriced": {
+          "type": "boolean"
+        },
+        "estimate_only": {
+          "type": "boolean"
+        },
+        "items": {
+          "items": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "type": "array"
+        },
+        "max_cost_usd": {
+          "exclusiveMinimum": 0,
+          "maximum": 1000000,
+          "type": "number"
+        },
+        "models": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "propertyNames": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "setup_id": {
+          "type": "string"
+        },
+        "webhook_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "items",
+        "setup_id"
+      ],
+      "type": "object"
+    },
     "check_run_condition": {
       "properties": {
         "rule": {
@@ -569,6 +638,9 @@
           ],
           "type": "string"
         },
+        "setup_call_id": {
+          "type": "string"
+        },
         "sheet_id": {
           "type": "string"
         },
@@ -684,13 +756,18 @@
           "type": "array"
         }
       },
-      "required": [
-        "sheet_id"
-      ],
       "type": "object"
     },
     "create_upload_link": {
       "properties": {
+        "allow_unpriced": {
+          "type": "boolean"
+        },
+        "max_cost_usd": {
+          "exclusiveMinimum": 0,
+          "maximum": 1000000,
+          "type": "number"
+        },
         "mode": {
           "enum": [
             "append",
@@ -698,13 +775,25 @@
           ],
           "type": "string"
         },
+        "models": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "propertyNames": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "setup_id": {
+          "type": "string"
+        },
         "sheet_id": {
+          "type": "string"
+        },
+        "webhook_id": {
           "type": "string"
         }
       },
-      "required": [
-        "sheet_id"
-      ],
       "type": "object"
     },
     "delete_column": {
@@ -1012,6 +1101,33 @@
       ],
       "type": "object"
     },
+    "get_setup_call": {
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "results_from": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "setup_call_id": {
+          "type": "string"
+        },
+        "wait_seconds": {
+          "maximum": 25,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "setup_call_id"
+      ],
+      "type": "object"
+    },
     "get_setup_run": {
       "additionalProperties": false,
       "properties": {
@@ -1069,6 +1185,15 @@
       "required": [
         "sheet_id"
       ],
+      "type": "object"
+    },
+    "get_tool_guide": {
+      "properties": {
+        "tool": {
+          "maxLength": 200,
+          "type": "string"
+        }
+      },
       "type": "object"
     },
     "get_usage": {
@@ -1719,7 +1844,11 @@
             "rename",
             "copy",
             "delete",
-            "reorder"
+            "reorder",
+            "test",
+            "test_add_rows",
+            "apply_test",
+            "discard_test"
           ],
           "type": "string"
         },
@@ -1733,6 +1862,16 @@
           "minItems": 1,
           "type": "array"
         },
+        "dry_run": {
+          "type": "boolean"
+        },
+        "how": {
+          "enum": [
+            "top",
+            "random"
+          ],
+          "type": "string"
+        },
         "name": {
           "type": "string"
         },
@@ -1742,6 +1881,18 @@
           },
           "minItems": 1,
           "type": "array"
+        },
+        "row_ids": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "rows": {
+          "maximum": 50,
+          "minimum": 1,
+          "type": "integer"
         },
         "sheet_id": {
           "type": "string"
@@ -1773,6 +1924,8 @@
             "remove_field",
             "new_token",
             "remove_token",
+            "set_auto_delete",
+            "auto_delete_off",
             "delete"
           ],
           "type": "string"
@@ -1787,14 +1940,160 @@
         "column": {
           "type": "string"
         },
+        "copy_to_sheet_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "field_id": {
           "type": "string"
         },
         "json_path": {
           "type": "string"
         },
+        "keep_rows": {
+          "maximum": 9007199254740991,
+          "minimum": -9007199254740991,
+          "type": "integer"
+        },
+        "mode": {
+          "enum": [
+            "actions_finish",
+            "rules"
+          ],
+          "type": "string"
+        },
         "sheet_id": {
           "type": "string"
+        },
+        "success_column": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "where": {
+          "anyOf": [
+            {
+              "items": {
+                "anyOf": [
+                  {
+                    "properties": {
+                      "column": {
+                        "type": "string"
+                      },
+                      "enabled": {
+                        "type": "boolean"
+                      },
+                      "operator": {
+                        "enum": [
+                          "eq",
+                          "neq",
+                          "contains",
+                          "not_contains",
+                          "starts_with",
+                          "ends_with",
+                          "empty",
+                          "not_empty",
+                          "any_of",
+                          "not_any_of",
+                          "gt",
+                          "gte",
+                          "lt",
+                          "lte",
+                          "date_eq",
+                          "date_neq",
+                          "date_gt",
+                          "date_gte",
+                          "date_lt",
+                          "date_lte",
+                          "has_error",
+                          "has_result",
+                          "not_run",
+                          "condition_not_met",
+                          "running",
+                          "out_of_date"
+                        ],
+                        "type": "string"
+                      },
+                      "value": {
+                        "type": "string"
+                      },
+                      "values": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "maxItems": 200,
+                        "minItems": 1,
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "operator"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "or": {
+                        "items": {
+                          "additionalProperties": {},
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "type": "object"
+                        },
+                        "maxItems": 50,
+                        "minItems": 1,
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "or"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "and": {
+                        "items": {
+                          "additionalProperties": {},
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "type": "object"
+                        },
+                        "maxItems": 50,
+                        "minItems": 1,
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "and"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              "maxItems": 50,
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
