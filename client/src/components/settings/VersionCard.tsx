@@ -3,10 +3,22 @@ import { Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { versionAPI, type VersionInfo } from '@/utils/api'
 import { setVersionInfo, useVersionInfo } from '@/hooks/useVersionInfo'
+import { VersionUpdate } from './VersionUpdate'
 
 // Settings → Account → Version: the running version and, while the daily check is on, the latest
 // release on GitHub with its notes. A newer release gets a line here and a dot on Settings and on this
 // tab. A check that failed shows nothing (the last answer stays); only "Check now" says so.
+// How each kind of install gets a new release (the button: VersionUpdate.tsx). A Docker build or a source
+// checkout can't update itself: giving the app control of either would let anyone signed in run anything there.
+const HOW_TO: Record<string, React.ReactNode> = {
+  button: null,
+  cli: <>Run <code className="font-mono whitespace-nowrap">cubex update</code> to get it.</>,
+  docker: <>Pull the new image and start it again (<code className="font-mono">docker compose pull</code>, then{' '}
+    <code className="font-mono">docker compose up -d</code>).</>,
+  source: <>Pull it and build again (<code className="font-mono">git pull</code>,{' '}
+    <code className="font-mono">npm ci</code>, <code className="font-mono">npm run build</code>), then start
+    Cubex again.</>,
+}
 const day = (iso: string) =>
   new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 
@@ -67,12 +79,12 @@ export const VersionCard: React.FC = () => {
               </span>
             ) : (
               <span>
-                {latest.version} is out (you have {info.version}). Run{' '}
-                <code className="font-mono whitespace-nowrap">cubex update</code> to get it.
+                {latest.version} is out (you have {info.version}). {HOW_TO[info.self_update?.how ?? 'cli']}
               </span>
             )}
           </p>
         )}
+        <VersionUpdate info={info} />
         {latest && info.update_available === false && (
           <p className="text-sm text-gray-500" data-testid="version-current">You have the latest release.</p>
         )}
