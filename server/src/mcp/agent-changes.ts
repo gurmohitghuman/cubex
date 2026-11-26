@@ -42,6 +42,46 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
     version: 'v0.8.45',
     changes: [
       {
+        change: 'added',
+        tools: ['get_tool_guide'],
+        summary: 'get_tool_guide gives a tool\'s full details. The longest tool descriptions are shorter now and end '
+          + 'with "Details: get_tool_guide.": their edge cases, examples and long field notes moved there.',
+        details: 'Read a tool\'s guide before its first paid or destructive call, and after a refusal. Without tool '
+          + 'it lists the tools that have one. No tool or argument changed.',
+      },
+      {
+        change: 'changed',
+        tools: ['manage_sheet', 'get_sheet'],
+        summary: 'manage_sheet tries column changes on sample rows: test copies a sheet\'s top rows and setup into a '
+          + 'hidden copy, apply_test makes the copy\'s setup the sheet\'s and puts the sample results back, '
+          + 'discard_test drops it.',
+        details: 'Work in test.test_sheet_id with the usual tools; meanwhile the sheet answers busy to every change '
+          + 'and its webhook deliveries wait (get_sheet\'s test). apply_test is a dry run unless dry_run is false.',
+      },
+    ],
+  },
+  {
+    version: 'v0.8.44',
+    changes: [
+      {
+        change: 'changed',
+        tools: ['run_enrichment', 'waterfall_column'],
+        summary: 'run_enrichment and waterfall_column take rate_limit_retries (0-10, default 5): how many times a '
+          + 'step retries for free when providers answer 429.',
+        details: 'Each waterfall step and check counts its own, and a verified email\'s finds and checks share one. '
+          + 'Reruns, auto-run and waterfall_column describe keep it. Set 0 to fail fast on a 429, or up to 10 to '
+          + 'wait longer for tight provider limits.',
+      },
+      {
+        change: 'changed',
+        tools: ['list_tables'],
+        summary: 'list_tables no longer counts every row on the call: a sheet whose rows changed is counted first, '
+          + 'waiting up to 2 seconds. One still being counted then answers its last count with '
+          + 'row_count_updating: true.',
+        details: 'row_count_updating means that row_count may be out of date: call list_tables again in a moment for '
+          + 'the new count. GET /api/v1/tables answers the same.',
+      },
+      {
         change: 'changed',
         tools: ['create_download_link'],
         summary: 'create_download_link takes format: csv (default) or jsonl, one {"id", "data"} object a line as '
@@ -61,7 +101,8 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
         change: 'added',
         tools: ['social_research'],
         summary: 'social_research makes a table of social posts on a topic (TikTok, Instagram, YouTube, X), with '
-          + 'transcripts, an AI breakdown, creators and comments set up and not run; find_posts searches (paid).',
+          + 'transcripts, an AI breakdown, creators, their usual views and comments set up and not run; find_posts '
+          + 'searches (paid).',
         details: 'create is free. find_posts is an estimate unless estimate_only is false, then needs the estimate\'s '
           + 'high_usd as max_cost_usd; running it again adds only new posts. Run the steps on the Top posts view\'s '
           + 'rows with each column\'s own run.',
@@ -166,38 +207,6 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
         tools: ['get_setup_run', 'control_setup_run'],
         summary: 'A column run (run_columns) shows as a setup run with no setup: setup_id null, column_run with its '
           + 'mode and rows, and a step for each column (kind can be waterfall).',
-      },
-      {
-        change: 'changed',
-        tools: ['manage_sheet', 'get_sheet'],
-        summary: 'manage_sheet tries column changes on sample rows: test copies a sheet\'s top rows and setup into a '
-          + 'hidden copy, apply_test makes the copy\'s setup the sheet\'s and puts the sample results back, '
-          + 'discard_test drops it.',
-        details: 'Work in test.test_sheet_id with the usual tools; meanwhile the sheet answers busy to every change '
-          + 'and its webhook deliveries wait (get_sheet\'s test). apply_test is a dry run unless dry_run is false.',
-      },
-    ],
-  },
-  {
-    version: 'v0.8.44',
-    changes: [
-      {
-        change: 'changed',
-        tools: ['run_enrichment', 'waterfall_column'],
-        summary: 'run_enrichment and waterfall_column take rate_limit_retries (0-10, default 5): how many times a '
-          + 'step retries for free when providers answer 429.',
-        details: 'Each waterfall step and check counts its own, and a verified email\'s finds and checks share one. '
-          + 'Reruns, auto-run and waterfall_column describe keep it. Set 0 to fail fast on a 429, or up to 10 to '
-          + 'wait longer for tight provider limits.',
-      },
-      {
-        change: 'changed',
-        tools: ['list_tables'],
-        summary: 'list_tables no longer counts every row on the call: a sheet whose rows changed is counted first, '
-          + 'waiting up to 2 seconds. One still being counted then answers its last count with '
-          + 'row_count_updating: true.',
-        details: 'row_count_updating means that row_count may be out of date: call list_tables again in a moment for '
-          + 'the new count. GET /api/v1/tables answers the same.',
       },
     ],
   },

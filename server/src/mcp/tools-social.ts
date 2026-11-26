@@ -24,7 +24,8 @@ export function registerSocialTool(server: McpServer, ctx: McpAuthCtx): void {
         .describe('create: words to search (default: the topic)'),
       platforms: z.array(z.enum(PLATFORMS)).optional().describe('create: where to search'),
       steps: z.array(z.enum(STEPS)).optional()
-        .describe('create: transcript, breakdown (AI: hook, tension, payoff, why it works), creator, comments'),
+        .describe('create: transcript, breakdown (AI: hook, tension, payoff, why it works), creator, usual (the '
+          + 'creator\'s usual views and Times usual), comments'),
       min_views: lenientInt(0, 1e12, 'min_views must be a whole number.').optional().describe('create: Top posts'),
       min_comments: lenientInt(0, 1e9, 'min_comments must be a whole number.').optional()
         .describe('create: Top posts'),

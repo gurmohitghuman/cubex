@@ -36,7 +36,7 @@ import cleanV1 from './api-v1-clean';
 import formulaV1 from './api-v1-formula';
 import lookupV1 from './api-v1-lookup';
 import setupsV1 from './api-v1-setups';
-import runSchedulesV1 from './api-v1-run-schedules';
+import { runScheduleRoutes } from './run-schedules-routes';
 import viewsV1 from './api-v1-views';
 import setupVersionsV1 from './api-v1-setup-versions';
 import sheetTestV1 from './api-v1-sheet-test';
@@ -98,7 +98,7 @@ router.use(formulaV1);
 router.use(lookupV1);
 // Setups: a saved chain of filled columns, used again on other sheets (services/setup-*.ts).
 router.use(setupsV1);
-router.use(runSchedulesV1);
+router.use(runScheduleRoutes('/run-schedules', requireScope));
 router.use(viewsV1);
 // Setup versions: a sheet's column setup kept by name, compared and restored (services/setup-version-*.ts).
 router.use(setupVersionsV1);

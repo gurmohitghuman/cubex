@@ -53,27 +53,22 @@ async function shareOf(s: ScheduleRow, sheetId: string, run: Run, left: number, 
   return { usd: Math.min(left, Math.max(1, micro(e.high_usd) + micro(e.row_most_usd) + 1) / 1e6) };
 }
 
-// One firing: the column runs it started, and what it couldn't start. by: fire now's caller, else whoever the
-// schedule fires as (a token gone or revoked since stops it).
-type By = { actor: Actor; secrets: boolean };
-async function fire(s: ScheduleRow, by?: By): Promise<{ runIds: string[]; errors: string[] }> {
-  const runIds: string[] = [];
+// One sheet of a firing: its column run, the most it may spend (a table's share of max_cost_usd), and said, which
+// keeps why it couldn't start (named by its sheet on a table's).
+export interface FiringTurn { sheetId: string; run: Run; max: number | null; said: (message: string) => void }
+
+// The sheets a firing takes, as it takes them: each live sheet's columns (a table's: the named ones it has), and a
+// table's max_cost_usd handed out in its sheet order. go starts (or, for an estimate, prices) one sheet's column run
+// and answers whether it went; a table's share is spent only then. errors: what couldn't start, and why.
+export async function eachFiringSheet(s: ScheduleRow, actor: Actor, secrets: boolean,
+  go: (t: FiringTurn) => Promise<boolean>): Promise<string[]> {
   const errors: string[] = [];
-  if (!by && s.access_token_id === null && s.via !== 'app') {
-    return { runIds, errors: ['The access token that made it is gone.'] };
-  }
-  const revoked = !by && s.access_token_id && db.prepare(`SELECT revoked_at FROM access_tokens WHERE id = ?
-    AND user_id = ?`).pluck().get(s.access_token_id, s.user_id);
-  if (revoked) {
-    return { runIds, errors: ['The access token that made it was revoked.'] };
-  }
   const sheets = targetSheets(s);
-  if (sheets.length === 0) return { runIds, errors: [`Its ${s.sheet_id ? 'sheet' : 'table'} is in the trash.`] };
-  const actor: Actor = by?.actor ?? { via: 'cubex', tokenName: s.token_name, tokenId: s.access_token_id };
-  const secrets = by ? by.secrets : s.allow_secrets === 1;
+  if (sheets.length === 0) return [`Its ${s.sheet_id ? 'sheet' : 'table'} is in the trash.`];
   const named = s.columns ? JSON.parse(s.columns) as string[] : null;
   const shared = sheets.length > 1 && s.max_cost_usd !== null;
   let left = s.max_cost_usd;
+  let went = 0;
   for (const sheetId of sheets) {
     const runnable = sheetRunColumns(sheetId, s.user_id);
     // A table's schedule takes on each sheet the named columns it has; a sheet's runs what it names.
@@ -92,17 +87,41 @@ async function fire(s: ScheduleRow, by?: By): Promise<{ runIds: string[]; errors
       if ('error' in share) { said(share.error); continue; }
       max = share.usd;
     }
+    if (!await go({ sheetId, run, max, said })) continue;
+    went++;
+    if (shared) left = (micro(left!) - micro(max!)) / 1e6;
+  }
+  if (s.table_id && went === 0 && errors.length === 0) {
+    errors.push(named ? 'No sheet of the table has these columns.' : 'No sheet of the table has a run column.');
+  }
+  return errors;
+}
+
+// One firing: the column runs it started, and what it couldn't start. by: fire now's caller, else whoever the
+// schedule fires as (a token gone or revoked since stops it).
+type By = { actor: Actor; secrets: boolean };
+async function fire(s: ScheduleRow, by?: By): Promise<{ runIds: string[]; errors: string[] }> {
+  const runIds: string[] = [];
+  if (!by && s.access_token_id === null && s.via !== 'app') {
+    return { runIds, errors: ['The access token that made it is gone.'] };
+  }
+  const revoked = !by && s.access_token_id && db.prepare(`SELECT revoked_at FROM access_tokens WHERE id = ?
+    AND user_id = ?`).pluck().get(s.access_token_id, s.user_id);
+  if (revoked) {
+    return { runIds, errors: ['The access token that made it was revoked.'] };
+  }
+  const actor: Actor = by?.actor ?? { via: 'cubex', tokenName: s.token_name, tokenId: s.access_token_id };
+  const secrets = by ? by.secrets : s.allow_secrets === 1;
+  const errors = await eachFiringSheet(s, actor, secrets, async ({ sheetId, run, max, said }) => {
     const out = await runAs(actor, () => runColumns(s.user_id, sheetId,
       { ...run, estimateOnly: false, maxCostUsd: max }, { hasSecretsScope: secrets }));
     if ('fail' in out) said((out as RunFail).message);
     else if ('setup_run' in out.ok) {
       runIds.push(out.ok.setup_run.id);
-      if (shared) left = (micro(left!) - micro(max!)) / 1e6;
+      return true;
     }
-  }
-  if (s.table_id && runIds.length === 0 && errors.length === 0) {
-    errors.push(named ? 'No sheet of the table has these columns.' : 'No sheet of the table has a run column.');
-  }
+    return false;
+  });
   return { runIds, errors };
 }
 const sheetName = (s: ScheduleRow, id: string) =>

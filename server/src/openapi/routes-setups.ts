@@ -112,6 +112,10 @@ export const setupRoutes = (): RouteDoc[] => [
     summary: 'Delete a schedule. Runs it started stay.',
   }),
   op({
+    method: 'get', path: '/run-schedules/{id}/estimate', operationId: 'estimateRunSchedule', tag: 'setups',
+    scope: 'run', summary: 'What firing a schedule now would cost, sheet by sheet; nothing starts.',
+  }),
+  op({
     method: 'post', path: '/run-schedules/{id}/fire', operationId: 'fireRunSchedule', tag: 'setups', scope: 'run',
     summary: 'Fire a schedule once now; its next time stays as it was.',
   }),

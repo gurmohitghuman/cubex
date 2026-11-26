@@ -6,6 +6,7 @@ import { searchCatalog, getCatalogEndpoint, providerNames } from '../lib/treg-ca
 import { summarizeTool, normalizeTool, hiddenReason, type ToolSummary, type EnrichTool } from '../lib/enrich-tool';
 import { plainText, toolTitle } from '../lib/enrich-tool-label';
 import { jobMatches } from '../lib/enrich-job-match';
+import { searchOrder } from '../lib/enrich-search-order';
 
 export type CatalogFailure = { fail: 'unreachable' | 'not_found' | 'hidden' | 'upstream'; message: string };
 
@@ -41,8 +42,9 @@ async function listJobs(tools: ToolSummary[]): Promise<Set<string>> {
 }
 
 // Search results: the Popular jobs the words match, then treg's own ranking,
-// minus tools a row lookup can't use, with the ones that need the team's own
-// provider key after the rest.
+// minus tools a row lookup can't use, in the order lib/enrich-search-order.ts
+// sets (the ones that need the team's own provider key after the rest, the
+// platform the words name first, each job's first tool before its others).
 export async function searchTools(query: string): Promise<{ ok: ListedTool[] } | CatalogFailure> {
   const res = await searchCatalog(query);
   if (!res.ok) {
@@ -52,13 +54,15 @@ export async function searchTools(query: string): Promise<{ ok: ListedTool[] } |
   const jobs = ENRICH_FEATURED.filter(job => jobMatches(job.title, query));
   const lead = (await Promise.all(jobs.map(job => getTool(job.id)))).flatMap(r => ('ok' in r ? [r.ok] : []));
   const leadIds = new Set(lead.map(t => t.id));
-  const tools = (Array.isArray(res.body.results) ? res.body.results : [])
-    .filter(isObj)
+  const results = (Array.isArray(res.body.results) ? res.body.results : []).filter(isObj);
+  const platforms = new Map(results.map(ep => [ep.id, typeof ep.platform === 'string' ? ep.platform : null]));
+  const tools = results
     .filter(ep => hiddenReason(ep) === null)
     .map(ep => summarizeTool(ep))
     .filter((t): t is ToolSummary => t !== null && !leadIds.has(t.id))
     .map(t => ({ ...t, providerName: t.providerName ?? names[t.provider] ?? t.provider }));
-  const sorted = [...tools.filter(t => !t.needsOwnKey), ...tools.filter(t => t.needsOwnKey)]
+  const shown = lead.flatMap(t => (t.capability ? [t.capability] : []));
+  const sorted = searchOrder(tools, query, t => platforms.get(t.id) ?? null, shown)
     .slice(0, Math.max(0, ENRICH_SEARCH_RESULTS - lead.length));
   const lists = await listJobs(sorted);
   for (const t of lead) if (t.list && t.capability) lists.add(t.capability);

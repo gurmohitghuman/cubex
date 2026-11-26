@@ -5,13 +5,13 @@ import type { Table } from './types'
 const noServerToast = { skipServerErrorToast: true } as const
 
 export type SocialPlatform = 'tiktok' | 'instagram' | 'youtube' | 'x'
-export type SocialStep = 'transcript' | 'breakdown' | 'creator' | 'comments'
+export type SocialStep = 'transcript' | 'breakdown' | 'creator' | 'usual' | 'comments'
 
 // A platform offered now: what one search costs, and each step a post (null: no known price; creator 0: the search
 // gives the followers already).
 export interface SocialPlatformOption {
   platform: SocialPlatform; label: string; searchUsd: number | null
-  steps: { transcript: number | null; creator: number | null; comments: number | null }
+  steps: { transcript: number | null; creator: number | null; usual: number | null; comments: number | null }
 }
 export interface SocialView {
   id: string; table_id: string; topic: string; searches_sheet_id: string; comments_sheet_id: string | null

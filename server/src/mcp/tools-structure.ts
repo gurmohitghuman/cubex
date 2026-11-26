@@ -19,6 +19,7 @@ import { changedOf } from './changed';
 import { SHEET_TEST_MAX_ROWS } from '../lib/constants';
 import { getSheetColumns } from '../lib/sql-helpers';
 import { webhookForNewSheet, type SheetWebhookView } from '../services/sheet-webhook';
+import { GUIDE_POINTER } from './guides/guide';
 
 // What a create with webhook true adds to its answer.
 type NewSheetWebhook = { webhook?: SheetWebhookView; webhook_error?: string };
@@ -84,18 +85,19 @@ export function registerStructureTools(server: McpServer, ctx: McpAuthCtx) {
     'manage_sheet',
     {
       description:
-        'Create, rename, copy, delete, reorder or test a table\'s sheet tabs. copy makes a sheet right after '
-        + 'sheet_id holding only its values (the same rows, order and column names, or the columns listed): nothing '
-        + 'fills them, and a run\'s status words (⏳, ❌, ⏭️, ➕) are left empty. Free; named "Copy of <sheet>" by '
-        + 'default; it answers once every row is in (rows_copied). delete puts the sheet in the trash whole, '
-        + 'cancelling its runs and stopping its webhook; restore_from_trash brings it back (Settings says how long). '
-        + 'Enrichment results not yet added as rows elsewhere are dropped (list_results_dropped). Returns the '
-        + 'table\'s tab list. '
-        + TEST_WORDS,
+        'Create, rename, copy, delete or reorder the sheet tabs of a table (a table always keeps at least one sheet). '
+        + 'copy makes a new sheet right after sheet_id holding its values only, as plain columns that nothing fills '
+        + '(free, no AI). delete puts the sheet '
+        + 'in the trash whole (rows, columns, runs, views, webhook), cancels its active runs and stops its webhook; '
+        + 'it is kept for the days set in Settings (30 by default; 0 deletes at once), and restore_from_trash brings '
+        + 'it back. Enrichment results its columns bought that were not yet added as rows in another sheet are '
+        + 'dropped (list_results_dropped says how many and for which sheets). Returns the table\'s updated tab list. '
+        + `${TEST_WORDS} ${GUIDE_POINTER}`,
       inputSchema: {
         action: z.enum(['create', 'rename', 'copy', 'delete', 'reorder', ...TEST_ACTIONS]).describe('What to do'),
         table_id: z.string().describe('The table (list_tables)'),
-        sheet_id: z.string().optional().describe('Required for rename/copy/delete'),
+        sheet_id: z.string().optional()
+          .describe('Required for rename/copy/delete and the test actions (the sheet or its test copy)'),
         name: z.string().optional().describe('create and copy: optional; rename: required'),
         columns: z.array(z.string()).min(1).optional()
           .describe('copy only: the columns to copy, in this order (default: every column)'),
@@ -105,11 +107,12 @@ export function registerStructureTools(server: McpServer, ctx: McpAuthCtx) {
           .describe('reorder only: every sheet id of the table, in the desired order'),
         webhook: lenientBoolean().optional()
           .describe('create: true gives the new sheet an incoming webhook (manage_sheet_webhook)'),
-        row_ids: z.array(z.string()).min(1).optional().describe('test, test_add_rows: these rows'),
+        row_ids: z.array(z.string()).min(1).optional().describe('test, test_add_rows: the rows to take'),
         rows: z.number().int().min(1).max(SHEET_TEST_MAX_ROWS).optional()
-          .describe('test, test_add_rows: how many (10 by default)'),
-        how: z.enum(['top', 'random']).optional().describe('test_add_rows'),
-        dry_run: lenientBoolean().optional().describe('apply_test'),
+          .describe('test, test_add_rows: how many rows (default 10)'),
+        how: z.enum(['top', 'random']).optional()
+          .describe('test_add_rows: the next rows from the top (default), or random'),
+        dry_run: lenientBoolean().optional().describe('apply_test: false applies; default true'),
       },
     },
     async ({ action, table_id, sheet_id, name, columns, after_sheet_id, ordered_sheet_ids, webhook, ...test }) => {

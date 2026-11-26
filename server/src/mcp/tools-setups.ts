@@ -3,6 +3,7 @@ import { McpServer } from '@modelcontextprotocol/server';
 import { deleteSetup, getSetup, listSetups, specSummary } from '../services/setup-library';
 import { planSetup, saveSetup } from '../services/setup-save';
 import { SHEET_ID, McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean } from './tool-helpers';
+import { GUIDE_POINTER } from './guides/guide';
 
 // Setups: a saved copy of a chain of filled columns, to use again on another
 // sheet (services/setup-*.ts). list_setups, save_setup, delete_setup.
@@ -31,11 +32,8 @@ export function registerSetupTools(server: McpServer, ctx: McpAuthCtx): void {
       'Save filled columns of a sheet as a named setup, to build the same columns on another sheet later. Name '
       + 'any column a step made (an AI column\'s "(Output)", an HTTP API or enrichment status column or one of '
       + 'its output columns, a clean or formula column). include_upstream (default true) adds every filled '
-      + 'column they read, down the chain, so the setup holds the whole flow. Each step is saved as its column '
-      + 'is set up now: prompt, model, web search, output columns, request, JSONPaths, enrichment choices, '
-      + 'formula, cleaner, "Only run if" and auto-run. Saved keys are kept by name, never their value. A column '
-      + 'that adds rows to another sheet can\'t be saved. preview: true returns what the setup would hold (its '
-      + 'steps in order, inputs and keys) and saves nothing. Saving changes nothing in the sheet.',
+      + 'column they read, down the chain, so the setup holds the whole flow. '
+      + `Saving changes nothing in the sheet. ${GUIDE_POINTER}`,
     inputSchema: z.object({
       sheet_id: z.string().describe(SHEET_ID),
       name: z.string().optional().describe('The setup\'s name; required unless preview is true'),

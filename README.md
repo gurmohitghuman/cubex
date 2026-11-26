@@ -222,6 +222,7 @@ See which posts on a topic did well, why they work, and who made them. On the da
 - **Find posts** shows what it costs, then searches each platform. Run it again later: only posts never found before are added.
 - What you ticked is set up on each post and waits for you: **Transcript**, **Why it works** (AI: the hook, what keeps people watching, the payoff), **Creator** (followers and bio) and **Comments** (into a Comments sheet, each tagged by AI as compares, asks, hates or loves). Run one from its column's menu, which shows the cost first.
 - With a minimum of views or a "posted within", each posts sheet opens on a **Top posts** view, so you run the steps on the posts worth it.
+- **Creator's usual views** shows which posts beat what their creator usually gets. Its **Recent posts** column fetches each creator's latest posts (one call a creator, however many of their posts you have), **Usual views** is the middle of those posts' views, and **Times usual** is how many times that a post got. The **3x over usual** view keeps the posts that stand out.
 
 ### Clean data
 
