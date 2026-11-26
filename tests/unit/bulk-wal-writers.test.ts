@@ -3,7 +3,7 @@
 // and five slices). Now each reads the WAL again in its turn and waits for the worker first when it's past the
 // pause, so the WAL stays within its room (WAL_BULK_ROOM_SHARE of journal_size_limit) and every row is written.
 // Rows of about 1.5 KB with random ids, so a slice of 1,000 rewrites about 1,000 pages; every checkpoint on the
-// worker held 300 ms (bulk-wal-kit.ts).
+// worker held 300 ms (bulk-wal-kit.ts). A read of the WAL that throws in the turn gives the turn back.
 import assert from 'node:assert/strict'
 import { v4 as uuid } from 'uuid'
 import dbMod from '../../server/src/lib/db'
@@ -11,12 +11,16 @@ import migMod from '../../server/src/db/migrate'
 import constMod from '../../server/src/lib/constants'
 import walMod from '../../server/src/lib/wal-checkpointer'
 import bulkMod from '../../server/src/lib/bulk-slices'
+import turnMod from '../../server/src/lib/slice-turn'
+import watchMod from '../../server/src/lib/wal-watch'
 import { bulkWalKit } from './bulk-wal-kit'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { WAL_BULK_PAUSE_FRAMES, WAL_BULK_ROOM_SHARE } = constMod as typeof import('../../server/src/lib/constants')
 const { closeWalCheckpointer } = walMod as typeof import('../../server/src/lib/wal-checkpointer')
 const { runInCheckpointedSlices } = bulkMod as typeof import('../../server/src/lib/bulk-slices')
+const { bulkWritersRunning } = watchMod as typeof import('../../server/src/lib/wal-watch')
+const { takeSliceTurn } = turnMod as typeof import('../../server/src/lib/slice-turn')
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 runMigrations()
@@ -68,6 +72,25 @@ await ok(`${WRITERS} writers at once: the WAL within its room, every row written
   assert.ok(room - slice + (WRITERS - 1) * slice > room + slice, `slices of ${slice} frames show nothing`)
   assert.ok(r.w.mostWalFrames <= room, `the WAL peaked at ${r.w.mostWalFrames} frames, room for ${room}`)
   assert.ok(r.w.mostWalFrames >= WAL_BULK_PAUSE_FRAMES, `${r.w.mostWalFrames} frames never reached the pause`)
+})
+
+// Reading the WAL in its turn throws (the connection busy, say): the slice fails, and the next writer still gets
+// a turn. Held, every bulk writer on the server would wait for it until a restart.
+await ok('a read of the WAL that throws in the slice turn gives the turn back', async () => {
+  const pragma = db.pragma
+  db.pragma = ((...a: Parameters<typeof pragma>) => {
+    if (/pastPause/.test(new Error().stack!)) throw new Error('the WAL unread')
+    return pragma.apply(db, a)
+  }) as typeof pragma
+  try {
+    await assert.rejects(runInCheckpointedSlices(() => false), /the WAL unread/)
+  } finally {
+    db.pragma = pragma
+  }
+  assert.equal(bulkWritersRunning(), 0)
+  const next = await Promise.race([takeSliceTurn(), new Promise<null>(r => setTimeout(() => r(null), 2_000))])
+  assert.ok(next, 'the slice turn was never given back')
+  next()
 })
 
 await closeWalCheckpointer()
