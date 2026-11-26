@@ -17,7 +17,7 @@ import deleteMod from '../../server/src/services/column-delete'
 import addMod from '../../server/src/services/column-add'
 import { transformPageFault } from './transform-page-fault'
 import { unfinished } from './transform-pass-words'
-import { toTheEnd } from './transform-to-end'
+import { caughtUp, toTheEnd } from './transform-to-end'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { transformColumn } = transformMod as typeof import('../../server/src/services/column-transform')
@@ -62,6 +62,7 @@ const live = (id: string) => db.prepare(`SELECT count(*) FROM transform_passes W
   AND trash_id IS NULL`).pluck().get(id)
 // The n-th row written fails: 251, its second page; 501, its third.
 async function stoppedAt(p: Params, n = 251) {
+  await caughtUp()
   fault.arm(n)
   try {
     const out = await transformColumn(uid, p)
@@ -106,7 +107,7 @@ async function main() {
     const second = await stoppedAt({ ...p, cursor: first.next_cursor })
     assert.equal(second.rows_done, 500)
     await refused({ ...p, cursor: first.next_cursor }, 'T2', 500, second.next_cursor, 'the earlier cursor')
-    assert.ok('ok' in await transformColumn(uid, { ...p, cursor: second.next_cursor }))
+    assert.ok('ok' in await toTheEnd(uid, { ...p, cursor: second.next_cursor }))
     assert.equal(ending(sid, 'T2', '*-x-y'), ROWS)
   })
 

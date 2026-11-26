@@ -14,6 +14,7 @@ import migMod from '../../server/src/db/migrate'
 import transformMod from '../../server/src/services/column-transform'
 import constMod from '../../server/src/lib/api-v1-constants'
 import { otherArgs, otherColumn, otherSheet, unfinished } from './transform-pass-words'
+import { caughtUp } from './transform-to-end'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { transformColumn } = transformMod as typeof import('../../server/src/services/column-transform')
@@ -62,6 +63,7 @@ db.prepare = ((sql: string) => {
   return stmt
 }) as typeof db.prepare
 async function cursorOf(p: Params): Promise<string> {
+  await caughtUp()
   shiftOnRead = true
   const out = await transformColumn(uid, p)
   assert.ok('ok' in out && out.ok.next_cursor && out.ok.updated === 250, JSON.stringify(out))
@@ -106,6 +108,7 @@ async function main() {
   await check('the same call, its where\'s keys in another order or with a parameter it doesn\'t use, goes on',
     async () => {
       const t = await cursorOf({ ...template, targetColumn: 'M', template: '{{M}}x' })
+      await caughtUp()
       const out = await transformColumn(uid, { ...template, targetColumn: 'M', template: '{{M}}x', pattern: 'unused',
         index: 3, where: [{ operator: 'not_empty', column: 'N' }] as Params['where'], cursor: t })
       assert.ok('ok' in out, JSON.stringify(out))
