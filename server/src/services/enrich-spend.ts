@@ -5,7 +5,8 @@
 // column name as they were, so spend on a deleted sheet still adds up (and a
 // renamed column shows under its old name too). Spend of calls without a sheet
 // (setup and enrichment calls, on hidden working tables: call_sheets, migration
-// 075) adds up in one line of its own, while the table is kept and after.
+// 075) adds up in one line of its own, while the table is kept and after, listed
+// even when the top columns spent more.
 import { db } from '../lib/db';
 import { ENRICH_SPEND_TOP_COLUMNS, ENRICH_SPEND_WINDOWS } from '../lib/constants';
 import { yieldToRequests } from '../lib/slices';
@@ -63,6 +64,10 @@ export async function enrichSpend(userId: string, days: number): Promise<EnrichS
   }
   const groups = [...sums.values()].sort((x, y) => y.micro - x.micro || y.calls - x.calls);
   const top = groups.slice(0, ENRICH_SPEND_TOP_COLUMNS);
+  const rest = groups.slice(ENRICH_SPEND_TOP_COLUMNS);
+  // The calls' line is listed even past the top columns: it is no column, so "N more columns" never takes it in.
+  const late = rest.findIndex(g => g.call);
+  if (late >= 0) top.push(...rest.splice(late, 1));
   const ids = [...new Set(top.map(g => g.sheet_id).filter((id): id is string => !!id))];
   const names = new Map<string, { sheet: string; table: string }>();
   if (ids.length) {
@@ -72,7 +77,6 @@ export async function enrichSpend(userId: string, days: number): Promise<EnrichS
       Array<{ id: string; sheet: string; tbl: string }>;
     for (const r of rows) names.set(r.id, { sheet: r.sheet, table: r.tbl });
   }
-  const rest = groups.slice(ENRICH_SPEND_TOP_COLUMNS);
   return {
     days,
     totalUsd: groups.reduce((s, g) => s + g.micro, 0) / 1e6,
