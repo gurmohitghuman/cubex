@@ -9,6 +9,7 @@
 // the draft row the preview route keeps, credit reuse at run start and an estimate.
 import { createHash } from 'node:crypto'
 import { v4 as uuid } from 'uuid'
+import { passed } from './ends-on-its-own'
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 
@@ -182,4 +183,4 @@ check('an estimate prices a row without the key like one with an empty cell', ty
   && lacking === holding, { lacking, holding })
 
 console.log(failures === 0 ? '\nprompt listed columns: all passed' : `\nprompt listed columns: ${failures} FAILED`)
-process.exit(failures === 0 ? 0 : 1)
+if (failures === 0) passed(); else process.exit(1)

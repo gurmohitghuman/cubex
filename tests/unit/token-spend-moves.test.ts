@@ -10,6 +10,7 @@
 // starts, says why, and isn't resumed while the token is still at it.
 // Over 200 lines: one script over one account's tokens and runs; split, each part would rebuild them.
 import { v4 as uuid } from 'uuid'
+import { passed } from './ends-on-its-own'
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 
@@ -222,7 +223,7 @@ async function main() {
 
   if (failures > 0) { console.error(`${failures} token-spend-moves assertion(s) failed`); process.exit(1) }
   console.log('All token-spend-moves assertions passed.')
-  process.exit(0)
+  passed()
 }
 
 main().catch(error => { console.error(error); process.exit(1) })

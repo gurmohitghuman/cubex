@@ -18,6 +18,7 @@ import loopMod from '../../server/src/services/autorun-loop'
 import stopMod from '../../server/src/services/autorun-stop'
 import waitMod from '../../server/src/services/waterfall-lookup-wait'
 import cryptoMod from '../../server/src/lib/crypto'
+import { passed } from './ends-on-its-own'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { startLookupColumn } = colMod as typeof import('../../server/src/services/lookup-column')
@@ -178,6 +179,6 @@ async function main() {
   await lookups()
   await openRouterPauses()
   console.log(failures === 0 ? '\npaused run holds: all passed' : `\npaused run holds: ${failures} FAILED`)
-  process.exit(failures === 0 ? 0 : 1)
+  if (failures === 0) passed(); else process.exit(1)
 }
 main().catch(e => { console.error(e); process.exit(1) })

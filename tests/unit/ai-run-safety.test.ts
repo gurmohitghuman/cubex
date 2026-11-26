@@ -9,6 +9,7 @@ import http from 'node:http'
 import type { AddressInfo } from 'node:net'
 import assert from 'node:assert/strict'
 import { v4 as uuid } from 'uuid'
+import { passed } from './ends-on-its-own'
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 process.env.AI_CALL_DEADLINE_MS = '2500'
@@ -153,4 +154,4 @@ server.closeAllConnections()
 server.close()
 if (failures) { console.log(`${failures} ai-run-safety assertion(s) failed`); process.exit(1) }
 console.log('All ai-run-safety assertions passed.')
-process.exit(0)
+passed()
