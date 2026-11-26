@@ -87,7 +87,7 @@ With **Once they match rules**, a row the webhook added leaves once it's older t
 
 Switching modes: going to rules from a setup that waits for a success column needs that column cleared on purpose (the panel does it; over the API send `success_column: null`), since rows would stop waiting for it. Going back from rules clears the rules.
 
-**When.** Cubex checks every few seconds and deletes up to 5,000 rows a check, oldest first. It waits while a run is going in the sheet, or in the sheet it copies to, so it goes in between auto-run's batches. **Deleted rows don't go to the trash and can't be restored.** The panel counts them, and the sheet's History has one line an hour saying how many were deleted (and the destination's, how many were copied in). Rows you put back from the trash are webhook rows like any other: they leave again once they're older than the newest ones you keep.
+**When.** Cubex checks every few seconds and deletes up to 5,000 rows a check (fewer when rows hold big answers, so each check stays short), oldest first. It waits while a run is going in the sheet, or in the sheet it copies to, so it goes in between auto-run's batches. **Deleted rows don't go to the trash and can't be restored.** The panel counts them, and the sheet's History has one line an hour saying how many were deleted (and the destination's, how many were copied in). Rows you put back from the trash are webhook rows like any other: they leave again once they're older than the newest ones you keep.
 
 **The newest rows are the ones at the bottom,** where events land. A sort, an import or removing duplicates moves rows, so auto-delete then pauses until you check the order and save it again.
 

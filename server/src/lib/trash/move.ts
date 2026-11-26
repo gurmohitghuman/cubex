@@ -26,6 +26,14 @@ function pickSql(pick: RowPick): { where: string; list: string } {
 
 export interface Removed { count: number; indexes: number[] }
 
+// The picked rows of the sheet in row order, each [rowid, bytes] (octet_length, from the row's header): what a
+// delete would write (services/trash-rows-sliced.ts).
+export function pickedRows(sheetId: string, userId: string, pick: RowPick): Array<[number, number]> {
+  const { where, list } = pickSql(pick);
+  return db.prepare(`SELECT rowid, IFNULL(octet_length(data), 0) FROM rows WHERE ${where} ORDER BY row_index`).raw()
+    .all(list, sheetId, userId) as Array<[number, number]>;
+}
+
 // Deletes the picked rows of the sheet. With a batch (`itemId`), they go into
 // it first, after its rows, in row order. purgeResults: false when the caller
 // purges every result of the sheet anyway (a CSV replace).

@@ -73,7 +73,8 @@ await ok("a column rename meeting another connection's commit renames", async ()
 
 await ok("removing duplicates meeting another connection's commit removes them", async () => {
   const S = sheet(['Email'], emails('a@x.com', 'A@x.com', 'b@x.com', 'a@X.com'))
-  const shot = rival.arm({ inTx: true, sql: /^SELECT rowid FROM rows WHERE rowid IN \(SELECT value FROM json_each/ })
+  const shot = rival.arm({ inTx: true,
+    sql: /^SELECT rowid, octet_length\(data\) FROM rows WHERE rowid IN \(SELECT value FROM json_each/ })
   const out = await attempt(() => removeDuplicates(uid, S, { columns: [{ column: 'Email', match: 'email' }] }))
   await idle(S)
   await rival.settled()

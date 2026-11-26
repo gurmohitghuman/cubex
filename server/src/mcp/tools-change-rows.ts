@@ -10,7 +10,7 @@ import { verifySheetOwnership } from '../lib/sql-helpers';
 import { MAX_ROWS_PER_SHEET } from '../lib/constants';
 import { API_V1_MAX_BATCH_UPDATES, API_V1_MAX_DELETE_ROWS, API_V1_MAX_PATCH_CELLS } from '../lib/api-v1-constants';
 import { parseCellMap, txnFailMessage } from '../services/data-plane-shared';
-import { patchAnswer, patchRowById, deleteRowsByIds } from '../services/rows-write';
+import { patchAnswer, patchRowById, deleteRowsByIdsSliced } from '../services/rows-write';
 import { trashAnswer } from '../services/trash-answer';
 import { batchUpdateRows } from '../services/rows-batch-update';
 import { batchUpdateKeyed, patchRowKeyed } from '../services/rows-write-keyed';
@@ -69,7 +69,8 @@ export function registerChangeRows(server: McpServer, ctx: McpAuthCtx) {
       }
       if (!sheet_id || !row_ids) return err('delete needs sheet_id and row_ids.');
       if (!verifySheetOwnership(sheet_id, ctx.userId)) return err('Sheet not found');
-      const result = deleteRowsByIds(sheet_id, ctx.userId, row_ids);
+      // Rows with big cells go in slices sized by bytes (services/trash-rows-sliced.ts), as delete_rows did.
+      const result = await deleteRowsByIdsSliced(sheet_id, ctx.userId, row_ids);
       if ('fail' in result) return err(txnFailMessage(result, MAX_ROWS_PER_SHEET));
       const { deleted } = result.ok;
       return ok({

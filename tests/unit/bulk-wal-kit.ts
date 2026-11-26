@@ -75,7 +75,8 @@ export function bulkWalKit() {
   // `pastAuto`: enough for it to pass DB_AUTO_CHECKPOINT_FRAMES, where a commit with SQLite's own checkpoint on
   // would copy the WAL back inside it. `turns`: no two slices written in one turn of the event loop.
   async function measure(
-    label: string, job: () => Promise<unknown>, opts: { pause?: boolean; pastAuto?: boolean; turns?: boolean } = {},
+    label: string, job: () => Promise<unknown>,
+    opts: { pause?: boolean; pastAuto?: boolean; turns?: boolean; loop?: boolean } = {},
   ) {
     // The worker started first: starting it isn't part of the job.
     await checkpointInBackground()
@@ -125,7 +126,10 @@ export function bulkWalKit() {
     console.log(`        in the stretch this thread held longest: ${held || 'no transaction'}`)
     if (opts.turns) console.log(`        slices written in a turn another slice was written in: ${sharedTurns}`)
     const startedOver = records.filter(r => r.startedOver).map(transactionLine)
-    assert.ok(watched.ownMs < LOOP_LIMIT_MS, `the event loop was held ${watched.ownMs.toFixed(0)} ms by this thread`)
+    // loop: false where a job's limit isn't the event loop's on this machine (a caller says why).
+    if (opts.loop !== false) {
+      assert.ok(watched.ownMs < LOOP_LIMIT_MS, `the event loop was held ${watched.ownMs.toFixed(0)} ms by this thread`)
+    }
     assert.equal(w.checkpoints, 0, 'checkpoints run on the API connection')
     assert.equal(w.ownCheckpoints, 0, 'commits on the API connection that ran SQLite\'s own checkpoint')
     assert.deepEqual(startedOver, [], 'transactions on the API connection that started the WAL over')

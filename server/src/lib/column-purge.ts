@@ -1,6 +1,6 @@
 import { db } from './db';
 import { oneTransaction } from './slices';
-import { COLUMN_TRASH_SLICE_ROWS } from './constants';
+import { COLUMN_TRASH_SLICE_ROWS, HEAVY_SLICE_BYTES } from './constants';
 import { jsonPath } from './sql-rows';
 import { eachRowIdSlice, sheetRowIds } from './row-order';
 import { stayBusyToFinish, whenSheetFree } from './sheet-busy';
@@ -25,9 +25,10 @@ export async function copyColumnKey(sheetId: string, userId: string, from: strin
   `);
   const [toPath, fromPath] = [jsonPath(to), jsonPath(from)];
   const rowIds = await sheetRowIds(sheetId, userId);
+  // Each row grows by the copied cell: half the bytes a slice may write.
   await eachRowIdSlice(rowIds, ids => {
     copy.run(toPath, fromPath, ids, sheetId, userId, fromPath);
-  });
+  }, { bytes: HEAVY_SLICE_BYTES / 2 });
   // Rows appended meanwhile (webhook deliveries) have rowids past every one
   // collected. Copy those last, synchronously: the caller switches the name in
   // the same tick, so no request can slip a row in between.
@@ -96,7 +97,7 @@ export async function purgeColumnKey(sheetId: string, userId: string, name: stri
         copyCellsToItem(item, sheetId, userId, name, path, ids);
         stripSlice(ids);
       });
-    }, { rows: COLUMN_TRASH_SLICE_ROWS, checkpointed: true });
+    }, { rows: COLUMN_TRASH_SLICE_ROWS, checkpointed: true, bytes: HEAVY_SLICE_BYTES / 2 });
   }
   if (item === null) forgetPurge(sheetId, name);
   else {

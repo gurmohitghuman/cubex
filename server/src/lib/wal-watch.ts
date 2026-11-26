@@ -7,8 +7,8 @@
 // connection wrote, in any thread or process, and starts the WAL over itself if it then finds every frame copied.
 // Under steady writes a commit often lands during that checkpoint, leaving a few frames uncopied and the WAL not
 // started over: the watch asks again at its next look while the WAL is still past the mark, so the worker gets a
-// chance every WAL_WATCH_MS, as a commit past the mark did when SQLite's own checkpoint ran in it. A WAL just as the
-// last answer left it (a reader holding it: the same ask would answer the same) isn't asked about again.
+// chance every WAL_WATCH_MS, as a commit past the mark did when SQLite's own checkpoint ran in it. A WAL just as it
+// was when the watch last asked (a reader holding it: the same ask would answer the same) isn't asked about again.
 // SQLite's own checkpoint then waits for the bulk writers' room on every connection (lib/wal-room.ts): this one now,
 // and those opened after in the threads and the processes the server starts, which find the mark the watch leaves in
 // the environment (lib/db.ts) once the worker has answered ready (walWatchReady: the job queue waits for it before it
@@ -40,8 +40,10 @@ let ready: Promise<void> | null = null;
 let bulkWriters = 0;
 // What this connection's own checkpoint was last set to by the watch (0: not yet).
 let ownMark = 0;
-// The WAL as the last checkpoint the watch asked for left it.
-let leftAs: WalState | null = null;
+// The WAL as it was when the watch last asked for a checkpoint: asked again only once it differs. A checkpoint a
+// commit cut short (the WAL changed while it ran) is asked again at the next look, so a burst that ends leaves the WAL
+// started over; one a reader holds leaves the WAL as it was asked, and isn't asked again until something changes.
+let askedAt: WalState | null = null;
 
 // This connection's own checkpoint: the room while checkpoints go to the worker, else DB_AUTO_CHECKPOINT_FRAMES.
 // Found changed since the watch set it (a commit with it off never leaves it so: lib/slices.ts), it is logged and
@@ -66,9 +68,12 @@ export function watchWal(): void {
     if (confirmed) process.env[WAL_WATCHED_ENV] = DB_PATH;
     if (bulkWriters > 0) return;
     const s = walState();
-    if (!s || s.log < DB_AUTO_CHECKPOINT_FRAMES) return;
-    if (leftAs && leftAs.log === s.log && leftAs.checkpointed === s.checkpointed) return;
-    void checkpointInBackground().then(() => { leftAs = walState(); }, () => { leftAs = null; });
+    // A WAL started over is another WAL, whatever its counts: forget the one asked about.
+    if (!s || s.log < DB_AUTO_CHECKPOINT_FRAMES) { askedAt = null; return; }
+    if (askedAt && askedAt.log === s.log && askedAt.checkpointed === s.checkpointed) return;
+    askedAt = s;
+    void checkpointInBackground().then(r => { if (r?.startOver === 'done') askedAt = null; },
+      () => { askedAt = null; });
   } catch (err) {
     console.error('Reading the WAL\'s size failed:', err);
   }
@@ -103,7 +108,7 @@ export function stopWalWatch(): void {
   clearInterval(timer);
   timer = null;
   ownMark = 0;
-  leftAs = null;
+  askedAt = null;
   confirmed = false;
   delete process.env[WAL_WATCHED_ENV];
   if (bulkWriters === 0) db.pragma(`wal_autocheckpoint = ${DB_AUTO_CHECKPOINT_FRAMES}`);
