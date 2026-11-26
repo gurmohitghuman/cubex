@@ -5,7 +5,8 @@ import { RUN_SPEND_LIMIT_MAX_USD } from '../lib/constants';
 import { CALL_NOT_FOUND, callSetup, getSetupCall } from '../services/setup-call';
 import { callInputOf } from '../services/setup-call-input';
 import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean } from './tool-helpers';
-import { capToolNote } from '../lib/token-spend';
+import { capRunToolNote } from '../lib/token-spend';
+import { GUIDE_POINTER } from './guides/guide';
 
 const names = z.record(z.string(), z.string());
 const cell = z.union([z.string(), z.number(), z.boolean(), z.null()]);
@@ -17,12 +18,21 @@ const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 export function registerSetupCallTools(server: McpServer, ctx: McpAuthCtx): void {
   registerTool(server, 'call_setup', {
     description:
-      `Run a saved setup (list_setups) on 1-${SETUP_CALL_MAX_ITEMS} items without a sheet, like a function; each `
-      + 'item is keyed by the setup\'s inputs. COSTS MONEY as apply_setup does, and takes its estimate_only '
-      + '(default true: price it, tell the user, call again with false), max_cost_usd, allow_unpriced and models. '
-      + 'Returns a setup_call: get_setup_call gives each item\'s outputs. More items: create_upload_link with '
-      + 'setup_id.'
-      + capToolNote(ctx.spend ?? null, true),
+      `Run a saved setup (list_setups) on 1-${SETUP_CALL_MAX_ITEMS} items without a sheet, like a function: each `
+      + 'item is an object keyed by the setup\'s input names, and the answer gives each item\'s outputs by the '
+      + 'columns the setup makes. Use it to enrich a few records for a script or another app; to fill a sheet '
+      + 'use apply_setup. To run a sheet\'s own columns again, use run_columns. For more items, '
+      + 'create_upload_link with setup_id calls it on a file\'s rows. COSTS MONEY as apply_setup does: '
+      + 'AI steps call your model per item, enrichments spend your treg balance, HTTP API steps send a request '
+      + 'per item; clean and formula steps are free. '
+      + 'ESTIMATE_ONLY DEFAULTS TO TRUE: the first call prices it and starts nothing; tell the user, then call '
+      + 'again with estimate_only:false. max_cost_usd refuses to start when the estimate could pass it (and a step '
+      + 'with no known price, unless allow_unpriced). It needs the "run" scope. A setup whose requests read saved '
+      + 'keys needs the "secrets" scope. Returns a setup_call with its id; poll get_setup_call (wait_seconds) for '
+      + 'the results, or pass webhook_id to be told when it finishes. '
+      + `Results are kept ${SETUP_CALL_KEEP_HOURS} hours after it finishes. A call left paused `
+      + `${SETUP_CALL_KEEP_HOURS} hours is stopped. control_setup_run pauses, resumes or cancels it by that id.`
+      + capRunToolNote(ctx.spend ?? null) + ` ${GUIDE_POINTER}`,
     inputSchema: z.object({
       setup_id: z.string().describe('The setup (list_setups)'),
       items: z.array(z.record(z.string(), cell)).min(1).max(SETUP_CALL_MAX_ITEMS)
@@ -47,9 +57,11 @@ export function registerSetupCallTools(server: McpServer, ctx: McpAuthCtx): void
 
   registerTool(server, 'get_setup_call', {
     description:
-      'A setup call (call_setup): its status and steps; once finished, each item\'s status, error and outputs, '
-      + `${SETUP_CALL_MAX_ITEMS} at a time (next_from starts the next page). wait_seconds waits for the finish. `
-      + `Kept ${SETUP_CALL_KEEP_HOURS} hours after it finishes. Read-only.`,
+      'Where a setup call (call_setup) is, and once it has finished, each item\'s outputs by column (results), '
+      + `${SETUP_CALL_MAX_ITEMS} items a page: pass next_from as results_from for the next page. `
+      + 'With wait_seconds it answers when the call finishes or the time is up, so you poll less. '
+      + `Results are kept ${SETUP_CALL_KEEP_HOURS} hours after the call finishes (keep_until). A call left paused `
+      + `${SETUP_CALL_KEEP_HOURS} hours is stopped. Read-only. ${GUIDE_POINTER}`,
     inputSchema: z.object({
       setup_call_id: z.string().describe('The call (call_setup returned it)'),
       wait_seconds: z.number().int().min(0).max(25).optional()

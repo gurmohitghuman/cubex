@@ -16,6 +16,7 @@ import { restoreRows } from '../services/trash-restore';
 import { readSheetHistory } from '../services/sheet-history';
 import { SHEET_ID, McpAuthCtx, err, lenientInt, missingScope, ok, registerTool } from './tool-helpers';
 import { changedOf, type Touch } from './changed';
+import { GUIDE_POINTER } from './guides/guide';
 import type { RestoreResult } from '../services/trash-actions';
 import type { RowsRestored } from '../services/trash-restore';
 
@@ -26,11 +27,8 @@ export function registerTrashTools(server: McpServer, ctx: McpAuthCtx) {
       + 'a CSV import that replaced rows, transfer_rows moving rows out, a list job\'s rerun, the app), whole '
       + 'sheets, whole tables and columns (delete_column). Each item has its trash_id, what it was, how and by '
       + 'whom it was deleted, and expires_at (kept for kept_days, set in Settings; then deleted). Without '
-      + 'trash_id: the list, newest first (how auto_dedupe with a sheet_id lists what auto-dedupe removed there, '
-      + 'one batch a day). With trash_id: that item, and for a batch or a column its rows (cells as they were, '
-      + 'seq, row_id, old_row_index) a page at a time, or only rows holding a text (a search reads part of a big '
-      + 'batch per call; next_after goes on). A column in state "moving" is still getting its cells: restore it '
-      + 'once it reads "kept". Read-only. Next: restore_from_trash.',
+      + 'trash_id it lists the items, newest first; with one, that item and its rows. '
+      + `Read-only. Next: restore_from_trash. ${GUIDE_POINTER}`,
     inputSchema: {
       trash_id: lenientInt(1, Number.MAX_SAFE_INTEGER).optional().describe('One item, with its rows'),
       q: z.string().max(200).optional().describe('List: words in a table or sheet name, or the deleting token\'s'),
@@ -72,20 +70,10 @@ export function registerTrashTools(server: McpServer, ctx: McpAuthCtx) {
     description:
       'Put deleted things back from the trash (list_trash shows them). Costs nothing. trash_ids restores whole '
       + 'items (tables, then sheets, then columns and row batches, newest deletion first); trash_id with seqs '
-      + `restores only those rows of one batch (at most ${TRASH_RESTORE_PICK_MAX}). A sheet or table comes back whole `
-      + '(rows, columns, runs, views, webhook), renamed "<name> (restored)" if the name was taken. Rows go back to '
-      + 'their old places when the sheet was not sorted, replaced or deduplicated since and those are free, else to '
-      + 'the end in order; '
-      + 'columns they need are added again (columns_added); a sheet without room refuses. Rows moved out with '
-      + 'transfer_rows stay in their new sheet too. Auto-run does not run restored rows. A column comes back at its '
-      + 'old place with its setup and auto-run off (renamed if its name was taken); its cells go only on rows that '
-      + 'still exist and are empty there (cells_kept: rows holding a value now; cells_skipped: rows gone; both stay '
-      + 'in the item). Rerun an AI or HTTP '
-      + 'API column with control_run and setup.run_id; a clean, formula or lookup column works its rows out again. '
-      + 'references_dropped lists what did not come back, each with redo (the tool to set it up again). A column '
-      + 'whose request reads saved API keys needs the secrets scope. A refused item is in results with its error; '
-      + 'the others still go. Refused while a run is active on the sheet. A big batch answers state "restoring" '
-      + 'and finishes in the background.',
+      + `restores only those rows of one batch (at most ${TRASH_RESTORE_PICK_MAX}). Rows go back to their old places `
+      + 'when they can, else to the end; a column comes back with its setup and auto-run off. A column '
+      + 'whose request reads saved API keys needs the secrets scope. Refused while a run is active on the sheet. '
+      + GUIDE_POINTER,
     inputSchema: {
       trash_ids: z.array(lenientInt(1, Number.MAX_SAFE_INTEGER)).min(1).max(TRASH_IDS_MAX).optional()
         .describe(`Whole items to restore, by trash_id (1-${TRASH_IDS_MAX})`),

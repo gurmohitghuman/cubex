@@ -7,10 +7,10 @@ import { MCP_MAX_ROWS_PAGE, MCP_ROWS_BY_ID_MAX_CHARS, ROWS_BY_ID_MAX } from '../
 import { MAX_ROWS_PER_SHEET, MAX_COLUMNS_PER_SHEET } from '../lib/constants';
 import { listTablesWithSheets, readRowsPage } from '../services/workspace-read';
 import { readSheetDetails } from '../services/sheet-details';
-import { COLUMN_COUNTS_MAX_COLUMNS } from '../lib/constants-columns';
 import { queryRows, type WhereItem } from '../services/row-selection';
 import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean, SHEET_ID } from './tool-helpers';
-import { INCLUDE_STATUS_HELP, VIEW_HELP, whereSchema } from './where-schema';
+import { INCLUDE_STATUS_BRIEF, VIEW_BRIEF, whereBrief } from './where-schema';
+import { GUIDE_POINTER } from './guides/guide';
 import { aggregatesSchema, columnsSchema, fitGroups, groupBySchema, maxCharsPerCellSchema } from './query-schema';
 import { parseColumns } from '../lib/row-select/paths';
 import { parseAggregate } from '../lib/row-aggregate/spec';
@@ -38,18 +38,9 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
       description:
         'A sheet\'s structure and state. Read it before choosing what to run or fix, then read_rows or a run '
         + 'tool. Answers the columns in order, row_count, data_version, row_generation, its description and '
-        + 'limits (rows and columns left: check before a big append or import). column_details says for each '
-        + 'column its kind (plain, ai, http, enrichment, waterfall, webhook, clean, formula, lookup), what fills it '
-        + '(fill: its newest run or its setup; filled_by names the column whose run fills it), the columns it '
-        + 'reads, auto_run, run_if (the "Only run if" rule) and description. Prompts, formulas and URLs are cut '
-        + 'short unless the column is named in columns; credentials in a URL read "…". include_counts adds filled, '
-        + `errors (a failed run or ❌) and empty (the rest: not run, skipped, running) per column, reading every `
-        + `row (up to ${COLUMN_COUNTS_MAX_COLUMNS} columns: those in `
-        + 'columns, else the first). Also: filling_columns (their cells read "⏳ Processing..." until done), the '
-        + 'setups of clean, formula and lookup columns (a lookup\'s broken says why it stopped, and kept_changing '
-        + 'why rows it looked up may hold older values), active_runs and '
-        + 'active_setup_runs (control_run cancel_all stops them all), views (pass view to read_rows or '
-        + 'export_csv) and auto_dedupe (set_auto_dedupe\'s setting, or null).',
+        + 'limits (rows and columns left: check before a big append or import). column_details says what each column '
+        + 'is and what fills it. It also answers active runs, views and auto_dedupe. include_counts counts filled, '
+        + `empty and error rows per column. ${GUIDE_POINTER}`,
       inputSchema: {
         sheet_id: z.string().describe(SHEET_ID),
         columns: z.array(z.string()).optional()
@@ -90,21 +81,11 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
         'Read a sheet\'s rows as {id, index, data}, in index order, up to ' + `${MCP_MAX_ROWS_PAGE} a call. `
         + 'Pass columns: reading every column of a wide sheet is what makes reads expensive. Row ids stay the '
         + 'same across sorts: use them with update_cells and delete_rows. '
-        + 'PAGES: cursor = the last row\'s index; next_cursor is null at the end. Paging a filtered read (where) '
-        + 'echoes expected_data_version and expected_row_generation from the page before; a sheet that changed '
-        + 'answers "restart paging". '
+        + 'PAGES: cursor = the last row\'s index; next_cursor is null at the end. '
         + 'where filters by text, numbers, dates, lists of values, OR groups and run state '
-        + '([{"operator":"has_error"}]). return_mode count or ids answers without cells. include_status reads run '
-        + 'cells as {status, value, error}. group_by and aggregates count, sum and average per value without '
-        + 'reading rows. '
-        + `row_ids (1 to ${ROWS_BY_ID_MAX}) returns those rows in that order with updated_at, and missing (list_trash `
-        + 'has deleted ones); past about 40,000 characters read unread_ids next. Prefer it to re-read rows a run '
-        + 'just touched. It takes only columns, include_status and max_chars_per_cell. '
-        + 'updated_since returns rows changed at or after that UTC second, oldest first; page with cursor = '
-        + 'next_cursor (text). To keep a copy up to date: when next_cursor is null, pass as_of as the next '
-        + 'updated_since and dedupe by id; deleted rows don\'t show. It takes only columns, include_status, limit '
-        + 'and cursor. '
-        + 'max_chars_per_cell cuts long cells and lists them in cut_cells; read those whole with row_ids.',
+        + '([{"operator":"has_error"}]). return_mode count or ids answers without cells. group_by and aggregates '
+        + 'count, sum and average per value without reading rows. row_ids reads rows by id (the way to re-read rows '
+        + `a run just touched), and updated_since the rows changed since a time. ${GUIDE_POINTER}`,
       inputSchema: {
         sheet_id: z.string().describe(SHEET_ID),
         // Digits sent as text are the number cursor (a model often quotes it).
@@ -114,10 +95,10 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
         limit: z.number().int().min(1).max(MCP_MAX_ROWS_PAGE).optional()
           .describe(`Rows a call, 1 to ${MCP_MAX_ROWS_PAGE} (the default)`),
         columns: columnsSchema.optional(),
-        where: whereSchema.optional(),
+        where: whereBrief.optional(),
         return_mode: z.enum(['rows', 'ids', 'count']).optional()
           .describe('rows (default); ids: each row\'s id and index only; count: how many rows pass'),
-        include_status: lenientBoolean().optional().describe(INCLUDE_STATUS_HELP),
+        include_status: lenientBoolean().optional().describe(INCLUDE_STATUS_BRIEF),
         expected_data_version: z.number().int().min(0).optional()
           .describe('REQUIRED when paging a filtered read (where + cursor). Echo data_version from the previous page.'),
         expected_row_generation: z.number().int().min(0).optional()
@@ -125,7 +106,7 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
             + 'Echo row_generation from the previous page.'),
         group_by: groupBySchema.optional(),
         aggregates: aggregatesSchema.optional(),
-        view: z.string().min(1).optional().describe(VIEW_HELP),
+        view: z.string().min(1).optional().describe(VIEW_BRIEF),
         expected_view_version: z.string().optional()
           .describe('REQUIRED when paging through a view (view + cursor). Echo view_version from the previous page.'),
         row_ids: z.array(z.string()).min(1).max(ROWS_BY_ID_MAX).optional()
