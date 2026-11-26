@@ -133,7 +133,8 @@ export function registerOverviewTool(server: McpServer, ctx: McpAuthCtx) {
         + `and the runs and setup runs going now (${OVERVIEW_RUNS} of each at most, runs with processed_rows of `
         + 'total_rows), with their counts. note says what was left out and which tool reads it. Read-only. '
         + 'all_tables: true answers every table and its sheets (ids, names, positions, row counts) instead, to turn '
-        + 'a table or sheet name the overview left out into an id. '
+        + 'a table or sheet name the overview left out into an id; each table also says starred (in the user\'s '
+        + 'Favorites) and last_opened_at. '
         + 'Next: get_sheet for a sheet\'s columns, read_rows for its rows.',
       inputSchema: {
         all_tables: lenientBoolean().optional()

@@ -9,6 +9,7 @@ import migMod from '../../server/src/db/migrate'
 import buildMod from '../../server/src/mcp/build-server'
 import annMod from '../../server/src/mcp/tool-annotations'
 import viewMod from '../../server/src/services/view-store'
+import { passed } from './ends-on-its-own'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { registerAllTools } = buildMod as typeof import('../../server/src/mcp/build-server')
@@ -36,7 +37,7 @@ export function toolHintsKit(name: string) {
   const done = () => {
     if (failures) { console.error(`${failures} ${name} check(s) failed`); process.exit(1) }
     console.log(`All ${name} assertions passed.`)
-    process.exit(0)
+    passed()
   }
   const crash = (e: unknown) => { console.error(e); process.exit(1) }
 

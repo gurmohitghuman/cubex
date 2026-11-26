@@ -11,6 +11,7 @@ import net from 'node:net'
 import { spawn } from 'node:child_process'
 import type { AddressInfo } from 'node:net'
 import { v4 as uuid } from 'uuid'
+import { passed } from './ends-on-its-own'
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
@@ -209,6 +210,7 @@ await refused('past the treg balance', /treg balance/, {})
 await fetch(`${TREG}/__mock/reset`, { method: 'POST' })
 await refused('past the token\'s spend cap', /spend cap/, {}, token(0.000001))
 
+treg.kill()
 if (failures > 0) { console.error(`${failures} enrich-call-estimate check(s) failed`); process.exit(1) }
 console.log('enrich-call-estimate: all assertions passed')
-process.exit(0)
+passed()

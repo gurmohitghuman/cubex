@@ -275,7 +275,7 @@ export const SheetPage: React.FC = () => {
   // Its column changes are being tried on a copy: the sheet takes no change (rows included) until the test ends.
   const underTest = !!activeSheet && sheetData?.data.test?.sheet_id === activeSheet.id
   useTableRouting({
-    tableId, urlSheetId, navigate, table, setTable, activeSheet, setActiveSheet, setSheetData, setIsLoading,
+    tableId, urlSheetId, navigate, table, setTable, activeSheet, setActiveSheet, setSheetData, isLoading, setIsLoading,
     setLoadedRowsCount, currentSheetIdRef, selectSheet: sheetOps.selectSheet,
     clearSelection: () => cellOps.setSelectedRowIndices([]), loadSheetData,
   })

@@ -14,7 +14,7 @@ import copyMod from '../../server/src/services/sheet-copy'
 import { columnTrashKit } from './column-trash-kit'
 import { transformPageFault } from './transform-page-fault'
 import { moved, unfinished } from './transform-pass-words'
-import { toTheEnd } from './transform-to-end'
+import { caughtUp, toTheEnd } from './transform-to-end'
 const { transformColumn } = transformMod as typeof import('../../server/src/services/column-transform')
 const { physicalSortSheet } = sortMod as typeof import('../../server/src/services/sheet-sort')
 const { appendRows, deleteRowsByIds } = writeMod as typeof import('../../server/src/services/rows-write')
@@ -35,6 +35,7 @@ const passes = (id: string) => db.prepare('SELECT pass_id, moved_at, trash_id FR
   .all(id) as Rec[]
 // Stopped on its second page: the cursor after 250 rows.
 async function stopped(p: Params): Promise<string> {
+  await caughtUp()
   fault.arm(251)
   try {
     const out = await transformColumn(uid, p)

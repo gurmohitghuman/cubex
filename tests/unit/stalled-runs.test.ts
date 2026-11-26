@@ -10,6 +10,7 @@ import dbMod from '../../server/src/lib/db'
 import migMod from '../../server/src/db/migrate'
 import sweepMod from '../../server/src/services/stalled-runs'
 import constantsMod from '../../server/src/lib/constants'
+import { passed } from './ends-on-its-own'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { requeueStalledRuns } = sweepMod as typeof import('../../server/src/services/stalled-runs')
@@ -95,4 +96,4 @@ await ok('a run the queue refuses is paused, not left pending', async () => {
 
 if (failures) { console.error(`${failures} stalled-runs assertion(s) failed`); process.exit(1) }
 console.log('All stalled-runs assertions passed.')
-process.exit(0)
+passed()

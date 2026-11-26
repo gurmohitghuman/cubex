@@ -47,6 +47,11 @@ test('MCP structure: table + sheets + CSV import lifecycle, all over MCP', async
   // Rename the table.
   expect((await call('manage_table', { action: 'rename', table_id: table.id, name: 'MCP Leads 2' })).name)
     .toBe('MCP Leads 2')
+  // Star it (the user's Favorites): get_workspace with all_tables says so.
+  expect(await call('manage_table', { action: 'star', table_id: table.id }))
+    .toEqual({ id: table.id, name: 'MCP Leads 2', starred: true, changed: [] })
+  const all = await call('get_workspace', { all_tables: true })
+  expect(all.tables.find((t: any) => t.id === table.id).starred).toBe(true)
 
   // Sheets: create a second tab, rename it, reorder it first.
   const created = await call('manage_sheet', { action: 'create', table_id: table.id, name: 'Enriched' })

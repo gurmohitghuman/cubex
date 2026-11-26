@@ -9,6 +9,7 @@
 // empty answer isn't journaled; recall keeps both options; fields picked
 // later for a keep column need a dedupe path; replace mode as before.
 import { v4 as uuid } from 'uuid'
+import { passed } from './ends-on-its-own'
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 process.env.MAX_ROWS_PER_SHEET = '40'
@@ -186,6 +187,6 @@ async function main() {
 
   if (failures > 0) { console.error(`${failures} enrich-list-keep assertion(s) failed`); process.exit(1) }
   console.log('All enrich-list-keep assertions passed.')
-  process.exit(0)
+  passed()
 }
 main().catch(e => { console.error(e); process.exit(1) })

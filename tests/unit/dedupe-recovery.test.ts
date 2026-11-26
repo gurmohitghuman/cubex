@@ -16,6 +16,7 @@ import journalMod from '../../server/src/lib/dedupe/journal'
 import busyMod from '../../server/src/lib/sheet-busy'
 import rowsMod from '../../server/src/services/rows-write'
 import { v4 as uuid } from 'uuid'
+import { passed } from './ends-on-its-own'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { checkDuplicates } = checkMod as typeof import('../../server/src/services/dedupe-check')
@@ -274,4 +275,4 @@ await ok('bad input is refused before anything is read', async () => {
 
 if (failures > 0) { console.error(`${failures} dedupe-recovery assertion(s) failed`); process.exit(1) }
 console.log('All dedupe-recovery assertions passed.')
-process.exit(0)
+passed()

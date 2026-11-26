@@ -27,6 +27,7 @@ import purgeMod from '../../server/src/services/lookup-purge'
 import formulaMod from '../../server/src/services/formula-column'
 import setupMod from '../../server/src/services/setup-save'
 import trashPurgeMod from '../../server/src/services/trash-purge'
+import { passed } from './ends-on-its-own'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { startLookupColumn } = colMod as typeof import('../../server/src/services/lookup-column')
@@ -277,6 +278,6 @@ async function main() {
   check('every lookup trigger exists after the migrations', triggers.length === 7, triggers)
 
   console.log(failures === 0 ? '\nlookup columns: all passed' : `\nlookup columns: ${failures} FAILED`)
-  process.exit(failures === 0 ? 0 : 1)
+  if (failures === 0) passed(); else process.exit(1)
 }
 main().catch(e => { console.error(e); process.exit(1) })

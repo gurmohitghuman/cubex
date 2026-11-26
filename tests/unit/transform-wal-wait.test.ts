@@ -20,6 +20,7 @@ import apiMod from '../../server/src/lib/api-v1-constants'
 import walMod from '../../server/src/lib/wal-checkpointer'
 import constMod from '../../server/src/lib/constants'
 import { sqliteWriteProbe } from './sqlite-write-probe'
+import { passed } from './ends-on-its-own'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { transformColumn, TRANSFORM_WAITED_NOTE } =
@@ -138,5 +139,5 @@ main()
   .finally(() => {
     if (failures) { console.log(`\n${failures} failure(s)`); process.exit(1) }
     console.log('All transform-wal-wait assertions passed.')
-    process.exit(0)
+    passed()
   })

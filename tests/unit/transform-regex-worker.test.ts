@@ -11,6 +11,7 @@ import opsMod from '../../server/src/lib/transform-ops'
 import hostMod from '../../server/src/lib/transform-regex-host'
 import constMod from '../../server/src/lib/api-v1-constants'
 import { watchWhile } from './loop-watch'
+import { passed } from './ends-on-its-own'
 const { applyCellOp, validateRegexPattern } = opsMod as typeof import('../../server/src/lib/transform-ops')
 const { regexPages } = hostMod as typeof import('../../server/src/lib/transform-regex-host')
 const { TRANSFORM_REGEX_PAGE_MS } = constMod as typeof import('../../server/src/lib/api-v1-constants')
@@ -125,5 +126,5 @@ main()
   .finally(() => {
     if (failures) { console.log(`\n${failures} failure(s)`); process.exit(1) }
     console.log('All transform-regex-worker assertions passed.')
-    process.exit(0)
+    passed()
   })
