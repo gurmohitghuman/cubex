@@ -10,7 +10,7 @@ import { v4 as uuidv4 } from 'uuid';
 
 export type TrashKind = 'rows' | 'sheet' | 'table' | 'column';
 export const TRASH_KINDS: readonly TrashKind[] = ['rows', 'sheet', 'table', 'column'];
-// How the rows went: the grid, delete_rows (REST/MCP), removing duplicates,
+// How the rows went: the grid, change_rows' delete (REST/MCP), removing duplicates,
 // auto-dedupe as rows arrived, a CSV import replacing the rows, transfer_rows
 // moving them out, a list job's rerun replacing the rows it added before; or
 // the sheet, table or column itself was deleted.

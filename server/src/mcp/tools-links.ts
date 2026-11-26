@@ -3,7 +3,7 @@
 // passing through the agent's context. The agent gets a one-time link
 // (lib/file-links.ts) and moves the file with the curl command that comes with
 // it (routes/file-links.ts). Each needs only what the token can already do:
-// write to import (as import_csv), read to export (as export_csv).
+// write to import (as import_csv), read to export (as read_rows' format csv).
 import { verifySheetOwnership } from '../lib/sql-helpers';
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/server';
@@ -110,7 +110,7 @@ export function registerLinkTools(server: McpServer, ctx: McpAuthCtx) {
     'create_download_link',
     {
       description:
-        'Save a sheet, or the columns and rows you pick (as in export_csv), as a CSV file of any size without its '
+        'Save a sheet, or the columns and rows you pick (as in read_rows), as a CSV file of any size without its '
         + 'contents passing through your context. format jsonl saves JSON lines instead: one {"id", "data"} object '
         + 'a row, as read_rows answers it, with its values\' types and no formula quote. Returns a one-time link; '
         + 'download it with the curl command in the result to save it anywhere on your machine, or give the link '

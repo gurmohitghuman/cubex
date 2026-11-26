@@ -49,4 +49,4 @@ When new rows keep arriving (a webhook, regular imports, an agent appending rows
 
 ## 5. Report
 
-Say what changed: the new columns and how many cells each cleaned or left blank (in the answer, or `get_sheet`'s `clean_columns`), and how many duplicate rows were removed. Offer `set_description` on the new columns.
+Say what changed: the new columns and how many cells each cleaned or left blank (in the answer, or `get_sheet`'s `clean_columns`), and how many duplicate rows were removed. Offer `manage_column`'s `describe` on the new columns.

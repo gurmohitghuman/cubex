@@ -4,7 +4,7 @@ import type { TrashEntry, TrashHow, TrashRestoreResult } from '@/utils/api'
 // The Trash page's words: what an item is, how it went, how long it stays.
 const HOW: Record<TrashHow, string> = {
   grid: 'Deleted in the sheet',
-  api: 'Deleted with delete_rows',
+  api: 'Deleted by an agent or over the API',
   duplicates: 'Removed as duplicates',
   auto_dedupe: 'Removed by auto-dedupe',
   import: 'Replaced by a CSV import',

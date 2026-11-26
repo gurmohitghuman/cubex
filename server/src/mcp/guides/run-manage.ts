@@ -63,7 +63,7 @@ export const RUN_MANAGE_GUIDES: Record<string, ToolGuide> = {
   undo_run: {
     text: [
       'Clean, formula and lookup columns reading a restored cell work it out again (free); no auto-run starts. Rows '
-        + 'a list enrichment added to another sheet stay (delete_rows removes them).',
+        + 'a list enrichment added to another sheet stay (change_rows delete removes them).',
       'Newest first: while a newer run that wrote one of its columns can be undone, an older one is refused.',
       'Returns state and how many cells were restored, skipped and gone; a big undo answers state undoing and goes '
         + 'on in the background (the sheet is busy meanwhile: call again with dry_run true to see how far it got).',

@@ -91,11 +91,9 @@ export const readRows = obj({
   filling: opt(strs).describe('updated_since: columns still filling'),
   rows_matched: opt(num), group_count: opt(num), truncated: opt(bool),
   groups: opt(z.array(obj({ group: keyed(str), count: num, values: opt(keyed(nul(num))) }))),
-});
-
-export const exportCsv = obj({
-  sheet_id: str, sheet_name: nul(str), csv: str, row_count: num, columns: opt(strs),
-  matching_rows: opt(nul(num)), truncated: opt(bool), rest: opt(str).describe('How to read the rows cut off'),
+  // format csv: the CSV and what it holds.
+  sheet_id: opt(str), sheet_name: opt(nul(str)), csv: opt(str).describe('format csv'), row_count: opt(num),
+  columns: opt(strs), matching_rows: opt(nul(num)), rest: opt(str).describe('How to read the rows cut off'),
 });
 
 // A run as get_run (action list) and get_run (action status) show it (services/run-status.ts RunSummary): other fields

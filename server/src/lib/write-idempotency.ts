@@ -1,5 +1,5 @@
 // Idempotency keys for row writes over /api/v1 and MCP (append_rows,
-// update_cells and their REST routes), on the ledger run starts and
+// change_rows' update and their REST routes), on the ledger run starts and
 // transfer_rows use (data_operation_ledger, one key namespace per user). A row
 // write's key replays its first answer for IDEMPOTENT_WRITE_TTL_MS (a day);
 // after that the key is free again, for any kind of call. Every other kind's

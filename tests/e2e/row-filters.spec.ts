@@ -4,7 +4,7 @@ import { mcpClient, call, callError } from './helpers-mcp'
 import { choose } from './helpers-ui'
 
 // Row filters on run state, lists and OR groups, through every surface: REST
-// rows/query and rows, MCP read_rows and export_csv, and the grid's column
+// rows/query and rows, MCP read_rows (also as CSV), and the grid's column
 // menu (Rows with errors, Run state, Is any of), with saved filters that
 // follow a column rename and go with a delete. The run is a real AI run whose
 // rows fail fast for free on a fake OpenRouter key.
@@ -73,7 +73,7 @@ test('run-state filters, lists and OR groups: REST, MCP and the grid', async ({ 
   expect(failed.rows[0].data['Fit (Output)'].status).toBe('error')
   expect((await call(client, 'read_rows', { sheet_id: sheetId, where: [{ operator: 'not_run' }],
     return_mode: 'count' })).count).toBe(3)
-  const csv = await call(client, 'export_csv', { sheet_id: sheetId, columns: ['val'],
+  const csv = await call(client, 'read_rows', { format: 'csv', sheet_id: sheetId, columns: ['val'],
     where: [{ column: 'Industry', operator: 'not_any_of', values: ['saas', 'retail'] }, { operator: 'has_error' }] })
   expect(csv.csv).toBe('"val"\r\n"v1"')
   const noRun = [{ column: 'Industry', operator: 'running' }]

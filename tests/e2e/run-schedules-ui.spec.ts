@@ -55,7 +55,8 @@ test('scheduled reruns from the sheet menu: add, pause, run now, delete', async 
 
   await call(client, 'manage_run_schedule', { action: 'create', sheet_id: sheetId, columns: ['Work email'],
     rows: 'errored', cadence: 'daily', at_time: '09:00' })
-  await call(client, 'rename_column', { sheet_id: sheetId, column: 'Work email', new_name: 'Found email' })
+  await call(client, 'manage_column', {
+    action: 'rename', sheet_id: sheetId, column: 'Work email', new_name: 'Found email' })
   await page.keyboard.press('Escape')
   await page.getByTestId('more-menu').click()
   await page.getByTestId('sheet-schedules').click()

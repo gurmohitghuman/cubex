@@ -1,8 +1,8 @@
 // read_rows' and REST rows/query's max_chars_per_cell (pure): each returned
 // cell's text cut to its first N characters, and the cells cut listed with
 // their full length. Characters are UTF-16 code units, the way String.length
-// counts them and every cap in Cubex does (the cell limits, export_csv's
-// 40,000); a cut that would end on the first half of a surrogate pair keeps one
+// counts them and every cap in Cubex does (the cell limits, the 40,000 of
+// read_rows' format csv); a cut that would end on the first half of a surrogate pair keeps one
 // fewer, so no half of a pair comes back. An emoji built from several
 // characters (a skin tone, a flag, a family) can still lose its last parts.
 //

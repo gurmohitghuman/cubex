@@ -1,6 +1,6 @@
 // Writes that reach a sheet without going through its sheet-addressed checks
 // refuse one in the trash, deleted alone or with its table: a one-row update
-// by row id (PATCH /api/v1/rows/:rowId, MCP update_cells), a structured AI
+// by row id (PATCH /api/v1/rows/:rowId, MCP change_rows' update), a structured AI
 // run's rerun by run id, a run start whose sheet went to the trash while it
 // waited (asRunStart, whose check is the account's), auto-run's start when the
 // sheet went while the tick picked its rows, and a waterfall dry run when it

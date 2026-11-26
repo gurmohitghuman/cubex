@@ -65,7 +65,8 @@ test('control_run reruns a structured run into the same columns', async () => {
   expect(none.isError).toBeTruthy()
   expect(JSON.stringify(none.content)).toContain('No target rows')
   const [, second] = await rows()
-  await call('update_cells', { sheet_id: sheetId, row_id: second.id, data: { 'Score (Status)': '❌ Error: test' } })
+  await call('change_rows', {
+    action: 'update', sheet_id: sheetId, row_id: second.id, data: { 'Score (Status)': '❌ Error: test' } })
   // A rerun can change how many rows run at once (the fix for OpenRouter's
   // in-flight budget 402); the next rerun keeps it.
   const errored = parseResult(await rerun(started.run_id, { mode: 'errored', concurrency: 3 }))
@@ -105,7 +106,7 @@ test('control_run reruns a structured run into the same columns', async () => {
   // Mode 'all' takes every row, a ✅ one included
   // (the default, missing, would skip it). An unknown mode is refused.
   const [done] = await rows()
-  await call('update_cells', { sheet_id: sheetId, row_id: done.id, data: { 'Score (Status)': '✅' } })
+  await call('change_rows', { action: 'update', sheet_id: sheetId, row_id: done.id, data: { 'Score (Status)': '✅' } })
   const all = await menuRerun({ baseColumnName: 'Why', columnName: 'Why', mode: 'all' })
   expect((await settle((await all.json()).runId)).target_row_count).toBe(3)
   const badMode = await api.post('/api/ai/rerun', { data: { sheetId, baseColumnName: 'Why', mode: 'everything' } })
@@ -113,7 +114,8 @@ test('control_run reruns a structured run into the same columns', async () => {
 
   // Renamed "Score (Output)", the status column still reruns as a structured
   // run (by id and from the menu), and a single-column run can't take it over.
-  await whenFree(() => call('rename_column', { sheet_id: sheetId, column: 'Score (Status)', new_name: 'Score (Output)' }), r => !!r.isError)
+  await whenFree(() => call('manage_column', {
+    action: 'rename', sheet_id: sheetId, column: 'Score (Status)', new_name: 'Score (Output)' }), r => !!r.isError)
   const latest = parseResult(await call('get_run', { action: 'list', sheet_id: sheetId, limit: 1 })).runs[0]
   const renamed = parseResult(await rerun(latest.id, { mode: 'empty' }))
   const renamedStatus = await settle(renamed.run_id)

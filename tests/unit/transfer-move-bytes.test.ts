@@ -54,7 +54,7 @@ await ok('a move past its cap is refused, naming it, and nothing moves', () => {
 })
 
 // One row past a move's cap can't be moved in fewer rows: the answer says to copy it, then delete it.
-await ok('one row past a move\'s cap: the refusal says to copy it, then delete_rows', () => {
+await ok('one row past a move\'s cap: the refusal says to copy it, then change_rows\' delete', () => {
   const src = sheet(0), dest = sheet(0)
   db.prepare('INSERT INTO rows (id,sheet_id,user_id,row_index,data) VALUES (?,?,?,?,?)').run(uuid(), src, uid, 0,
     JSON.stringify({ Email: 'big@x.co', Json: 'j'.repeat(TRANSFER_MAX_MOVE_BYTES + 1_000) }))

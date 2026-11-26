@@ -1,5 +1,5 @@
 // Rows deleted in ONE transaction: the grid's delete (at most 10,000 rows a
-// call), delete_rows over REST and MCP (1,000), and transfer_rows moving rows
+// call), change_rows' delete over REST and MCP (1,000), and transfer_rows moving rows
 // out (10,000). They go into one trash batch (lib/trash/move.ts), or are gone
 // at once when Settings keeps deleted rows 0 days. The grid's delete and
 // delete_rows on rows too big for one transaction go in slices with the sheet

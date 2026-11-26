@@ -22,11 +22,11 @@ import type { RowsRestored } from '../services/trash-restore';
 export function registerTrashTools(server: McpServer, ctx: McpAuthCtx) {
   registerTool(server, 'list_trash', {
     description:
-      'What was deleted and can still be restored: batches of rows (delete_rows, remove_duplicates, auto-dedupe, '
-      + 'a CSV import that replaced rows, transfer_rows moving rows out, a list job\'s rerun, the app), whole '
-      + 'sheets, whole tables and columns (delete_column). Each item has its trash_id, what it was, how and by '
-      + 'whom it was deleted, and expires_at (kept for kept_days, set in Settings; then deleted). Without '
-      + 'trash_id it lists the items, newest first; with one, that item and its rows. '
+      'What was deleted and can still be restored: batches of rows (change_rows delete, remove_duplicates, '
+      + 'auto-dedupe, a CSV import that replaced rows, transfer_rows moving rows out, a list job\'s rerun, the '
+      + 'app), whole sheets, whole tables and columns (manage_column delete). Each item has its trash_id, what it '
+      + 'was, how and by whom it was deleted, and expires_at (kept for kept_days, set in Settings; then deleted). '
+      + 'Without trash_id it lists the items, newest first; with one, that item and its rows. '
       + `Read-only. Next: restore_from_trash. ${GUIDE_POINTER}`,
     inputSchema: {
       trash_id: lenientInt(1, Number.MAX_SAFE_INTEGER).optional().describe('One item, with its rows'),

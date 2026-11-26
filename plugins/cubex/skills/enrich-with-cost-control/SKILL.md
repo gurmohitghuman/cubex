@@ -38,4 +38,4 @@ Auto-run (`set_auto_run`, or `auto_run` on `run_enrichment`) fills new rows on i
 
 ## After
 
-`get_account` (action `usage`) shows what runs cost, by column, day or run (`range: "this_week"`, `"this_month"`, ...). Offer `set_description` on the new columns, saying what filled them.
+`get_account` (action `usage`) shows what runs cost, by column, day or run (`range: "this_week"`, `"this_month"`, ...). Offer `manage_column`'s `describe` on the new columns, saying what filled them.

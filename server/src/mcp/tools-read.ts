@@ -15,6 +15,7 @@ import { aggregatesSchema, columnsSchema, fitGroups, groupBySchema, maxCharsPerC
 import { parseColumns } from '../lib/row-select/paths';
 import { parseAggregate } from '../lib/row-aggregate/spec';
 import { testOfSheet, testView } from '../services/sheet-test-store';
+import { CSV_WORDS, readRowsCsv } from './tools-read-csv';
 import { HISTORY_FIELDS, HISTORY_WORDS, sheetHistoryAnswer } from './tools-sheet-history';
 
 const ownsSheet = (sheetId: string, userId: string): boolean =>
@@ -81,12 +82,12 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
       description:
         'Read a sheet\'s rows as {id, index, data}, in index order, up to ' + `${MCP_MAX_ROWS_PAGE} a call. `
         + 'Pass columns: reading every column of a wide sheet is what makes reads expensive. Row ids stay the '
-        + 'same across sorts: use them with update_cells and delete_rows. '
+        + 'same across sorts: use them with change_rows. '
         + 'PAGES: cursor = the last row\'s index; next_cursor is null at the end. '
         + 'where filters by text, numbers, dates, lists of values, OR groups and run state '
         + '([{"operator":"has_error"}]). return_mode count or ids answers without cells. group_by and aggregates '
         + 'count, sum and average per value without reading rows. row_ids reads rows by id (the way to re-read rows '
-        + `a run just touched), and updated_since the rows changed since a time. ${GUIDE_POINTER}`,
+        + `a run just touched), and updated_since the rows changed since a time. ${CSV_WORDS} ${GUIDE_POINTER}`,
       inputSchema: {
         sheet_id: z.string().describe(SHEET_ID),
         // Digits sent as text are the number cursor (a model often quotes it).
@@ -115,16 +116,23 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
         updated_since: z.string().optional()
           .describe('Rows whose cells changed at or after this UTC time (2026-11-05T10:00:00Z or 2026-11-05 10:00:00)'),
         max_chars_per_cell: maxCharsPerCellSchema.optional(),
+        format: z.enum(['json', 'csv']).optional().describe('json (default): rows as {id, index, data}; csv: CSV text'),
       },
     },
     async ({
       sheet_id, cursor, limit, columns, where, return_mode, include_status, expected_data_version,
       expected_row_generation, view, expected_view_version, group_by, aggregates, row_ids, updated_since,
-      max_chars_per_cell,
+      max_chars_per_cell, format,
     }) => {
       const denied = missingScope(ctx, 'read');
       if (denied) return denied;
       if (!ownsSheet(sheet_id, ctx.userId)) return err('Sheet not found');
+      if (format === 'csv') {
+        const rest = { cursor, limit, return_mode, include_status, expected_data_version, expected_row_generation,
+          group_by, aggregates, expected_view_version, row_ids, updated_since, max_chars_per_cell };
+        const others = Object.entries(rest).filter(([, v]) => v !== undefined).map(([k]) => k);
+        return readRowsCsv(ctx, { sheet_id, columns, where, view }, others);
+      }
       const after = typeof cursor === 'number' ? cursor : -1;
       const byIdOrTime = row_ids !== undefined || updated_since !== undefined || typeof cursor === 'string';
       if (!columns && !where && !view && !return_mode && !group_by && !aggregates && !byIdOrTime

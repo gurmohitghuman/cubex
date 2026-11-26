@@ -52,7 +52,7 @@ const budgetMessage = (move: boolean, rows: number, bytes: number) => `Transfer 
   + `${mb(TRANSFER_MAX_MOVE_BYTES)} for a move or ${mb(TRANSFER_MAX_STORED_BYTES)} for a copy. This call picked `
   + `${rows.toLocaleString('en-US')} ${rows === 1 ? 'row' : 'rows'} holding ${mb(bytes)}. `
   + (move && rows === 1 && bytes <= TRANSFER_MAX_STORED_BYTES
-    ? 'Copy that row instead, then delete it from the source with delete_rows.'
+    ? 'Copy that row instead, then delete it from the source with change_rows (action delete).'
     : 'Transfer fewer rows a call.');
 
 function executeTransfer(

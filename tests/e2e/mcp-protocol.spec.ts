@@ -62,7 +62,7 @@ test('MCP 2026-07-28 with the v2 client: discover, a fixed tool list, calls and 
   // create_upload_link's description adds that this token can't write).
   const list = async (c: Client) => (await c.listTools({}, { cacheMode: 'bypass' })).tools
   const first = await list(rw)
-  expect(first.length).toBeGreaterThan(60)
+  expect(first.length).toBeGreaterThan(45)
   for (const again of [await list(rw), await list(rw2)]) expect(again).toEqual(first)
   const readOnly = await list(ro)
   expect(readOnly.map(t => t.name)).toEqual(first.map(t => t.name))
@@ -190,7 +190,7 @@ test('MCP 2026-07-28: a write is credited to the token that made it', async () =
     return res.structuredContent as Record<string, any>
   }
   const { rows } = await call('read_rows', { sheet_id: sheetId, limit: 1 })
-  await call('delete_rows', { sheet_id: sheetId, row_ids: [rows[0].id] })
+  await call('change_rows', { action: 'delete', sheet_id: sheetId, row_ids: [rows[0].id] })
   const { changes: [newest] } = await call('get_sheet', { history: true, sheet_id: sheetId, limit: 1 })
   expect({ action: newest.action, via: newest.via, token_name: newest.token_name, by: newest.by })
     .toEqual({ action: 'rows_deleted', via: 'mcp', token_name: name, by: `the token "${name}" (MCP)` })
