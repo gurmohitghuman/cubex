@@ -2,6 +2,7 @@ import { test, expect, APIRequestContext } from '@playwright/test'
 import { authedApi, seedSheet, importCsv } from './helpers'
 import { bearer, makeToken, waitForTerminal } from './api-v1-run-helpers'
 import { Receiver } from './helpers-receiver'
+import { waitRunsSetUp } from './helpers-enrich'
 
 // Parking (lib/run-park.ts) on the real job queue: the built server's Sidequest backend, its jobs.db, its 4 job
 // slots and its own claim order, which tests/unit/run-park.test.ts stands in for. Four slow runs hold every slot
@@ -94,6 +95,9 @@ test('a paused holder: the parked readers leave a slot free, another run takes i
     const s = await scene('b')
     const read = await readers(s.sid, 'b')
     const fit = await rerunFit(s.fit, 'b')
+    // The rerun writes its cells in the background after its 202; until then a pause is refused ("still starting"),
+    // which under the whole suite's load came first.
+    await waitRunsSetUp(s.sid)
     const pause = await v1.post(`/api/v1/http-runs/${fit}/pause`)
     expect(pause.status(), await pause.text()).toBe(200)
     s.release()
