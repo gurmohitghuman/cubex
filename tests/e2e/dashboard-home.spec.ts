@@ -1,3 +1,4 @@
+// Over 200 lines: the home's cases, each a person's way through it (sidebar, list, runs, import, star and tabs).
 import { test, expect, type APIRequestContext, type Page } from '@playwright/test'
 import { authedApi, BASE, seedSheet } from './helpers'
 import { bearer, httpConfig, makeToken } from './api-v1-run-helpers'
@@ -6,8 +7,9 @@ import { Receiver } from './helpers-receiver'
 
 // The home (pages/DashboardPage.tsx): the sidebar on the home, Settings and Trash, collapsed and remembered, never on a
 // sheet and always collapsed on a phone; "Tables" with a search by name; the list sorted by a header's click and kept
-// so; a table's sheet count; the Runs column, live, linking to the sheet with the runs; and Import CSV from the New
-// table button, which makes a table named after the file and opens it with the file's rows.
+// so; a table's sheet count; the star and the All, Recent and Favorites tabs (kept on reload; Recent the last opened
+// first, with a sort of its own); the Runs column, live, linking to the sheet with the runs; and Import CSV from the
+// New table button, which makes a table named after the file and opens it with the file's rows.
 const rx = new Receiver()
 let api: APIRequestContext
 test.describe.configure({ mode: 'serial' })
@@ -59,12 +61,18 @@ test('the sidebar: on the home, Settings and Trash, collapsed and remembered; no
 
 test.describe('on a phone', () => {
   test.use({ viewport: { width: 390, height: 844 } })
-  test('the sidebar is collapsed to its icons, with no way to open it wide', async ({ page }) => {
+  test('the sidebar is collapsed to its icons, with no way to open it wide; a table\'s row fits: its name, star '
+    + 'and ⋯ menu on screen', async ({ page }) => {
     await signIn(page)
+    const { tableId } = await named(`Phone ${Date.now()}`)
     await page.goto(`${BASE}/`)
     await expect(sidebar(page)).toHaveAttribute('data-collapsed', 'true', { timeout: 15_000 })
     await expect(page.getByTestId('sidebar-toggle')).toHaveCount(0)
     await expect(page.getByRole('button', { name: 'New Table' })).toBeVisible()
+    const row = page.locator(`[data-testid=table-row][data-table-id="${tableId}"]`)
+    await expect(row.getByRole('button', { name: 'Table actions' })).toBeInViewport({ ratio: 1 })
+    await expect(row.getByTestId('table-star')).toBeInViewport({ ratio: 1 })
+    expect((await row.getByTestId('table-name').boundingBox())!.width).toBeGreaterThan(60)
   })
 })
 
@@ -101,6 +109,84 @@ test('search by name, sort by a header (kept on reload), and a table\'s sheet co
   await page.getByRole('button', { name: 'Clear the search' }).click()
   await expect(page.getByTestId('tables-search')).toHaveValue('')
   await expect(page.getByTestId('tables-list')).toBeVisible()
+})
+
+test('the star and the tabs: Favorites lists the starred tables, Recent the opened ones, the last first; the tab '
+  + 'is kept on reload', async ({ page }) => {
+  test.setTimeout(90_000)
+  await signIn(page)
+  const stamp = String(Date.now())
+  const { tableId: first } = await named(`First ${stamp}`)
+  const second = await table(`Second ${stamp}`)
+  const row = (id: string) => page.locator(`[data-testid=table-row][data-table-id="${id}"]`)
+  const names = page.getByTestId('table-name')
+  const tab = (id: string) => page.getByTestId(`tables-tab-${id}`)
+  await page.goto(`${BASE}/`)
+  await expect(row(second)).toBeVisible({ timeout: 15_000 })
+  await expect(tab('all')).toHaveAttribute('aria-selected', 'true')
+
+  // A tab with nothing in it says what goes there.
+  await tab('favorites').click()
+  await expect(page.getByTestId('tables-tab-empty')).toContainText('No favorites yet')
+  await tab('recent').click()
+  await expect(page.getByTestId('tables-tab-empty')).toContainText('The tables you open show here')
+
+  // Starred from All: shown at once, kept by the server, the table not opened; then under Favorites.
+  await tab('all').click()
+  const star = row(second).getByTestId('table-star')
+  await expect(star).toHaveAttribute('aria-pressed', 'false')
+  const saved = page.waitForResponse(r => r.url().endsWith(`/api/tables/${second}/starred`))
+  await star.click()
+  await expect(star).toHaveAttribute('aria-pressed', 'true')
+  expect((await saved).ok()).toBeTruthy()
+  await expect(page).toHaveURL(`${BASE}/`)
+  await tab('favorites').click()
+  await expect(names).toHaveText([`Second ${stamp}`])
+  await page.reload()
+  await expect(tab('favorites')).toHaveAttribute('aria-selected', 'true', { timeout: 15_000 })
+  await expect(names).toHaveText([`Second ${stamp}`])
+  // Its star taken off there, it leaves Favorites.
+  await row(second).getByTestId('table-star').click()
+  await expect(page.getByTestId('tables-tab-empty')).toContainText('No favorites yet')
+  // A table made from Favorites shows under All: it is neither starred nor opened.
+  await page.getByTestId('new-table').click()
+  await page.getByPlaceholder('Enter table name').fill(`Third ${stamp}`)
+  await page.getByRole('button', { name: 'Create', exact: true }).click()
+  await expect(tab('all')).toHaveAttribute('aria-selected', 'true')
+  await expect(names.filter({ hasText: `Third ${stamp}` })).toBeVisible()
+
+  // Opened from the home, one then the other: Recent lists the last opened first, with when.
+  for (const id of [first, second]) {
+    await page.goto(`${BASE}/`)
+    await tab('all').click()
+    const opened = page.waitForResponse(r => r.url().endsWith(`/api/tables/${id}/opened`))
+    await row(id).click()
+    await expect(page).toHaveURL(new RegExp(`/table/${id}`))
+    expect((await opened).status()).toBe(204)
+  }
+  // The 204 says the open was noted; it is written once the write lock is free. The list is read once a page loads,
+  // so wait for both to be written first.
+  await expect.poll(async () => {
+    const list = await (await api.get('/api/tables')).json() as Array<{ id: string; last_opened_at: string | null }>
+    const at = (id: string) => list.find(t => t.id === id)?.last_opened_at ?? ''
+    return at(first) !== '' && at(second) > at(first)
+  }, { timeout: 15_000 }).toBe(true)
+  await page.goto(`${BASE}/`)
+  await tab('recent').click()
+  await expect(names).toHaveText([`Second ${stamp}`, `First ${stamp}`], { timeout: 15_000 })
+  await expect(page.getByTestId('sort-opened')).toHaveAttribute('data-sort', 'desc')
+  await expect(row(second).getByTestId('table-opened')).not.toBeEmpty()
+  // Recent's own sort: by name there leaves All's as it was.
+  await page.getByTestId('sort-name').click()
+  await expect(names).toHaveText([`First ${stamp}`, `Second ${stamp}`])
+  // Again turns it round; a third time goes back to Recent's own order, whose header a narrow screen doesn't show.
+  await page.getByTestId('sort-name').click()
+  await expect(page.getByTestId('sort-name')).toHaveAttribute('data-sort', 'desc')
+  await page.getByTestId('sort-name').click()
+  await expect(page.getByTestId('sort-opened')).toHaveAttribute('data-sort', 'desc')
+  await expect(names).toHaveText([`Second ${stamp}`, `First ${stamp}`])
+  await tab('all').click()
+  await expect(page.getByTestId('sort-updated')).toHaveAttribute('data-sort', 'desc')
 })
 
 test('Runs: a run started, paused and stopped elsewhere shows as it goes, and links to its sheet', async ({

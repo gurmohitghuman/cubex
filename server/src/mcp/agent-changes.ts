@@ -39,6 +39,26 @@ export const CHANGES_RECORDED_AFTER = 'v0.8.12';
 // Newest first.
 export const AGENT_CHANGES: ReleaseChanges[] = [
   {
+    version: 'v0.8.47',
+    changes: [
+      {
+        change: 'changed',
+        tools: ['manage_table'],
+        summary: 'manage_table takes action star or unstar with table_id: a starred table is in the user\'s '
+          + 'Favorites on the home.',
+        details: 'Starring changes nothing in the table, so changed is []. The answer has the table\'s id, name and '
+          + 'starred. PATCH /api/v1/tables/{id} takes starred too.',
+      },
+      {
+        change: 'changed',
+        tools: ['list_tables'],
+        summary: 'list_tables gives each table starred (in the user\'s Favorites) and last_opened_at (when the user '
+          + 'last opened it in the app, null until then).',
+        details: 'Use them to find the tables the user works in. GET /api/v1/tables answers the same.',
+      },
+    ],
+  },
+  {
     version: 'v0.8.45',
     changes: [
       {

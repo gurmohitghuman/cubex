@@ -13,7 +13,12 @@ const sheetEntry = obj({
     + 'last count, which may be out of date. Ask again in a moment.'),
 });
 export const listTables = obj({
-  tables: z.array(obj({ id: str, name: str, created_at: str, updated_at: str, sheets: z.array(sheetEntry) })),
+  tables: z.array(obj({
+    id: str, name: str, created_at: str, updated_at: str,
+    starred: bool.describe('true: the user starred it (the home\'s Favorites; manage_table star or unstar)'),
+    last_opened_at: nul(str).describe('When the user last opened it in the app; null until then'),
+    sheets: z.array(sheetEntry),
+  })),
 });
 
 // get_workspace (services/workspace-overview.ts): each part bounded, the counts say what was left out.
