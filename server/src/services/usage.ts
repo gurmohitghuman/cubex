@@ -57,9 +57,9 @@ export function figures(s: Sums): UsageFigures {
 function scopeWhere(s: UsageScope): { sql: string; params: unknown[] } {
   const { start, end } = rangeBounds(s.range);
   return s.sheetId
-    ? { sql: `u.sheet_id IN (SELECT ? UNION ALL SELECT x.copy_id FROM test_copies x WHERE x.sheet_id = ?)
-        AND +u.user_id = ? AND u.started_at >= ? AND u.started_at < ?`,
-      params: [s.sheetId, s.sheetId, s.userId, start, end] }
+    ? { sql: `u.sheet_id IN (SELECT ? UNION ALL SELECT x.copy_id FROM test_copies x WHERE x.sheet_id = ?
+        AND x.user_id = ?) AND +u.user_id = ? AND u.started_at >= ? AND u.started_at < ?`,
+      params: [s.sheetId, s.sheetId, s.userId, s.userId, start, end] }
     : { sql: 'u.user_id = ? AND u.started_at >= ? AND u.started_at < ?', params: [s.userId, start, end] };
 }
 
@@ -113,7 +113,7 @@ function columnRows(s: UsageScope, limit: number): UsageColumnRow[] {
       AS kinds, MAX(u.started_at) AS last_at, COUNT(*) AS runs,
       IFNULL(SUM(u.cells), 0) AS cells, IFNULL(SUM(u.reused_cells), 0) AS reused, IFNULL(SUM(u.ai_cost_usd), 0) AS ai,
       IFNULL(SUM(u.provider_cost_usd), 0) AS provider, IFNULL(SUM(u.enrich_micro), 0) AS enrich
-    FROM run_usage u LEFT JOIN test_copies c ON c.copy_id = u.sheet_id WHERE ${w.sql}
+    FROM run_usage u LEFT JOIN test_copies c ON c.copy_id = u.sheet_id AND c.user_id = u.user_id WHERE ${w.sql}
     GROUP BY COALESCE(c.sheet_id, u.sheet_id), on_copy, u.column_name, u.column_deleted
     ORDER BY SUM(u.ai_cost_usd) + SUM(u.provider_cost_usd) + SUM(u.enrich_micro) / 1e6 DESC, SUM(u.cells) DESC,
       u.column_name LIMIT ?`).all(...w.params, limit) as ColumnSql[];
@@ -146,8 +146,8 @@ function groupCount(s: UsageScope, groupBy: Exclude<UsageGroupBy, 'run'>): numbe
   const w = scopeWhere(s);
   const count = groupBy === 'day'
     ? db.prepare(`SELECT COUNT(DISTINCT substr(u.started_at, 1, 10)) FROM run_usage u WHERE ${w.sql}`)
-    : db.prepare(`SELECT COUNT(*) FROM (SELECT 1 FROM run_usage u LEFT JOIN test_copies c ON c.copy_id = u.sheet_id
-        WHERE ${w.sql}
+    : db.prepare(`SELECT COUNT(*) FROM (SELECT 1 FROM run_usage u
+        LEFT JOIN test_copies c ON c.copy_id = u.sheet_id AND c.user_id = u.user_id WHERE ${w.sql}
         GROUP BY COALESCE(c.sheet_id, u.sheet_id), c.copy_id IS NOT NULL, u.column_name, u.column_deleted)`);
   return count.pluck().get(...w.params) as number;
 }
@@ -159,7 +159,7 @@ export function runPage(s: UsageScope, after: [string, string] | null, limit: nu
       u.column_deleted AS deleted, c.copy_id IS NOT NULL AS on_copy, COALESCE(u.mode, u.kind) AS kind, u.status,
       u.started_at, 1 AS runs, u.cells, u.reused_cells AS reused, u.ai_cost_usd AS ai,
       u.provider_cost_usd AS provider, u.enrich_micro AS enrich
-    FROM run_usage u LEFT JOIN test_copies c ON c.copy_id = u.sheet_id
+    FROM run_usage u LEFT JOIN test_copies c ON c.copy_id = u.sheet_id AND c.user_id = u.user_id
     WHERE ${w.sql} AND (u.started_at, u.run_id) < (?, ?) ORDER BY u.started_at DESC, u.run_id DESC LIMIT ?`)
     .all(...w.params, ...(after ?? ['9999', '']), limit) as RunSql[];
   const names = sheetNames(s.userId);

@@ -105,9 +105,10 @@ await counted('open: the copy\'s runs count under the sheet, marked, apart from 
 
 await check('the sheet\'s read walks the index for the sheet and its copy, never the whole table', async () => {
   const plan = (db.prepare(`EXPLAIN QUERY PLAN SELECT COUNT(*) FROM run_usage u
-    LEFT JOIN test_copies c ON c.copy_id = u.sheet_id
-    WHERE u.sheet_id IN (SELECT ? UNION ALL SELECT x.copy_id FROM test_copies x WHERE x.sheet_id = ?)
-      AND +u.user_id = ? AND u.started_at >= ? AND u.started_at < ?`).all(sid, sid, uid, 'a', 'b') as
+    LEFT JOIN test_copies c ON c.copy_id = u.sheet_id AND c.user_id = u.user_id
+    WHERE u.sheet_id IN (SELECT ? UNION ALL SELECT x.copy_id FROM test_copies x WHERE x.sheet_id = ?
+      AND x.user_id = ?) AND +u.user_id = ? AND u.started_at >= ? AND u.started_at < ?`)
+    .all(sid, sid, uid, uid, 'a', 'b') as
     Array<{ detail: string }>).map(p => p.detail)
   assert.ok(plan.some(d => d.includes('idx_run_usage_sheet_time')), plan.join(' | '))
   assert.ok(plan.some(d => d.includes('idx_test_copies_sheet')), plan.join(' | '))
@@ -144,6 +145,18 @@ await check('a second test\'s runs of the column add up with the first\'s', asyn
   await until(() => !testOfSheet(sid, uid), 'the second test ends')
   const rows = ask(sid).rows as unknown as Row[]
   assert.deepEqual([rows.length, fit(rows, true)?.runs, fit(rows, false)?.runs], [2, 2, 1])
+})
+
+await check('another user\'s link never brings this user\'s runs in or moves them', async () => {
+  const stranger = uuid()
+  db.prepare('INSERT INTO users (id,password_hash) VALUES (?,?)').run(stranger, 'x')
+  db.prepare('INSERT INTO test_copies (copy_id, sheet_id, user_id) VALUES (?,?,?)').run(other, sid, stranger)
+  const run = aiRun(other, 0.005)
+  try {
+    assert.equal(ask(sid).totals.runs, 3)
+    const rows = ask(other, { group_by: 'run' }).rows as unknown as Row[]
+    assert.deepEqual(rows.map(r => [r.run_id, r.sheet_id, r.on_test_copy]), [[run, other, false]])
+  } finally { db.prepare('DELETE FROM test_copies WHERE copy_id = ?').run(other) }
 })
 
 await check('a copy open before 076 gets its link', async () => {
