@@ -47,9 +47,21 @@ await ok('a move past its cap is refused, naming it, and nothing moves', () => {
   const out = transfer(src, dest, 'move')
   assert.ok('fail' in out && out.fail === 'budget', JSON.stringify(out).slice(0, 300))
   assert.match((out as { error: string }).error, /16 MB .*move.* 32 MB/)
+  assert.match((out as { error: string }).error, /picked 300 rows holding 29 MB\. Transfer fewer rows a call\./)
   assert.equal(rows(src), 300)
   assert.equal(rows(dest), 0)
   assert.equal(trashItems(), before)
+})
+
+// One row past a move's cap can't be moved in fewer rows: the answer says to copy it, then delete it.
+await ok('one row past a move\'s cap: the refusal says to copy it, then delete_rows', () => {
+  const src = sheet(0), dest = sheet(0)
+  db.prepare('INSERT INTO rows (id,sheet_id,user_id,row_index,data) VALUES (?,?,?,?,?)').run(uuid(), src, uid, 0,
+    JSON.stringify({ Email: 'big@x.co', Json: 'j'.repeat(TRANSFER_MAX_MOVE_BYTES + 1_000) }))
+  const out = transfer(src, dest, 'move')
+  assert.ok('fail' in out && out.fail === 'budget', JSON.stringify(out).slice(0, 300))
+  assert.match((out as { error: string }).error, /picked 1 row holding 16 MB\. Copy that row instead, then delete it/)
+  assert.equal(rows(src), 1)
 })
 
 await ok('a move under its cap goes, its one transaction under journal_size_limit', () => {
