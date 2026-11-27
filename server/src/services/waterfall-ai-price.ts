@@ -6,7 +6,7 @@
 // the longest sample row's input, the step's output token limit, the most
 // searches (a row longer than every sample row can cost more; the run counts
 // what each call really cost the moment it comes back).
-import { WATERFALL_AI_MAX_TOKENS } from '../lib/constants';
+import { aiMaxTokens } from '../lib/constants';
 import { fetchModels } from '../lib/openrouter';
 import { average, estimateTokens, parseTokenPrice, rowCostUsd } from '../lib/ai-cost';
 import { rowPricesOf } from '../lib/ai-spend-limit';
@@ -64,9 +64,12 @@ export async function priceAiStep(
   }
   const p = parseTokenPrice(m.pricing.prompt);
   const c = parseTokenPrice(m.pricing.completion);
-  const cap = rowCostUsd(inMost, WATERFALL_AI_MAX_TOKENS, p, c) + fees.high;
+  // The step sends an AI column's max_tokens (lib/constants-ai.ts aiMaxTokens): room for a model that thinks
+  // first to answer too (1,000 left such models without an answer).
+  const maxOut = aiMaxTokens(null);
+  const cap = rowCostUsd(inMost, maxOut, p, c) + fees.high;
   const low = rowCostUsd(inLow, out.low, p, c) + fees.low;
-  const high = rowCostUsd(inHigh, Math.min(out.high, WATERFALL_AI_MAX_TOKENS), p, c) + fees.high;
+  const high = rowCostUsd(inHigh, Math.min(out.high, maxOut), p, c) + fees.high;
   return {
     ok: {
       search, priced: true, note: null, capUsd: round6(cap),
