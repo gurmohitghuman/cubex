@@ -9,7 +9,7 @@
 // never spends more than it showed. Running again later is "Check again": the
 // same call. A platform's search already going is refused.
 import { micro, moneyUp } from '../lib/cost-ceiling';
-import { busyMessage, onSheetFree, sheetBusyWith } from '../lib/sheet-busy';
+import { busyMessage, sheetFreeWithin } from '../lib/sheet-busy';
 import { SOCIAL_START_WAIT_MS } from '../lib/constants';
 import { nowDate } from '../lib/clock';
 import { dayIn } from '../lib/ai-visibility/check';
@@ -123,7 +123,7 @@ export async function startFindPosts(userId: string, r: SocialRecord,
   const runs: Array<{ platform: Platform; run_id: string }> = [];
   for (const p of est.ok.platforms) {
     // The start before this one may still hold the sheet while it sets up its rows.
-    const busy = await freeWithin(r.searches_sheet_id, SOCIAL_START_WAIT_MS);
+    const busy = await sheetFreeWithin(r.searches_sheet_id, SOCIAL_START_WAIT_MS);
     if (busy) {
       return { fail: 'conflict', message: `${PLATFORM_SPECS[p.platform].label}: ${busyMessage(busy)}`
         + (runs.length ? ` (${runs.map(x => PLATFORM_SPECS[x.platform].label).join(', ')} started.)` : '') };
@@ -144,20 +144,6 @@ export async function startFindPosts(userId: string, r: SocialRecord,
   }
   moveSince(userId, r, today);
   return { ok: { day: today, runs, estimate: est.ok } };
-}
-
-// Waits until the sheet is free, at most `ms`: null once it is, else what still holds it.
-async function freeWithin(sheetId: string, ms: number): Promise<string | null> {
-  const until = Date.now() + ms;
-  for (let busy = sheetBusyWith(sheetId); busy; busy = sheetBusyWith(sheetId)) {
-    const left = until - Date.now();
-    if (left <= 0) return busy;
-    await new Promise<void>(resolve => {
-      const t = setTimeout(resolve, left);
-      onSheetFree(sheetId, () => { clearTimeout(t); resolve(); });
-    });
-  }
-  return null;
 }
 
 // The Top posts views keep to posts from the last N days of this day.

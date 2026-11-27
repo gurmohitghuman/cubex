@@ -28,7 +28,7 @@ export interface HiringInput {
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 const text = (v: unknown): string => (typeof v === 'string' ? stripControlChars(v).replace(/\s+/g, ' ').trim() : '');
 
-function parseRoles(v: unknown): string[] | string {
+export function parseRoles(v: unknown): string[] | string {
   const raw = typeof v === 'string' ? v.split(/\r?\n/) : v;
   if (!Array.isArray(raw)) return 'roles must list the role titles to search for, such as "SDR".';
   // The cap is checked as titles come in (lib/distinct-items.ts): a long list is refused at its 21st title.

@@ -86,7 +86,8 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   // again or new brands rewrite the answer and formula cells.
   ai_visibility: write('AI visibility table (ask and check_again are paid)', true, false, true),
   // create and get are free; check (estimate_only false) starts a paid treg run and rewrites Companies' summary cells.
-  hiring_signals: write('Find companies hiring and their buyers (check and find_buyers are paid)', true, false, true),
+  hiring_signals: write('Companies hiring, their buyers and open roles (check, find_buyers, open_roles: paid)',
+    true, false, true),
   social_research: write('Research social posts (find_posts is paid)', true, false, true),
   // add_column adds a column; add_rows lands rows like append_rows: auto-dedupe keeping the newest can replace a
   // row already there.

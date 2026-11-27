@@ -60,6 +60,16 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
           + 'max_cost_usd. The first run adds the columns (write scope too); buyer_titles defaults to ones from the '
           + 'roles. get answers buyer.',
       },
+      {
+        change: 'changed',
+        tools: ['hiring_signals'],
+        summary: 'hiring_signals has action "open_roles": the open roles at the companies on your own sheet '
+          + '(sheet_id, website_column, roles), each into an Open roles sheet, and a column counting each '
+          + 'company\'s roles.',
+        details: 'Paid, as check: estimate_only (default true) answers high_usd and a free count, then send '
+          + 'estimate_only false with max_cost_usd = high_usd. per_company caps roles per company (default 10). '
+          + 'A later run adds only new roles.',
+      },
     ],
   },
   {

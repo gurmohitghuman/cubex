@@ -212,6 +212,8 @@ A company hiring for a role often needs what you sell: one hiring SDRs may want 
 - From the second check on, **New since last check** says what's new ("New since Nov 11: 2 roles (SDR, BDR)") and **New roles** counts them. Filter New roles above 0 for the companies hiring more since you last looked; on the others, both are cleared.
 - Add a role title as a row of Searches, then check again. Your own columns and notes on Companies stay: each row is found by its Domain.
 
+**Open roles at your own companies.** On a sheet of companies you already have, the enrichment drawer's **Open roles at these companies** looks for the same signal there: pick the column with each company's website and type the role titles. It shows the cost first, as a check does. Each role found goes into an **Open roles** sheet beside yours, and a column on your sheet counts each company's roles once the run is done. Run it again later: only roles not seen before are added.
+
 Agents use `hiring_signals`; the [MCP guide](docs/mcp.md#companies-hiring) has the details.
 
 ### Research social posts
