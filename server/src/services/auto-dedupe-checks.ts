@@ -1,8 +1,9 @@
 // Auto-dedupe's waiting checks (auto_dedupe_checks), made on the API thread a
-// short transaction at a time (a budget of rows looked at, rows removed and
-// time; the WAL copied back on the checkpoint worker's thread, lib/bulk-slices.ts):
+// short transaction at a time (a budget of rows looked at, rows removed, their
+// bytes and time; the WAL copied back on the checkpoint worker's thread, lib/bulk-slices.ts):
 // rows that arrived while the keys were built or
-// had a backlog, a CSV import's rows (auto-dedupe-import.ts), and checks whose
+// had a backlog, a CSV import's rows (auto-dedupe-import.ts), checks the write's
+// own transaction had no room for (auto-dedupe-settle.ts), and checks whose
 // losing row a run held (tried again after AUTO_DEDUPE_RETRY_MS). A round every
 // AUTO_DEDUPE_TICK_MS makes them; keys that aren't current are brought up to
 // date in the lookup worker first (auto-dedupe-index.ts).
@@ -11,7 +12,7 @@ import { sheetBusyWith } from '../lib/sheet-busy';
 import { oneTransaction, yieldToRequests } from '../lib/slices';
 import { asBulkWriter } from '../lib/bulk-slices';
 import {
-  AUTO_DEDUPE_CHECK_MS, AUTO_DEDUPE_CHECK_ROWS, AUTO_DEDUPE_INLINE_MS, AUTO_DEDUPE_LOOK_ROWS,
+  AUTO_DEDUPE_CHECK_BYTES, AUTO_DEDUPE_CHECK_MS, AUTO_DEDUPE_CHECK_ROWS, AUTO_DEDUPE_INLINE_MS, AUTO_DEDUPE_LOOK_ROWS,
   AUTO_DEDUPE_RETRY_MS, AUTO_DEDUPE_ROUND_MS, AUTO_DEDUPE_TICK_MS,
 } from '../lib/constants-dedupe';
 import {
@@ -51,7 +52,8 @@ function checkSlice(sheetId: string, userId: string, ownBusy: boolean): Slice {
       return;
     }
     if (!drainWithin(s, AUTO_DEDUPE_INLINE_MS)) { out.state = 'keys'; return; }
-    const removal = new AutoDedupeRemoval(s, new Set(), true, false);
+    const budget = { bytes: AUTO_DEDUPE_CHECK_BYTES, oneAtLeast: true };
+    const removal = new AutoDedupeRemoval(s, new Set(), true, budget, false);
     const waits = checkRanges(s, ranges, removal);
     if (waits.length > 0) queueCheckRows(s.id, waits, now + AUTO_DEDUPE_RETRY_MS);
     const { trashId } = removal.finish();

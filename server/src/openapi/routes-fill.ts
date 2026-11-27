@@ -213,6 +213,19 @@ export const fillRoutes = (): RouteDoc[] => [
     }),
   }),
   op({
+    method: 'post', path: '/hiring/{id}/buyers', operationId: 'findHiringBuyers', tag: 'hiring', scope: 'run',
+    summary: 'Find the person each company on Companies would buy through, by job title, with a verified email.',
+    description: 'An estimate unless estimate_only is false, which changes nothing; the run needs max_cost_usd, the '
+      + 'estimate\'s high_usd, and takes the companies whose Buyer is empty. The first run adds the Buyer columns to '
+      + 'Companies (the write scope too). A company with no one holding the titles costs nothing.',
+    body: z.object({
+      buyer_titles: z.array(z.string()).optional()
+        .describe('Job titles to look for (at most 6). Default: the titles in use, or ones from the roles.'),
+      estimate_only: z.boolean().optional().describe('false finds them for real. Default true: the cost.'),
+      max_cost_usd: z.number().optional().describe('With estimate_only false: the estimate\'s high_usd.'),
+    }),
+  }),
+  op({
     method: 'post', path: '/sheets/{id}/open-roles', operationId: 'openRoles', tag: 'hiring', scope: 'run',
     summary: 'Find the open roles at the companies on this sheet: each into an Open roles sheet, counted per company.',
     description: 'An estimate unless estimate_only is false: the most it can cost (high_usd) and a free count of '

@@ -1,12 +1,14 @@
 // Hiring tables over /api/v1 (services/hiring-agent.ts): make one (write),
 // read it, change its filters on Companies (write), check it (run: paid, an estimate unless estimate_only is false;
-// the check needs max_cost_usd, and over it answers 409 with the estimate now).
+// the check needs max_cost_usd, and over it answers 409 with the estimate now), find buyers (the same, run scope;
+// saving the buyer columns the first time also needs write: services/hiring-buyer-agent.ts).
 import express from 'express';
 import { requireScope, TokenAuthRequest } from '../middleware/access-token-auth';
 import { runFailHttpStatus, type RunFail } from '../services/run-shared';
 import {
   agentCheckHiring, agentCreateHiring, agentGetHiring, agentUpdateHiring, type AgentCheckFail,
 } from '../services/hiring-agent';
+import { agentFindBuyers } from '../services/hiring-buyer-agent';
 
 const router = express.Router();
 const send = (res: express.Response, out: { ok: unknown } | RunFail | AgentCheckFail, created = false) => ('ok' in out
@@ -48,6 +50,18 @@ router.post('/hiring/:id/check', requireScope('run'), async (req: TokenAuthReque
   } catch (error) {
     console.error('POST /v1/hiring/:id/check error:', error);
     if (!res.headersSent) res.status(500).json({ error: "Couldn't check the hiring table" });
+  }
+});
+
+// Find buyers: an estimate unless estimate_only is false, as the check.
+router.post('/hiring/:id/buyers', requireScope('run'), async (req: TokenAuthRequest, res) => {
+  try {
+    const b = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+    const out = await agentFindBuyers(req.userId!, req.params.id, b, req.tokenScopes?.has('write') === true);
+    send(res, 'ok' in out ? { ok: out.ok } : out);
+  } catch (error) {
+    console.error('POST /v1/hiring/:id/buyers error:', error);
+    if (!res.headersSent) res.status(500).json({ error: "Couldn't find buyers" });
   }
 });
 

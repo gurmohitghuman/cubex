@@ -12,6 +12,8 @@ import { companyFiltersOf, hiringFor, hiringView, type HiringCheckView, type Hir
 import { setHiringCompanyFilters } from './hiring-filters-set';
 import { spendCapRefusal } from './token-spend';
 import { startRefusalMessage, takeRunStart, type RunFail } from './run-shared';
+import { buyerOf } from './hiring-buyer';
+import { buyerJson } from './hiring-buyer-agent';
 
 type Json = Record<string, unknown>;
 const isObj = (v: unknown): v is Json => !!v && typeof v === 'object' && !Array.isArray(v);
@@ -65,7 +67,7 @@ export async function agentCreateHiring(userId: string, body: unknown) {
 
 export function agentGetHiring(userId: string, id: unknown) {
   const rec = hiringFor(userId, id);
-  return rec ? { ok: hiringJson(hiringView(rec)) } : notFound;
+  return rec ? { ok: { ...hiringJson(hiringView(rec)), buyer: buyerJson(buyerOf(userId, rec)) } } : notFound;
 }
 
 // Its filters on Companies changed (services/hiring-filters-set.ts): only those two, the rest is set at create. The

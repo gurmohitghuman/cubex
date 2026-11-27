@@ -42,6 +42,25 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
     version: 'v0.8.48',
     changes: [
       {
+        change: 'server',
+        summary: 'Auto-dedupe takes rows with big cells out of a sheet a few at a time: what a call\'s own '
+          + 'transaction has no room for is checked in the background within seconds, counted in '
+          + 'auto_dedupe.checking_later.',
+        details: 'A transfer_rows near its cap leaves less room, a move\'s rows counting twice. Auto-run waits for '
+          + 'those checks, so a row about to go isn\'t paid for; read the rows again after a few seconds to see what '
+          + 'stayed.',
+      },
+      {
+        change: 'changed',
+        tools: ['hiring_signals'],
+        summary: 'hiring_signals takes action find_buyers: for each company on Companies without a buyer yet, the '
+          + 'person it would buy through, found by job title (Buyer, Buyer title, Buyer LinkedIn) with a verified '
+          + 'Buyer email.',
+        details: 'Paid: an estimate by default (it changes nothing), then estimate_only false with its high_usd as '
+          + 'max_cost_usd. The first run adds the columns (write scope too); buyer_titles defaults to ones from the '
+          + 'roles. get answers buyer.',
+      },
+      {
         change: 'changed',
         tools: ['hiring_signals'],
         summary: 'hiring_signals has action "open_roles": the open roles at the companies on your own sheet '

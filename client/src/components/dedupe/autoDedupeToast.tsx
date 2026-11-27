@@ -9,7 +9,7 @@ export function toastAutoDeduped(d: GridAutoDedupe, onRestored: () => void): voi
   const n = d.removed.length
   if (n === 0) {
     if (d.waiting > 0) {
-      toast(`Auto-dedupe will check ${plural(d.waiting, 'row')} once the sheet is free.`, { id: 'auto-dedupe' })
+      toast(`Auto-dedupe will check ${plural(d.waiting, 'row')} in the background.`, { id: 'auto-dedupe' })
     }
     return
   }

@@ -44,8 +44,8 @@ const Status: React.FC<{ view: AutoDedupeView; sheetId: string; onRemoveNow: () 
       </p>
     )}
     {view.waiting_rows > 0 && (
-      <p>{plural(view.waiting_rows, 'row')} still to check: a run is working on a row they match, or the sheet is
-        busy.</p>
+      <p>{plural(view.waiting_rows, 'row')} still to check, in the background (one a run is working on waits for
+        the run).</p>
     )}
     {!!view.shared_rows && (
       <p>
