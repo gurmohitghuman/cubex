@@ -11,8 +11,9 @@ export interface OpenRolesEstimate {
   // The sheet's rows (one with no website isn't searched, nor paid for).
   companies: number; rolesUpTo: number; priceKnown: boolean; lowUsd: number; highUsd: number
   dailyLimit: { limitUsd: number | null; usedTodayUsd: number; remainingUsd: number | null }
-  // The job index's free count over the first companies with a website ("about").
-  matches: { about: number; counted: number; capped: boolean } | null
+  // The job index's free count over the first companies with a website ("about"): counted, those whose count
+  // answered, of asked.
+  matches: { about: number; counted: number; asked: number; capped: boolean } | null
 }
 export interface OpenRolesStarted {
   runId: string; column: string; rolesSheetId: string; rolesSheetName: string

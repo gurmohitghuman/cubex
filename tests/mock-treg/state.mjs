@@ -40,6 +40,7 @@ const defaults = () => ({
   jobsOverfill: 0,
   jobCounts: {},
   jobCountRefuses: [],
+  jobCountFailDomains: [],
   // AI engines (ai-search.mjs): engines whose answers cite no sources, and a
   // brand an engine's answer names too ({gemini: 'Acme CRM'}).
   aiQuiet: [],

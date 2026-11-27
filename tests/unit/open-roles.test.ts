@@ -165,8 +165,20 @@ await ok('the estimate: free (only the count is called, over the companies with 
   assert.equal(est.companies, 4)
   assert.equal(est.rolesUpTo, 16)
   assert.ok(est.priceKnown && est.highUsd > 0, JSON.stringify(est))
-  assert.equal(est.matches?.counted, 3, JSON.stringify(est.matches))
+  assert.deepEqual([est.matches?.counted, est.matches?.asked], [3, 3], JSON.stringify(est.matches))
   assert.ok((est.matches?.about ?? 0) > 0, JSON.stringify(est.matches))
+  // One company's count failing leaves the others' (on real treg one did, and the estimate had no count at all).
+  await fetch(`${TREG}/__mock/state`, { method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ jobCountFailDomains: ['bluefin-data.io'] }) })
+  try {
+    const partial = await ask()
+    assert.ok('ok' in partial && 'estimate' in partial.ok, JSON.stringify(partial))
+    const m = partial.ok.estimate.matches
+    assert.deepEqual([m?.counted, m?.asked, m?.about], [2, 3, est.matches!.about * 2 / 3], JSON.stringify(m))
+  } finally {
+    await fetch(`${TREG}/__mock/state`, { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ jobCountFailDomains: [] }) })
+  }
   assert.ok((await calls()).every(p => p.endsWith('.jobs.search.count')), (await calls()).join())
   high = est.highUsd
   assert.deepEqual(rolesSheets(), [])

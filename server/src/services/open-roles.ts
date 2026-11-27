@@ -41,8 +41,9 @@ export interface OpenRolesEstimate {
   companies: number;
   rolesUpTo: number; priceKnown: boolean; lowUsd: number; highUsd: number;
   dailyLimit: EnrichEstimateView['dailyLimit'];
-  // The free count, "about", over the first companies with a website (null: the index didn't answer).
-  matches: JobCount | null;
+  // The free count, "about", over the first companies with a website: counted, those whose count answered, of
+  // asked (null: none answered).
+  matches: (JobCount & { asked: number }) | null;
 }
 export interface OpenRolesStarted {
   runId: string; column: string; rolesSheetId: string; rolesSheetName: string;
@@ -150,7 +151,9 @@ async function estimateOf(userId: string, sheetId: string, o: OpenRolesOptions, 
     const body: unknown = JSON.parse(built.body);
     return body && typeof body === 'object' && !Array.isArray(body) ? [body as Record<string, unknown>] : [];
   });
-  const matches = bodies.length ? await countDirectJobs(userId, bodies) : null;
+  // One company's count failing leaves the others' (on real treg one did, and the estimate had no count at all).
+  const counted = bodies.length ? await countDirectJobs(userId, bodies, true) : null;
+  const matches = counted && { ...counted, asked: bodies.length };
   const e = est.ok;
   return {
     companies, rolesUpTo: e.list?.addUpTo ?? companies * o.perCompany, priceKnown: e.priceKnown,

@@ -16,8 +16,9 @@ const bad = (message: string): RunFail => ({ fail: 'bad_request', message });
 export const openRolesEstimateJson = (e: OpenRolesEstimate) => ({
   companies: e.companies, roles_up_to: e.rolesUpTo, low_usd: e.lowUsd, high_usd: e.highUsd,
   price_known: e.priceKnown,
-  matches: e.matches ? { about: e.matches.about, companies_counted: e.matches.counted, at_least: e.matches.capped,
-    note: 'The job index\'s free count, over the first companies with a website.' } : null,
+  matches: e.matches ? { about: e.matches.about, companies_counted: e.matches.counted,
+    companies_asked: e.matches.asked, at_least: e.matches.capped,
+    note: 'The job index\'s free count, over the first companies with a website whose count answered.' } : null,
   ...(e.dailyLimit ? { daily_limit: e.dailyLimit } : {}),
 });
 

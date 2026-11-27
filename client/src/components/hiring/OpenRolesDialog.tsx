@@ -135,8 +135,9 @@ export const OpenRolesDialog: React.FC<Props> = ({ sheetId, columns, onClose, on
             </p>
             {e.matches && (
               <p className="text-sm text-gray-700" data-testid="open-roles-matches">
-                {e.matches.capped ? 'At least about' : 'About'} {plural(e.matches.about, 'open role')} match at the
-                first {plural(e.matches.counted, 'company', 'companies')} (a free count).
+                {e.matches.capped ? 'At least about' : 'About'} {plural(e.matches.about, 'open role')} match at
+                {e.matches.counted < e.matches.asked ? ` ${e.matches.counted} of` : ''} the first
+                {' '}{plural(e.matches.asked, 'company', 'companies')} with a website (a free count).
               </p>
             )}
             <p className="text-sm text-gray-900" data-testid="open-roles-cost">
