@@ -89,7 +89,7 @@ function enrichment(c: Json, where: string): Parsed<StepChoices> {
 }
 
 function ai(c: Json, where: string): Parsed<StepChoices> {
-  const stray = strayKey(c, ['kind', 'prompt', 'model', 'webSearch'], where);
+  const stray = strayKey(c, ['kind', 'prompt', 'model', 'webSearch', 'webFetch'], where);
   if (stray) return bad(stray);
   if (typeof c.prompt !== 'string' || !c.prompt.trim() || c.prompt.length > WATERFALL_PROMPT_MAX_CHARS) {
     return bad(`${where}: prompt is required (at most ${WATERFALL_PROMPT_MAX_CHARS} characters).`);
@@ -98,8 +98,15 @@ function ai(c: Json, where: string): Parsed<StepChoices> {
     return bad(`${where}: model isn't a model id.`);
   }
   if (c.webSearch !== undefined && typeof c.webSearch !== 'boolean') return bad(`${where}: webSearch is yes or no.`);
+  if (c.webFetch !== undefined && typeof c.webFetch !== 'boolean') return bad(`${where}: webFetch is yes or no.`);
   const model = (c.model as string | null | undefined) ?? null;
-  return { ok: { kind: 'ai', prompt: c.prompt, model, webSearch: c.webSearch === true } };
+  // webFetch only when on, so a step without it is stored (and keyed) as before.
+  return {
+    ok: {
+      kind: 'ai', prompt: c.prompt, model, webSearch: c.webSearch === true,
+      ...(c.webFetch === true ? { webFetch: true } : {}),
+    },
+  };
 }
 
 function http(c: Json, where: string): Parsed<StepChoices> {

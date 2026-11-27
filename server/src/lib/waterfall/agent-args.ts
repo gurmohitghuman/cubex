@@ -26,7 +26,7 @@ export const AGENT_TOP = ['sheet_id', 'column_name', 'add_to_column', 'result_ty
 const STEP_KEYS: Record<string, string[]> = {
   enrichment: ['tool_id', 'inputs', 'value_path', 'provider_order', 'skip_providers', 'stop_at_first',
     'max_cost_usd'],
-  ai: ['prompt', 'model', 'web_search'],
+  ai: ['prompt', 'model', 'web_search', 'web_fetch'],
   http: ['method', 'url', 'headers', 'body', 'value_path', 'retries'],
   formula: ['formula'],
   lookup: ['other_sheet_id', 'match_column', 'match', 'input', 'return_column'],
@@ -69,7 +69,7 @@ function stepOf(v: unknown, i: number): { ok: Json } | { error: string } {
   const choices: Json = kind === 'enrichment' ? {
     kind, toolId: v.tool_id, inputs: v.inputs, valuePath: v.value_path, providerOrder: v.provider_order,
     skipProviders: v.skip_providers, stopAtFirst: v.stop_at_first, maxCostUsd: v.max_cost_usd,
-  } : kind === 'ai' ? { kind, prompt: v.prompt, model: v.model, webSearch: v.web_search }
+  } : kind === 'ai' ? { kind, prompt: v.prompt, model: v.model, webSearch: v.web_search, webFetch: v.web_fetch }
     : kind === 'formula' ? { kind, formula: v.formula }
       : kind === 'lookup' ? {
         kind, sheetId: v.other_sheet_id, matchColumn: v.match_column, mode: v.match, inputKey: v.input,

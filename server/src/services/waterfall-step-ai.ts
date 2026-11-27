@@ -12,7 +12,10 @@ import { buildMultiOutputInstruction, parseMultiOutput } from '../lib/ai-multi-o
 import { buildWebTools, searchReplayFor, toolCallBudget } from '../lib/ai-web-tools';
 import { classifyAiError, isOutOfCredits } from '../lib/ai-error-classify';
 import { redactSecrets } from '../lib/redact';
-import { WATERFALL_AI_LEGACY_MAX_TOKENS, WATERFALL_AI_TEMPERATURE } from '../lib/constants';
+import {
+  WATERFALL_AI_LEGACY_MAX_TOKENS, WATERFALL_AI_TEMPERATURE, WEB_FETCH_PAGES_PER_ROW, WEB_FETCH_TOKENS_PER_PAGE,
+} from '../lib/constants';
+import type { FetchLimits } from '../lib/web-fetch-options';
 import { normalizeResult, RESULT_INFO } from '../lib/waterfall/result-type';
 import { traceDetail, traceValue } from '../lib/waterfall/trace';
 import type { AiChoices, BuiltAi, WaterfallBlock } from '../lib/waterfall/config';
@@ -33,8 +36,16 @@ export interface AiStepArgs {
 }
 
 const SYSTEM = 'You look up one fact for one row of a spreadsheet. Use the details given and, when you can '
-  + 'search the web, what you find there. Never guess or make a value up: when you can\'t find it, answer null. '
+  + 'search the web or read pages, what you find there. Never guess or make a value up: when you can\'t find it, '
+  + 'answer null. '
   + 'Plain text values only, no markdown.';
+
+// A step that reads pages reads at most the pages its price counts, each cut to the text it counts (OpenRouter's
+// max_uses and max_content_tokens, read through WEB_FETCH_LIMITED_ENGINE), so its price stays a ceiling
+// (services/waterfall-ai-price.ts prices these limits).
+export const AI_STEP_FETCH_LIMITS: FetchLimits = {
+  maxPagesPerRow: WEB_FETCH_PAGES_PER_ROW.high, maxContentTokens: WEB_FETCH_TOKENS_PER_PAGE.high,
+};
 
 const SPEC = (w: WaterfallBlock) => [{
   columnName: 'value', type: 'string' as const,
@@ -66,7 +77,10 @@ const waitable = (e: unknown): boolean => status(e) === 429
 
 async function sendOnce(a: AiStepArgs, messages: ReturnType<typeof aiMessages>): Promise<ModelCall> {
   const search = a.built.search;
-  const tools = buildWebTools(a.choices.prompt, a.inputs, { search, fetch: false });
+  // Page reading: only sites in the inputs the prompt names (a /domain or URL input), as an AI column's rows.
+  const fetch = !!a.choices.webFetch;
+  const fetchLimits = fetch ? AI_STEP_FETCH_LIMITS : null;
+  const tools = buildWebTools(a.choices.prompt, a.inputs, { search, fetch, fetchLimits });
   for (let tries = 0; ; tries++) {
     try {
       // No stop signal: a call that went out finishes, so what it cost is
@@ -77,7 +91,8 @@ async function sendOnce(a: AiStepArgs, messages: ReturnType<typeof aiMessages>):
         return await withConnectRetry(() => sendModelCall(a.client, {
           model: a.built.model, messages, temperature: WATERFALL_AI_TEMPERATURE,
           maxTokens: a.built.maxTokens ?? WATERFALL_AI_LEGACY_MAX_TOKENS,
-          tools, searchReplay: search ? searchReplayFor(search) : null, maxToolCalls: toolCallBudget(search, false),
+          tools, searchReplay: search ? searchReplayFor(search) : null,
+          maxToolCalls: toolCallBudget(search, fetch, fetchLimits),
         }, deadline.signal), a.signal, a.stopped);
       } catch (error) {
         throw deadline.timedOut() ? new Error(AI_TIMEOUT_MESSAGE) : error;

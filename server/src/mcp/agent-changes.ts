@@ -57,6 +57,13 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
           + 'higher.',
         details: 'A spend_limit_usd under one row\'s most is refused as before; raise it, or pick a cheaper model.',
       },
+      {
+        change: 'changed',
+        tools: ['waterfall_column'],
+        summary: 'waterfall_column\'s ai steps take web_fetch: the model may read up to 3 pages a row, only on the '
+          + 'sites in the inputs its prompt names (a /domain or URL input). get_sheet and describe show it.',
+        details: 'The step\'s price and its most per row count those pages, their text and their fees.',
+      },
     ],
   },
   {

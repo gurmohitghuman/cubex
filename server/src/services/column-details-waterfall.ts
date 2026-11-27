@@ -25,7 +25,7 @@ function stepFill(ctx: DetailContext, column: string, s: WaterfallStep): Record<
   }
   if (c.kind === 'ai') {
     const model = s.built.kind === 'ai' ? s.built.model : c.model;
-    return { ...base, model, prompt: ctx.cut(column, c.prompt), web_search: c.webSearch };
+    return { ...base, model, prompt: ctx.cut(column, c.prompt), web_search: c.webSearch, web_fetch: !!c.webFetch };
   }
   if (c.kind === 'http') {
     return {

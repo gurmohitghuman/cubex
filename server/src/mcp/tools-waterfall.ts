@@ -61,6 +61,8 @@ const step = z.discriminatedUnion('kind', [
       .describe('Uses /input_key words, e.g. "Find the work email of /full_name at /domain"'),
     model: z.string().max(200).optional().describe('Default: the sheet\'s, else the account\'s default model'),
     web_search: lenientBoolean().optional().describe('Let the model search the web'),
+    web_fetch: lenientBoolean().optional()
+      .describe('Let the model read pages on the sites in the inputs its prompt names (a /domain or URL input)'),
   }).strict(),
   z.object({
     ...common, kind: z.literal('http').describe('Your JSON API'),

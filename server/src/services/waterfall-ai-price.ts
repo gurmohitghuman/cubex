@@ -2,12 +2,14 @@
 // a row (services/run-estimate.ts): its messages' tokens on sample rows, the
 // output size from your past runs on the model (or the default range), the
 // model's prices, and with web search the engine the column would plan
-// (services/run-estimate-web.ts) and its fees. The cap is one call's ceiling,
-// counted as an AI column's spend limit counts one (lib/ai-spend-limit.ts): the
-// longest sample row's messages at one token a byte, the max_tokens the step
-// sends at the dearer of the output and reasoning prices, the model's fee per
-// request, the most searches (a row longer than every sample row can cost more;
-// the run counts what each call really cost the moment it comes back).
+// (services/run-estimate-web.ts) and its fees; with page reading, the pages a
+// row may read, their text and fees, as an AI column prices them. The cap is
+// one call's ceiling, counted as an AI column's spend limit counts one
+// (lib/ai-spend-limit.ts): the longest sample row's messages at one token a
+// byte, the max_tokens the step sends at the dearer of the output and reasoning
+// prices, the model's fee per request, the most searches and pages (a row
+// longer than every sample row can cost more; the run counts what each call
+// really cost the moment it comes back).
 import { aiMaxTokens, AI_HOLD_MESSAGE_TOKENS } from '../lib/constants';
 import { fetchModels } from '../lib/openrouter';
 import { average, estimateTokens, rowCostUsd } from '../lib/ai-cost';
@@ -17,7 +19,7 @@ import type { SearchToolConfig } from '../lib/ai-web-tools';
 import type { WaterfallBlock } from '../lib/waterfall/config';
 import { estimateWebWork } from './run-estimate-web';
 import { tokenHistory } from './ai-token-history';
-import { aiMessages } from './waterfall-step-ai';
+import { aiMessages, AI_STEP_FETCH_LIMITS } from './waterfall-step-ai';
 
 // Caps and holds need micro-dollar precision (roundUsd rounds for display).
 const round6 = (n: number): number => Math.round(n * 1e6) / 1e6;
@@ -31,11 +33,13 @@ export interface AiStepPrice {
 }
 
 export async function priceAiStep(
-  userId: string, w: Pick<WaterfallBlock, 'resultType' | 'phone'>, model: string, prompt: string, webSearch: boolean,
+  userId: string, w: Pick<WaterfallBlock, 'resultType' | 'phone'>, model: string, prompt: string, web: WebTools,
   sample: Array<Record<string, string>>,
 ): Promise<{ ok: AiStepPrice } | { error: string }> {
-  const web: WebTools = { search: webSearch, fetch: false };
-  const est = await estimateWebWork(userId, model, web, null);
+  const webSearch = web.search;
+  const usesWeb = web.search || web.fetch;
+  // Page reading at the limits the step sends (AI_STEP_FETCH_LIMITS), so its pages and their text are a ceiling.
+  const est = await estimateWebWork(userId, model, web, null, web.fetch ? AI_STEP_FETCH_LIMITS : null);
   if ('error' in est) return est;
   const plan = est.ok.plan;
   const search: SearchToolConfig | null = webSearch && plan
@@ -51,12 +55,12 @@ export async function priceAiStep(
   const maxBytes = Math.max(bytesOf({}), ...sample.map(bytesOf));
   const history = tokenHistory(userId, model, web, plan?.used ?? null);
   const out = history.output.range;
-  const extra = webSearch && !history.webInput ? webInputTokensPerRow(est.ok.work) : { low: 0, high: 0 };
+  const extra = usesWeb && !history.webInput ? webInputTokensPerRow(est.ok.work) : { low: 0, high: 0 };
   const inLow = history.webInput ? Math.max(history.webInput.low, avgIn) : avgIn + extra.low;
   const inHigh = history.webInput ? Math.max(history.webInput.high, avgIn) : avgIn + extra.high;
-  const webMost = webSearch ? webInputTokensPerRow(est.ok.work).high : 0;
+  const webMost = usesWeb ? webInputTokensPerRow(est.ok.work).high : 0;
   const inMost = Math.max(history.webInput?.high ?? 0, maxBytes + webMost);
-  const fees = webSearch ? webFeesPerRow(est.ok.work) : { low: 0, high: 0 };
+  const fees = usesWeb ? webFeesPerRow(est.ok.work) : { low: 0, high: 0 };
   const result = await fetchModels(Date.now());
   const m = (result.ok ? result.models : result.stale)?.find(x => x.id === model);
   // The step sends an AI column's max_tokens (lib/constants-ai.ts aiMaxTokens): room for a model that thinks
