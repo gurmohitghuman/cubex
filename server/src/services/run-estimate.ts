@@ -6,6 +6,7 @@
 // web search and fetch fees included. HTTP's estimate: run-estimate-http.ts.
 import { AI_ESTIMATE_DEFAULT_OUTPUT_TOKENS_LOW, AI_ESTIMATE_DEFAULT_OUTPUT_TOKENS_HIGH } from '../lib/constants-ai';
 import { processPromptTemplate } from '../lib/prompt';
+import { FETCH_NO_SITE_NOTE, fetchFindsNoSite } from '../lib/ai-web-tools';
 import { resolveAiModel } from '../lib/ai-model-resolve';
 import { modelProblem } from '../lib/ai-model-check';
 import { fetchModels } from '../lib/openrouter';
@@ -191,6 +192,7 @@ export async function estimateAiRun(userId: string, input: AiEstimateInput): Pro
   if (!model) notes.push('No model resolved — set a model to price this run.');
   else if (!pricingAvailable) notes.push('OpenRouter pricing was unavailable; row count is exact, cost is not shown.');
   if (fees) notes.push(webNote(w, fees, !!history?.webInput));
+  if (web.fetch && fetchFindsNoSite(input.prompt, sample)) notes.push(FETCH_NO_SITE_NOTE);
   // Shown on the user's own provider key too: a row the key can't serve falls
   // back to OpenRouter's credits, and those rows have been refused with 402.
   const ownKey = !!model && ranOnOwnKey(userId, model);

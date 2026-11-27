@@ -43,6 +43,11 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
     changes: [
       {
         change: 'server',
+        summary: 'run_ai_column\'s estimate notes when web_fetch is on but the columns its prompt names hold no '
+          + 'website or link on the rows checked: it would open no page. Name that column, such as /Website.',
+      },
+      {
+        change: 'server',
         summary: 'A tool billed per result whose catalog names its count input is priced at the results a call '
           + 'asks for (that input, else its default) instead of 20: run_enrichment\'s and apply_setup\'s estimates '
           + 'and default max_cost_per_row_usd follow it.',
