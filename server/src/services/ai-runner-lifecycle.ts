@@ -14,8 +14,9 @@ import {
 import { clearRunPlaceholders, hasUnfinishedRow } from '../lib/run-placeholders';
 import { dropRunSpans } from '../lib/derived-spans';
 import { spendCapRefusal } from './token-spend';
-import { RUN_BREAKER_FAILURES } from '../lib/constants';
+import { RUN_BREAKER_ACCOUNT_FAILURES, RUN_BREAKER_FAILURES } from '../lib/constants';
 import { brakeMessage, RunBreaker, type RowOutcome } from '../lib/run-breaker';
+import { BrakeWaits } from '../lib/run-brake-waits';
 import { isBusyLock, isStorageFailure } from '../lib/storage-failure';
 import { pauseItself, runHeartbeat, slotWaiter, storageEnd, type LoopEnd } from '../lib/run-pool';
 import { webEngineMessage } from '../lib/web-engine-refusal';
@@ -60,7 +61,9 @@ export const dispatchRows = async (
   const out = new Set<Promise<void>>();
   const pool = slotWaiter();
   const beat = runHeartbeat('ai_runs', runId, myGeneration);
-  const breaker = new RunBreaker(RUN_BREAKER_FAILURES);
+  const breaker = new RunBreaker(RUN_BREAKER_FAILURES, RUN_BREAKER_ACCOUNT_FAILURES);
+  // A short outage is waited out before the brake pauses the run (lib/run-brake-waits.ts).
+  const waits = new BrakeWaits();
   let completed = startCompleted;
   // Set from the rows' callbacks, so its type is spelled out (no narrowing to null).
   let end = null as LoopEnd | null;
@@ -99,6 +102,10 @@ export const dispatchRows = async (
         if (out.size < concurrency) break;
         await wait();
       }
+      if (waits.waiting) {
+        await waits.sit(beatNow, () => end !== null || shouldStop(runId, myGeneration));
+        continue;
+      }
       const next = await pulled.next({ signal: controller.signal, tick: beatNow });
       if ('done' in next) break;
       if ('park' in next || end) { rowsLeft = true; break; }
@@ -136,7 +143,9 @@ export const dispatchRows = async (
           settledAs = outcome;
           breaker.record(outcome);
           const tripped = breaker.tripped;
-          if (tripped && !end) end = { reason: 'provider_errors', message: brakeMessage(tripped, false) };
+          if (tripped && !end && (tripped.account || !waits.begin(breaker))) {
+            end = { reason: 'provider_errors', message: brakeMessage(tripped, false, waits.waited) };
+          }
           // The workspace refused the web fetch engine: once, for every row (this one stays waiting).
           if (outcome.kind === 'dropped' && outcome.webEngine !== undefined && !end) {
             end = { reason: 'web_engine', message: webEngineMessage(outcome.webEngine) };

@@ -16,7 +16,9 @@ const rx = new Receiver()
 let api: APIRequestContext
 let v1: APIRequestContext
 const OK = { status: 200, body: '{"ok":"up"}' }
-const REFUSED = { status: 401, body: '{"error":"bad key"}' }
+// A server that's down: rows fail in a row and the brake pauses the run (here without the waits a run sits out
+// first in production: scripts/e2e-env.mjs). A 401 would pause it after one row (a refused key).
+const DOWN = { status: 503, body: '{"error":"down"}' }
 const BRAKE = /5 rows in a row failed on the provider's side, so the run paused\. Resume once it works again/
 
 test.describe.configure({ mode: 'serial' })
@@ -52,7 +54,7 @@ const control = async (runId: string, action: 'pause' | 'resume' | 'cancel') =>
 
 // A run whose path refuses every call (401 counts as the provider's side), paused by its brake.
 async function braked(sheetId: string, path: string, column: string): Promise<string> {
-  rx.on(path, REFUSED)
+  rx.on(path, DOWN)
   const runId = await run(sheetId, path, column)
   await expect.poll(() => statusOf(sheetId, runId), { timeout: 30_000 }).toBe('paused/provider_errors')
   return runId

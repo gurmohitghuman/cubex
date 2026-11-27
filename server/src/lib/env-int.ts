@@ -6,6 +6,12 @@ export const envInt = (name: string, fallback: number): number => {
   return Number.isInteger(raw) && raw > 0 ? raw : fallback;
 };
 
+// A count from the environment where 0 means none (a whole number 0 or more), else the fallback.
+export const envCount = (name: string, fallback: number): number => {
+  const raw = (process.env[name] ?? '').trim();
+  return /^\d+$/.test(raw) ? Number(raw) : fallback;
+};
+
 // The longest wait Node's timers keep (2^31-1 ms, about 24.8 days): a longer one fires at once.
 export const TIMER_MAX_MS = 2_147_483_647;
 const capped = new Set<string>();

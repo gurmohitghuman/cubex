@@ -6,7 +6,7 @@
 import { APIConnectionError, APIConnectionTimeoutError, APIError } from 'openai';
 import { callDeadline, deadlineWords, type CallDeadline } from '../lib/call-deadline';
 import { AI_CALL_DEADLINE_MS, AI_RESET_MAYBE_BILLED_MS } from '../lib/constants';
-import { aiProviderSide, DROPPED, type RowOutcome } from '../lib/run-breaker';
+import { aiAccountSide, aiProviderSide, DROPPED, type RowOutcome } from '../lib/run-breaker';
 import { isStorageFailure } from '../lib/storage-failure';
 import { FailedCallError, type ModelCall } from './ai-model-call';
 import { connectionCauseCode, markLateReset } from './openrouter-retry';
@@ -38,8 +38,10 @@ export function throwIfStorage(error: unknown): void {
 export const hasSpendLimit = (run: { spend_limit_usd?: number | null }): boolean =>
   typeof run.spend_limit_usd === 'number';
 
-export const failedRow = (message: string, maybeBilled = false): RowOutcome =>
-  ({ kind: 'failed', message, provider: aiProviderSide(message), ...(maybeBilled ? { maybeBilled } : {}) });
+export const failedRow = (message: string, maybeBilled = false): RowOutcome => ({
+  kind: 'failed', message, provider: aiProviderSide(message), ...(aiAccountSide(message) ? { account: true } : {}),
+  ...(maybeBilled ? { maybeBilled } : {}),
+});
 
 // A row a stop dropped (a pause, a cancel, a resume taking over) while its
 // call was out: nothing is written, but a call cut off then (it timed out,

@@ -62,7 +62,7 @@ await ok('the brake counts provider failures in a row; an answer resets it, a st
   fail('500 e'); fail('500 f')
   assert.equal(b.tripped, null, 'a failure about the row resets it too')
   fail('500 g')
-  assert.deepEqual(b.tripped, { rows: 3, last: '500 g' })
+  assert.deepEqual(b.tripped, { rows: 3, last: '500 g', account: false })
   const words = brakeMessage(b.tripped!, false)
   assert.match(words, /^3 rows in a row failed .*Resume once it works again.*Last error: 500 g$/)
   assert.ok(!words.startsWith('Paused'), "the grid's toast adds that")

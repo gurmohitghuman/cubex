@@ -18,6 +18,8 @@ import { v4 as uuid } from 'uuid'
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 process.env.RUN_INPUT_WAIT_POLL_MS = '100'
+// The brake's pause itself, without the waits a run sits out first (tests/unit/run-brake-waits.test.ts).
+process.env.RUN_BREAKER_WAITS = '0'
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
 // The stand-in. OpenRouter: one priced model; a call answers after `aiDelay`. /fail answers 500 after 300 ms and

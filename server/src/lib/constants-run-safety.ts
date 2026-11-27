@@ -2,7 +2,7 @@
 // provider keeps failing or its results can't be saved, and a run whose worker
 // stopped is picked up again (lib/call-deadline.ts, lib/run-breaker.ts,
 // lib/storage-failure.ts, services/stalled-runs.ts).
-import { envInt, envMs } from './env-int';
+import { envCount, envInt, envMs } from './env-int';
 
 // One AI call, body included. The SDK's own timeout (AI_REQUEST_TIMEOUT_MS)
 // stops counting once the response headers arrive, so a body that stalls
@@ -22,6 +22,14 @@ export const HTTP_DNS_TIMEOUT_MS = 10_000;
 // credits, a model that's gone) pause the run, with the last error, instead of
 // writing ❌ into every row left. A row the provider answered resets the count.
 export const RUN_BREAKER_FAILURES = envInt('RUN_BREAKER_FAILURES', 5);
+// Rows failing on the account's side (a refused key, no credits, a model that's gone) before the run pauses:
+// every row would fail the same, so at once.
+export const RUN_BREAKER_ACCOUNT_FAILURES = envInt('RUN_BREAKER_ACCOUNT_FAILURES', 1);
+// Before that pause, a run someone started (not an auto-run batch, which tries again later anyway) waits out a
+// short outage: up to RUN_BREAKER_WAITS times, the nth wait RUN_BREAKER_WAIT_MS x n x n (30 s, 2 min, 4.5 min),
+// then goes on with the rows left (lib/run-brake-waits.ts). A failure on the account's side never waits.
+export const RUN_BREAKER_WAITS = envCount('RUN_BREAKER_WAITS', 3);   // 0: pause at once
+export const RUN_BREAKER_WAIT_MS = envMs('RUN_BREAKER_WAIT_MS', 30_000);
 
 // A run with every slot busy checks for a stop this often, so Pause and
 // Cancel reach it while its rows are still out.

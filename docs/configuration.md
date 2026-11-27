@@ -29,7 +29,10 @@ A setting in milliseconds (its name ends in `_MS`) is at most `2147483647` (abou
 | `OPENROUTER_BASE_URL` | `https://openrouter.ai/api/v1` | Where AI calls go. Only for testing. |
 | `RELEASE_CHECK_URL` | GitHub's releases API for Cubex | Where the daily release check asks for the latest release. Only for testing. |
 | `LOGIN_RATE_MAX` | `10` | Failed sign-ins allowed per 15 minutes from browsers that have never signed in, together, and for each browser that has, on its own. |
-| `RUN_BREAKER_FAILURES` | `5` | AI and HTTP API rows failing in a row on the provider's side (no answer, a server error, a rejected key, no credits) before the run pauses itself. |
+| `RUN_BREAKER_FAILURES` | `5` | AI and HTTP API rows failing in a row on the provider's side (no answer, a server error, a rate limit after its retries) before the run waits or pauses itself. A rejected key, no credits or a model that's gone pauses it after one row. |
+| `RUN_BREAKER_ACCOUNT_FAILURES` | `1` | Rows failing on the account's side (a rejected key, no credits, a model that's gone) before the run pauses. |
+| `RUN_BREAKER_WAITS` | `3` | How many times a run someone started waits out such failures before it pauses (0: pause at once). Auto-run batches don't wait; they try again a few minutes later. |
+| `RUN_BREAKER_WAIT_MS` | `30000` | The first of those waits; the nth is this times n times n (30 s, 2 min, 4.5 min). |
 | `AI_CALL_DEADLINE_MS` | `600000` | Longest one AI call may take, answer included, before its row fails as timed out. |
 | `DISK_LOW_MB` | `200` | Free space on the data folder below which the health check says `low` and stalled runs aren't started again. |
 | `CUBEX_START_TIMEOUT` | `600` | Seconds `cubex start` waits for Cubex to answer (30 to 86400). A big database takes a while to check, and to upgrade after an update. A server that keeps crashing fails sooner. |
