@@ -307,7 +307,7 @@ A date can be written in a cell as 2024-01-31, 1/31/2024, 31.1.2024, Jan 31, 202
 
 A view saves what you're looking at: its filters and which columns are hidden. Every sheet starts with a **Default** view. Use the bar above the grid to switch views, to add one (it starts as a copy of the one showing), or to rename, describe or delete one. Hide a column from its menu (**Hide column**) or from the **12/15 columns** picker; hiding never deletes anything, and every view shares the same rows and column order.
 
-Two ready-made views are a click away in the view menu: **Rows with errors** (any AI, HTTP API or enrichment column has an error) and **Fully filled rows** (every one of those columns has a result). **Export** then asks whether you want this view (only its rows and visible columns) or the whole sheet. Agents can read through a view too: `read_rows` (as rows or as CSV) and the REST API take its name.
+Two ready-made views are a click away in the view menu: **Rows with errors** (any AI, HTTP API or enrichment column has an error) and **Fully filled rows** (every one of those columns has a result). **Export** then asks whether you want this view (only its rows and visible columns) or the whole sheet. **Export for a CRM or email tool** keeps every cell exactly as it is: a plain export puts a `'` before a phone like `+1 415...` or an `@handle` so Excel and Sheets don't treat it as a formula, and tools you import into would keep it. Agents can read through a view too: `read_rows` (as rows or as CSV) and the REST API take its name.
 
 ### Search
 

@@ -117,21 +117,26 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
           .describe('Rows whose cells changed at or after this UTC time (2026-11-05T10:00:00Z or 2026-11-05 10:00:00)'),
         max_chars_per_cell: maxCharsPerCellSchema.optional(),
         format: z.enum(['json', 'csv']).optional().describe('json (default): rows as {id, index, data}; csv: CSV text'),
+        raw: lenientBoolean().optional().describe('csv only: every cell exactly as it is, with no \' added before '
+          + '= + - @ (a file for a CRM or sending tool; never open it in Excel or Sheets)'),
       },
     },
     async ({
       sheet_id, cursor, limit, columns, where, return_mode, include_status, expected_data_version,
       expected_row_generation, view, expected_view_version, group_by, aggregates, row_ids, updated_since,
-      max_chars_per_cell, format,
+      max_chars_per_cell, format, raw,
     }) => {
       const denied = missingScope(ctx, 'read');
       if (denied) return denied;
       if (!ownsSheet(sheet_id, ctx.userId)) return err('Sheet not found');
+      if (raw === true && format !== 'csv') {
+        return err('raw goes with format csv: json answers cells as they are.');
+      }
       if (format === 'csv') {
         const rest = { cursor, limit, return_mode, include_status, expected_data_version, expected_row_generation,
           group_by, aggregates, expected_view_version, row_ids, updated_since, max_chars_per_cell };
         const others = Object.entries(rest).filter(([, v]) => v !== undefined).map(([k]) => k);
-        return readRowsCsv(ctx, { sheet_id, columns, where, view }, others);
+        return readRowsCsv(ctx, { sheet_id, columns, where, view, raw }, others);
       }
       const after = typeof cursor === 'number' ? cursor : -1;
       const byIdOrTime = row_ids !== undefined || updated_since !== undefined || typeof cursor === 'string';

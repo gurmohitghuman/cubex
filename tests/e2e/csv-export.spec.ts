@@ -1,5 +1,10 @@
-import { test, expect } from '@playwright/test'
-import { authedApi, seedSheet, setSheetName } from './helpers'
+import { readFile } from 'node:fs/promises'
+import { test, expect, request as pwRequest } from '@playwright/test'
+import { authedApi, BASE, seedSheet, setSheetName } from './helpers'
+import { seedCsv } from './helpers-enrich'
+import { bearer, makeToken } from './api-v1-run-helpers'
+import { call, mcpClient } from './helpers-mcp'
+import { openDataMenu } from './helpers-ui'
 
 // E2E coverage for sheets-csv-export.ts — the Content-Disposition filename
 // injection fix (contentDispositionFilename in lib/csv-safety.ts) and the
@@ -133,5 +138,50 @@ test.describe('CSV export: content', () => {
     expect(res.status()).toBe(400)
     expect((await res.json()).error).toMatch(/no data/i)
     await api.dispose()
+  })
+})
+
+// A CSV for another tool (a CRM, a sending tool): every cell exactly as it is, on every surface that writes CSV;
+// without it the formula guard stays. The app's menu entry downloads it, named "(for import)".
+test.describe('CSV export for another tool: cells as they are', () => {
+  const CSV = ['Name,Phone,Handle,Note', 'Ada,+1 (415) 555-0199,@ada,- Hiring 3 SDRs'].join('\n')
+  const RAW_ROW = '"Ada","+1 (415) 555-0199","@ada","- Hiring 3 SDRs"'
+  const GUARDED_ROW = `"Ada","'+1 (415) 555-0199","'@ada","'- Hiring 3 SDRs"`
+
+  test('the app route, REST, read_rows and file_link take raw; without it cells are guarded', async () => {
+    const api = await authedApi()
+    const { sheetId } = await seedCsv(api, CSV)
+    const app = async (q: string) => (await api.get(`/api/sheets/${sheetId}/export${q}`)).text()
+    expect(await app('?raw=1')).toContain(RAW_ROW)
+    expect(await app('')).toContain(GUARDED_ROW)
+
+    const token = await makeToken(api, ['read'], 'csv for tools')
+    const v1 = await bearer(token)
+    expect(await (await v1.get(`/api/v1/sheets/${sheetId}/export?raw=true`)).text()).toContain(RAW_ROW)
+    expect(await (await v1.get(`/api/v1/sheets/${sheetId}/export`)).text()).toContain(GUARDED_ROW)
+    expect((await v1.get(`/api/v1/sheets/${sheetId}/export?raw=true&format=jsonl`)).status()).toBe(400)
+    await v1.dispose()
+
+    const mcp = await mcpClient(token)
+    expect((await call(mcp, 'read_rows', { sheet_id: sheetId, format: 'csv', raw: true })).csv).toContain(RAW_ROW)
+    expect((await call(mcp, 'read_rows', { sheet_id: sheetId, format: 'csv' })).csv).toContain(GUARDED_ROW)
+    const link = await call(mcp, 'file_link', { action: 'download', sheet_id: sheetId, raw: true })
+    const file = await (await pwRequest.newContext()).get(link.download_url)
+    expect(await file.text()).toContain(RAW_ROW)
+    await mcp.close()
+  })
+
+  test('the data menu\'s "Export for a CRM or email tool" downloads cells as they are', async ({ page, context }) => {
+    const api = await authedApi()
+    const { tableId } = await seedCsv(api, CSV)
+    await context.addCookies((await api.storageState()).cookies)
+    await page.goto(`${BASE}/table/${tableId}`)
+    await expect(page.locator('.ag-row[row-index="0"]').first()).toBeVisible({ timeout: 15_000 })
+    const downloaded = page.waitForEvent('download')
+    await openDataMenu(page, 'Export for a CRM or email tool')
+    const download = await downloaded
+    expect(download.suggestedFilename()).toMatch(/\(for import\)\.csv$/)
+    const body = await readFile((await download.path())!, 'utf8')
+    expect(body).toContain(RAW_ROW)
   })
 })

@@ -6,10 +6,10 @@
 import type { Response } from 'express';
 import { db } from './db';
 import { getSheetColumns, parseRowData } from './sql-helpers';
-import { contentDispositionFilename, escapeCsvCell } from './csv-safety';
+import { contentDispositionFilename } from './csv-safety';
 import { withSheetRead } from './sheet-busy';
 import {
-  csvLine, eachPage, responseTurn, responseWriter, writeSheetCsv, writeSheetJsonl, type SheetExportPlan,
+  csvHeader, csvLine, eachPage, responseTurn, responseWriter, writeSheetCsv, writeSheetJsonl, type SheetExportPlan,
 } from './csv-write';
 // Reuses read_rows' filter (services/row-filter.ts) rather than a second
 // implementation, so `where` means exactly the same thing on both tools.
@@ -44,12 +44,15 @@ export interface CsvExportOptions {
   // The part of `where` a saved view gave (a download link keeps it): its
   // run-state rules aren't refused (services/row-filter.ts prepareWhere).
   saved?: WhereItem[];
+  // Every cell exactly as it is, with no formula guard, for a file going into another tool (CRMs and sending
+  // tools keep the guard's quote): lib/csv-safety.ts escapeCsvCellRaw.
+  raw?: boolean;
   // Stop (never at half a row) once the CSV would pass this many characters.
   // Default: no limit.
   maxChars?: number;
 }
 
-export type ExportSelection = Pick<CsvExportOptions, 'columns' | 'where' | 'view' | 'saved'>;
+export type ExportSelection = Pick<CsvExportOptions, 'columns' | 'where' | 'view' | 'saved' | 'raw'>;
 
 // What an export writes: the columns (the same verified list the grid shows,
 // column_order, or the caller's subset in the caller's order) and the filter.
@@ -76,10 +79,11 @@ export function planSheetExport(
     // Caller's order wins — they may want a different layout than the sheet's.
     columns = opts.columns;
   }
-  if (!opts.where?.length) return { sheetName: sheet.name, columns };
+  const raw = options.raw ? { raw: true } : {};
+  if (!opts.where?.length) return { sheetName: sheet.name, columns, ...raw };
   const prepared = prepareWhere(sheetId, userId, opts.where, allColumns, opts.saved);
   if ('error' in prepared) return { fail: 'invalid', error: prepared.error };
-  return { sheetName: sheet.name, columns, filter: prepared.ok.filter };
+  return { sheetName: sheet.name, columns, filter: prepared.ok.filter, ...raw };
 }
 
 // Build a sheet's CSV, optionally projected to a column subset and filtered to
@@ -96,19 +100,19 @@ export async function buildSheetCsv(
 ): Promise<CsvExport> {
   const plan = planSheetExport(sheetId, userId, opts);
   if ('fail' in plan) return plan;
-  const { columns, filter } = plan;
+  const { columns, filter, raw } = plan;
 
   // Rows a page at a time between requests (SQLite checks the filter; each
   // passing row's JSON is parsed once), holding off heavy operations meanwhile.
   const maxChars = opts.maxChars ?? Number.POSITIVE_INFINITY;
   const outcome = await withSheetRead(sheetId, async (): Promise<CsvExport> => {
-    const lines = [columns.map(escapeCsvCell).join(',')];
+    const lines = [csvHeader(columns, raw)];
     let chars = lines[0].length, sheetRows = 0, truncated = false;
     await eachPage(sheetId, userId, rows => {
       for (const json of rows) {
         sheetRows++;
         if (json === null) continue;
-        const line = csvLine(columns, parseRowData(json));
+        const line = csvLine(columns, parseRowData(json), raw);
         if (chars + 2 + line.length > maxChars) { truncated = true; return false; }
         lines.push(line);
         chars += 2 + line.length;

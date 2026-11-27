@@ -9,13 +9,13 @@ import { McpAuthCtx, ok, err, type ErrResult, type OkResult } from './tool-helpe
 import type { ToolAnswer } from './tool-outputs';
 
 export const CSV_WORDS = 'format csv answers the rows as CSV text (csv) instead, IN YOUR CONTEXT, so a wide or long '
-  + 'sheet is EXPENSIVE: pass columns and where. It takes only columns, where and view.';
+  + 'sheet is EXPENSIVE: pass columns and where. It takes only columns, where, view and raw.';
 
-interface Args { sheet_id: string; columns?: unknown[]; where?: unknown; view?: string }
+interface Args { sheet_id: string; columns?: unknown[]; where?: unknown; view?: string; raw?: boolean }
 
 export async function readRowsCsv(ctx: McpAuthCtx, a: Args, others: string[]):
   Promise<OkResult<ToolAnswer<'read_rows'>> | ErrResult> {
-  if (others.length) return err(`format csv takes only columns, where and view, not ${others.join(', ')}.`);
+  if (others.length) return err(`format csv takes only columns, where, view and raw, not ${others.join(', ')}.`);
   if (a.columns?.some(c => typeof c !== 'string')) {
     return err('format csv takes column names only: read a value out of a JSON cell with format json.');
   }
@@ -25,7 +25,7 @@ export async function readRowsCsv(ctx: McpAuthCtx, a: Args, others: string[]):
   if (!versions) return err('Sheet not found');
   const result = await buildSheetCsv(a.sheet_id, ctx.userId, {
     columns: a.columns as string[] | undefined, where: a.where as WhereItem[] | undefined, view: a.view,
-    maxChars: MCP_EXPORT_MAX_CHARS,
+    maxChars: MCP_EXPORT_MAX_CHARS, raw: a.raw === true,
   });
   if ('fail' in result) {
     // A sheet with nothing in it yet is data, not a failure, as REST's export answers an empty 200.

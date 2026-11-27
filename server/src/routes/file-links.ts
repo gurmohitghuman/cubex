@@ -135,7 +135,10 @@ router.get('/download/:token', async (req, res) => {
     const link = findFileLink(token, 'download');
     if (!link) return notFound(res);
     // format: 'jsonl' for JSON lines (file_link download's format); a link from before has none: CSV.
-    const options = linkOptions<{ columns: string[]; where: WhereItem[]; saved: WhereItem[]; format: string }>(link);
+    // raw: cells as they are, no formula guard (file_link download's raw); a link from before has none: guarded.
+    const options = linkOptions<{
+      columns: string[]; where: WhereItem[]; saved: WhereItem[]; format: string; raw?: boolean;
+    }>(link);
     const jsonl = options.format === 'jsonl';
     const plan = planSheetExport(link.sheet_id, link.user_id, options);
     if ('fail' in plan) {

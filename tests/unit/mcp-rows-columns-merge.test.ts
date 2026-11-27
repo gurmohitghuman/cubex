@@ -139,7 +139,7 @@ async function main() {
       assert.equal((await parsed('read_rows', { sheet_id: s, format: 'csv' }, READ)).csv,
         '"Name","Note"\r\n"Bob","B"\r\n"Ann","A"')
       assert.equal(await refusal('read_rows', { sheet_id: s, format: 'csv', limit: 5, return_mode: 'count' }, READ),
-        'format csv takes only columns, where and view, not limit, return_mode.')
+        'format csv takes only columns, where, view and raw, not limit, return_mode.')
       assert.match(await refusal('read_rows', { sheet_id: s, format: 'csv',
         columns: [{ column: 'Name', path: ['a'] }] }, READ), /^format csv takes column names only/)
       assert.equal((await parsed('read_rows', { sheet_id: s, format: 'json' }, READ)).rows.length, 2)

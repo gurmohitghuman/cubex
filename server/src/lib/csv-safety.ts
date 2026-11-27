@@ -163,6 +163,14 @@ export function escapeCsvCell(value: string | null | undefined): string {
   return `"${safe.replace(/"/g, '""')}"`;
 }
 
+// CSV-escape one cell exactly as it is, with no formula guard: for a file going into another tool (a CRM, a
+// sending tool), which would keep the guard's quote as part of the value ('+1 415..., '@handle). Only RFC-4180
+// quoting. Never for a file opened in a spreadsheet app: a cell starting with = + - @ may run there as a formula.
+export function escapeCsvCellRaw(value: string | null | undefined): string {
+  if (value === null || value === undefined) return '""';
+  return `"${String(value).replace(/"/g, '""')}"`;
+}
+
 // Build a safe Content-Disposition header value for a download named after
 // user-controlled text (e.g. a sheet name).
 //

@@ -17,7 +17,8 @@ interface Props {
   viewName: string
   autoDedupeOn: boolean
   onImport: () => void
-  onExport: (scope: ExportScope) => void
+  // forTools: every cell as it is, for importing into a CRM or email tool.
+  onExport: (scope: ExportScope, forTools?: boolean) => void
   onOpenWebhook: () => void
   onRemoveDuplicates: () => void
   onRunColumns: () => void
@@ -65,6 +66,10 @@ export const SheetDataMenu: React.FC<Props> = ({
           <MenuEntry icon={Download} label="Export" hint="Download every row and column as CSV"
             onSelect={() => onExport('sheet')} disabled={!hasRows || isExporting} testId="export-sheet" />
         )}
+        <MenuEntry icon={Download} label="Export for a CRM or email tool"
+          hint={`${viewNarrows ? 'This view, f' : 'F'}or importing elsewhere, not Excel: no \' before phones, @handles`}
+          onSelect={() => onExport(viewNarrows ? 'view' : 'sheet', true)} disabled={!hasRows || isExporting}
+          testId="export-for-tools" />
         <MenuEntry icon={Inbox} label="Webhook" hint="A URL that adds a row for each JSON post"
           onSelect={focus.opening(onOpenWebhook)} testId="toolbar-webhook" />
         <DropdownMenuSeparator />
