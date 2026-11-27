@@ -93,9 +93,12 @@ export function reservedRows(tool: EnrichTool, sent: string | undefined): number
 export function knownCallHold(tool: EnrichTool, sent: string | undefined, listLimit: number | null): number | null {
   if (tool.kind !== 'single' || tool.price.type !== 'per_result') return null;
   if (listLimit !== null) return round6(singleCallCost(tool, listLimit));
-  if (!tool.price.reserve) return null;
-  const known = sent === undefined || sent.trim() === '' || WHOLE.test(sent.trim());
-  return known ? round6(singleCallCost(tool, reservedRows(tool, sent))) : null;
+  const r = tool.price.reserve;
+  if (!r) return null;
+  const none = sent === undefined || sent.trim() === '';
+  // Nothing sent and no readable default: what treg holds isn't known, so nothing is refused on a guess.
+  if (none && r.default === null) return null;
+  return none || WHOLE.test(sent!.trim()) ? round6(singleCallCost(tool, reservedRows(tool, sent))) : null;
 }
 
 // A waterfall whose plan is known but leaves no provider a row can reach

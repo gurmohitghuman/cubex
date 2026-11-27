@@ -77,6 +77,10 @@ await ok('what one call holds is known for a value or none sent, not for a colum
   assert.equal(knownCallHold(findymail, '{{Count}}', null), null)
   assert.equal(knownCallHold(findymail, undefined, 5), 0.0594, 'a list job\'s results per row, within the most')
   assert.equal(knownCallHold({ ...findymail, price: { ...findymail.price, reserve: null } }, '3', null), null)
+  // Nothing sent and no readable default: what treg holds isn't known, so no start is refused on a guess.
+  const noDefault = findymailWith({ rows: { param: 'body.count', default: { value: 'one' }, max: 3 } })
+  assert.equal(knownCallHold(noDefault, undefined, null), null)
+  assert.equal(knownCallHold(noDefault, '2', null), 0.0396)
 })
 
 await ok('a waterfall step: a fixed value as it is, a waterfall input at the most, not given the default', () => {
