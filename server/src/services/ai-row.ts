@@ -2,7 +2,8 @@ import OpenAI from 'openai';
 import { processPromptTemplate } from '../lib/prompt';
 import { extractCompletionText } from '../lib/completion-text';
 import { redactSecrets } from '../lib/http-request';
-import { aiMaxTokens, CELL_MAX_ENRICHMENT } from '../lib/constants';
+import { CELL_MAX_ENRICHMENT } from '../lib/constants';
+import { rowMaxTokens } from '../lib/ai-output-tokens';
 import { stripControlChars, clampCellChars } from '../lib/csv-safety';
 import { aiDataCellSummary } from '../lib/ai-data-cell';
 import {
@@ -34,6 +35,8 @@ export async function processRow(
   signal: AbortSignal | undefined,
   myGeneration: number,
   columns: readonly string[],
+  // The max_tokens the run's spend gate held room for (ai-spend-gate.ts), so the call sends exactly that.
+  opts: { maxTokens?: number } = {},
 ): Promise<RowOutcome> {
   // Structured (multi-column) runs take a separate processor: one call → a JSON
   // object → N typed columns + status. Delegated whole so this stays the
@@ -94,7 +97,8 @@ export async function processRow(
     // Floored max_tokens so reasoning models can think AND answer (the old 1000
     // cap made them return null content → silent blank cells); max_chars raises it.
     const tries = timedTries(() => sendModelCall(openai, {
-      model, messages, temperature: run.temperature ?? 0.7, maxTokens: aiMaxTokens(run.max_chars),
+      model, messages, temperature: run.temperature ?? 0.7, maxTokens: opts.maxTokens
+        ?? rowMaxTokens({ model: run.model, maxChars: run.max_chars, structured: false }),
       tools, searchReplay: search ? searchReplayFor(search) : null,
       maxToolCalls: toolCallBudget(search, !!run.use_web_fetch, fetchLimits),
     }, deadline.signal), hasSpendLimit(run));

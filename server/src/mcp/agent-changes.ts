@@ -43,6 +43,13 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
     changes: [
       {
         change: 'server',
+        summary: 'run_ai_column with max_chars on a model that doesn\'t think first sends max_tokens max_chars x 2 + '
+          + '256, not 8,000, so spend_limit_usd holds and row_most_usd shrink.',
+        details: 'Without max_chars, models that think, routers, aliases and output_columns runs keep 8,000. With '
+          + 'max_chars: 20 a row holds 296 output tokens, so a small limit runs rows.',
+      },
+      {
+        change: 'server',
         summary: 'A tool billed per result whose catalog names its count input is priced at the results a call '
           + 'asks for (that input, else its default) instead of 20: run_enrichment\'s and apply_setup\'s estimates '
           + 'and default max_cost_per_row_usd follow it.',

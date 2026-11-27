@@ -199,7 +199,8 @@ export async function estimateAiRun(userId: string, input: AiEstimateInput): Pro
       + 'provider bills your key at its list price, and OpenRouter charges only its BYOK fee (cost_usd, often $0).');
   }
   const inFlight = pricingAvailable
-    ? await inFlightFor(userId, model, inputTokens.high, input.maxChars, input.concurrency, ownKey) : null;
+    ? await inFlightFor(userId, model, inputTokens.high, input.maxChars, input.concurrency, ownKey,
+      !!input.outputColumns) : null;
   if (inFlight?.warning) notes.push(inFlight.warning);
 
   return {

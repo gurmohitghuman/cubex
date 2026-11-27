@@ -24,7 +24,7 @@ import {
   WEB_FETCH_TOKENS_PER_PAGE, WEB_FETCH_USD_PER_PAGE, WEB_SEARCH_TOKENS_PER_SEARCH, WEB_SEARCHES_PER_ROW,
   WEB_SEARCHES_PER_ROW_NATIVE,
 } from './constants';
-import { aiMaxTokens } from './constants-ai';
+import { rowMaxTokens } from './ai-output-tokens';
 import { enginePrice, nativeSearchProvider, type BilledEngine } from './web-search-pricing';
 import { buildMultiOutputInstruction, type OutputColumnSpec } from './ai-multi-output';
 import { WEB_SYSTEM_MESSAGE } from './ai-web-tools';
@@ -51,17 +51,8 @@ export function rowPricesOf(p: { prompt: string; completion: string; request?: s
   return { prompt, completion: Math.max(completion, reasoning), request };
 }
 
-// The id the model list prices a model under: routing variants that keep the
-// model and its prices (":nitro", ":floor", ":exacto") and a preset after it
-// are left out. ":online" adds web search fees, so it stays (and is unpriced).
-const SAME_PRICE_VARIANTS = /:(nitro|floor|exacto)$/;
-export function priceModelId(model: string): string {
-  let id = model.trim();
-  const preset = id.indexOf('@preset/');
-  if (preset > 0) id = id.slice(0, preset);
-  while (SAME_PRICE_VARIANTS.test(id)) id = id.replace(SAME_PRICE_VARIANTS, '');
-  return id;
-}
+// The id the model list prices a model under (lib/model-id.ts).
+export { priceModelId } from './model-id';
 
 // What every row of a run adds to its most, besides its own prompt text.
 export interface RowFixed {
@@ -130,8 +121,9 @@ export function rowFixedFor(r: RowSettings): RowFixed {
     fixedBytes = bytes(system);
     messages = system ? 2 : 1;
   }
-  // The output part is the max_tokens the row sends (ai-row.ts), nothing more.
-  return { maxTokens: aiMaxTokens(r.maxChars), fixedBytes, messages, webTokens: web.tokens, webFeesUsd: web.feesUsd };
+  // The output part is the max_tokens the row sends (ai-row.ts, lib/ai-output-tokens.ts), nothing more.
+  const maxTokens = rowMaxTokens({ model: r.model, maxChars: r.maxChars, structured: !!r.outputColumns });
+  return { maxTokens, fixedBytes, messages, webTokens: web.tokens, webFeesUsd: web.feesUsd };
 }
 
 // The most one row can cost, in micro-dollars rounded up. promptBytes: the
@@ -178,7 +170,8 @@ export const PRICE_UNREAD_MESSAGE = "Cubex couldn't read the model's price from 
 
 // What the agent-facing tools say about an AI run's spend limit (and when spend can pass it).
 export const AI_SPEND_LIMIT_NOTE = 'A row starts only while what the run spent, plus the most its rows out and that '
-  + "row can cost (at least 8,000 output tokens at the model's listed prices), stays within the limit; otherwise "
+  + "row can cost (the max_tokens it sends at the model's listed prices: at least 8,000, or with max_chars on a "
+  + "model that doesn't think first max_chars x 2 + 256), stays within the limit; otherwise "
   + 'it waits, or pauses with pause_reason spend_limit and its rows not started stay ⏳ (control_run resume with '
   + "a spend_limit_usd of at least the resume_least_usd of get_run's status). A call cut off before it answered counts "
   + 'at its most for the rest of the run. Spend can pass the limit only with web search or fetch, on a model with '

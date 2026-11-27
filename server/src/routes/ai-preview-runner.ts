@@ -3,6 +3,8 @@ import type OpenAI from 'openai';
 import { processPromptTemplate } from '../lib/prompt';
 import { extractCompletionText } from '../lib/completion-text';
 import { aiMaxTokens } from '../lib/constants';
+import { rowMaxTokens } from '../lib/ai-output-tokens';
+import { fetchModels } from '../lib/openrouter';
 import { buildWebTools, searchReplayFor, toolCallBudget, type SearchToolConfig } from '../lib/ai-web-tools';
 import { citationsFromCompletion, type Citation } from '../lib/ai-citations';
 import type { FetchLimits } from '../lib/web-fetch-options';
@@ -125,10 +127,15 @@ export const processOneRow = async (
 
     // The production runners' exact call (services/ai-model-call.ts) and tools
     // (lib/ai-web-tools.ts): a preview must cost and behave like the run it
-    // previews. Floored max_tokens so reasoning models have room to think AND
-    // answer; maxChars raises it up to a ceiling.
+    // previews. max_tokens as the run sends it: room for a model that thinks to
+    // think AND answer, less with max_chars for one that doesn't
+    // (lib/ai-output-tokens.ts, which reads the model list the run warms; read
+    // here too, cached after the first).
+    if (!args.rawText && args.maxChars) await fetchModels(Date.now());
+    const maxTokens = args.rawText ? aiMaxTokens(args.maxChars)
+      : rowMaxTokens({ model: args.model, maxChars: args.maxChars ?? null, structured: false });
     const input = {
-      model: args.model, messages, temperature: args.safeTemperature, maxTokens: aiMaxTokens(args.maxChars),
+      model: args.model, messages, temperature: args.safeTemperature, maxTokens,
       tools: buildWebTools(args.prompt, row.data,
         { search: args.search, fetch: args.useWebFetch, fetchLimits: args.fetchLimits }),
       searchReplay: args.search ? searchReplayFor(args.search) : null,

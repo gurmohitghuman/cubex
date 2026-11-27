@@ -28,6 +28,21 @@ export type { AIRunRow } from './ai-runner-status';
 // Begin processing an AI run. Streams the sheet's unfinished rows (row_index
 // order, a page at a time), dispatches them to processRow with configurable concurrency, updates
 // progress on every row. Pause/cancel are detected by polling ai_runs.status.
+// Search rows check the model list for whether the model takes a temperature
+// (services/ai-model-call.ts): read once here, not per row. A one-column row
+// with max_chars sends less to a model that doesn't think first
+// (lib/ai-output-tokens.ts), also read from the list: a run with a spend limit
+// reads it before its first row (its gate prices rows with it,
+// ai-spend-gate.ts); one without starts the read here and doesn't wait (an
+// outage would hold its start), its first rows keeping the room a thinking
+// model needs until the list is in.
+async function readModelList(run: AIRunRow): Promise<void> {
+  if (run.use_openrouter_web_search) await fetchModels(Date.now());
+  else if (!run.output_columns && run.spend_limit_usd == null && run.max_chars) {
+    void fetchModels(Date.now()).catch(() => undefined);
+  }
+}
+
 export async function processAIRun(runId: string, expectedGeneration?: number): Promise<RunParked | void> {
   // Hoisted so the catch block can compare/clean up. myGeneration -1 means
   // "never started"; failedRun stays undefined until we've read the row, so a
@@ -91,9 +106,7 @@ export async function processAIRun(runId: string, expectedGeneration?: number): 
     // rows are placeholders); the completed count on a resume.
     const remaining = countRunRows(run.sheet_id, run.user_id, run.column_name, null);
     const startCompleted = Math.max(0, (run.total_rows || remaining) - remaining);
-    // Search rows check the model list for whether the model takes a
-    // temperature (services/ai-model-call.ts); read it once here, not per row.
-    if (run.use_openrouter_web_search) await fetchModels(Date.now());
+    await readModelList(run);
 
     // Each row carries a stamp of the inputs it is sent with (lib/run-inputs).
     const rows = runRows(run.sheet_id, run.user_id, run.column_name, null, aiRunStamper(run));
@@ -152,7 +165,7 @@ export async function processAIRerun(
     // re-billed every target when a rerun was paused before its first completion.
     const remaining = countRunRows(run.sheet_id, run.user_id, run.column_name, targetRows);
     const startCompleted = Math.max(0, (run.total_rows || targetRows.length) - remaining);
-    if (run.use_openrouter_web_search) await fetchModels(Date.now()); // see processAIRun
+    await readModelList(run); // see processAIRun
 
     const rows = runRows(run.sheet_id, run.user_id, run.column_name, targetRows, aiRunStamper(run));
     // Stopped itself (spend cap, provider failing, nothing can be saved): paused, rows still ⏳.

@@ -5,6 +5,7 @@
 import {
   OPENROUTER_BASE_URL, OPENROUTER_ATTRIBUTION_HEADERS, OPENROUTER_MODELS_CACHE_TTL_MS,
 } from './constants';
+import { priceModelId } from './model-id';
 
 const FETCH_TIMEOUT_MS = 10_000;
 
@@ -81,9 +82,11 @@ export interface TrimmedModel {
 
 // Module-level cache, shared across requests. The 5-min TTL keeps the upstream
 // rate low while staying fresh enough that newly-added models show up promptly.
-// noTemperature: models whose supported_parameters leave out temperature (kept
-// apart from TrimmedModel, which the client's model list receives).
-let modelsCache: { data: TrimmedModel[]; fetchedAt: number; noTemperature: Set<string> } | null = null;
+// noTemperature: models whose supported_parameters leave out temperature; plain:
+// models that don't think before they answer (modelThinksFirst). Both kept apart
+// from TrimmedModel, which the client's model list receives.
+let modelsCache: { data: TrimmedModel[]; fetchedAt: number; noTemperature: Set<string>; plain: Set<string> } | null
+  = null;
 // One read at a time: a run's first wave of rows shares it.
 let modelsInflight: Promise<ModelsResult> | null = null;
 
@@ -110,6 +113,28 @@ export function modelTakesTemperature(model: string): boolean | null {
   if (!modelsCache?.data.some(m => m.id === model)) return null;
   return !modelsCache.noTemperature.has(model);
 }
+
+// Whether a model may think before it answers, from the cached list only (lib/ai-output-tokens.ts): false only
+// when the list shows no sign of it (isPlain); null when the list or the model is unknown, which callers read as
+// thinking. A routing variant (":nitro") is read as its model.
+export function modelThinksFirst(model: string): boolean | null {
+  const id = priceModelId(model);
+  if (!modelsCache?.data.some(m => m.id === id)) return null;
+  return !modelsCache.plain.has(id);
+}
+
+// No sign of thinking: its supported_parameters (listed) take temperature and no reasoning (OpenAI's models that
+// think take no temperature, gpt-5.2-chat among them), it has no reasoning block and no reasoning price, no price
+// that varies (a negative one, as a router's), and it isn't a router or an alias, which may send the call to a
+// model that thinks. Anything short of that keeps the room a thinking model needs.
+const varies = (v: unknown): boolean => v !== undefined && v !== null && v !== '' && Number(v) < 0;
+const isPlain = (m: { id: string; supported_parameters?: unknown; reasoning?: unknown; alias_target?: unknown;
+  pricing?: { prompt?: unknown; completion?: unknown; request?: unknown; internal_reasoning?: unknown } }): boolean =>
+  Array.isArray(m.supported_parameters) && m.supported_parameters.includes('temperature')
+  && !m.supported_parameters.includes('reasoning') && !m.supported_parameters.includes('include_reasoning')
+  && !m.reasoning && !m.alias_target && !listedFee(m.pricing?.internal_reasoning)
+  && !varies(m.pricing?.prompt) && !varies(m.pricing?.completion) && !varies(m.pricing?.request)
+  && !m.id.startsWith('~') && !m.id.startsWith('openrouter/');
 
 // A fee kept in the trimmed list: listed and not 0. A negative one (the price
 // varies) is kept too, so an AI run's spend limit reads it as no listed price.
@@ -152,6 +177,8 @@ async function readModels(now: number): Promise<ModelsResult> {
     .filter(m => m && typeof m.id === 'string' && Array.isArray(m.supported_parameters)
       && !m.supported_parameters.includes('temperature'))
     .map(m => m.id));
-  modelsCache = { data: trimmed, fetchedAt: now, noTemperature };
+  const plain = new Set<string>(result.body.data.filter(m => m && typeof m.id === 'string' && isPlain(m))
+    .map(m => m.id));
+  modelsCache = { data: trimmed, fetchedAt: now, noTemperature, plain };
   return { ok: true, models: trimmed };
 }

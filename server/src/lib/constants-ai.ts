@@ -103,6 +103,9 @@ export function aiMaxTokens(maxChars: number | null | undefined): number {
   const requested = maxChars && maxChars > 0 ? maxChars : AI_MIN_OUTPUT_TOKENS;
   return Math.min(AI_MAX_OUTPUT_TOKENS, Math.max(AI_MIN_OUTPUT_TOKENS, requested));
 }
+// A one-column row on a model that doesn't think first: lib/ai-output-tokens.ts says why and how.
+export const AI_PLAIN_TOKENS_PER_CHAR = 2;
+export const AI_PLAIN_TOKEN_SLACK = 256;
 // Backoff before the ONE retry of a pre-response stale-socket ECONNRESET (see
 // services/openrouter-retry.ts). Long enough for the keep-alive agent to evict
 // the dead socket so the retry dials fresh; short enough to be invisible next
