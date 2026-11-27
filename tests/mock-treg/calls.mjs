@@ -16,6 +16,7 @@ import { refuseKey } from './account.mjs'
 import { isWaterfall, runWaterfall } from './waterfall.mjs'
 import { aiSearchAnswer, isAiSearch } from './ai-search.mjs'
 import { isJobCount, isJobSearch, jobCountAnswer, jobSearchAnswer } from './jobs.mjs'
+import { employeesAnswer, isEmployeeSearch } from './people-titles.mjs'
 
 const callId = () => crypto.randomBytes(16).toString('hex')
 const keys = new Map()        // Idempotency-Key → { fingerprint, answer }
@@ -52,12 +53,13 @@ function singleTool(toolId, req, body) {
   const nobody = (req.query + req.body).toLowerCase().includes('nobody')
   const answered = isAiSearch(toolId) ? aiSearchAnswer(toolId, body)
     : isJobCount(toolId) ? jobCountAnswer(toolId, body)
-    : isJobSearch(toolId) ? jobSearchAnswer(body) : d.example_response ?? { ok: true }
+    : isJobSearch(toolId) ? jobSearchAnswer(body)
+    : isEmployeeSearch(toolId) ? employeesAnswer(body) : d.example_response ?? { ok: true }
   if (answered.refusal) return { status: 422, refusal: answered.refusal.detail }
-  // A job search is priced per role it answers (an empty page is free).
-  const per = isJobSearch(toolId) ? (nobody ? 0 : answered.jobs.length) : 1
+  // A job search is priced per role it answers (an empty page is free), the employee search per person.
+  const per = isJobSearch(toolId) ? (nobody ? 0 : answered.jobs.length) : isEmployeeSearch(toolId) ? answered.length : 1
   return {
-    status: 200, body: nobody ? {} : answered,
+    status: 200, body: nobody && !isEmployeeSearch(toolId) ? {} : answered,
     costMicro: own ? null : Math.round((d.endpoint.cost?.usd ?? 0) * 1e6) * per, servedBy: toolId, single: true,
   }
 }

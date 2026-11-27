@@ -7,6 +7,7 @@ import { perSearchRefusal, postedDaysRefusal } from '../lib/hiring/input';
 import { EMPLOYMENT_TYPES, SENIORITY_LEVELS } from '../lib/hiring/filters';
 import { minRolesRefusal } from '../lib/hiring/company-filters';
 import { agentCheckHiring, agentCreateHiring, agentGetHiring, agentUpdateHiring } from '../services/hiring-agent';
+import { agentFindBuyers } from '../services/hiring-buyer-agent';
 import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean, lenientInt } from './tool-helpers';
 import { changedOf, madeSheet } from './changed';
 
@@ -19,11 +20,14 @@ export function registerHiringTool(server: McpServer, ctx: McpAuthCtx): void {
       'Companies hiring for chosen roles. create (free): a table of Companies (New roles since the last check), '
       + 'Roles and Searches. check (run scope, PAID): adds only new roles, sums up Companies. estimate_only '
       + '(default true): high_usd, its most, and a free count; then estimate_only false with max_cost_usd = '
-      + 'high_usd. get: the checks. update (free): min_roles and leave_out_companies, from the next check.',
+      + 'high_usd. get: the checks. update (free): min_roles and leave_out_companies, from the next check. '
+      + 'find_buyers (run scope, PAID): the person each company without one yet would buy through (Buyer, title, '
+      + 'LinkedIn, verified email on Companies). estimate_only (default true) changes nothing; the run adds the '
+      + 'columns the first time (write scope too).',
     inputSchema: z.object({
-      action: z.enum(['create', 'check', 'get', 'update']).describe('check is paid'),
+      action: z.enum(['create', 'check', 'get', 'update', 'find_buyers']).describe('check and find_buyers are paid'),
       id: z.string().optional()
-        .describe('check, get, update: from create'),
+        .describe('check, get, update, find_buyers: from create'),
       roles: z.union([z.array(z.string()), z.string()]).optional()
         .describe(`create: role titles (a list or lines; at most ${HIRING_MAX_ROLES})`),
       country: z.string().nullable().optional().describe('create: country code (US)'),
@@ -46,10 +50,12 @@ export function registerHiringTool(server: McpServer, ctx: McpAuthCtx): void {
           + 'Their roles are still searched and paid for.'),
       leave_out_companies: words().nullable().describe('create, update: these companies (websites) get no Companies '
         + 'row. Their roles are still searched and paid for.'),
-      estimate_only: lenientBoolean().optional().describe('check: default true'),
+      buyer_titles: words().describe('find_buyers: job titles to look for at each company (default: get\'s '
+        + 'buyer.titles, or its starting_titles the first time)'),
+      estimate_only: lenientBoolean().optional().describe('check, find_buyers: default true'),
       // Checked as /api/v1 checks it (lib/hiring/input.ts checkMostOf): the same refusals.
       max_cost_usd: z.number().optional()
-        .describe('check: the estimate\'s high_usd'),
+        .describe('check, find_buyers: the estimate\'s high_usd'),
       time_zone: z.string().optional()
         .describe('check: IANA zone (default UTC)'),
     }).strict(),
@@ -75,6 +81,18 @@ export function registerHiringTool(server: McpServer, ctx: McpAuthCtx): void {
       if (denied) return denied;
       const out = agentGetHiring(ctx.userId, a.id);
       return 'ok' in out ? ok({ ...out.ok, changed: [] }) : err(out.message);
+    }
+    if (a.action === 'find_buyers') {
+      const denied = missingScope(ctx, 'run');
+      if (denied) return denied;
+      const out = await agentFindBuyers(ctx.userId, a.id, a, ctx.scopes.has('write'));
+      if (!('ok' in out)) {
+        return err(out.estimate ? `${out.message} Estimate: ${JSON.stringify(out.estimate)}` : out.message);
+      }
+      // The columns it saved, empty; a run fills Companies from now on.
+      const touched = out.added.length || out.started
+        ? [{ sheetId: out.companiesSheetId, columns: out.added, moreComing: out.started }] : [];
+      return ok({ ...out.ok, changed: changedOf(ctx.userId, touched) });
     }
     const denied = missingScope(ctx, 'run');
     if (denied) return denied;
