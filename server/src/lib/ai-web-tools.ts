@@ -96,6 +96,16 @@ export function buildWebTools(
   return tools;
 }
 
+// Page reading opens only sites found in the row's cells of the columns the prompt names (buildWebTools), and an
+// empty list blocks every fetch. True when none of these rows would give the model a site: the prompt names no column
+// holding a website or link, so the setup should say so (services/run-estimate.ts) rather than fail quietly.
+export function fetchFindsNoSite(prompt: string, rows: ReadonlyArray<Record<string, string>>): boolean {
+  return rows.length > 0 && rows.every(r => extractAllowedDomainsFromRow(prompt, r).length === 0);
+}
+export const FETCH_NO_SITE_NOTE = 'Page reading opens only websites in the columns your prompt names, and none of '
+  + 'the rows checked has one there, so it would open no page. Name the column with the website or link (such as '
+  + '/Website), or turn page reading off.';
+
 // A stored run's search settings, or null when the run doesn't search.
 export function runSearchConfig(run: {
   use_openrouter_web_search: number | boolean | null;

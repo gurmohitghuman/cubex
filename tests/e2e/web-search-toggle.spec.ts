@@ -36,6 +36,18 @@ test('AI Column modal shows two distinct web-data toggles', async ({ page, conte
   await webSearch.uncheck()
   await expect(webSearch).not.toBeChecked()
   await expect(webFetch).toBeChecked()
+
+  // Page reading opens only websites in the columns the prompt names: a prompt naming none says it can't open any
+  // page; naming one (/val) clears it, and a URL's own slashes don't count as one.
+  const noColumn = page.getByTestId('web-fetch-no-column')
+  const prompt = page.locator('#prompt')
+  await prompt.fill('Summarize https://example.com/about')
+  await expect(noColumn).toBeVisible()
+  await prompt.fill('Summarize the page at /val')
+  await expect(noColumn).toBeHidden()
+  await webFetch.uncheck()
+  await prompt.fill('Summarize it')
+  await expect(noColumn).toBeHidden()
   await api.dispose()
 })
 

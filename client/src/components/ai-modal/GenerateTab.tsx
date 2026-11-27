@@ -46,6 +46,10 @@ interface Props {
   structured?: boolean
 }
 
+// Whether a prompt names a column (/word): page reading opens only websites found in the columns it names. The same
+// pattern as the server's (lib/prompt.ts COLUMN_REF_PATTERN): a slash inside a URL, a date or 24/7 isn't one.
+const namesAColumn = (prompt: string): boolean => /(?<![/:\w])\/[a-zA-Z0-9_-]+/.test(prompt)
+
 export const GenerateTab: React.FC<Props> = ({
   columnName, setColumnName, nameError, prompt, setPrompt,
   useOpenRouterWebSearch, setUseOpenRouterWebSearch,
@@ -102,6 +106,12 @@ export const GenerateTab: React.FC<Props> = ({
           those cells, so the model can&apos;t fetch arbitrary URLs. Estimated cost: about $0.001
           per page fetched.
         </p>
+        {useWebFetch && !namesAColumn(prompt) && (
+          <p className="text-xs text-amber-700 mt-1 ml-6" data-testid="web-fetch-no-column">
+            Your prompt names no column, so it can&apos;t open any page. Name the one with the website or link, such
+            as /Website.
+          </p>
+        )}
         {useWebFetch && <WebFetchLimits value={fetchLimits} onChange={setFetchLimits} />}
       </div>
     </div>
