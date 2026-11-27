@@ -47,8 +47,14 @@ function perRowNote(tool: EnrichToolDetail): string {
     return (tool.price.type === 'per_result' ? `${name} charges for each result it returns.`
       : `${name} is asked for this many.`) + ` Up to ${max}.`
   }
-  return `Cubex adds at most this many per row. How many ${name} returns is up to its own inputs`
-    + (tool.price.type === 'per_result' ? ', and it charges for each one (the estimate counts 20 a row).' : '.')
+  const head = `Cubex adds at most this many per row. How many ${name} returns is up to its own inputs`
+  if (tool.price.type !== 'per_result') return `${head}.`
+  // The tool's own dial (treg's reserve rule), as the estimate counts it; with none, a page of 20.
+  const r = tool.price.reserve
+  return !r ? `${head}, and it charges for each one (the estimate counts 20 a row).`
+    : `${head}, and it charges for each one: as many as ${r.input} asks for`
+      + (r.default !== null ? `, ${r.default} when it's empty` : '')
+      + (r.max !== null ? `, at most ${r.max}` : '') + '.'
 }
 
 // U8: where each result goes as a row, how many per row (the price dial), the

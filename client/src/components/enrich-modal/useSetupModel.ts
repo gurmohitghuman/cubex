@@ -123,10 +123,14 @@ export function useSetupModel(a: Args) {
   const reuseCount = useReuseCount(sheetId, reuseAsk)
   const reuseDays = useReuseDays(active)
   const priced = rows === null ? null : Math.max(0, rows - (reuseCount?.rows ?? 0))
+  // A per-result tool's dial set to a value: priced at the results it asks for, as the run is (a column: its most).
+  const dialName = tool?.price.reserve?.input
+  const dial = dialName && sent.has(dialName) ? draft.bindings[dialName] : undefined
   const request: EnrichEstimateRequest | null = ready && priced !== null && tool && card ? {
     toolId: tool.id, rows: priced, preset: card.preset ?? null, given: [...sent].sort(), skip: draft.skipProviders,
     order, stopAtFirst: draft.stopAtFirst, maxCostPerRowUsd: draft.maxCostPerRowUsd,
     ...(list ? { list: estimateList(list) } : {}),
+    ...(dialName && dial?.kind === 'fixed' ? { fixed: { [dialName]: dial.value } } : {}),
   } : null
   const listCost = !list ? null
     : (tool ? perRowProblem(list.maxItems, tool) : null)

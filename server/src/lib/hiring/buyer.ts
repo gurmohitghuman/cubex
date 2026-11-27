@@ -87,8 +87,8 @@ export function buyerOutputNames(config: HTTPAPIConfig | null): BuyerOutputNames
 
 // The people search, saved as a setup: the company's website, the titles, one person. again: its column is there
 // (new titles save its setup again; its cells stay), names: the columns it writes now. perRowUsd: the tool's price for
-// one person, its most a company (Cubex prices a per-result tool as a page of 20; Findymail's own dial is count, sent
-// as 1); null: the default.
+// one person, its most a company (Findymail's dial, count, is sent as 1: the default prices it the same, from treg's
+// reserve rule); null: the default.
 export function buyerSearchInput(
   titles: readonly string[], again: boolean, perRowUsd: number | null, names = buyerOutputNames(null),
 ): EnrichRunInput {

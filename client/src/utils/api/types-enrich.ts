@@ -11,6 +11,9 @@ export interface EnrichToolPrice {
   varies: boolean
   note?: string
   overflowUsd: number | null
+  // A per-result tool's dial (treg's reserve rule): the input that sets how many results a call asks for, its
+  // default and its most (null: the catalog doesn't say).
+  reserve?: { input: string; default: number | null; max: number | null } | null
 }
 
 export interface EnrichToolObserved {
@@ -106,6 +109,8 @@ export interface EnrichEstimateRequest {
   maxCostPerRowUsd: number | null
   // A list job: its provider, results per row and destination (null: a new sheet).
   list?: { provider: string | null; maxItems: number; destSheetId: string | null } | null
+  // Inputs sent as a value, by name: a per-result tool's dial is priced at its value (a column: its most).
+  fixed?: Record<string, string>
 }
 
 export interface EnrichEstimate {

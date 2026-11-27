@@ -10,6 +10,7 @@ import { snakeProviderField } from '../lib/enrich-provider-names';
 import { prepareEnrichmentStart } from './enrich-run-prepare';
 import { prepareEnrichmentOnItems } from './enrich-run-prepare-items';
 import type { EstimateRowsFrom } from './run-estimate-rows';
+import { fixedInputs } from '../lib/enrich-estimate-input';
 import { estimateEnrichment, readEnrichBalance } from './enrich-setup';
 import { getTregToken } from './treg-key';
 import { dailyLimitOf } from './enrich-agent-shared';
@@ -30,7 +31,7 @@ export async function agentEnrichEstimate(userId: string, from: EstimateRowsFrom
     toolId: input.toolId, rows: Math.max(0, upperBound - reuse.rows), preset: input.preset,
     given: Object.keys(input.inputs).sort(),
     skip: input.skipProviders, order: input.providerOrder, stopAtFirst: input.stopAtFirst,
-    maxCostPerRowUsd: e.maxCostPerRowUsd, limit: null,
+    maxCostPerRowUsd: e.maxCostPerRowUsd, limit: null, fixed: fixedInputs(input.inputs),
     list: list ? { provider: list.provider, maxItems: list.maxItems, destSheetId: listPlan?.sheetId ?? null } : null,
   });
   if (!('ok' in est)) {

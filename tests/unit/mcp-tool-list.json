@@ -1,319 +1,19 @@
 {
-  "release": "v0.8.47",
+  "release": "v0.8.48",
   "lines": [
-    {
-      "change": "renamed",
-      "tools": [
-        "update_cells"
-      ],
-      "replaced_by": "change_rows"
-    },
-    {
-      "change": "renamed",
-      "tools": [
-        "delete_rows"
-      ],
-      "replaced_by": "change_rows"
-    },
-    {
-      "change": "renamed",
-      "tools": [
-        "add_column"
-      ],
-      "replaced_by": "manage_column"
-    },
-    {
-      "change": "renamed",
-      "tools": [
-        "rename_column"
-      ],
-      "replaced_by": "manage_column"
-    },
-    {
-      "change": "renamed",
-      "tools": [
-        "delete_column"
-      ],
-      "replaced_by": "manage_column"
-    },
-    {
-      "change": "renamed",
-      "tools": [
-        "set_column_order"
-      ],
-      "replaced_by": "manage_column"
-    },
-    {
-      "change": "renamed",
-      "tools": [
-        "set_description"
-      ],
-      "replaced_by": "manage_column"
-    },
-    {
-      "change": "renamed",
-      "tools": [
-        "sort_sheet"
-      ],
-      "replaced_by": "manage_sheet"
-    },
-    {
-      "change": "renamed",
-      "tools": [
-        "export_csv"
-      ],
-      "replaced_by": "read_rows"
-    },
-    {
-      "change": "changed",
-      "tools": [
-        "manage_sheet"
-      ]
-    },
-    {
-      "change": "changed",
-      "tools": [
-        "read_rows"
-      ]
-    },
-    {
-      "change": "renamed",
-      "tools": [
-        "get_run_status"
-      ],
-      "replaced_by": "get_run"
-    },
-    {
-      "change": "renamed",
-      "tools": [
-        "get_run_results"
-      ],
-      "replaced_by": "get_run"
-    },
-    {
-      "change": "renamed",
-      "tools": [
-        "list_runs"
-      ],
-      "replaced_by": "get_run"
-    },
-    {
-      "change": "renamed",
-      "tools": [
-        "get_setup_run"
-      ],
-      "replaced_by": "get_run"
-    },
-    {
-      "change": "renamed",
-      "tools": [
-        "get_balances"
-      ],
-      "replaced_by": "get_account"
-    },
-    {
-      "change": "renamed",
-      "tools": [
-        "get_usage"
-      ],
-      "replaced_by": "get_account"
-    },
-    {
-      "change": "renamed",
-      "tools": [
-        "list_saved_keys"
-      ],
-      "replaced_by": "get_account"
-    },
-    {
-      "change": "renamed",
-      "tools": [
-        "get_version"
-      ],
-      "replaced_by": "get_account"
-    },
-    {
-      "change": "renamed",
-      "tools": [
-        "list_tables"
-      ],
-      "replaced_by": "get_workspace"
-    },
-    {
-      "change": "renamed",
-      "tools": [
-        "get_sheet_history"
-      ],
-      "replaced_by": "get_sheet"
-    },
-    {
-      "change": "renamed",
-      "tools": [
-        "search_enrichments"
-      ],
-      "replaced_by": "find_enrichments"
-    },
-    {
-      "change": "renamed",
-      "tools": [
-        "get_enrichment"
-      ],
-      "replaced_by": "find_enrichments"
-    },
-    {
-      "change": "changed",
-      "tools": [
-        "get_workspace"
-      ]
-    },
-    {
-      "change": "changed",
-      "tools": [
-        "get_sheet"
-      ]
-    },
-    {
-      "change": "renamed",
-      "tools": [
-        "undo_run"
-      ],
-      "replaced_by": "control_run"
-    },
-    {
-      "change": "renamed",
-      "tools": [
-        "control_setup_run"
-      ],
-      "replaced_by": "control_run"
-    },
-    {
-      "change": "renamed",
-      "tools": [
-        "save_setup"
-      ],
-      "replaced_by": "manage_setup"
-    },
-    {
-      "change": "renamed",
-      "tools": [
-        "delete_setup"
-      ],
-      "replaced_by": "manage_setup"
-    },
-    {
-      "change": "renamed",
-      "tools": [
-        "restore_setup_version"
-      ],
-      "replaced_by": "manage_setup_version"
-    },
-    {
-      "change": "renamed",
-      "tools": [
-        "write_formula"
-      ],
-      "replaced_by": "formula_column"
-    },
-    {
-      "change": "renamed",
-      "tools": [
-        "set_auto_dedupe"
-      ],
-      "replaced_by": "remove_duplicates"
-    },
-    {
-      "change": "renamed",
-      "tools": [
-        "add_enrichment_field"
-      ],
-      "replaced_by": "stored_answers"
-    },
-    {
-      "change": "renamed",
-      "tools": [
-        "add_list_rows"
-      ],
-      "replaced_by": "stored_answers"
-    },
-    {
-      "change": "renamed",
-      "tools": [
-        "create_upload_link"
-      ],
-      "replaced_by": "file_link"
-    },
-    {
-      "change": "renamed",
-      "tools": [
-        "create_download_link"
-      ],
-      "replaced_by": "file_link"
-    },
-    {
-      "change": "changed",
-      "tools": [
-        "control_run"
-      ]
-    },
-    {
-      "change": "changed",
-      "tools": [
-        "formula_column"
-      ]
-    },
-    {
-      "change": "changed",
-      "tools": [
-        "remove_duplicates"
-      ]
-    },
-    {
-      "change": "changed",
-      "tools": [
-        "manage_setup_version"
-      ]
-    },
-    {
-      "change": "renamed",
-      "tools": [
-        "call_setup"
-      ],
-      "replaced_by": "apply_setup"
-    },
-    {
-      "change": "renamed",
-      "tools": [
-        "get_setup_call"
-      ],
-      "replaced_by": "get_run"
-    },
-    {
-      "change": "renamed",
-      "tools": [
-        "call_enrichment"
-      ],
-      "replaced_by": "run_enrichment"
-    },
-    {
-      "change": "changed",
-      "tools": [
-        "apply_setup",
-        "run_enrichment"
-      ]
-    },
     {
       "change": "server"
     },
     {
       "change": "changed",
       "tools": [
-        "manage_table"
+        "hiring_signals"
       ]
     },
     {
       "change": "changed",
       "tools": [
-        "get_workspace"
+        "hiring_signals"
       ]
     }
   ],
@@ -1226,9 +926,24 @@
             "create",
             "check",
             "get",
-            "update"
+            "update",
+            "find_buyers",
+            "open_roles"
           ],
           "type": "string"
+        },
+        "buyer_titles": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "string"
+            }
+          ]
         },
         "companies": {
           "anyOf": [
@@ -1346,6 +1061,11 @@
             }
           ]
         },
+        "per_company": {
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer"
+        },
         "per_search": {
           "maximum": 100,
           "minimum": 1,
@@ -1399,7 +1119,13 @@
             }
           ]
         },
+        "sheet_id": {
+          "type": "string"
+        },
         "time_zone": {
+          "type": "string"
+        },
+        "website_column": {
           "type": "string"
         }
       },

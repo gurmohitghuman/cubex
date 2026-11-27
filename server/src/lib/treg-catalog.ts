@@ -29,7 +29,7 @@ function slimEndpoint(ep: unknown, withInput: boolean): unknown {
     ...pick(ep, ['id', 'name', 'summary', 'provider', 'provider_display', 'kind', 'method', 'capability',
       'capability_description', 'platform', 'platform_label', 'async', 'status', 'superseded_by',
       'platform_eligible', 'platform_blocked', 'overflow_price_usd', 'strict_query', 'routed_children']),
-    cost: pick(ep.cost, ['type', 'unit', 'usd', 'varies', 'note']),
+    cost: pick(ep.cost, ['type', 'unit', 'usd', 'varies', 'note', 'reserve']),
     observed: pick(ep.observed, ['ok_rate', 'hit_rate', 'samples', 'hit_samples']),
     input: withInput ? ep.input : pick(ep.input, ['bodyType']),
   };

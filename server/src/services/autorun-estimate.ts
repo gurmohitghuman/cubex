@@ -15,6 +15,7 @@ import type { EnrichEstimateView } from './enrich-setup';
 import { isEnrichmentConfig } from '../lib/enrich-run-config';
 import { estimateListOf, recallChoices } from '../lib/enrich-run-recall';
 import { verifySheetOwnership } from '../lib/sql-helpers';
+import { fixedInputs } from '../lib/enrich-estimate-input';
 import { estimateEnrichment } from './enrich-setup';
 import {
   columnOutputs, inputColumnsOf, newestRunOf, sheetEntries, usageToday, type AutorunEntry,
@@ -110,7 +111,7 @@ export async function estimateAutorunRows(
     const est = await within(estimateEnrichment(userId, {
       toolId: c.toolId, rows, preset: c.preset, given: Object.keys(c.inputs).sort(), skip: c.skipProviders,
       order: c.providerOrder, stopAtFirst: c.stopAtFirst, maxCostPerRowUsd: c.maxCostPerRowUsd, limit: null,
-      list: estimateListOf(c),
+      list: estimateListOf(c), fixed: fixedInputs(c.inputs),
     }), opts.priceWithinMs);
     if (est === TIMED_OUT) {
       return { ...base, kind: 'enrichment', rows, lowUsd: null, highUsd: null, priceTimedOut: true };
