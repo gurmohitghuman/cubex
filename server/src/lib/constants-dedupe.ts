@@ -52,8 +52,9 @@ export const AUTO_DEDUPE_INLINE_ROWS = 10_000;
 // a row already in the sheet counts twice (into the trash, and zeroed out of the rows: secure_delete), a row the same
 // transaction added once. With keep newest, a 15 MB move replacing 150 rows of 200 KB wrote 90 MB of WAL in one
 // commit, and a 1 MB move replacing 300 of them 123 MB, past journal_size_limit (64 MB). Half of that limit, the rest
-// left for the write's own rows; transfer_rows, which writes up to 32 MB itself, passes what its cap leaves
-// (services/rows-transfer.ts). Checks past it wait for the background round, which auto-run waits for too.
+// left for the write's own rows; transfer_rows passes what its 32 MB cap leaves, a move's rows counting twice
+// (services/rows-transfer.ts; a move writes each row about three times, so its own rows can take ~48 MB). Checks
+// past it wait for the background round, which auto-run waits for too.
 export const AUTO_DEDUPE_INLINE_BYTES = 32 * 1024 * 1024;
 // Waiting checks are made on the API thread a transaction at a time: at most
 // AUTO_DEDUPE_LOOK_ROWS rows looked at, AUTO_DEDUPE_CHECK_ROWS rows removed
