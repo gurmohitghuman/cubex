@@ -2,12 +2,12 @@
 // worker takes over a second, as a disk sync might, so the worker falls behind the pages. The walk waits for it between
 // pages (on Windows, for a checkpoint running, before a page: lib/wal-turn.ts), never on the event loop: it waits for
 // the worker in all at least as long as one checkpoint, where writers wait for a running checkpoint (Windows and Linux)
-// no page begins while one runs (bulk-wal-kit.ts turnWritesSeen), no checkpoint runs on the API connection (only
-// SQLite's NOOP, which reads the WAL's size), the WAL never holds more than WAL_PAUSE_FRAMES and one page (no page
-// begins with WAL_PAUSE_FRAMES uncopied, the next call's first one too), and every row is written exactly once. With no
-// worker (its file can't load), the checkpoints run on the API thread, as before, a start tried once and logged once
-// for the whole pass (not once per checkpoint); closed, a later use starts a new worker. A worker that stops is started
-// once more; stopped again, the checkpoints stay on the API thread, logged once. Each pass prints its 5 slowest
+// no transaction begins while one runs (bulk-wal-kit.ts checkpointOverlaps), no checkpoint runs on the API connection
+// (only SQLite's NOOP, which reads the WAL's size), the WAL never holds more than WAL_PAUSE_FRAMES and one page (no
+// page begins with WAL_PAUSE_FRAMES uncopied, the next call's first one too), and every row is written exactly once.
+// With no worker (its file can't load), the checkpoints run on the API thread, as before, a start tried once and logged
+// once for the whole pass (not once per checkpoint); closed, a later use starts a new worker. A worker that stops is
+// started once more; stopped again, the checkpoints stay on the API thread, logged once. Each pass prints its 5 slowest
 // transactions (sqlite-write-probe.ts) and checks that none on the API connection started the WAL over: that commit
 // syncs the WAL's new header on the event loop (with every WAL sync made 300 ms slow, the code before the worker
 // started the WAL over held the loop that long after each wait). The pass with no worker is the one where that is
@@ -24,13 +24,13 @@ import walMod from '../../server/src/lib/wal-checkpointer'
 import turnMod from '../../server/src/lib/wal-turn'
 import { sqliteWriteProbe, transactionLine } from './sqlite-write-probe'
 import { heldText, loopWatch } from './loop-watch'
-import { turnWritesSeen } from './bulk-wal-kit'
+import { checkpointOverlaps, checkpointRunning, turnWritesSeen } from './bulk-wal-kit'
 import { passed } from './ends-on-its-own'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { transformColumn } = transformMod as typeof import('../../server/src/services/column-transform')
 const { WAL_PAUSE_FRAMES } = constMod as typeof import('../../server/src/lib/constants')
-const { checkpointAsked, checkpointInBackground, closeWalCheckpointer, setCheckpointDelayForTests,
+const { checkpointInBackground, closeWalCheckpointer, setCheckpointDelayForTests,
   setCheckpointWorkerFileForTests, stopCheckpointWorkerForTests, takeWalCheckpointerStats, walCheckpointerIdle } =
   walMod as typeof import('../../server/src/lib/wal-checkpointer')
 const { takeWalTurnStats } = turnMod as typeof import('../../server/src/lib/wal-turn')
@@ -64,7 +64,7 @@ const insert = db.prepare('INSERT INTO rows (id,sheet_id,user_id,row_index,data)
 db.transaction(() => {
   for (let i = 0; i < ROWS; i++) insert.run(uuid(), sid, uid, i, JSON.stringify({ N: `r${i}`, Notes: NOTES }))
 }).immediate()
-const probe = sqliteWriteProbe(db, process.env.DB_PATH!, checkpointAsked)
+const probe = sqliteWriteProbe(db, process.env.DB_PATH!, checkpointRunning)
 // Reads its own target: a row written twice would end "xx".
 const call = (suffix: string, cursor?: string) => transformColumn(uid, { sheetId: sid, operation: 'template',
   template: `{{N}}${suffix}`, targetColumn: 'N', ...(cursor === undefined ? {} : { cursor }) })
@@ -131,6 +131,7 @@ async function main() {
         mostBeforeWrite: w.mostWalFramesBeforeWrite }))
       assert.deepEqual(startedOverHere('x'), [], 'transactions that started the WAL over on this thread')
       turns.check()
+      checkpointOverlaps(probe.records(), 'transactions of the walk')
       assert.equal(w.checkpoints, 0, 'a checkpoint ran on the API connection')
       assert.ok(w.walReads > 0)
       assert.ok(waits > 0 && waitedMs >= 1000, `the walk didn't wait for the worker: ${JSON.stringify({ k, t })}`)
