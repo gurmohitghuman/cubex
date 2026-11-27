@@ -1,0 +1,343 @@
+{
+  "endpoint": {
+    "id": "findymail.search.employees",
+    "name": "Find employees at a company by job title",
+    "summary": "Find people working at a company website who hold the job titles you name",
+    "provider": "findymail",
+    "provider_display": "Findymail",
+    "kind": "data",
+    "method": "POST",
+    "path": "/search/employees",
+    "capability": "people.search",
+    "capability_description": "Find people by role, company or location — lead lists and prospects (sales leads)",
+    "platform": "people",
+    "platform_label": "People & contact data",
+    "async": null,
+    "status": null,
+    "superseded_by": null,
+    "platform_eligible": true,
+    "platform_blocked": null,
+    "test_request": {
+      "body": {
+        "website": "stripe.com",
+        "job_titles": [
+          "Head of Engineering"
+        ],
+        "count": 1
+      }
+    },
+    "cost": {
+      "type": "per_result",
+      "value": 1,
+      "currency": "credit",
+      "per": 1,
+      "unit": "result",
+      "reserve": {
+        "rows": {
+          "param": "body.count",
+          "default": {
+            "value": 1,
+            "source": "docs"
+          },
+          "max": 3
+        }
+      },
+      "source": "docs",
+      "source_url": "https://app.findymail.com/docs/",
+      "checked": "2026-10-28",
+      "confidence": "documented",
+      "note": "1 finder credit per contact found; free when none. `count` caps the spend",
+      "usd": 0.0198
+    },
+    "input": {
+      "body": {
+        "website": {
+          "type": "string",
+          "required": true,
+          "note": "the company website or domain",
+          "example": "stripe.com"
+        },
+        "job_titles": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "required": true,
+          "note": "job titles to match",
+          "example": [
+            "Head of Engineering"
+          ]
+        },
+        "count": {
+          "type": "integer",
+          "required": false,
+          "note": "how many contacts to return, default 1, max 3 (4 or 5 are reduced to 3) — THIS IS THE PRICE DIAL (1 finder credit per contact returned)",
+          "example": 1
+        }
+      },
+      "note": "returns an array of {name, linkedinUrl, companyWebsite, companyName, jobTitle}. Always set an explicit small `count`"
+    },
+    "docs_url": "https://app.findymail.com/docs/",
+    "verified": "2026-08-28"
+  },
+  "siblings": [
+    {
+      "id": "quickenrich.people.search",
+      "provider": "quickenrich",
+      "provider_display": "QuickEnrich",
+      "name": "Discover contacts for free",
+      "scope": "any_account",
+      "kind": "data",
+      "cost": {
+        "type": "free",
+        "value": 0,
+        "currency": "USD",
+        "per": 1,
+        "unit": "call",
+        "usd": 0.0
+      },
+      "platform_eligible": true,
+      "status": null,
+      "status_note": null,
+      "superseded_by": null,
+      "verified": "2026-09-08",
+      "params": [
+        "title",
+        "locality",
+        "company_name",
+        "company_url",
+        "number_of_employees",
+        "revenue",
+        "city",
+        "country_code",
+        "industry_linkedin",
+        "bio_li",
+        "services",
+        "has_email",
+        "has_phone",
+        "page",
+        "per_page",
+        "cursor"
+      ],
+      "observed": {
+        "samples": 6534626,
+        "decided": 6471136,
+        "ok_rate": 0.9992,
+        "p50_ms": 58,
+        "p95_ms": 360,
+        "last_ok_days": 0,
+        "hit_rate": 0.4555,
+        "hit_samples": 6435952
+      },
+      "reviews": {
+        "teams": 50,
+        "share": {
+          "useful": 0.59,
+          "partly": 0.33,
+          "not_useful": 0.08
+        }
+      }
+    },
+    {
+      "id": "quickenrich.people.search.domain",
+      "provider": "quickenrich",
+      "provider_display": "QuickEnrich",
+      "name": "Find people at a company",
+      "scope": "any_account",
+      "kind": "data",
+      "cost": {
+        "type": "per_result",
+        "value": 1,
+        "currency": "credit",
+        "per": 1,
+        "unit": "record",
+        "usd": 0.004834
+      },
+      "platform_eligible": true,
+      "status": null,
+      "status_note": null,
+      "superseded_by": null,
+      "verified": "2026-09-08",
+      "params": [
+        "company_url",
+        "title",
+        "page",
+        "has_email"
+      ],
+      "observed": {
+        "samples": 449608,
+        "decided": 443929,
+        "ok_rate": 0.9983,
+        "p50_ms": 66,
+        "p95_ms": 387,
+        "last_ok_days": 0,
+        "hit_rate": 0.2157,
+        "hit_samples": 439196
+      },
+      "reviews": {
+        "teams": 10,
+        "share": {
+          "useful": 0.47,
+          "partly": 0.44,
+          "not_useful": 0.09
+        }
+      }
+    },
+    {
+      "id": "leadocean.companies.people",
+      "provider": "leadocean",
+      "provider_display": "LeadOcean",
+      "name": "List a company's people",
+      "scope": "any_account",
+      "kind": "data",
+      "cost": {
+        "type": "per_result",
+        "value": 0.001,
+        "currency": "USD",
+        "per": 1,
+        "unit": "record",
+        "reserve": {
+          "rows": {
+            "param": "queryParams.limit",
+            "default": {
+              "value": 25,
+              "source": "docs"
+            },
+            "max": 100
+          }
+        },
+        "settle": {
+          "count": {
+            "path": "data"
+          }
+        },
+        "usd": 0.001
+      },
+      "platform_eligible": true,
+      "status": null,
+      "status_note": null,
+      "superseded_by": null,
+      "verified": "2026-11-03",
+      "params": [
+        "domain",
+        "cursor",
+        "limit"
+      ],
+      "observed": {
+        "samples": 7353,
+        "decided": 4801,
+        "ok_rate": 1.0,
+        "p50_ms": 171,
+        "p95_ms": 442,
+        "last_ok_days": 0,
+        "hit_rate": 0.0,
+        "hit_samples": 1899
+      }
+    },
+    {
+      "id": "apollo.people.search",
+      "provider": "apollo",
+      "provider_display": "Apollo.io",
+      "name": "Search people by title, seniority, company or location",
+      "scope": "any_account",
+      "kind": "data",
+      "cost": {
+        "type": "free",
+        "value": 0,
+        "currency": "USD",
+        "unit": "call",
+        "usd": 0.0
+      },
+      "platform_eligible": true,
+      "status": null,
+      "status_note": null,
+      "superseded_by": null,
+      "verified": "2026-08-29",
+      "params": [
+        "person_titles[]",
+        "person_seniorities[]",
+        "person_locations[]",
+        "organization_locations[]",
+        "q_organization_domains_list[]",
+        "organization_num_employees_ranges[]",
+        "contact_email_status[]",
+        "currently_using_any_of_technology_uids[]",
+        "revenue_range[min]",
+        "revenue_range[max]",
+        "page",
+        "per_page"
+      ],
+      "observed": {
+        "samples": 1330998,
+        "decided": 1240151,
+        "ok_rate": 0.9999,
+        "p50_ms": 222,
+        "p95_ms": 498,
+        "last_ok_days": 0,
+        "hit_rate": 0.6205,
+        "hit_samples": 1131773
+      },
+      "reviews": {
+        "teams": 50,
+        "share": {
+          "useful": 0.48,
+          "partly": 0.4,
+          "not_useful": 0.12
+        }
+      }
+    },
+    {
+      "id": "crawl4ai.people.search",
+      "provider": "crawl4ai",
+      "provider_display": "Crawl4AI",
+      "name": "Find people at a company by job title",
+      "scope": "any_account",
+      "kind": "data",
+      "cost": {
+        "type": "per_result",
+        "value": 0.95,
+        "currency": "credit",
+        "per": 1,
+        "unit": "record",
+        "usd": 0.00095
+      },
+      "platform_eligible": true,
+      "status": null,
+      "status_note": null,
+      "superseded_by": null,
+      "verified": "2026-10-31",
+      "params": [
+        "where",
+        "q",
+        "limit"
+      ],
+      "observed": {
+        "samples": 2516172,
+        "decided": 2511190,
+        "ok_rate": 0.9998,
+        "p50_ms": 244,
+        "p95_ms": 518,
+        "last_ok_days": 0,
+        "hit_rate": 0.2273,
+        "hit_samples": 2510602
+      },
+      "reviews": {
+        "teams": 25,
+        "share": {
+          "useful": 0.34,
+          "partly": 0.36,
+          "not_useful": 0.3
+        }
+      }
+    }
+  ],
+  "example_response": [
+    {
+      "name": "Grace Hopper",
+      "linkedinUrl": "https://www.linkedin.com/in/grace-hopper-example",
+      "companyWebsite": "example.com",
+      "companyName": "Example",
+      "jobTitle": "Head of Engineering"
+    }
+  ]
+}

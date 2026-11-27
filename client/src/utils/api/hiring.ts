@@ -1,6 +1,7 @@
 import { api } from './client'
 import type { Table } from './types'
 import { HIRING_CREATE_TIMEOUT_MS } from '@/lib/hiring'
+import type { ColumnRunEstimate } from './column-runs'
 
 // Hiring tables (server routes/hiring.ts, services/hiring-*.ts).
 const noServerToast = { skipServerErrorToast: true } as const
@@ -39,6 +40,14 @@ export interface HiringEstimate {
   matches: { about: number; counted: number; capped: boolean; leftOut: Array<'place'> } | null
 }
 
+// The buyer columns on Companies (server services/hiring-buyer.ts): added or not, the titles the search uses, the
+// titles a first "Find buyers" starts with.
+export interface HiringBuyer { added: boolean; titles: string[]; starting: string[] }
+export type BuyerRows = 'empty' | 'all'
+// A find's answer: the estimate, or the started column run; saved: the setups it saved, titles: the titles in use.
+export type FindBuyersAnswer = ({ estimate: ColumnRunEstimate } | { setup_run: { id: string } })
+  & { saved: string[]; titles: string[]; buyer: HiringBuyer }
+
 // The day a check stamps on what it finds is the person's own.
 const timeZone = (): string | undefined => {
   try { return Intl.DateTimeFormat().resolvedOptions().timeZone } catch { return undefined }
@@ -48,6 +57,11 @@ export const hiringAPI = {
   create: (input: HiringInput): Promise<Table & { sheetId: string; hiring: HiringView }> =>
     api.post('/hiring', input, { ...noServerToast, timeout: HIRING_CREATE_TIMEOUT_MS }).then(res => res.data),
   get: (id: string): Promise<HiringView> => api.get(`/hiring/${id}`, noServerToast).then(res => res.data.hiring),
+  buyer: (id: string): Promise<HiringBuyer> => api.get(`/hiring/${id}`, noServerToast).then(res => res.data.buyer),
+  // Saves the buyer columns (or new titles) when needed, then prices them, or runs them under maxCostUsd (the most
+  // the estimate showed; over it now: 409 with over_ceiling).
+  findBuyers: (id: string, body: { titles: string; rows: BuyerRows; estimateOnly: boolean; maxCostUsd?: number })
+    : Promise<FindBuyersAnswer> => api.post(`/hiring/${id}/buyers`, body, noServerToast).then(res => res.data),
   estimate: (id: string): Promise<{ plan: HiringPlan; estimate: HiringEstimate }> =>
     api.post(`/hiring/${id}/check`, { estimateOnly: true, timeZone: timeZone() }, noServerToast)
       .then(res => res.data),

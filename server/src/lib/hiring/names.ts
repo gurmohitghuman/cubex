@@ -18,6 +18,13 @@ export const COMPANY_COLUMNS = {
 } as const;
 export type CompanyColumn = keyof typeof COMPANY_COLUMNS;
 
+// The buyer on each Companies row (lib/hiring/buyer.ts), added by the first "Find buyers": the people search's
+// status column and what it reads out, then the verified email's status column and its address and status.
+export const BUYER_COLUMNS = {
+  search: 'Buyer search', name: 'Buyer', title: 'Buyer title', linkedin: 'Buyer LinkedIn',
+  emailSearch: 'Buyer email search', email: 'Buyer email', emailStatus: 'Buyer email status',
+} as const;
+
 export const ROLE_COLUMNS = {
   title: 'Title', company: 'Company', domain: 'Domain', team: 'Team', location: 'Location', posted: 'Posted',
   link: 'Link', firstSeen: 'First seen', search: 'Search',

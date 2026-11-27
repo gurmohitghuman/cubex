@@ -1,4 +1,4 @@
-// Hiring tables in the app (services/hiring-*.ts): make one, read it, check it (the estimate first).
+// Hiring tables in the app (services/hiring-*.ts): make one, read it, check it (the estimate first), find buyers.
 import express from 'express';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { UUID_PATTERN } from '../lib/constants';
@@ -10,6 +10,9 @@ import { estimateHiringCheck, startHiringCheck } from '../services/hiring-check'
 import { hiringFor, hiringView } from '../services/hiring-store';
 import { setHiringCompanyFilters } from '../services/hiring-filters-set';
 import { runFailHttpStatus } from '../services/run-shared';
+import { buyerOf, findBuyers } from '../services/hiring-buyer';
+import { parseBuyerTitles } from '../lib/hiring/buyer';
+import { usdLimitOf } from '../lib/cost-ceiling';
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -44,7 +47,7 @@ router.post('/', async (req: AuthRequest, res) => {
 router.get('/:id', (req: AuthRequest, res) => {
   try {
     const rec = recordOf(req, res);
-    if (rec) res.json({ hiring: hiringView(rec) });
+    if (rec) res.json({ hiring: hiringView(rec), buyer: buyerOf(req.userId!, rec) });
   } catch (error) {
     console.error('Read hiring table error:', error);
     res.status(500).json({ error: 'Failed to read the hiring table' });
@@ -91,6 +94,33 @@ router.post('/:id/check', async (req: AuthRequest, res) => {
   } catch (error) {
     console.error('Check hiring table error:', error);
     if (!res.headersSent) res.status(500).json({ error: "Couldn't check the hiring table" });
+  }
+});
+
+// POST /:id/buyers: {titles, rows ('empty' | 'all'), estimateOnly, maxCostUsd}: saves the buyer columns (or new
+// titles) when needed, then answers {estimate} or, sent the estimate's most, {setup_run}; 409 {over_ceiling,
+// estimate} when the most is now higher (services/hiring-buyer.ts).
+router.post('/:id/buyers', async (req: AuthRequest, res) => {
+  try {
+    const rec = recordOf(req, res);
+    if (!rec) return;
+    const b = isObj(req.body) ? req.body : {};
+    const titles = b.titles === undefined || b.titles === null ? null : parseBuyerTitles(b.titles, 'Who buys');
+    if (typeof titles === 'string') return res.status(400).json({ error: titles });
+    const rows = b.rows === 'all' ? 'all' : 'empty';
+    const estimateOnly = b.estimateOnly !== false;
+    const most = estimateOnly ? { value: null } : usdLimitOf(b.maxCostUsd, 'maxCostUsd');
+    if ('error' in most) return res.status(400).json({ error: most.error });
+    if (!estimateOnly && most.value === null) return res.status(400).json({ error: 'Ask for the estimate first.' });
+    const out = await findBuyers(req.userId!, rec, { titles, rows, estimateOnly, maxCostUsd: most.value });
+    if ('fail' in out) {
+      return res.status(runFailHttpStatus(out)).json({ error: out.message,
+        ...(out.estimate ? { over_ceiling: true, estimate: out.estimate } : {}) });
+    }
+    res.json({ ...out.ok, buyer: buyerOf(req.userId!, rec) });
+  } catch (error) {
+    console.error('Find buyers error:', error);
+    if (!res.headersSent) res.status(500).json({ error: "Couldn't find buyers" });
   }
 });
 
