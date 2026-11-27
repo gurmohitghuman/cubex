@@ -105,7 +105,7 @@ export function registerLinkTools(server: McpServer, ctx: McpAuthCtx) {
   async function download({ sheet_id: given, setup_run_id, columns, where, view, format, raw }: DownloadArgs) {
     const denied = missingScope(ctx, 'read');
     if (denied) return denied;
-    if (raw !== undefined && format === 'jsonl') return err('raw goes with csv: jsonl writes cells as they are.');
+    if (raw === true && format === 'jsonl') return err('raw goes with csv: jsonl writes cells as they are.');
     if (!given === !setup_run_id) return err('Pass sheet_id, or setup_run_id for a setup call\'s results.');
     const sheet_id = given ?? setupCallSheet(ctx.userId, setup_run_id!);
     if (!sheet_id) return err('Setup call not found');

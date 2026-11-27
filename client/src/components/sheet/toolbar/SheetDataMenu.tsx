@@ -67,7 +67,7 @@ export const SheetDataMenu: React.FC<Props> = ({
             onSelect={() => onExport('sheet')} disabled={!hasRows || isExporting} testId="export-sheet" />
         )}
         <MenuEntry icon={Download} label="Export for a CRM or email tool"
-          hint={`${viewNarrows ? 'This view\'s cells' : 'Cells'} as they are: no \' added before phones or @handles`}
+          hint={`${viewNarrows ? 'This view, f' : 'F'}or importing elsewhere, not Excel: no \' before phones, @handles`}
           onSelect={() => onExport(viewNarrows ? 'view' : 'sheet', true)} disabled={!hasRows || isExporting}
           testId="export-for-tools" />
         <MenuEntry icon={Inbox} label="Webhook" hint="A URL that adds a row for each JSON post"

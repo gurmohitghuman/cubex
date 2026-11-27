@@ -46,8 +46,8 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
         tools: ['read_rows', 'file_link'],
         summary: 'read_rows (format csv) and file_link (download, csv) take raw: true, every cell exactly as it is, '
           + 'with no \' added before = + - @, for a file going into a CRM or sending tool.',
-        details: 'Without raw the guard stays, for a file opened in Excel or Sheets. raw with json or jsonl is '
-          + 'refused.',
+        details: 'Without raw the guard stays, for a file opened in Excel or Sheets. raw: true with json or jsonl '
+          + 'is refused.',
       },
       {
         change: 'server',

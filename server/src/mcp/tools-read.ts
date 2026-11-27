@@ -129,7 +129,7 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
       const denied = missingScope(ctx, 'read');
       if (denied) return denied;
       if (!ownsSheet(sheet_id, ctx.userId)) return err('Sheet not found');
-      if (raw !== undefined && format !== 'csv') {
+      if (raw === true && format !== 'csv') {
         return err('raw goes with format csv: json answers cells as they are.');
       }
       if (format === 'csv') {
