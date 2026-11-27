@@ -165,7 +165,7 @@ async function main() {
     const up = await parsed('file_link', { action: 'upload', sheet_id: s }, WRITE)
     assert.equal(up.mode, 'append')
     assert.equal(await refusal('file_link', { action: 'download', sheet_id: s, mode: 'append' }, READ),
-      'mode is not for download: it takes sheet_id, setup_run_id, columns, where, view, format.')
+      'mode is not for download: it takes sheet_id, setup_run_id, columns, where, view, format, raw.')
     assert.equal(await refusal('file_link', { action: 'upload', sheet_id: s, setup_run_id: 'x' }, WRITE),
       'setup_run_id is not for upload: it takes sheet_id, mode, setup_id, max_cost_usd, allow_unpriced, models, '
       + 'webhook_id.')
