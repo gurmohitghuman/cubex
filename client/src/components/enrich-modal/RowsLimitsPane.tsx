@@ -31,6 +31,8 @@ interface Props {
   dailyLimitUsd: number | null
   // Days found answers are reused for (Settings; 0: off; null: not read yet).
   reuseDays: number | null
+  // One tool, no waterfall: a call it can't afford is turned down whole, not cut short.
+  single: boolean
 }
 
 const count = (n: number | null | undefined) => (n === null || n === undefined ? '…' : n.toLocaleString())
@@ -107,10 +109,13 @@ export const RowsLimitsPane: React.FC<Props> = (p) => {
           <p className={`text-xs ml-[7.5rem] ${capTone}`}>
             {tooHigh
               ? `Max per row can be at most $${ENRICH_MAX_ROW_CAP_USD.toLocaleString()}.`
-              : lowCap
-                ? `Below ${formatCost(p.defaultMaxCostPerRow!)}, later providers can be skipped, `
-                  + 'and rows show "Budget ran out".'
-                : 'Lets every provider you picked answer. Empty uses the default.'}
+              : lowCap && p.single
+                ? `Below ${formatCost(p.defaultMaxCostPerRow!)}, treg turns down a call that could cost more, `
+                  + 'and its row shows "Budget ran out". Raise it, or leave it empty.'
+                : lowCap
+                  ? `Below ${formatCost(p.defaultMaxCostPerRow!)}, later providers can be skipped, `
+                    + 'and rows show "Budget ran out".'
+                  : 'Lets every provider you picked answer. Empty uses the default.'}
           </p>
         </div>
 

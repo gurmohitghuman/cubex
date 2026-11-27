@@ -5,6 +5,7 @@ import { getSheetColumns } from '../lib/sql-helpers';
 import { MAX_COLUMN_RUN_ROW_IDS } from '../lib/constants-setups';
 import type { EnrichRunInput } from '../lib/enrich-run-input';
 import type { WhereItem } from '../lib/row-filter/where';
+import { fixedInputs } from '../lib/enrich-estimate-input';
 import { estimateEnrichment } from './enrich-setup';
 import { wherePlaces } from './column-run-rows';
 import type { ColumnEstimate, ColumnRunEstimate } from './column-run-estimate';
@@ -54,7 +55,7 @@ async function priceColumn(userId: string, input: EnrichRunInput, rows: number, 
   const out = await estimateEnrichment(userId, {
     toolId: input.toolId, rows, preset: input.preset, given: Object.keys(input.inputs).sort(),
     skip: input.skipProviders, order: input.providerOrder, stopAtFirst: input.stopAtFirst,
-    maxCostPerRowUsd: input.maxCostPerRowUsd, limit: null, list: null,
+    maxCostPerRowUsd: input.maxCostPerRowUsd, limit: null, list: null, fixed: fixedInputs(input.inputs),
   });
   if (!('ok' in out)) {
     return { fail: out.fail === 'unreachable' || out.fail === 'upstream' ? 'upstream' : 'bad_request',

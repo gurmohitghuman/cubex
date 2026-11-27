@@ -19,6 +19,7 @@ import type { SheetColumnStep, StepMode } from '../lib/setups/again';
 import type { SearchOptions } from '../lib/web-search-options';
 import { estimateAiRun } from './run-estimate';
 import type { EstimateRowsFrom } from './run-estimate-rows';
+import { fixedInputs } from '../lib/enrich-estimate-input';
 import { estimateEnrichment } from './enrich-setup';
 import { estimateAgain } from './setup-estimate-again';
 
@@ -90,7 +91,7 @@ export async function estimateSetup(
       const out = await estimateEnrichment(userId, {
         toolId: s.toolId, rows, preset: s.preset, given: Object.keys(s.inputs).sort(), skip: s.skipProviders,
         order: s.providerOrder, stopAtFirst: s.stopAtFirst, maxCostPerRowUsd: s.maxCostPerRowUsd, limit: null,
-        list: null,
+        list: null, fixed: fixedInputs(s.inputs),
       });
       if (!('ok' in out)) steps.push({ ...base, note: out.message });
       else if (!out.ok.priceKnown) steps.push({ ...base, note: 'Billed by the provider on your own key.' });

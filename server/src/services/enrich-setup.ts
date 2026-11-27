@@ -9,12 +9,13 @@ import { countRows, getSheetColumns } from '../lib/sql-helpers';
 import { savedFilterSql, type SavedFilters } from './row-filter';
 import { scanFiltered } from '../lib/filtered-scan';
 import {
-  defaultEmailLoopCap, defaultMaxCostPerRow, enabledProviders, estimateRun, noProviderCanRun, verifyPick,
+  defaultEmailLoopCap, defaultMaxCostPerRow, enabledProviders, estimateRun, noProviderCanRun, reservedRows, verifyPick,
   type Estimate, type ProviderPick,
 } from '../lib/enrich-estimate';
 import { readTregBalance } from '../lib/treg';
 import type { EstimateInput } from '../lib/enrich-estimate-input';
 import { getTool, type CatalogFailure } from './enrich-catalog';
+import type { EnrichTool } from '../lib/enrich-tool';
 import { listRowPrices } from './enrich-list-build';
 import { dailyLimitView, getTregToken, type DailyLimitView } from './treg-key';
 
@@ -67,6 +68,14 @@ export interface EnrichEstimateView {
 
 const round6 = (n: number) => Math.round(n * 1e6) / 1e6;
 
+// A per-result tool's dial as a run sends it (lib/enrich-estimate.ts reservedRows): its value when fixed, else a
+// column ({{…}}: it differs by row, so the tool's most) when given or when given isn't known; not given, its default.
+function dialSent(tool: EnrichTool, input: EstimateInput): string | undefined {
+  const name = tool.price.reserve?.input;
+  if (name === undefined || (input.given !== null && !input.given.includes(name))) return undefined;
+  return Object.prototype.hasOwnProperty.call(input.fixed, name) ? input.fixed[name] : '{{column}}';
+}
+
 // The estimate box. The default per-row cap lets every provider picked
 // answer; the verified email preset also budgets for its checks and re-finds.
 export async function estimateEnrichment(
@@ -81,7 +90,8 @@ export async function estimateEnrichment(
   const pick: ProviderPick = one ? {
     ...input, order: [one], stopAtFirst: true,
     skip: (tool.providers ?? []).map(p => p.provider.toLowerCase()).filter(p => p !== one),
-  } : list && tool.inputs.some(i => i.name === 'limit') ? { ...input, limit: list.maxItems } : input;
+  } : list && tool.inputs.some(i => i.name === 'limit') ? { ...input, limit: list.maxItems }
+    : { ...input, limit: input.limit ?? reservedRows(tool, dialSent(tool, input)) };
   let cap = defaultMaxCostPerRow(tool, pick);
   let listLow: number | null = null;
   if (one && list) {
