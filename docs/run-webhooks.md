@@ -116,6 +116,6 @@ With **every run** on, a webhook also hears each step of a setup (each is a run 
 
 ## Security
 
-- The URL must be public when you save it, and is checked again on every try, the same way as HTTP API columns: Cubex resolves the name, refuses private, loopback, link-local and metadata addresses, and connects only to the address it checked. Redirects aren't followed.
+- The URL must be public when you save it, and is checked again on every try, the same way as HTTP API columns: Cubex resolves the name, refuses private, loopback, link-local and metadata addresses, and connects only to the address it checked. Run webhooks don't follow redirects (HTTP API columns do).
 - The secret is stored encrypted (with your `.encryption-key`) and shown only when it's made.
 - Reading webhooks over the API needs the `read` scope; adding, changing or deleting them, a new secret or a test needs `run`, since they decide where Cubex sends requests, as an HTTP API column does.

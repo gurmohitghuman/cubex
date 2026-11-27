@@ -43,6 +43,13 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
     changes: [
       {
         change: 'server',
+        summary: 'HTTP API columns follow redirects (301, 302, 303, 307, 308), up to 5, each one checked like the '
+          + 'first; a 3xx used to fail the row.',
+        details: 'Never https to http; to another host without the request\'s headers, and never with a body. A '
+          + 'refused redirect fails the row and says why.',
+      },
+      {
+        change: 'server',
         summary: 'A tool billed per result whose catalog names its count input is priced at the results a call '
           + 'asks for (that input, else its default) instead of 20: run_enrichment\'s and apply_setup\'s estimates '
           + 'and default max_cost_per_row_usd follow it.',
