@@ -116,7 +116,8 @@ await ok('a write past its deadline that must be made waits for the running chec
   console.log(`      began after ${s.began.toFixed(0)} ms; ${s.ticks} timers ran; ${heldText(s.watched)}`)
   assert.equal(s.during, false, 'it began while the checkpoint ran')
   assert.ok(s.began >= 700, `it began ${s.began.toFixed(0)} ms in, while the checkpoint ran`)
-  assert.ok(s.ticks >= 20 && s.watched.ownMs < 50, `${s.ticks} timers ran, the loop held ${s.watched.ownMs} ms`)
+  assert.ok(s.ticks >= 20 && s.watched.cpuMs < 50,
+    `${s.ticks} timers ran, the loop held ${s.watched.cpuMs.toFixed(0)} ms on the CPU`)
   assert.equal(takeWalTurnStats().checkpointWaits, 1, 'waits for a running checkpoint')
   await asked
 })
@@ -166,7 +167,7 @@ await ok('a transform call that starts while a checkpoint runs past its whole ti
   assert.ok('ok' in s.out && s.out.ok.updated === 0 && s.out.ok.next_cursor, JSON.stringify(s.out))
   assert.deepEqual(lateOnes(), ['column add', 'data_version', 'pass record'])
   assert.ok(s.ms >= 2_800, `answered after ${s.ms.toFixed(0)} ms, before the checkpoint did`)
-  assert.ok(s.watched.ownMs < 100, `the loop held ${s.watched.ownMs} ms`)
+  assert.ok(s.watched.cpuMs < 100, `the loop held ${s.watched.cpuMs.toFixed(0)} ms on the CPU`)
   await asked
 })
 
@@ -185,7 +186,7 @@ await ok('a transform call that runs out of time waiting at its pause: data_vers
       + `${lateOnes().join(', ')}; ${heldText(s.watched)}`)
     assert.ok('ok' in s.out && s.out.ok.updated > 0 && s.out.ok.next_cursor, JSON.stringify(s.out))
     assert.deepEqual(lateOnes(), ['data_version', 'nothing'])
-    assert.ok(s.watched.ownMs < 100, `the loop held ${s.watched.ownMs} ms`)
+    assert.ok(s.watched.cpuMs < 100, `the loop held ${s.watched.cpuMs.toFixed(0)} ms on the CPU`)
   } finally {
     w.setCheckpointDelayForTests(0)
     await w.walCheckpointerIdle()

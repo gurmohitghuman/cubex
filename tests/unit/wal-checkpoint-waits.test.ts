@@ -6,13 +6,14 @@
 // that path too. The WAL is emptied first, as after a server start. Two bulk writers at once (lib/bulk-slices.ts), one
 // ending while the other writes, so its last checkpoint comes mid-slice for the other: no slice begins while a
 // checkpoint runs. A transform's pages (services/column-transform-pages.ts): none either. A slice that waits leaves the
-// event loop free (timers run, no stretch over 50 ms). A checkpoint that never answers holds a writer no longer than
-// the wait's limit, once; a worker that stops answers its waiters. One that outlasts the limit: the slice waiting
-// before it begins goes on, but a wait at the pause has no limit, so the WAL stays bounded. A write whose own time runs
-// out while it waits doesn't count as one that gave no answer: the next slice still waits. A transform call on a few
-// rows asks for its closing checkpoint after its last write, so it waits for none. Timing-free but the waits' limit,
-// the worker stopping and those last two (held checkpoints, wide margins); the longest slice and stretch are printed.
-// Off (Linux's default) a writer still asks part way and writes on while the worker copies.
+// event loop free (timers run, and this thread is on the CPU under 50 ms in any stretch, loop-watch.ts). A checkpoint
+// that never answers holds a writer no longer than the wait's limit, once; a worker that stops answers its waiters. One
+// that outlasts the limit: the slice waiting before it begins goes on, but a wait at the pause has no limit, so the WAL
+// stays bounded. A write whose own time runs out while it waits doesn't count as one that gave no answer: the next
+// slice still waits. A transform call on a few rows asks for its closing checkpoint after its last write, so it waits
+// for none. Timing-free but the waits' limit, the worker stopping and those last two (held checkpoints, wide margins);
+// the longest slice and stretch are printed. Off (Linux's default) a writer still asks part way and writes on while the
+// worker copies.
 import assert from 'node:assert/strict'
 import { performance } from 'node:perf_hooks'
 import { v4 as uuid } from 'uuid'
@@ -82,7 +83,7 @@ async function measured(label: string, work: () => Promise<unknown>) {
     + `(longest ${top(during)} ms); worker: ${k.checkpoints} checkpoints, ${k.pauses} waits at the pause, `
     + `${JSON.stringify(takeWalTurnStats())}`)
   for (const r of during.slice(0, 5)) console.log(`        ${transactionLine(r)}`)
-  return { records, during, loopMs: watched.ownMs, k }
+  return { records, during, loopMs: watched.cpuMs, k }
 }
 
 await ok('two bulk writers at once, the WAL emptied first, one ending mid-way: no slice begins while a checkpoint '
@@ -136,7 +137,7 @@ async function sliceAfterHeldCheckpoint(holdMs: number, during?: () => void) {
   await asBulkWriter(bulk => bulk.slice(() => { began = performance.now() - t0; rewrite.run(51, 60) }))
   const watched = watch()
   clearInterval(timer)
-  return { began, ticks, loopMs: watched.ownMs, held: heldText(watched), asked }
+  return { began, ticks, loopMs: watched.cpuMs, held: heldText(watched), asked }
 }
 
 await ok('a slice waiting for a checkpoint leaves the event loop free, and begins once it answered', async () => {
@@ -144,7 +145,7 @@ await ok('a slice waiting for a checkpoint leaves the event loop free, and begin
   const s = await sliceAfterHeldCheckpoint(800)
   console.log(`      began after ${s.began.toFixed(0)} ms; ${s.ticks} timers ran; ${s.held}`)
   assert.ok(s.began >= 750, `the slice began ${s.began.toFixed(0)} ms after the checkpoint was asked`)
-  assert.ok(s.ticks >= 20 && s.loopMs < 50, `${s.ticks} timers ran, the loop held ${s.loopMs.toFixed(0)} ms`)
+  assert.ok(s.ticks >= 20 && s.loopMs < 50, `${s.ticks} timers ran, the loop held ${s.loopMs.toFixed(0)} ms on the CPU`)
   assert.equal(takeWalTurnStats().checkpointWaits, 1, 'waits for a running checkpoint')
 })
 

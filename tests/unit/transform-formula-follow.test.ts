@@ -2,8 +2,11 @@
 // columns read, then the formulas following every row it wrote (services/derived-follow.ts), as in the server:
 // they are told at once and follow by themselves, and the auto-run sweep (every 15 s) catches up one whose kick
 // found the sheet still busy with the transform (on the Windows runner a page outlasts the kick). The event loop is
-// sampled every 5 ms from the first call to the last formula done, as transform-pages.test.ts does: it is never
-// held 200 ms, and every formula ends right. On a 200,000-row sheet the longest stretch was 31, 50 and 70 ms
+// sampled every 5 ms from the first call to the last formula done, as transform-pages.test.ts does: this thread never
+// holds it 200 ms on the CPU in one stretch (loop-watch.ts: on a busy Mac the stretch itself went to 238 to 287 ms in
+// two of three full unit runs, and passed alone), and every formula ends right. Where writers wait for a running
+// checkpoint (writesWaitForCheckpoints: Windows and Linux), no write in turn (the pages, the formulas' slices) begins
+// while one runs, so none waits inside it, off the CPU. On a 200,000-row sheet the longest stretch was 31, 50 and 70 ms
 // (170 ms once with 3, no transaction in it); this size keeps the case near a minute. The Windows runner's disk took
 // 7 minutes at it (3 formulas: written in 131 s, followed in 288 s, the loop held 128 ms): there it runs 10,000
 // rows, in slices of the same size. Printed with the longest stretch: this thread's waits for the formula engine's
@@ -11,7 +14,7 @@
 import assert from 'node:assert/strict'
 import { performance } from 'node:perf_hooks'
 import { undoKit } from './run-undo-kit'
-import { heldText, loopWatch } from './bulk-wal-kit'
+import { heldText, loopWatch, turnWritesSeen } from './bulk-wal-kit'
 import { sqliteWriteProbe, transactionLine } from './sqlite-write-probe'
 const { db, uid, ok, done, idle, sheet, cells } = undoKit('transform-formula-follow')
 const { startFormulaColumn } = await import('../../server/src/services/formula-column')
@@ -25,6 +28,7 @@ startDerivedFollow()
 startAutorunLoop()
 console.error = () => {}
 const probe = sqliteWriteProbe(db, process.env.DB_PATH!, checkpointAsked)
+const turns = turnWritesSeen()
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 // Each ask of the formula engine: when, how long this thread waited for its answer, and what it asked.
 const asks: Array<{ at: number; ms: number; op: string; rows: number }> = []
@@ -53,6 +57,7 @@ for (const formulas of [0, 1, 3]) {
     await walCheckpointerIdle()
     probe.reset()
     asks.length = 0
+    turns.reset()
     const watch = loopWatch(probe.records)
     await watch.ready
     const t0 = performance.now()
@@ -78,13 +83,20 @@ for (const formulas of [0, 1, 3]) {
     const most = asks.reduce((m, a) => Math.max(m, a.ms), 0)
     console.log(`        waits for the formula engine in it: ${waits.map(a => `${a.op} of ${a.rows} rows `
       + `${a.ms.toFixed(1)} ms`).join(', ') || 'none'}; of all ${asks.length} asks, the longest ${most.toFixed(1)} ms`)
+    if (watched.cpuStretch.at !== at) {
+      const onCpu = watched.cpuInside.map(transactionLine).join(' | ')
+      console.log(`        in the stretch on the CPU longest: ${onCpu || 'no transaction'}`)
+    }
+    console.log(`        ${turns.text()}`)
     assert.equal(queued.get(uid), 0, 'a formula never followed')
     const outs = cells(sid, 'Out')
     assert.deepEqual(outs, Array.from({ length: N }, (_, i) => `P${i}`), 'Out written')
     for (let k = 0; k < formulas; k++) {
       assert.deepEqual(cells(sid, `F${k}`), outs.map(o => `${o}-${k}`), `F${k} follows`)
     }
-    assert.ok(watched.ownMs < LOOP_MS, `the event loop was held ${watched.ownMs.toFixed(0)} ms by this thread`)
+    turns.check()
+    assert.ok(watched.cpuMs < LOOP_MS,
+      `this thread held the event loop ${watched.cpuMs.toFixed(0)} ms on the CPU in one stretch`)
   })
 }
 

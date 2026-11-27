@@ -7,6 +7,8 @@
 // commit waiting off the CPU while the disk thread's writes are stuck is let off, and printed; a transaction busy on
 // the CPU, or a wait outside any transaction, is not, the disk stuck or not; a commit that syncs is never let off,
 // and a pause is not let off twice; the disk thread's file is beside the database and gone once the watch is read.
+// The CPU this thread spent in one stretch (cpuMs, a work test's bound) counts the busy transaction past the bound,
+// and the waits (for the lock, a worker) and the pause not at all.
 // Linux's own (where this thread waited, from the kernel) is loop-watch-waits.test.ts.
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
@@ -53,6 +55,10 @@ async function watched(label: string, hold: () => Promise<void> | void, stuck = 
 }
 const held = (w: LoopWatched) => assert.ok(w.ownMs >= BOUND_MS,
   `held ${w.ownMs.toFixed(0)} ms by this thread alone (the idle thread late ${w.idleMs.toFixed(0)} ms): let off`)
+// The most CPU in one stretch: past the bound for a busy hold, near none for a wait or a pause.
+const onCpu = (w: LoopWatched) => assert.ok(w.cpuMs >= BOUND_MS && w.cpuInside.length > 0,
+  `on the CPU ${w.cpuMs.toFixed(0)} ms in one stretch, ${w.cpuInside.length} transactions in it`)
+const offCpu = (w: LoopWatched) => assert.ok(w.cpuMs < BOUND_MS, `on the CPU ${w.cpuMs.toFixed(0)} ms in one stretch`)
 const busy = () => db.transaction(() => {
   add.run(1)
   for (const end = performance.now() + HOLD_MS; performance.now() < end;) { /* busy */ }
@@ -71,6 +77,7 @@ await ok(`a transaction busy on the CPU ${HOLD_MS} ms: held by this thread alone
   const w = await watched('busy', busy)
   held(w)
   busyIn(w)
+  onCpu(w)
 })
 
 // The lock held on another thread, by its own connection: this thread waits in SQLite's busy handler (busy_timeout,
@@ -98,6 +105,7 @@ await ok(`a write waiting ${HOLD_MS} ms for the write lock: held by this thread 
       db.transaction(() => { add.run(3) }).immediate()
     })
     held(w)
+    offCpu(w)
     const [r] = w.inside
     assert.ok(r && r.ms >= HOLD_MS - 50 && r.cpuMs < 0.5 * r.ms, `the transaction: ${r ? transactionLine(r) : 'none'}`)
   } finally { await gone }
@@ -112,6 +120,7 @@ await ok('the whole process paused 300 ms: let off, and printed', async () => {
   assert.ok(w.longest.ms >= 250, `the loop held only ${w.longest.ms.toFixed(0)} ms`)
   assert.ok(w.ownMs < BOUND_MS && w.idleMs >= w.longest.ms - BOUND_MS,
     `held ${w.ownMs.toFixed(0)} ms by this thread alone (the idle thread late ${w.idleMs.toFixed(0)} ms)`)
+  offCpu(w)
 })
 
 await ok(`paused 400 ms, then a transaction busy ${HOLD_MS} ms: that transaction named, past the bound`, async () => {
@@ -143,6 +152,7 @@ await ok('a transaction busy on the CPU, the disk stuck: held by this thread alo
 await ok('a wait outside any transaction (for a worker), the disk stuck: held, past the bound', async () => {
   const w = await watched('a wait, the disk stuck', () => { wait(HOLD_MS) }, STUCK_MS)
   held(w)
+  offCpu(w)
   assert.equal(w.inside.length, 0)
 })
 
