@@ -61,7 +61,8 @@ test('REST and MCP: save, compare, restore without running, then the next run us
     const ai = await call(client, 'run_ai_column', { sheet_id: sheetId, column_name: 'Fit', prompt: 'Is /name a fit?',
       model: 'deepseek/deepseek-v4-flash' })
     await waitForTerminal(v1, `/api/v1/ai-runs/${ai.run_id}`)
-    await call(client, 'set_description', { sheet_id: sheetId, column: 'Name', description: 'Who it is' })
+    await call(client, 'manage_column', {
+      action: 'describe', sheet_id: sheetId, column: 'Name', description: 'Who it is' })
 
     const saved = await v1.post(`/api/v1/sheets/${sheetId}/setup-versions`, { data: { name: 'Launch' } })
     expect(saved.status(), await saved.text()).toBe(201)
@@ -76,7 +77,8 @@ test('REST and MCP: save, compare, restore without running, then the next run us
       model: 'deepseek/deepseek-v4-flash' })
     await waitForTerminal(v1, `/api/v1/ai-runs/${ai2.run_id}`)
     expect((await v1.delete(`/api/v1/sheets/${sheetId}/columns/Domain`)).ok()).toBeTruthy()
-    await call(client, 'set_description', { sheet_id: sheetId, column: 'Name', description: 'Changed' })
+    await call(client, 'manage_column', {
+      action: 'describe', sheet_id: sheetId, column: 'Name', description: 'Changed' })
     const runsBefore = (await call(client, 'get_run', { action: 'list', sheet_id: sheetId })).runs.length
 
     const compared = await (await v1.get(`/api/v1/sheets/${sheetId}/setup-versions/${version.id}`)).json()

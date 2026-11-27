@@ -55,12 +55,14 @@ test('row writes with an idempotency key replay over REST and MCP; other argumen
 
   // One row: MCP first (no sheet_id), MCP again with the row's sheet_id, then REST PATCH: one write.
   const rowId = firstBody.rows[0].id
-  const up = await call(mcp, 'update_cells', { row_id: rowId, data: { val: 'A1' }, idempotency_key: 'e2e-up-1' })
+  const up = await call(mcp, 'change_rows', {
+    action: 'update', row_id: rowId, data: { val: 'A1' }, idempotency_key: 'e2e-up-1' })
   expect(up.replayed).toBe(false)
   expect(up.data.val).toBe('A1')
   expect(up.changed).toEqual([expect.objectContaining({ sheet_id: sheetId, columns: ['val'], rows: 1,
     row_ids: [rowId] })])
-  const upAgain = await call(mcp, 'update_cells', {
+  const upAgain = await call(mcp, 'change_rows', {
+    action: 'update',
     row_id: rowId, sheet_id: sheetId, data: { val: 'A1' }, idempotency_key: 'e2e-up-1',
   })
   expect(upAgain).toEqual({ ...up, replayed: true })
@@ -83,7 +85,7 @@ test('row writes with an idempotency key replay over REST and MCP; other argumen
     data: { updates: [...updates].reverse() }, headers: { 'Idempotency-Key': 'e2e-bt-1' },
   })
   expect(await batchAgain.json()).toEqual({ updated: 2, replayed: true })
-  expect(await call(mcp, 'update_cells', { sheet_id: sheetId, updates, idempotency_key: 'e2e-bt-1' }))
+  expect(await call(mcp, 'change_rows', { action: 'update', sheet_id: sheetId, updates, idempotency_key: 'e2e-bt-1' }))
     .toEqual({ updated: 2, replayed: true, changed: [expect.objectContaining({
       sheet_id: sheetId, columns: ['val'], rows: 2, row_ids: updates.map((u: { row_id: string }) => u.row_id) })] })
 

@@ -6,7 +6,7 @@ import { COLUMN_DELETE_WAIT_MS, MAX_SHEET_NAME_LENGTH, MAX_TABLE_NAME_LENGTH } f
 import { MAX_COLUMN_DESCRIPTION_CHARS, MAX_SHEET_DESCRIPTION_CHARS } from '../lib/constants-columns';
 import { ROW_COUNT_API_WAIT_MS } from '../lib/constants-row-counts';
 import { op, type RouteDoc } from './route-doc';
-import { toolBody } from './tool-schemas';
+import { SORT_FIELDS } from '../mcp/tools-sheet-sort';
 
 const tableName = z.string().max(MAX_TABLE_NAME_LENGTH).describe('The table name.');
 const sheetName = z.string().max(MAX_SHEET_NAME_LENGTH);
@@ -40,7 +40,8 @@ export const tableRoutes = (): RouteDoc[] => [
     summary: 'List the tables with their sheets, ids and row counts.',
     description: `A sheet whose rows changed is counted again first, waiting up to ${ROW_COUNT_API_WAIT_MS / 1000} `
       + 'seconds. One still being counted then answers its last count with row_count_updating: true: it may be out '
-      + 'of date.',
+      + 'of date. Each table says whether the user starred it (starred) and when they last opened it in the app '
+      + '(last_opened_at, null until then).',
   }),
   op({
     method: 'post', path: '/tables', operationId: 'createTable', tag: 'tables', scope: 'write',
@@ -56,8 +57,13 @@ export const tableRoutes = (): RouteDoc[] => [
   }),
   op({
     method: 'patch', path: '/tables/{id}', operationId: 'renameTable', tag: 'tables', scope: 'write',
-    summary: 'Rename a table.',
-    body: z.object({ name: tableName }),
+    summary: 'Rename a table, star it, or both.',
+    description: 'Send name, starred or both. A starred table is listed under Favorites on the home. Answers the '
+      + 'table\'s id, name and starred.',
+    body: z.object({
+      name: tableName.optional(),
+      starred: z.boolean().optional().describe('true stars the table, false removes its star.'),
+    }),
   }),
   op({
     method: 'delete', path: '/tables/{id}', operationId: 'deleteTable', tag: 'tables', scope: 'write',
@@ -103,8 +109,8 @@ export const tableRoutes = (): RouteDoc[] => [
   }),
   op({
     method: 'post', path: '/sheets/{id}/sort', operationId: 'sortSheet', tag: 'tables', scope: 'write',
-    summary: 'Sort the rows by a column, for good. The new order is saved.',
-    body: toolBody('sort_sheet', { omit: ['sheet_id'] }),
+    summary: 'Sort the rows by a column: the rows move, and the new order is saved.',
+    body: z.object(SORT_FIELDS),
   }),
   op({
     method: 'post', path: '/sheets/{id}/copy', operationId: 'copySheet', tag: 'tables', scope: 'write',

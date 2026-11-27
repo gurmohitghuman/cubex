@@ -6,7 +6,7 @@ import { seedLeads } from './helpers-dedupe'
 
 // Auto-dedupe through every way a row arrives that isn't the grid: a webhook
 // delivery whose key is already there isn't kept (the delivery says so); REST
-// append_rows, update_cells and a CSV import say which rows went, keep oldest
+// append_rows, change_rows' update and a CSV import say which rows went, keep oldest
 // and keep newest; the rows go to one trash batch a day that the trash lists by
 // how; MCP remove_duplicates' keep_doing and get_sheet; turning it off.
 

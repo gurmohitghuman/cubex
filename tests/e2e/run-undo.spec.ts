@@ -104,7 +104,7 @@ test('an HTTP API run whose main column was deleted: an undo reads column null, 
   const runId = (await start.json()).run_id as string
   await waitForTerminal(v1, `/api/v1/http-runs/${runId}`)
   const client = await mcpClient(token)
-  await call(client, 'delete_column', { sheet_id: sheetId, column: 'Main' })
+  await call(client, 'manage_column', { action: 'delete', sheet_id: sheetId, column: 'Main' })
   const dry = await call(client, 'control_run', { action: 'undo', run_type: 'http', run_id: runId, dry_run: true })
   expect(dry).toMatchObject({ run_id: runId, column: null, can_undo: true })
   const out = await call(client, 'control_run', { action: 'undo', run_type: 'http', run_id: runId })

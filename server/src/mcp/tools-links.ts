@@ -3,7 +3,7 @@
 // passing through the agent's context. The agent gets a one-time link
 // (lib/file-links.ts) and moves the file with the curl command that comes with
 // it (routes/file-links.ts). Each action needs only what the token can already do:
-// write to import (as import_csv), read to export (as read_rows).
+// write to import (as import_csv), read to export (as read_rows' format csv).
 import { verifySheetOwnership } from '../lib/sql-helpers';
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/server';

@@ -59,18 +59,18 @@ test('transfer edges: ghost webhook marker survives; prototype column names are 
   expect(destMeta.columns).toContain(marker)
   expect(destMeta.columns).toContain('val')
 
-  // (2) A real column named "constructor": add_column backfills existing rows
+  // (2) A real column named "constructor": manage_column's add backfills existing rows
   // with an own '' key, so a row appended WITHOUT the key is the sparse case —
   // filters and projections must read own properties only, never the inherited
   // Object.prototype member.
   const added = parsed(await client.callTool({
-    name: 'add_column', arguments: { sheet_id: sourceId, name: 'constructor' },
+    name: 'manage_column', arguments: { action: 'add', sheet_id: sourceId, name: 'constructor' },
   }))
   expect(added).toBeTruthy()
   const sourceRows = parsed(await client.callTool({ name: 'read_rows', arguments: { sheet_id: sourceId } }))
   await client.callTool({
-    name: 'update_cells',
-    arguments: { row_id: sourceRows.rows[0].id, data: { constructor: 'present' } },
+    name: 'change_rows',
+    arguments: { action: 'update', row_id: sourceRows.rows[0].id, data: { constructor: 'present' } },
   })
   const appended = parsed(await client.callTool({
     name: 'append_rows', arguments: { sheet_id: sourceId, rows: [{ val: 'sparse' }] },

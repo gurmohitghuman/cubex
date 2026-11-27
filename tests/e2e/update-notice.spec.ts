@@ -39,7 +39,7 @@ test('a tab open across an update says so once; Later puts it away; Reload loads
   await page.getByRole('button', { name: 'Later' }).click()
   await expect(page.getByText(NOTICE)).toHaveCount(0)
   // More answers naming the new build: once the tab has handled them all, still no second notice.
-  await page.getByRole('link', { name: 'Agent access' }).click()
+  await page.getByRole('navigation', { name: 'Settings sections' }).getByRole('link', { name: 'Agent access' }).click()
   await page.waitForLoadState('networkidle')
   await expect(page.getByRole('heading', { name: 'Connect an AI agent' })).toBeVisible()
   await expect(page.getByText(NOTICE)).toHaveCount(0)

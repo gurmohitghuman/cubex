@@ -51,7 +51,8 @@ test('a kept-out row says why: read_rows, check_run_condition and the grid\'s pa
   await page.keyboard.press('Escape')
 
   // Its Tier filled since: it passes now, and the panel says a run would fill it.
-  await call(client, 'update_cells', { sheet_id: sheetId, updates: [{ row_id: read.rows[1].id, data: { Tier: 'A' } }] })
+  await call(client, 'change_rows', {
+    action: 'update', sheet_id: sheetId, updates: [{ row_id: read.rows[1].id, data: { Tier: 'A' } }] })
   await page.reload()
   await expect(page.locator('.ag-row[row-index="0"]').first()).toBeVisible({ timeout: 15_000 })
   await cellOf(page, await colId(page, 'Fit (Output)'), 1).click()

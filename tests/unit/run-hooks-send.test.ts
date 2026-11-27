@@ -14,6 +14,7 @@ import redactMod from '../../server/src/lib/redact'
 import dispatchMod from '../../server/src/services/run-hooks-dispatch'
 import hooksMod from '../../server/src/services/run-hooks'
 import constMod from '../../server/src/lib/constants-run-hooks'
+import { passed } from './ends-on-its-own'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { encrypt } = cryptoMod as typeof import('../../server/src/lib/crypto')
@@ -162,6 +163,6 @@ async function main() {
 
   if (failures > 0) { console.error(`\n${failures} assertion(s) failed.`); process.exit(1) }
   console.log('\nrun hooks send: all passed')
-  process.exit(0)
+  passed()
 }
 main().catch(e => { console.error(e); process.exit(1) })

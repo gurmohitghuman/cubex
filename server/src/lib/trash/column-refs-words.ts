@@ -68,8 +68,8 @@ export function droppedEntry(ref: DroppedRef, name: string, old: string, s: RefS
     case 'auto_run_input':
       return w(`column ${q(ref.column)}`, `the auto-run of ${q(ref.column)} reads ${q(old)}, and waits until a `
         + `column named ${q(old)} is back`, by(s, {
-        mcp: `rename_column ${q(name)} to ${q(old)} once that name is free, or set ${q(ref.column)} up to read `
-          + q(name),
+        mcp: `manage_column rename ${q(name)} to ${q(old)} once that name is free, or set ${q(ref.column)} up to `
+          + `read ${q(name)}`,
         rest: `PATCH ${sheetPath}/columns/:name to rename ${q(name)} to ${q(old)} once that name is free, or set `
           + `${q(ref.column)} up to read ${q(name)}`,
         app: `Rename it back to ${q(old)} once that name is free, or set ${q(ref.column)} up to read ${q(name)}.` }));

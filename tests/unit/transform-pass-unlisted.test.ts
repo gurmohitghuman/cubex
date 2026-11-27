@@ -21,7 +21,7 @@ import trashMod from '../../server/src/services/trash-rows'
 import { columnTrashKit } from './column-trash-kit'
 import { transformPageFault } from './transform-page-fault'
 import { moved } from './transform-pass-words'
-import { toTheEnd } from './transform-to-end'
+import { caughtUp, toTheEnd } from './transform-to-end'
 const { transformColumn } = transformMod as typeof import('../../server/src/services/column-transform')
 const { renameSheetColumn } = renameMod as typeof import('../../server/src/services/column-rename')
 const { addSheetColumn } = addMod as typeof import('../../server/src/services/column-add')
@@ -45,6 +45,7 @@ const unlisted = (id: string) => db.prepare(`SELECT DISTINCT je.key FROM rows r,
   WHERE r.sheet_id = ? AND je.key NOT IN (SELECT value FROM json_each((SELECT column_order FROM sheets
   WHERE id = r.sheet_id)))`).pluck().all(id)
 async function stopped(sheetId: string, t: string, params = call(sheetId, t)): Promise<string> {
+  await caughtUp()
   fault.arm(251)
   try {
     const out = await transformColumn(uid, params)
@@ -95,7 +96,7 @@ async function main() {
       await drop(id)
       assert.ok('ok' in addSheetColumn(id, uid, 'T'))
       const rows = db.prepare('SELECT count(*) FROM rows WHERE sheet_id = ?').pluck().get(id)
-      assert.deepEqual(await transformColumn(uid, upper(id)), { ok: { updated: rows, created_column: null } })
+      assert.deepEqual(await toTheEnd(uid, upper(id)), { ok: { updated: rows, created_column: null } })
       assert.deepEqual(passes(id), [])
     })
     await ok(`${how} keeping S, without T: S renamed T takes S's pass along, no key left unlisted`, async () => {
@@ -133,7 +134,7 @@ async function main() {
     const refused = await transformColumn(uid, { ...upper(id), cursor })
     assert.ok('fail' in refused && refused.fail === 'invalid', JSON.stringify(refused))
     assert.equal(passes(id).length, 1, 'the refused call deleted the pass')
-    assert.deepEqual(await transformColumn(uid, upper(id)), { ok: { updated: ROWS, created_column: 'T' } })
+    assert.deepEqual(await toTheEnd(uid, upper(id)), { ok: { updated: ROWS, created_column: 'T' } })
     assert.deepEqual(passes(id), [])
   })
   const source = sheet(['X'], Array.from({ length: ROWS }, (_, i) => ({ X: `x${i}` })))

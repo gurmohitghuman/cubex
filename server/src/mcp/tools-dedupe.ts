@@ -49,7 +49,7 @@ export function registerDedupeTool(server: McpServer, ctx: McpAuthCtx): void {
       + 'match, keep: oldest (default: the new row is not kept) or newest (it replaces the older ones) }; rows '
       + 'already there stay, and false turns it off. '
       + 'Refused while a run is active on the sheet. Prefer it over read_rows plus '
-      + `delete_rows. ${GUIDE_POINTER}`,
+      + `change_rows delete. ${GUIDE_POINTER}`,
     inputSchema: z.object({
       ...REMOVE_DUPLICATES_INPUT,
       columns: REMOVE_DUPLICATES_INPUT.columns.optional()

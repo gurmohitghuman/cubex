@@ -2,12 +2,13 @@ import { db } from './db';
 import { oneTransaction } from './slices';
 import { jsonPath } from './sql-rows';
 import { eachRowIdSlice, sheetRowIds } from './row-order';
+import { rowBytesWithKept } from './slice-bytes';
 import { CELL_HAS_VALUE_SQL, PLACEHOLDER } from './run-markers';
 import { journalSeed, type RunRef } from './run-undo/journal';
 import { clearBackFor, KEPT_EMPTY_SQL, KEPT_VALUE_SQL } from './run-undo/clear-back';
 import { derivedReaderCount, derivedReaderIds } from './autorun-mark';
 import { kickSpanReaders, tellDerivedSpan } from './derived-spans';
-import { HEAVY_SLICE_ROWS, PLACEHOLDER_CLEAR_BACK_ROWS } from './constants';
+import { HEAVY_SLICE_BYTES, HEAVY_SLICE_ROWS, PLACEHOLDER_CLEAR_BACK_ROWS } from './constants';
 import { sliceClock } from './slice-clock';
 import { FIRST_TIMED_PAGE, pageByTime } from '../services/derived-write';
 
@@ -15,8 +16,8 @@ import { FIRST_TIMED_PAGE, pageByTime } from '../services/derived-write';
 // seeded on every target row at run start, replaced by each processed row, and
 // cleared from whatever is left when a run is cancelled or fails (each such
 // cell back to what it held before the run). On a sheet of a million rows both
-// are heavy, so they work HEAVY_SLICE_ROWS rows at a time, one short
-// transaction each (lib/slices.ts): the server keeps answering, and SQLite's
+// are heavy, so they work HEAVY_SLICE_ROWS rows at a time (fewer as fit
+// HEAVY_SLICE_BYTES), one short transaction each (lib/slices.ts): the server keeps answering, and SQLite's
 // write lock is free between slices for autosave, webhooks and workers.
 export { PLACEHOLDER };
 
@@ -47,7 +48,9 @@ export { PLACEHOLDER };
 // clear from the ⏳. They start on the spans once the clear has ended (it
 // kicks them in the API process: lib/run-placeholders.ts; a run worker's
 // clear, a failed run's, leaves them to the auto-run sweep). A slice is
-// HEAVY_SLICE_ROWS rows. On the server's thread each slice commits with
+// HEAVY_SLICE_ROWS rows, or fewer as fit HEAVY_SLICE_BYTES (lib/row-order.ts:
+// rows holding big cells, counted with the old values the journal puts back:
+// a row holding only ⏳ grows by them). On the server's thread each slice commits with
 // SQLite's own checkpoint off, its WAL copied back on the checkpoint worker's
 // thread (lib/bulk-slices.ts); on a job thread it is checkpointed after it
 // when columns read these from the start (lib/row-order.ts). Journal lookups
@@ -112,7 +115,13 @@ export async function clearProcessingPlaceholders(
     });
     afterSlice?.();
     return took;
-  }, { rows: readers > 0 ? readRows : sliceRows(false), checkpointed: readers > 0 });
+  }, {
+    rows: readers > 0 ? readRows : sliceRows(false), checkpointed: readers > 0,
+    // Putting values back reads each row's journaled cells (JSON parsed per cell) as well as writing them: half the
+    // bytes a slice may write (at 8 MB a Windows runner's slice held the event loop 280 ms).
+    sizes: back && restoring > 0 ? (ids, json) => rowBytesWithKept(ids, json, back.undoId) : undefined,
+    bytes: back && restoring > 0 ? HEAVY_SLICE_BYTES / 2 : undefined,
+  });
   bump.run(sheetId, userId);
   // A run's clear kicks its readers once the run lets its columns go (lib/run-placeholders.ts).
   if (!run) kickSpanReaders(sheetId);
@@ -132,7 +141,8 @@ export async function clearProcessingPlaceholders(
 // finishes). Telling reads the slice's cells once more (a third or more of the
 // slice's time), so while columns read these a slice takes as many rows as fit
 // BULK_SLICE_MS at the last such slice's pace (pageByTime), up to
-// HEAVY_SLICE_ROWS; without readers a slice is HEAVY_SLICE_ROWS rows.
+// HEAVY_SLICE_ROWS; without readers a slice is HEAVY_SLICE_ROWS rows. Either
+// way no more than fit HEAVY_SLICE_BYTES (lib/row-order.ts).
 export async function seedProcessingPlaceholders(args: {
   run: RunRef; sheetId: string; userId: string; columns: string[];
   targets: number[] | null; lastRow: number; skip?: Set<number>; live: () => boolean;
@@ -172,6 +182,7 @@ export async function seedProcessingPlaceholders(args: {
     });
     if (told) toldPage = pageByTime(took, sliceClock() - began);
     return took;
-  });
+  // Each row's old cells go into the journal as the row is rewritten: half the bytes a slice may write.
+  }, { bytes: HEAVY_SLICE_BYTES / 2 });
   return !stopped;
 }

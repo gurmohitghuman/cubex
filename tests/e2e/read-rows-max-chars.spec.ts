@@ -36,7 +36,7 @@ async function longCells() {
   }
   const rw = await mcpClient(await makeAccessToken(api, ['read', 'write'], 'max chars rw'))
   const ids: string[] = (await call(rw, 'read_rows', { sheet_id: sheetId })).rows.map((r: Row) => r.id)
-  await call(rw, 'update_cells', { sheet_id: sheetId, updates: [
+  await call(rw, 'change_rows', { action: 'update', sheet_id: sheetId, updates: [
     { row_id: ids[0], data: { Notes: 'n'.repeat(500), Json: JSON_TEXT } },
     { row_id: ids[1], data: { Notes: EMOJI } }, { row_id: ids[2], data: { Notes: 'short' } },
   ] })
@@ -196,7 +196,7 @@ test('max_chars_per_cell with include_status: a run cell\'s value or error cut, 
     response_mapping: [{ json_path: '$.title', column_name: 'Title' }], master_column_name: 'Lookup',
   })
   expect((await pollTerminal(client, started.run_id)).status).toBe('completed')
-  await call(client, 'update_cells', { row_id: ids[0], data: { Title: 't'.repeat(40) } })
+  await call(client, 'change_rows', { action: 'update', row_id: ids[0], data: { Title: 't'.repeat(40) } })
 
   const columns = ['val', 'Lookup', 'Title']
   const page = await call(client, 'read_rows', { sheet_id: sheetId, include_status: true, columns,

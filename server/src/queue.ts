@@ -15,6 +15,7 @@ import type { RecoveredRuns } from './lib/orphan-runs';
 import { clearRunPlaceholders } from './lib/run-placeholders';
 import { dropRunSpans } from './lib/derived-spans';
 import { jobsDbInWal } from './lib/jobs-db';
+import { walWatchReady } from './lib/wal-watch';
 import { closeJobInserts, enqueueJob, startJobInserts } from './lib/job-inserts';
 
 const REPO_ROOT = path.resolve(__dirname, '../..');
@@ -66,6 +67,9 @@ export function startQueue(): Promise<void> {
 }
 
 async function startSidequest(): Promise<void> {
+  // Its process and that process's job threads inherit the WAL watch's mark only once the checkpoint worker is up
+  // (lib/wal-watch.ts): decided before the fork.
+  await walWatchReady();
   // In WAL mode before any of the queue's connections opens it (lib/jobs-db.ts).
   await jobsDbInWal(JOBS_DB_PATH);
   await Sidequest.start({

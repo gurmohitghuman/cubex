@@ -2,13 +2,15 @@
 // Restoring a batch of deleted rows (lib/trash/restore-rows.ts says where they
 // go and how their cells come back): the app's Trash page and its "Restore" on
 // a delete's toast, POST /api/v1/trash/:id/restore and MCP restore_from_trash.
-// The whole batch, or rows picked from it (a few found by a search).
+// The whole batch, or rows picked from it (a few found by a search), in slices
+// sized by bytes either way; the picks are kept on the item while they go.
 //
 // It is the sheet's heavy operation while it runs (lib/sheet-busy.ts), refused
 // while a run is active there, as a delete is. The item is 'restoring' with how
-// many rows are back, so a restart goes on (resumeTrashRestores); one that had
-// put none back yet goes back to the trash as it was. Auto-run leaves restored
-// rows alone (they come back as they were), and open tabs reload once they're in.
+// many rows are back (and which go, when picked), so a restart goes on
+// (resumeTrashRestores); one that had put none back yet goes back to the trash
+// as it was. Auto-run leaves restored rows alone (they come back as they were),
+// and open tabs reload once they're in.
 // Each transaction reads, then writes: it takes the write lock first
 // (.immediate()), or a write landing between its read and its first write
 // (another connection: a worker, the lookup thread) fails it with SQLITE_BUSY.
@@ -93,8 +95,8 @@ export async function restoreRows(
       if (!picks) rows = now.row_count;
       const start = old ? null : nextRowIndex(sheetId, userId);
       through = start === null ? topOf(now, picks) : start + rows - 1;
-      db.prepare("UPDATE trash_items SET state = 'restoring', restore_at = ?, restored = 0 WHERE id = ?")
-        .run(start, itemId);
+      db.prepare(`UPDATE trash_items SET state = 'restoring', restore_at = ?, restored = 0, restore_picks = ?
+        WHERE id = ?`).run(start, picks ? JSON.stringify(picks) : null, itemId);
       plan = planColumns(sheetId, userId, item);
     }).immediate();
     if (!plan) return { fail: 'conflict', message: 'This batch is already being restored or deleted.' };
@@ -106,21 +108,12 @@ export async function restoreRows(
     } });
     try {
       await autorunSkipRestore(sheetId, userId, through);
-      if (picks) {
-        // Picked rows: one transaction, the batch back to 'kept' with it.
-        const p = picks;
-        db.transaction(() => {
-          restoreSlice(itemId, sheetId, userId, columns, TRASH_RESTORE_PICK_MAX, p);
-          finishRestore(itemId, sheetId, userId);
-        }).immediate();
-        return answer('restored');
-      }
     } catch (error) {
       // No row is back yet: the batch goes back to the trash as it was.
       db.transaction(() => backToTrash(itemId, sheetId, userId)).immediate();
       throw error;
     }
-    const rest = () => carryOn(itemId, sheetId, userId, columns);
+    const rest = () => carryOn(itemId, sheetId, userId, columns, picks);
     if (rows > TRASH_RESTORE_WAIT_ROWS) {
       continueInBackground(sheetId, WHAT, rest);
       return answer('restoring');
@@ -149,15 +142,18 @@ function topOf(item: TrashItem, picks: number[] | null): number {
     AND seq IN (SELECT value FROM json_each(?))`).pluck().get(item.id, JSON.stringify(picks)) as number;
 }
 
-// The rest of a whole batch, slice by slice; a failure keeps the sheet busy
-// and tries again (lib/sheet-busy.ts), so the rows never stay half back.
-async function carryOn(itemId: number, sheetId: string, userId: string, plan: ColumnPlan): Promise<void> {
+// The rest of a whole batch, or of the rows picked from it, slice by slice; a
+// failure keeps the sheet busy and tries again (lib/sheet-busy.ts), so the rows
+// never stay half back.
+async function carryOn(
+  itemId: number, sheetId: string, userId: string, plan: ColumnPlan, picks: number[] | null,
+): Promise<void> {
   try {
     await runInCheckpointedSlices(() =>
-      restoreSlice(itemId, sheetId, userId, plan, TRASH_SLICE_ROWS, null) > 0);
+      restoreSlice(itemId, sheetId, userId, plan, TRASH_SLICE_ROWS, picks) > 0);
     db.transaction(() => finishRestore(itemId, sheetId, userId)).immediate();
   } catch (error) {
-    stayBusyToFinish(sheetId, WHAT, () => carryOn(itemId, sheetId, userId, plan));
+    stayBusyToFinish(sheetId, WHAT, () => carryOn(itemId, sheetId, userId, plan, picks));
     throw error;
   }
 }
@@ -173,7 +169,10 @@ function finishRestore(itemId: number, sheetId: string, userId: string): void {
   logSheetChange(sheetId, userId, 'rows_restored', `Restored ${countOf(it.restored, 'row')} ${where}`,
     { detail: { rows: it.restored, trash_id: itemId, place: it.restore_at === null ? 'old' : 'end' } });
   if (it.row_count <= 0) db.prepare('DELETE FROM trash_items WHERE id = ?').run(itemId);
-  else db.prepare("UPDATE trash_items SET state = 'kept', restore_at = NULL, restored = 0 WHERE id = ?").run(itemId);
+  else {
+    db.prepare(`UPDATE trash_items SET state = 'kept', restore_at = NULL, restored = 0, restore_picks = NULL
+      WHERE id = ?`).run(itemId);
+  }
   // Auto-run's fence went to the top place reserved; past the last row it
   // would pass over rows appended next (a picked row of the batch deleted again).
   autorunRowsRemoved(sheetId, userId);
@@ -182,12 +181,14 @@ function finishRestore(itemId: number, sheetId: string, userId: string): void {
 // A restore that put no row back: the batch is kept again, and auto-run's
 // fence drops back to the last row there.
 function backToTrash(itemId: number, sheetId: string, userId: string): void {
-  db.prepare("UPDATE trash_items SET state = 'kept', restore_at = NULL, restored = 0 WHERE id = ?").run(itemId);
+  db.prepare(`UPDATE trash_items SET state = 'kept', restore_at = NULL, restored = 0, restore_picks = NULL
+    WHERE id = ?`).run(itemId);
   autorunRowsRemoved(sheetId, userId);
 }
 
-// At boot: a restore a restart cut short goes on; one that had put no row back
-// yet goes back to the trash as it was (the fence follows the rows there).
+// At boot: a restore a restart cut short goes on (rows picked: those picks); one
+// that had put no row back yet goes back to the trash as it was (the fence
+// follows the rows there).
 // Columns too (trash-restore-column.ts).
 export function resumeTrashRestores(): void {
   resumeColumnRestores();
@@ -202,7 +203,8 @@ export function resumeTrashRestores(): void {
     whenSheetFree(sheetId, WHAT, async reserve => {
       const plan = db.transaction(() => planColumns(sheetId, item.user_id, item)).immediate();
       reserve(item.restore_at === null ? (item.top_index ?? 0) + 1 : item.restore_at + item.restored + item.row_count);
-      await carryOn(item.id, sheetId, item.user_id, plan);
+      await carryOn(item.id, sheetId, item.user_id, plan,
+        item.restore_picks === null ? null : JSON.parse(item.restore_picks) as number[]);
     }).catch(err => console.error(`Restoring trash batch ${item.id} failed:`, err));
   }
 }

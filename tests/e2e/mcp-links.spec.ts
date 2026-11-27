@@ -102,8 +102,9 @@ test('a download link saves the picked rows once; HEAD leaves it unused', async 
   expect(got.headers()['content-type']).toBe('text/csv; charset=utf-8')
   expect(got.headers()['content-disposition']).toMatch(/^attachment;/)
   expect(got.headers()['cache-control']).toBe('private, no-store')
-  // The same bytes export_csv returns inline for the same filter.
-  const inline = parseResult(await client.callTool({ name: 'export_csv', arguments: { sheet_id: sheetId, where } }))
+  // The same bytes read_rows' format csv returns inline for the same filter.
+  const inline = parseResult(await client.callTool({ name: 'read_rows', arguments: {
+    format: 'csv', sheet_id: sheetId, where } }))
   expect(await got.text()).toBe(inline.csv)
   expect(inline.csv).toBe('"val"\r\n"v0"\r\n"v2"')
   expect((await http.get(link.download_url)).status()).toBe(404)

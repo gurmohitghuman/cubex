@@ -9,6 +9,7 @@
 // job queue only records.
 import assert from 'node:assert/strict'
 import { startStandIn, world, PRICED } from './ai-spend-kit'
+import { passed } from './ends-on-its-own'
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 
@@ -70,4 +71,4 @@ await ok('an empty webhook_id or an estimate_only the start refuses, sent with a
 
 stand.close()
 w.done()
-process.exit(0)
+passed()

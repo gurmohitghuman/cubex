@@ -43,26 +43,32 @@ test('the home shows a table\'s rows; after rows are added and deleted, the last
     await expect(count.getByLabel('Updating')).toHaveCount(0)
   })
 
-// A 429 (the account already holds its waits for counts: other tabs of the home) leaves the counts marked as
-// updating, since they are: the page doesn't show them as final.
-test('a refused wait for the new counts keeps them marked as updating', async ({ page, context }) => {
-  const api = await authedApi()
-  await context.addCookies((await api.storageState()).cookies)
-  const { tableId, sheetId } = await seedSheet(api, 4)
-  const count = page.locator(`[data-testid="table-row-count"][data-table-id="${tableId}"]`)
-  await page.goto(`${BASE}/`)
-  await expect(count).toHaveText('4', { timeout: 15_000 })
+// A 429 (the account already holds its waits for counts: other tabs of the home) shows the last counts plainly, with
+// no spinner that never ends, and the page asks again after the answer's Retry-After: then the new count shows.
+test('a refused wait for the new counts shows them plainly, then asks again and shows the new one',
+  async ({ page, context }) => {
+    test.setTimeout(60_000)
+    const api = await authedApi()
+    await context.addCookies((await api.storageState()).cookies)
+    const { tableId, sheetId } = await seedSheet(api, 4)
+    const count = page.locator(`[data-testid="table-row-count"][data-table-id="${tableId}"]`)
+    await page.goto(`${BASE}/`)
+    await expect(count).toHaveText('4', { timeout: 15_000 })
 
-  expect((await api.post(`/api/sheets/${sheetId}/rows`, { data: { count: 2 } })).ok()).toBeTruthy()
-  await page.route('**/api/tables/row-counts', route =>
-    route.fulfill({ status: 429, json: { error: 'Too many home pages are open. Close one, then reload this page.' } }))
-  const refused = page.waitForResponse(r => new URL(r.url()).pathname === '/api/tables/row-counts')
-  await page.goto(`${BASE}/`)
-  expect((await refused).status()).toBe(429)
-  await expect(count).toHaveText('4')
-  // After the refusal, as the page has it: still marked, no other count asked for.
-  await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))))
-  await expect(count.getByLabel('Updating')).toBeVisible()
-  await expect(count).toHaveAttribute('title', 'Counting the rows again')
-})
-
+    expect((await api.post(`/api/sheets/${sheetId}/rows`, { data: { count: 2 } })).ok()).toBeTruthy()
+    let asked = 0
+    await page.route('**/api/tables/row-counts', route => {
+      if (++asked > 1) return route.continue()
+      return route.fulfill({ status: 429, headers: { 'Retry-After': '2' },
+        json: { error: 'Too many home pages are open. Close one, then reload this page.' } })
+    })
+    const refused = page.waitForResponse(r => new URL(r.url()).pathname === '/api/tables/row-counts')
+    await page.goto(`${BASE}/`)
+    expect((await refused).status()).toBe(429)
+    await expect(count).toHaveText('4')
+    await expect(count.getByLabel('Updating')).toHaveCount(0)
+    await expect(count).not.toHaveAttribute('title', 'Counting the rows again')
+    // Asked again after Retry-After, this time let through.
+    await expect(count).toHaveText('6', { timeout: 15_000 })
+    expect(asked).toBe(2)
+  })

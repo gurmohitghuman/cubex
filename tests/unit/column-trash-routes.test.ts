@@ -85,7 +85,7 @@ await ok("MCP: restore_from_trash without 'secrets' fails that item as forbidden
     const back = await withSecrets.call('restore_from_trash', { trash_ids: [id] })
     assert.equal(back.body.results[0].restored.setup.restored, true, JSON.stringify(back.body))
     assert.deepEqual(order(sid), ['Email', 'Sync'])
-    const del = await without.call('delete_column', { sheet_id: sid, column: 'Email' })
+    const del = await without.call('manage_column', { action: 'delete', sheet_id: sid, column: 'Email' })
     assert.deepEqual([del.body.deleted, del.body.trash.state], [true, 'kept'])
     const viaApp = await without.app('DELETE', `/sheets/${sheet(['A', 'B'], [{ A: 1, B: 2 }])}/columns/B`)
     assert.deepEqual(viaApp.body, { message: 'Column deleted successfully',

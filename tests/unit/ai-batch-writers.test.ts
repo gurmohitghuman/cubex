@@ -15,6 +15,7 @@ import migMod from '../../server/src/db/migrate'
 import mcpMod from '../../server/src/mcp/build-server'
 import formulaMod from '../../server/src/routes/api-v1-formula'
 import conditionsMod from '../../server/src/routes/api-v1-run-conditions'
+import { passed } from './ends-on-its-own'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { buildMcpServer } = mcpMod as typeof import('../../server/src/mcp/build-server')
@@ -98,5 +99,5 @@ main()
   .finally(() => {
     if (failures) { console.log(`\n${failures} failure(s)`); process.exit(1) }
     console.log('All ai-batch-writers assertions passed.')
-    process.exit(0)
+    passed()
   })

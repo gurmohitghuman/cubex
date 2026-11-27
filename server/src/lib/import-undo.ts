@@ -1,5 +1,6 @@
 import { db } from './db';
-import { HEAVY_SLICE_ROWS, RESULTS_SLICE_ROWS } from './constants';
+import { HEAVY_SLICE_BYTES, HEAVY_SLICE_ROWS, RESULTS_SLICE_ROWS } from './constants';
+import { keysWithinBytes } from './slice-bytes';
 import { asBulkWriter, runInCheckpointedSlices } from './bulk-slices';
 import { stayBusyToFinish, whenSheetFree } from './sheet-busy';
 import { autorunAfterReplace, autorunDropPending, autorunRowsRemoved } from './autorun-mark';
@@ -24,16 +25,18 @@ export interface ImportJob {
   first_row: number; end_row: number; columns: string;
 }
 
-// Deletes the sheet's rows with first <= row_index < end, a slice at a time, the WAL copied back on the checkpoint
-// worker's thread (lib/bulk-slices.ts), as the results below.
+// Deletes the sheet's rows with first <= row_index < end, a slice at a time (HEAVY_SLICE_ROWS, or fewer as fit
+// HEAVY_SLICE_BYTES: lib/slice-bytes.ts), the WAL copied back on the checkpoint worker's thread
+// (lib/bulk-slices.ts), as the results below.
 export async function deleteRowRange(sheetId: string, userId: string, first: number, end: number): Promise<void> {
-  const slice = db.prepare(`
-    DELETE FROM rows WHERE rowid IN (
-      SELECT rowid FROM rows WHERE sheet_id = ? AND user_id = ? AND row_index >= ? AND row_index < ?
-      ORDER BY row_index LIMIT ?
-    )`);
+  const next = db.prepare(`SELECT rowid, octet_length(data) FROM rows WHERE sheet_id = ? AND user_id = ?
+    AND row_index >= ? AND row_index < ? ORDER BY row_index LIMIT ?`).raw();
+  const del = db.prepare(`DELETE FROM rows WHERE rowid IN (SELECT value FROM json_each(?)) AND +sheet_id = ?
+    AND +user_id = ?`);
   await runInCheckpointedSlices(() => {
-    const more = slice.run(sheetId, userId, first, end, HEAVY_SLICE_ROWS).changes > 0;
+    const ids = keysWithinBytes(next.all(sheetId, userId, first, end, HEAVY_SLICE_ROWS) as Array<[number, number]>,
+      HEAVY_SLICE_BYTES);
+    const more = ids.length > 0 && del.run(JSON.stringify(ids), sheetId, userId).changes > 0;
     if (more) rowsChanged(sheetId);
     return more;
   });

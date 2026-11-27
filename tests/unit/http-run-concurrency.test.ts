@@ -10,6 +10,7 @@ import { once } from 'node:events'
 import type { AddressInfo } from 'node:net'
 import express from 'express'
 import { v4 as uuid } from 'uuid'
+import { passed } from './ends-on-its-own'
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 process.env.HTTP_MAX_CONCURRENCY = '20'
@@ -145,5 +146,5 @@ main()
   .finally(() => {
     if (failures) { console.log(`\n${failures} failure(s)`); process.exit(1) }
     console.log('All http-run-concurrency assertions passed.')
-    process.exit(0)
+    passed()
   })

@@ -54,7 +54,8 @@ export const rowRoutes = (): RouteDoc[] => [
     method: 'post', path: '/sheets/{id}/rows/query', operationId: 'queryRows', tag: 'rows', scope: 'read',
     summary: 'Find rows with filters, pick columns, count them, or sum them up by group.',
     body: toolBody('read_rows', {
-      omit: ['sheet_id', 'limit', 'include_status', 'max_chars_per_cell'],
+      // format (csv) is MCP's: this route answers JSON rows.
+      omit: ['sheet_id', 'limit', 'include_status', 'max_chars_per_cell', 'format'],
       extend: {
         limit: rowsPage.shape.limit,
         include_status: z.boolean().optional().describe("true: run columns' cells as {status, value, error}."),

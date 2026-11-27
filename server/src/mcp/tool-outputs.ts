@@ -16,13 +16,12 @@ import * as merged from './outputs/merged';
 
 export const TOOL_OUTPUTS = {
   get_workspace: reads.getWorkspace, get_sheet: reads.getSheet, read_rows: read.readRows,
-  export_csv: read.exportCsv, import_csv: read.importCsv,
+  import_csv: read.importCsv,
   file_link: merged.fileLink,
-  append_rows: rows.appendRows, update_cells: rows.updateCells, delete_rows: rows.deleteRows,
+  append_rows: rows.appendRows, change_rows: rows.changeRows,
   transfer_rows: rows.transferRows, transform_column: rows.transformColumn,
   remove_duplicates: merged.removeDuplicates,
-  add_column: columns.addColumn, set_description: columns.setDescription, rename_column: columns.renameColumn,
-  delete_column: columns.deleteColumn, sort_sheet: columns.sortSheet, set_column_order: columns.setColumnOrder,
+  manage_column: columns.manageColumn,
   manage_table: columns.manageTable, manage_sheet: columns.manageSheet, manage_view: columns.manageView,
   manage_sheet_webhook: columns.manageSheetWebhook,
   run_ai_column: runs.runAiColumn, run_http_enrichment: runs.runHttpEnrichment,

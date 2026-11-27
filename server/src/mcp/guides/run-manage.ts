@@ -24,9 +24,9 @@ export const RUN_MANAGE_GUIDES: Record<string, ToolGuide> = {
         + 'agent or a newer run); cells in rows or columns deleted since count as gone. Nothing runs again and '
         + 'nothing is refunded. A restored cell\'s stored answer is never reused, so running it again bills again.',
       'Clean, formula and lookup columns reading a restored cell work it out again (free); no auto-run starts. Rows '
-        + 'a list enrichment added to another sheet stay (delete_rows removes them). A run still going can\'t be '
-        + 'undone (cancel it first). Newest first: while a newer run that wrote one of its columns can be undone, an '
-        + `older one is refused. Each run once, for ${UNDO_KEEP_DAYS} days after it started.`,
+        + 'a list enrichment added to another sheet stay (change_rows delete removes them). A run still going '
+        + 'can\'t be undone (cancel it first). Newest first: while a newer run that wrote one of its columns can be '
+        + `undone, an older one is refused. Each run once, for ${UNDO_KEEP_DAYS} days after it started.`,
       'Pass run_type and run_id (get_run (action list), get_sheet\'s column_details), or sheet_id and column for '
         + 'that column\'s newest run. An undo needs the write scope (a dry run, read). Returns state and how many '
         + 'cells were restored, skipped and gone; a big undo answers state undoing and goes on in the background (the '

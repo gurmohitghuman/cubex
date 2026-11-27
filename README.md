@@ -101,7 +101,7 @@ curl -fsSL https://raw.githubusercontent.com/gurmohitghuman/cubex/main/install.s
 2. For AI columns, create a key at [openrouter.ai/keys](https://openrouter.ai/keys) (OpenRouter bills you directly for what your runs use). Add it and pick a default model in **Settings → AI**. Cubex never picks a model for you.
 3. For enrichments, add a treg team API key in **Settings → Enrichment**. The [enrichments guide](docs/enrichments.md) walks through it.
 
-Want to look around first? Click **Try with sample data** on the empty dashboard (or in **New Table**). Cubex makes a table of 25 made-up leads, at `.example` addresses so none of them is a real person or company, with a few messy values on purpose. A clean column and a formula column are already filled, for free, and a card above the grid shows the duplicate hiding in the list. The AI column is set up but not run: pick your model and try it on 5 rows. Delete the table when you're done; it goes to the trash like any other.
+Want to look around first? Click **Try with sample data** on the empty dashboard (or **Try the sample** under **New table**'s arrow). Cubex makes a table of 25 made-up leads, at `.example` addresses so none of them is a real person or company, with a few messy values on purpose. A clean column and a formula column are already filled, for free, and a card above the grid shows the duplicate hiding in the list. The AI column is set up but not run: pick your model and try it on 5 rows. Delete the table when you're done; it goes to the trash like any other.
 
 There's one account and no email, so there's no reset link. If you forget the password, run `cubex reset-password` on the computer Cubex runs on. Changing or resetting the password signs out every browser.
 
@@ -305,7 +305,7 @@ A date can be written in a cell as 2024-01-31, 1/31/2024, 31.1.2024, Jan 31, 202
 
 A view saves what you're looking at: its filters and which columns are hidden. Every sheet starts with a **Default** view. Use the bar above the grid to switch views, to add one (it starts as a copy of the one showing), or to rename, describe or delete one. Hide a column from its menu (**Hide column**) or from the **12/15 columns** picker; hiding never deletes anything, and every view shares the same rows and column order.
 
-Two ready-made views are a click away in the view menu: **Rows with errors** (any AI, HTTP API or enrichment column has an error) and **Fully filled rows** (every one of those columns has a result). **Export** then asks whether you want this view (only its rows and visible columns) or the whole sheet. Agents can read through a view too: `read_rows`, `export_csv` and the REST API take its name.
+Two ready-made views are a click away in the view menu: **Rows with errors** (any AI, HTTP API or enrichment column has an error) and **Fully filled rows** (every one of those columns has a result). **Export** then asks whether you want this view (only its rows and visible columns) or the whole sheet. Agents can read through a view too: `read_rows` (as rows or as CSV) and the REST API take its name.
 
 ### Search
 
@@ -331,7 +331,7 @@ To keep the values as they are now, say before running a column again, choose **
 
 ### Trash and history
 
-Deleted rows, sheets and tables go to the trash (the trash can at the top of the dashboard), and so do rows a CSV import replaced, rows removed as duplicates, rows a list enrichment's rerun replaced and rows an agent deleted or moved to another sheet. They stay 30 days, then they're deleted; **Settings, Account** sets the days (0 deletes at once). Right after deleting rows in the grid, **Restore** in the message puts them back.
+Deleted rows, sheets and tables go to the trash (**Trash** in the sidebar), and so do rows a CSV import replaced, rows removed as duplicates, rows a list enrichment's rerun replaced and rows an agent deleted or moved to another sheet. They stay 30 days, then they're deleted; **Settings, Account** sets the days (0 deletes at once). Right after deleting rows in the grid, **Restore** in the message puts them back.
 
 In the trash, search by table, sheet or the access token that deleted something, then restore one item or several. A sheet or table comes back as it was, with its rows, columns, runs, views and webhook. Rows go back to their old places when the sheet hasn't been sorted or replaced since, otherwise to the end of the sheet, and columns they need that the sheet lost come back too. Look inside a batch of rows to find the ones you want by any column and restore only those, or download them as CSV. A deleted column's values aren't kept.
 

@@ -20,6 +20,7 @@ import parseMod from '../../server/src/lib/csv-import-parse'
 import busyMod from '../../server/src/lib/sheet-busy'
 import mcpMod from '../../server/src/mcp/build-server'
 import v1Mod from '../../server/src/routes/api-v1'
+import { passed } from './ends-on-its-own'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { generateAccessToken } = tokenMod as typeof import('../../server/src/lib/access-token')
@@ -101,5 +102,5 @@ async function main() {
 }
 
 main()
-  .then(() => { console.log('All transfer-busy assertions passed.'); process.exit(0) })
+  .then(() => { console.log('All transfer-busy assertions passed.'); passed() })
   .catch(e => { console.log('FAIL', e); process.exit(1) })

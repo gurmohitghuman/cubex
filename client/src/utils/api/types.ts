@@ -10,6 +10,9 @@ import type { HiringView } from './hiring'
 import type { SocialView } from './social'
 import type { SheetTestView } from './sheet-test'
 
+// A table's runs going now and paused, and the first sheet with one (the home's Runs column links to it).
+export interface TableRuns { id: string; running: number; paused: number; sheet_id: string }
+
 export interface Table {
   id: string
   name: string
@@ -19,6 +22,11 @@ export interface Table {
   // GET /tables: the table's rows changed since they were last counted, so row_count is that count and a new one is
   // being made (the home waits for it, useTableRowCounts).
   row_count_updating?: boolean
+  // GET /tables: its runs going now (running counts pending ones) and paused; left out when it has none.
+  runs?: TableRuns
+  // The home's Favorites (the star) and Recent (when the user last opened it here; null until then).
+  starred?: boolean
+  last_opened_at?: string | null
   sheets?: Sheet[]
   // Tab-list fingerprint from GET /tables/:id; seeds the change-poll's tab check.
   sheets_key?: string | null

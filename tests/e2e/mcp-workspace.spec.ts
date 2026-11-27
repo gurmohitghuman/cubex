@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test'
 import { authedApi, seedSheet, makeAccessToken, BASE } from './helpers'
 import { mcpClient, parseResult } from './helpers-run-results'
 
-// Agent conveniences: export_csv,
+// Agent conveniences: read_rows' format csv,
 // list_runs, sheet caps in get_sheet, and the blank-starter-row import fix.
 
 // test6, deliberately: import_csv has a 5/min PER-USER budget (tools-import.ts)
@@ -11,7 +11,7 @@ import { mcpClient, parseResult } from './helpers-run-results'
 // full-suite run. test6 is otherwise used only by mcp-run-results-authz, which
 // imports nothing. Don't move this back to a busy user.
 
-test('export_csv returns the whole sheet in one call', async () => {
+test('read_rows format csv returns the whole sheet in one call', async () => {
   test.setTimeout(90_000)
   const api = await authedApi()
   const { sheetId } = await seedSheet(api, 3)
@@ -19,21 +19,22 @@ test('export_csv returns the whole sheet in one call', async () => {
   const client = await mcpClient(token, 'e2e-workspace')
 
   await client.callTool({
-    name: 'add_column', arguments: { sheet_id: sheetId, name: 'city' },
+    name: 'manage_column', arguments: { action: 'add', sheet_id: sheetId, name: 'city' },
   })
   const rows = parseResult(await client.callTool({
     name: 'read_rows', arguments: { sheet_id: sheetId },
   }))
   await client.callTool({
-    name: 'update_cells',
+    name: 'change_rows',
     arguments: {
+      action: 'update',
       sheet_id: sheetId,
       updates: [{ row_id: rows.rows[0].id, data: { city: 'Berlin' } }],
     },
   })
 
   const csv = parseResult(await client.callTool({
-    name: 'export_csv', arguments: { sheet_id: sheetId },
+    name: 'read_rows', arguments: { format: 'csv', sheet_id: sheetId },
   }))
   expect(typeof csv.csv).toBe('string')
   expect(csv.csv).toContain('city')
@@ -173,7 +174,7 @@ test('import_csv into a fresh sheet drops the blank starter rows', async () => {
   await client.close()
 })
 
-test('export_csv narrows by columns and where — the dogfood A/B-cell task', async () => {
+test('read_rows format csv narrows by columns and where: the dogfood A/B-cell task', async () => {
   test.setTimeout(120_000)
   const api = await authedApi()
   const token = await makeAccessToken(api, ['read', 'write'], 'ws-export-filter')
@@ -196,8 +197,9 @@ test('export_csv narrows by columns and where — the dogfood A/B-cell task', as
 
   // The task that exposed the gap: only cell A, only the columns needed.
   const cellA = parseResult(await client.callTool({
-    name: 'export_csv',
+    name: 'read_rows',
     arguments: {
+      format: 'csv',
       sheet_id: sheetId,
       columns: ['Email', 'Company', 'Subject', 'Body'],
       where: [{ column: 'Test Cell', operator: 'eq', value: 'A' }],
@@ -215,8 +217,9 @@ test('export_csv narrows by columns and where — the dogfood A/B-cell task', as
   expect(lines).toHaveLength(7)  // header + 6
 
   const cellB = parseResult(await client.callTool({
-    name: 'export_csv',
+    name: 'read_rows',
     arguments: {
+      format: 'csv',
       sheet_id: sheetId,
       columns: ['Email', 'Company', 'Subject', 'Body'],
       where: [{ column: 'Test Cell', operator: 'eq', value: 'B' }],
@@ -229,22 +232,22 @@ test('export_csv narrows by columns and where — the dogfood A/B-cell task', as
   // The cost claim, measured rather than asserted: the narrowed export must be
   // materially smaller than the full sheet it replaced.
   const full = parseResult(await client.callTool({
-    name: 'export_csv', arguments: { sheet_id: sheetId },
+    name: 'read_rows', arguments: { format: 'csv', sheet_id: sheetId },
   }))
   expect(full.row_count).toBe(12)
   expect(cellA.csv.length).toBeLessThan(full.csv.length / 2)
 
   // A filter matching nothing is a valid empty result (header only), NOT an error.
   const none = parseResult(await client.callTool({
-    name: 'export_csv',
-    arguments: { sheet_id: sheetId, where: [{ column: 'Test Cell', operator: 'eq', value: 'Z' }] },
+    name: 'read_rows',
+    arguments: { format: 'csv', sheet_id: sheetId, where: [{ column: 'Test Cell', operator: 'eq', value: 'Z' }] },
   }))
   expect(none.row_count).toBe(0)
   expect(none.csv.split('\r\n')).toHaveLength(1)
 
   // A typo'd column is a clean error, not a CSV silently full of blanks.
   const bad = parseResult(await client.callTool({
-    name: 'export_csv', arguments: { sheet_id: sheetId, columns: ['Emial'] },
+    name: 'read_rows', arguments: { format: 'csv', sheet_id: sheetId, columns: ['Emial'] },
   }))
   expect(bad.error).toContain('Unknown column')
 

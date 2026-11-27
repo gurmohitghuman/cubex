@@ -1,5 +1,5 @@
 // The guides of the reading tools (guide.ts says what a guide holds).
-import { FILE_LINK_TTL_MINUTES, ROWS_BY_ID_MAX } from '../../lib/api-v1-constants';
+import { FILE_LINK_TTL_MINUTES, MCP_EXPORT_MAX_CHARS, ROWS_BY_ID_MAX } from '../../lib/api-v1-constants';
 import { CHANGE_LOG_DAYS, MAX_CSV_UPLOAD_BYTES } from '../../lib/constants';
 import { COLUMN_COUNTS_MAX_COLUMNS } from '../../lib/constants-columns';
 import { IMPORT_GARBLED_SAMPLES } from '../../lib/constants-clean';
@@ -31,6 +31,13 @@ export const READ_GUIDES: Record<string, ToolGuide> = {
         + 'updated_since and dedupe by id; deleted rows don\'t show. It takes only columns, include_status, limit '
         + 'and cursor.',
       'max_chars_per_cell cuts long cells and lists them in cut_cells; read those whole with row_ids.',
+      'format csv: Export sheet rows as CSV text. The CSV comes back IN YOUR CONTEXT, so a wide or long sheet is '
+        + 'EXPENSIVE: always pass columns and where. Use it only when you need CSV itself (to hand on or save as it '
+        + 'is); to reason over data, format json is cheaper and pages; for a file of any size, file_link (action '
+        + 'download). '
+        + `At most ${MCP_EXPORT_MAX_CHARS.toLocaleString('en-US')} characters come back: past that the answer says `
+        + 'truncated: true and rest says how to get the others. Values are escaped against spreadsheet formula '
+        + 'injection. It takes only columns (names, not JSON picks), where and view.',
     ],
     fields: {
       columns: COLUMNS_HELP, where: WHERE_LANGUAGE, include_status: INCLUDE_STATUS_HELP, group_by: GROUP_BY_HELP,
@@ -48,7 +55,7 @@ export const READ_GUIDES: Record<string, ToolGuide> = {
       'Also: filling_columns (their cells read "⏳ Processing..." until done), the setups of clean, formula and '
         + 'lookup columns (a lookup\'s broken says why it stopped, and kept_changing why rows it looked up may hold '
         + 'older values), active_runs and active_setup_runs (control_run cancel_all stops them all), views (pass '
-        + 'view to read_rows or export_csv) and auto_dedupe (remove_duplicates\' keep_doing setting, or null).',
+        + 'view to read_rows) and auto_dedupe (remove_duplicates\' keep_doing setting, or null).',
       `history: A sheet's change log, newest first, kept ${CHANGE_LOG_DAYS} days: columns added, renamed and `
         + 'deleted, runs started and stopped, auto-run and "Only run if" changes, default model, clean, formula and '
         + 'lookup columns, views, its webhook, and rows deleted, restored, imported, sorted, moved and deduplicated. '
@@ -60,7 +67,6 @@ export const READ_GUIDES: Record<string, ToolGuide> = {
     ],
   },
   import_csv: { text: ['Fails on columns an active run owns.', GARBLED_HELP] },
-  export_csv: { text: [], fields: { view: VIEW_HELP } },
   file_link: {
     text: [
       `upload: Import a CSV file of any size (up to ${MAX_MB} MB) into a sheet without its contents passing through `

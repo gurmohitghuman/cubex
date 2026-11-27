@@ -163,7 +163,7 @@ export function registerTool<N extends ToolName>(
 // reason back, except tools that only read, that append rows (appends land
 // above the busy operation's reserved range) or that stop runs.
 const RUNS_WHILE_SHEET_BUSY = new Set([
-  'get_sheet', 'read_rows', 'export_csv', 'list_models',
+  'get_sheet', 'read_rows', 'list_models',
   // Runs and setup runs (get_run), and the account's usage of a sheet (get_account).
   'get_run', 'append_rows', 'get_list_fields', 'get_account',
   // The trash, and the change log (get_sheet's history): a column's cells keep moving into the trash after its
@@ -180,7 +180,7 @@ const RUNS_WHILE_SHEET_BUSY = new Set([
   'control_run',
 ]);
 
-// With an idempotency_key, update_cells reads the ledger first: a replay
+// With an idempotency_key, change_rows' update reads the ledger first: a replay
 // writes nothing, and one that would write is refused there, in these words
 // (services/rows-write-keyed.ts; the one-row form's patchRowById checks too).
 // A run start with a key replays its first start, so a retry gets its run_id
@@ -188,7 +188,7 @@ const RUNS_WHILE_SHEET_BUSY = new Set([
 // sheet is refused right after the replay, in these words (run-start-token.ts
 // busyRefusal).
 const KEYED_RUNS_WHILE_SHEET_BUSY = new Set([
-  'update_cells', 'run_ai_column', 'run_http_enrichment', 'run_enrichment', 'waterfall_column',
+  'change_rows', 'run_ai_column', 'run_http_enrichment', 'run_enrichment', 'waterfall_column',
   // A retry answers its first transfer; any other keyed transfer is refused as busy there (rows-transfer.ts).
   'transfer_rows',
 ]);

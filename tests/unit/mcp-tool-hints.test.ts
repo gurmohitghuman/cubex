@@ -60,7 +60,7 @@ async function main() {
     const args: Record<string, Array<[Record<string, unknown>, boolean?]>> = {
       get_workspace: [[{}, true], [{ all_tables: true }, true]],
       get_sheet: [[{ sheet_id: people, include_counts: true }, true], [{ sheet_id: people, history: true }, true]],
-      read_rows: [[{ sheet_id: people }, true]], export_csv: [[{ sheet_id: people }, true]],
+      read_rows: [[{ sheet_id: people }, true], [{ sheet_id: people, format: 'csv' }, true]],
       get_run: [[{ action: 'list', sheet_id: people }, true],
         [{ action: 'status', run_type: 'http', run_id: runId }, true],
         [{ action: 'results', run_type: 'http', run_id: runId }, true], [{ action: 'setup', sheet_id: people }, true]],
@@ -89,23 +89,25 @@ async function main() {
     }
   })
 
-  await check('add_column only adds: a taken name is refused, a new one leaves every cell as it was', async () => {
-    assert.equal(hints.add_column.destructiveHint, false)
+  // manage_column also deletes, so its hint says destructive; its add still only adds.
+  await check('manage_column add only adds: a taken name is refused, a new one leaves every cell alone', async () => {
+    assert.equal(hints.manage_column.destructiveHint, true)
     const before = snapshot()
-    assert.match(await call('add_column', { sheet_id: people, name: 'email' }, ALL), /^ERROR/)
+    assert.match(await call('manage_column', { action: 'add', sheet_id: people, name: 'email' }, ALL), /^ERROR/)
     assert.deepEqual(snapshot(), before)
-    assert.doesNotMatch(await call('add_column', { sheet_id: people, name: 'Phone' }, ALL), /^ERROR/)
+    assert.doesNotMatch(await call('manage_column', { action: 'add', sheet_id: people, name: 'Phone' }, ALL), /^ERROR/)
     assert.deepEqual(snapshot().rows, before.rows)
   })
 
   await check('restore_from_trash only adds: a restored column whose name is taken comes back renamed', async () => {
     assert.equal(hints.restore_from_trash.destructiveHint, false)
     const s = sheet('Restore', ['Name', 'Note'], [{ Name: 'Ann', Note: 'old' }])
-    assert.doesNotMatch(await call('delete_column', { sheet_id: s, column: 'Note' }, ALL), /^ERROR/)
+    assert.doesNotMatch(await call('manage_column', { action: 'delete', sheet_id: s, column: 'Note' }, ALL), /^ERROR/)
     const trashId = db.prepare('SELECT id FROM trash_items WHERE user_id = ? ORDER BY id DESC').pluck().get(uid)
-    assert.doesNotMatch(await call('add_column', { sheet_id: s, name: 'Note' }, ALL), /^ERROR/)
+    assert.doesNotMatch(await call('manage_column', { action: 'add', sheet_id: s, name: 'Note' }, ALL), /^ERROR/)
     const rowId = db.prepare('SELECT id FROM rows WHERE sheet_id = ?').pluck().get(s)
-    assert.doesNotMatch(await call('update_cells', { sheet_id: s, updates: [{ row_id: rowId, data: { Note: 'new' } }] },
+    assert.doesNotMatch(await call('change_rows', {
+      action: 'update', sheet_id: s, updates: [{ row_id: rowId, data: { Note: 'new' } }] },
       ALL), /^ERROR/)
     const before = snapshot()
     assert.doesNotMatch(await call('restore_from_trash', { trash_ids: [trashId] }, ALL), /^ERROR/)

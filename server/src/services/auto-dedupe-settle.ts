@@ -1,6 +1,6 @@
 // Auto-dedupe's checks inside the transaction that adds or edits rows: rows
 // that arrived (a webhook delivery, append_rows, list rows, transfer_rows)
-// and rows a person or an agent typed a new key into (the grid, update_cells).
+// and rows a person or an agent typed a new key into (the grid, change_rows' update).
 // Each row's key is read and stored; when other rows share it, the oldest (or
 // newest) stays and the rest go to the trash. When the keys aren't current
 // yet (being built, or more rows written meanwhile than fit
@@ -111,7 +111,7 @@ function settle(s: AutoDedupe, rids: readonly number[], how: 'arrived' | 'edited
   return { ...out, removed: removal.removed, trashId, seqs, waiting: waits.length };
 }
 
-// Inside an edit's transaction (update_cells): the rows whose key cell it
+// Inside an edit's transaction (change_rows' update): the rows whose key cell it
 // wrote. An edit to other cells leaves a row's key alone, so it isn't checked.
 export function settleEdits(
   sheetId: string, userId: string, edits: ReadonlyArray<{ rid: number; columns: readonly string[] }>,

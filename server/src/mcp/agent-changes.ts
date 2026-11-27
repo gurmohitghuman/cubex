@@ -43,6 +43,82 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
     changes: [
       {
         change: 'renamed',
+        tools: ['update_cells'],
+        replaced_by: 'change_rows',
+        summary: 'update_cells is now change_rows with action "update": the same row_id and data, or sheet_id and '
+          + 'updates, and idempotency_key.',
+      },
+      {
+        change: 'renamed',
+        tools: ['delete_rows'],
+        replaced_by: 'change_rows',
+        summary: 'delete_rows is now change_rows with action "delete": the same sheet_id and row_ids.',
+      },
+      {
+        change: 'renamed',
+        tools: ['add_column'],
+        replaced_by: 'manage_column',
+        summary: 'add_column is now manage_column with action "add": the same sheet_id, name and description.',
+      },
+      {
+        change: 'renamed',
+        tools: ['rename_column'],
+        replaced_by: 'manage_column',
+        summary: 'rename_column is now manage_column with action "rename": the same sheet_id, column and new_name.',
+      },
+      {
+        change: 'renamed',
+        tools: ['delete_column'],
+        replaced_by: 'manage_column',
+        summary: 'delete_column is now manage_column with action "delete": the same sheet_id and column.',
+      },
+      {
+        change: 'renamed',
+        tools: ['set_column_order'],
+        replaced_by: 'manage_column',
+        summary: 'set_column_order is now manage_column with action "reorder": the same sheet_id and order.',
+      },
+      {
+        change: 'renamed',
+        tools: ['set_description'],
+        replaced_by: 'manage_column',
+        summary: 'set_description is now manage_column with action "describe": the same sheet_id, column and '
+          + 'description.',
+        details: 'A column\'s is manage_column with action "describe" and the same sheet_id, column and description; '
+          + 'a sheet\'s own (no column) is manage_sheet with action "describe", sheet_id and description.',
+      },
+      {
+        change: 'renamed',
+        tools: ['sort_sheet'],
+        replaced_by: 'manage_sheet',
+        summary: 'sort_sheet is now manage_sheet with action "sort": the same sheet_id, column and direction, '
+          + 'without table_id.',
+      },
+      {
+        change: 'renamed',
+        tools: ['export_csv'],
+        replaced_by: 'read_rows',
+        summary: 'export_csv is now read_rows with format "csv": the same sheet_id, columns, where and view, and '
+          + 'the same answer.',
+        details: 'Call read_rows with format "csv" and the same sheet_id, columns, where and view; its answer adds '
+          + 'data_version and row_generation, and other read_rows fields are refused with it.',
+      },
+      {
+        change: 'changed',
+        tools: ['manage_sheet'],
+        summary: 'manage_sheet takes action "sort" (column, direction) and "describe" (description) on a sheet_id '
+          + 'alone: only its other actions need table_id.',
+      },
+      {
+        change: 'changed',
+        tools: ['read_rows'],
+        summary: 'read_rows takes format "csv": the rows as CSV text in csv, from columns, where and view only, cut '
+          + 'at 40,000 characters as export_csv was.',
+        details: 'The answer adds sheet_id, sheet_name, row_count and columns, and when cut, matching_rows, '
+          + 'truncated and rest.',
+      },
+      {
+        change: 'renamed',
         tools: ['get_run_status'],
         replaced_by: 'get_run',
         summary: 'get_run_status is now get_run with action "status": the same run_type, run_id and wait_seconds, '
@@ -276,6 +352,29 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
           + 'call on items with each item\'s outputs.',
         details: 'get_run\'s setup also takes wait_seconds, for any setup run. With items, the arguments only a sheet '
           + 'takes (inputs, names, first_rows; column_name, outputs and the rest) are refused by name.',
+      },
+      {
+        change: 'server',
+        summary: 'transfer_rows with a move takes rows holding at most 16 MB a call (a copy still 32 MB): a move '
+          + 'past it is refused, naming both caps, and nothing moves.',
+        details: 'A move writes each row three times in one transaction, so 32 MB of rows passed the database\'s '
+          + 'room. The refusal says how much the call picked: move fewer rows, or copy a single row past the cap, '
+          + 'then change_rows with action "delete".',
+      },
+      {
+        change: 'changed',
+        tools: ['manage_table'],
+        summary: 'manage_table takes action star or unstar with table_id: a starred table is in the user\'s '
+          + 'Favorites on the home.',
+        details: 'Starring changes nothing in the table, so changed is []. The answer has the table\'s id, name and '
+          + 'starred. PATCH /api/v1/tables/{id} takes starred too.',
+      },
+      {
+        change: 'changed',
+        tools: ['get_workspace'],
+        summary: 'get_workspace with all_tables gives each table starred (in the user\'s Favorites) and last_opened_at '
+          + '(when the user last opened it in the app, null until then).',
+        details: 'Use them to find the tables the user works in. GET /api/v1/tables answers the same.',
       },
     ],
   },

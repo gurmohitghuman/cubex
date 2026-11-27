@@ -10,14 +10,13 @@ export const appendRows = obj({
   auto_dedupe: opt(autoDedupe), replayed, auto_run: opt(autoRunNotice), changed,
 });
 
-// One row: the row; many rows: updated.
-export const updateCells = obj({
-  id: opt(str), index: opt(num), data: opt(cells).describe('One-row form: the whole row'),
-  updated: opt(num).describe('Many-rows form: rows updated'), auto_dedupe: opt(autoDedupe), replayed,
-  data_left_out: opt(bool).describe('A replay of a big row: data is left out, read the row'), note: opt(str), changed,
+// update, one row: the row; many rows: updated. delete: deleted and its trash.
+export const changeRows = obj({
+  id: opt(str), index: opt(num), data: opt(cells).describe('update, one-row form: the whole row'),
+  updated: opt(num).describe('update, many-rows form: rows updated'), auto_dedupe: opt(autoDedupe), replayed,
+  data_left_out: opt(bool).describe('A replay of a big row: data is left out, read the row'), note: opt(str),
+  deleted: opt(num).describe('delete: rows deleted'), trash: opt(nul(trash)), changed,
 });
-
-export const deleteRows = obj({ deleted: num, trash: nul(trash), changed });
 
 export const transferRows = obj({
   matched: num, copied: num, moved: num, created_columns: opt(strs), dest_row_count: opt(num), replayed: bool,
