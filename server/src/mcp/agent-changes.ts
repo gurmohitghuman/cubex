@@ -50,6 +50,13 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
           + 'holds is refused when the count is known, as treg would turn down every row. Columns made before keep '
           + 'their most.',
       },
+      {
+        change: 'server',
+        summary: 'A waterfall_column AI step sends 8,000 output tokens at most, as an AI column does (it was 1,000, '
+          + 'too few for a model that thinks before it answers), so its most per row and estimate_only\'s ceiling are '
+          + 'higher.',
+        details: 'A spend_limit_usd under one row\'s most is refused as before; raise it, or pick a cheaper model.',
+      },
     ],
   },
   {

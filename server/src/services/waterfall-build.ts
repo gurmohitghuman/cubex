@@ -144,6 +144,7 @@ export async function buildWaterfall(
         id, label: uniqueLabel(s.label ?? defaultLabel(s), usedLabels), on: s.on, requires: [],
         choices: { ...c, model }, built: {
           kind: 'ai', model, search: p.search, capUsd: p.capUsd, lowUsd: p.lowUsd, highUsd: p.highUsd,
+          maxTokens: p.maxTokens,
         },
       };
     } else if (c.kind === 'http') {

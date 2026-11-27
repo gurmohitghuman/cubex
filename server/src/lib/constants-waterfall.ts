@@ -22,8 +22,9 @@ export const WATERFALL_ANSWER_KEEP_DAYS = 7;
 // once they reached the step on at least WATERFALL_RATE_MIN_ROWS rows.
 export const WATERFALL_RATE_RUNS = 20;
 export const WATERFALL_RATE_MIN_ROWS = 20;
-// An AI step answers in at most this many output tokens (a value, not an essay).
-export const WATERFALL_AI_MAX_TOKENS = 1_000;
+// The max_tokens of an AI step in a run started before the step kept its own (BuiltAi.maxTokens): what that run
+// priced its holds on, so its resume sends the same.
+export const WATERFALL_AI_LEGACY_MAX_TOKENS = 1_000;
 // An AI step's temperature: a lookup, not creative writing.
 export const WATERFALL_AI_TEMPERATURE = 0.2;
 // A dry run takes this many rows unless rows are picked (at most WATERFALL_DRY_MAX_ROWS).
