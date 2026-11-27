@@ -16,10 +16,13 @@ import assert from 'node:assert/strict'
 import { tregKit } from './token-replay-treg-kit'
 const kit = await tregKit('open-roles')
 const { db, uid, ok, done, sheet } = kit
-const { parseOpenRoles, openRolesInput, OPEN_ROLE_COLUMNS } = await import('../../server/src/lib/hiring/open-roles-input')
+const { parseOpenRoles, openRolesInput, OPEN_ROLE_COLUMNS } =
+  await import('../../server/src/lib/hiring/open-roles-input')
 const { openRoles, openRolesSetup } = await import('../../server/src/services/open-roles')
 const { buildRequest } = await import('../../server/src/lib/enrich-request')
 const { inputTemplates } = await import('../../server/src/lib/enrich-run-config')
+const { clearTregToken, saveTregToken } = await import('../../server/src/services/treg-key')
+const { renameSheetColumn } = await import('../../server/src/services/column-rename')
 const { buildEnrichmentConfig } = await import('../../server/src/services/enrich-run-build')
 const { dayIn } = await import('../../server/src/lib/ai-visibility/check')
 const { OPEN_ROLES, ROLE_COLUMNS: R } = await import('../../server/src/lib/hiring/names')
@@ -58,7 +61,8 @@ await ok('the ask is parsed strictly: a website column, the titles as the job in
     [{ websiteColumn: 'W', roles: ['SDR'], country: 'USA' }, 'country'],
     [{ websiteColumn: 'W', roles: ['SDR'], place: '{{W}}' }, 'place'],
     [{ websiteColumn: 'W', roles: ['SDR'], postedWithinDays: 0 }, 'postedWithinDays'],
-    [{ websiteColumn: 'W', roles: ['SDR'], perCompany: 101 }, 'perCompany']] as const) {
+    [{ websiteColumn: 'W', roles: ['SDR'], perCompany: 101 }, 'perCompany'],
+    [{ websiteColumn: 'W', roles: ['SDR', '•', '***'] }, '"•" has no word']] as const) {
     const out = parseOpenRoles(v)
     assert.ok(typeof out === 'string' && out.includes(word), `${JSON.stringify(v)}: ${out}`)
   }
@@ -119,6 +123,16 @@ await ok('under the run\'s domain cleaning a website cell becomes its domain; on
   assert.deepEqual(JSON.parse(raw.body!).company_domains, ['https://www.Northwind-Labs.io/'])
   const none = req('', false)
   assert.ok(none.ok && JSON.parse(none.body!).company_domains === undefined, JSON.stringify(none))
+  // A column bound to the input as it is (an enrichment set up in the drawer or by an agent): its cell as before,
+  // cleaning or not, and an empty one left out rather than missing.
+  const bound = { ...templates, company_domains: '{{Website}}' }
+  const plain = (website: string) => buildRequest(tool, bound, { Name: 'N', Website: website },
+    { cleanDomains: true, columns: ['Name', 'Website'] })
+  const kept = plain('https://www.Northwind-Labs.io/')
+  assert.ok(kept.ok, JSON.stringify(kept))
+  assert.deepEqual(JSON.parse(kept.body!).company_domains, ['https://www.Northwind-Labs.io/'])
+  const left = plain('')
+  assert.ok(left.ok && JSON.parse(left.body!).company_domains === undefined, JSON.stringify(left))
 })
 
 const COMPANIES = [
@@ -213,6 +227,33 @@ await ok('what the sheet\'s search was last run with reads back as asked (the co
   assert.equal(openRolesSetup(uid, sheet([{ Website: 'x.io' }], ['Website'])), null)
 })
 
+await ok('with no treg key a start is refused before anything is made; a renamed search column is still the one '
+  + 'run again; another website column moves the count to it', async () => {
+  await kit.idle(sid)
+  db.prepare(`UPDATE http_runs SET status = 'completed', placeholder_work = NULL WHERE sheet_id = ?`).run(sid)
+  const fresh = sheet([{ Website: 'northwind-labs.io' }], ['Website'])
+  clearTregToken(uid)
+  try {
+    const e = await openRoles(uid, fresh, { ...o, estimateOnly: true, maxCostUsd: null, timeZone: null })
+    assert.ok('ok' in e && 'estimate' in e.ok, JSON.stringify(e))
+    const s = await openRoles(uid, fresh, { ...o, estimateOnly: false, maxCostUsd: e.ok.estimate.highUsd,
+      timeZone: null })
+    assert.deepEqual(s, { fail: 'conflict', message: 'Add your treg key in Settings first.' })
+    assert.deepEqual(rolesSheets(), ['Open roles'], 'no sheet made')
+    assert.deepEqual(columnsOf(fresh), ['Website'])
+  } finally { saveTregToken(uid, 'treg_mock_unit_team_key') }
+  const renamed = await renameSheetColumn(sid, uid, OPEN_ROLES.status, 'Hiring?')
+  assert.ok('ok' in renamed || 'success' in renamed || !('fail' in renamed), JSON.stringify(renamed))
+  await kit.idle(sid)
+  db.prepare(`UPDATE sheets SET column_order = json_insert(column_order, '$[#]', 'Site') WHERE id = ?`).run(sid)
+  COMPANIES.forEach((c, i) => kit.edit(sid, i, 'Site', c.Website))
+  const again = await ask({ estimateOnly: false, maxCostUsd: high, websiteColumn: 'Site' })
+  assert.ok('ok' in again && 'started' in again.ok, JSON.stringify(again))
+  assert.deepEqual([again.ok.started.column, again.ok.started.rolesSheetId], ['Hiring?', rolesSheet])
+  assert.deepEqual(rolesSheets(), ['Open roles'], 'no second sheet')
+  assert.deepEqual(lookups(sid).map(l => [l.column_name, l.source_column]), [[OPEN_ROLES.count, 'Site']])
+})
+
 await ok('names the person already uses are left alone; a hiring table\'s sheets and a missing column are refused',
   async () => {
   const own = sheet([{ Website: 'quillmark.io', [OPEN_ROLES.status]: 'mine', [OPEN_ROLES.count]: '7' }],
@@ -224,9 +265,9 @@ await ok('names the person already uses are left alone; a hiring table\'s sheets
   assert.deepEqual([s.ok.started.column, s.ok.started.lookups],
     [`${OPEN_ROLES.status} 2`, [`${OPEN_ROLES.count} 2`]])
   assert.deepEqual(rolesSheets(), ['Open roles', 'Open roles 2'], 'a free name in the table')
-  const missing = await openRoles(uid, sid, { ...o, websiteColumn: 'Site', estimateOnly: true, maxCostUsd: null,
+  const missing = await openRoles(uid, sid, { ...o, websiteColumn: 'Nowhere', estimateOnly: true, maxCostUsd: null,
     timeZone: null })
-  assert.ok('fail' in missing && missing.message.includes('"Site"'), JSON.stringify(missing))
+  assert.ok('fail' in missing && missing.message.includes('"Nowhere"'), JSON.stringify(missing))
   db.prepare(`INSERT INTO hiring_signals (id, user_id, table_id, companies_sheet_id, roles_sheet_id,
       searches_sheet_id, roles) VALUES ('h1', ?, (SELECT table_id FROM sheets WHERE id = ?), ?, NULL, NULL, '[]')`)
     .run(uid, own, own)

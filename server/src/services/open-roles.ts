@@ -25,7 +25,7 @@ import { cellOf } from '../lib/row-cell';
 import {
   HIRING_CHECK_POLL_MS, HIRING_COUNT_MAX_SEARCHES, OPEN_ROLES_LOOKUPS_LATER_MS, OPEN_ROLES_LOOKUPS_WAIT_MS,
 } from '../lib/constants';
-import { sheetFreeWithin } from '../lib/sheet-busy';
+import { busyMessage, sheetBusyWith, sheetFreeWithin } from '../lib/sheet-busy';
 import { HIRING_DIRECT_TOOL_ID, OPEN_ROLES, OPEN_ROLES_WORDS, ROLE_COLUMNS } from '../lib/hiring/names';
 import { OPEN_ROLE_COLUMNS, openRolesInput, openRolesOf, type OpenRolesOptions } from '../lib/hiring/open-roles-input';
 import { newestColumnRun } from './enrich-column';
@@ -37,6 +37,7 @@ import { lookupInputOf, startLookupColumn } from './lookup-column';
 import { searchState } from './hiring-check-watch';
 import type { LookupColumnRow } from '../lib/lookup-columns';
 import type { RunFail } from './run-shared';
+import { getTregToken } from './treg-key';
 
 export interface OpenRolesEstimate {
   // Rows the run asks about (every row; one with no website isn't searched, nor paid for).
@@ -71,18 +72,20 @@ function liveSheet(userId: string, sheetId: string): { name: string; table_id: s
     .get(sheetId, userId) as { name: string; table_id: string } | undefined) ?? null;
 }
 
-// The search column: named as OPEN_ROLES.status (or with a number after it), filled by the job index, adding rows
-// to a live sheet.
+// The search column, found by what it does whatever the person renamed it to: the job index searching each row's
+// website as openRolesInput lays it out, in keep mode, adding rows to a live sheet. The one named as ours first.
 function setupOf(userId: string, sheetId: string): Setup | null {
   const types = getColumnTypes(sheetId, userId);
-  for (const c of getSheetColumns(sheetId, userId)) {
-    if (types[c] !== 'enrich-status' || !(c === OPEN_ROLES.status || c.startsWith(`${OPEN_ROLES.status} `))) continue;
+  const columns = getSheetColumns(sheetId, userId).filter(c => types[c] === 'enrich-status');
+  const ordered = [...columns.filter(c => c === OPEN_ROLES.status), ...columns.filter(c => c !== OPEN_ROLES.status)];
+  for (const c of ordered) {
     const run = newestColumnRun(sheetId, userId, c);
     const e = run?.config.enrichment;
-    const dest = e?.toolId === HIRING_DIRECT_TOOL_ID ? e.list?.destSheetId : undefined;
-    const sheet = dest ? liveSheet(userId, dest) : null;
-    if (run && dest && sheet) {
-      return { column: c, rolesSheetId: dest, rolesSheetName: sheet.name, active: run.active,
+    if (!run || e?.toolId !== HIRING_DIRECT_TOOL_ID || !e.list?.keep || !e.list.destSheetId) continue;
+    if (!openRolesOf(inputTemplates(run.config), e.list.maxItems)) continue;
+    const sheet = liveSheet(userId, e.list.destSheetId);
+    if (sheet) {
+      return { column: c, rolesSheetId: e.list.destSheetId, rolesSheetName: sheet.name, active: run.active,
         paused: run.status === 'paused' };
     }
   }
@@ -167,7 +170,7 @@ async function estimateOf(userId: string, sheetId: string, o: OpenRolesOptions, 
 }
 
 // The Open roles sheet, beside the company sheet in its table (a free name). One transaction.
-function makeRolesSheet(userId: string, sheetId: string, o: OpenRolesOptions): { id: string; name: string } {
+function makeRolesSheet(userId: string, sheetId: string): { id: string; name: string } {
   return db.transaction(() => {
     const table = liveSheet(userId, sheetId)!.table_id;
     const names = (db.prepare('SELECT name FROM sheets WHERE table_id = ? AND user_id = ? AND trash_id IS NULL')
@@ -180,42 +183,47 @@ function makeRolesSheet(userId: string, sheetId: string, o: OpenRolesOptions): {
       .run(OPEN_ROLES_WORDS.sheet, made.sheetId, userId);
     writeColumnDescription(made.sheetId, userId, ROLE_COLUMNS.firstSeen, 'The day of the run that found this role.');
     writeColumnDescription(made.sheetId, userId, ROLE_COLUMNS.domain, 'The company\'s website, as its sheet has it.');
-    logSheetChange(sheetId, userId, 'hiring_created', `Made the ${name} sheet for ${o.roles.join(', ')}`,
-      { detail: { roles: o.roles, websiteColumn: o.websiteColumn, country: o.country, place: o.place } });
     return { id: made.sheetId, name };
   }).immediate();
 }
 
-// The lookups on the company sheet, each made once (found again by what it looks up, whatever its name). Each
-// waits for the sheet first, at most waitMs (the run's start, then the first lookup's fill, hold it).
+// A first run that didn't start leaves no empty Open roles sheet behind (its column descriptions go with it).
+function dropRolesSheet(userId: string, rolesSheetId: string): void {
+  db.prepare(`DELETE FROM sheets WHERE id = ? AND user_id = ? AND NOT EXISTS
+    (SELECT 1 FROM rows WHERE sheet_id = ?)`).run(rolesSheetId, userId, rolesSheetId);
+}
+
+// The count on the company sheet, found by what it looks up whatever its name, made once; one that reads another
+// website column than this run's is pointed at this one (the roles' Domain copies it). It waits for the sheet first,
+// at most waitMs (the run's start, or another fill, holds it), and looks again then: another call may have made it.
 async function ensureLookups(userId: string, sheetId: string, o: OpenRolesOptions, rolesSheetId: string,
   waitMs: number): Promise<{ lookups: string[]; left: string | null }> {
-  const have = db.prepare(`SELECT column_name, returns FROM lookup_columns WHERE sheet_id = ? AND user_id = ?
-    AND other_sheet_id = ? AND match_column = ?`).all(sheetId, userId, rolesSheetId, ROLE_COLUMNS.domain) as
-    Array<{ column_name: string; returns: string }>;
-  const columns = getSheetColumns(sheetId, userId);
-  const live = (returns: string) => have.find(h => h.returns === returns && columns.includes(h.column_name));
-  const lookups: string[] = [];
-  const wanted = [
-    { returns: 'count', base: OPEN_ROLES.count, words: OPEN_ROLES_WORDS.count },
-  ];
-  for (const w of wanted) {
-    const found = live(w.returns);
-    if (found) { lookups.push(found.column_name); continue; }
-    const held = await sheetFreeWithin(sheetId, waitMs);
-    if (held) return { lookups, left: `The "${w.base}" column is added once the sheet is free (${held}).` };
-    const column = freeName(w.base, getSheetColumns(sheetId, userId));
-    const made = await startLookupColumn(userId, sheetId, {
-      column, sourceColumn: o.websiteColumn, otherSheetId: rolesSheetId, matchColumn: ROLE_COLUMNS.domain,
-      match: 'equals', returns: w.returns,
-    });
-    if ('fail' in made) {
-      return { lookups, left: `The "${w.base}" column isn't there yet (${made.message}). It is made at the next run.` };
-    }
-    writeColumnDescription(sheetId, userId, made.ok.column, w.words);
-    lookups.push(made.ok.column);
+  const ours = () => (db.prepare(`SELECT column_name, source_column FROM lookup_columns WHERE sheet_id = ?
+    AND user_id = ? AND other_sheet_id = ? AND match_column = ? AND returns = 'count'`)
+    .all(sheetId, userId, rolesSheetId, ROLE_COLUMNS.domain) as Array<{ column_name: string; source_column: string }>)
+    .find(h => getSheetColumns(sheetId, userId).includes(h.column_name));
+  const ready = (f: ReturnType<typeof ours>) => !!f && f.source_column === o.websiteColumn;
+  let found = ours();
+  if (ready(found)) return { lookups: [found!.column_name], left: null };
+  const held = await sheetFreeWithin(sheetId, waitMs);
+  found = ours();
+  if (ready(found)) return { lookups: [found!.column_name], left: null };
+  const was = found ? [found.column_name] : [];
+  if (held) {
+    return { lookups: was, left: `The "${found?.column_name ?? OPEN_ROLES.count}" column is ${found ? 'pointed at '
+      + `"${o.websiteColumn}"` : 'added'} once the sheet is free (${held}).` };
   }
-  return { lookups, left: null };
+  const column = found?.column_name ?? freeName(OPEN_ROLES.count, getSheetColumns(sheetId, userId));
+  const made = await startLookupColumn(userId, sheetId, {
+    column, sourceColumn: o.websiteColumn, otherSheetId: rolesSheetId, matchColumn: ROLE_COLUMNS.domain,
+    match: 'equals', returns: 'count',
+  });
+  if ('fail' in made) {
+    return { lookups: was, left: `The "${column}" column isn't up to date yet (${made.message}). The next run does `
+      + 'it.' };
+  }
+  if (!found) writeColumnDescription(sheetId, userId, made.ok.column, OPEN_ROLES_WORDS.count);
+  return { lookups: [made.ok.column], left: null };
 }
 
 // The lookups once the run's start has set up the sheet's rows (it holds the sheet meanwhile): now when that is quick,
@@ -300,16 +308,27 @@ export async function openRoles(userId: string, sheetId: string, req: OpenRolesR
       + `than the ${moneyUp(sent)} it was sent (rows or prices changed since the estimate). Nothing was searched: `
       + 'confirm the new most to run it.' };
   }
+  // What would refuse the start, before the Open roles sheet is made (the start checks them again).
+  if (!getTregToken(userId)) return { fail: 'conflict', message: 'Add your treg key in Settings first.' };
+  const busy = sheetBusyWith(sheetId);
+  if (busy) return { fail: 'conflict', message: busyMessage(busy) };
   const refusedNow = req.refuse?.() ?? null;
   if (refusedNow) return { fail: 'forbidden', message: refusedNow };
   // The search column: ours from before, else a free name (a column of that name may be the person's own).
   const column = setup?.column ?? freeName(OPEN_ROLES.status, getSheetColumns(sheetId, userId));
-  const roles = setup ? { id: setup.rolesSheetId, name: setup.rolesSheetName } : makeRolesSheet(userId, sheetId, req);
+  const roles = setup ? { id: setup.rolesSheetId, name: setup.rolesSheetName } : makeRolesSheet(userId, sheetId);
   const input = { ...openRolesInput(req, roles.id, today(req.timeZone), !!setup), columnName: column,
     spendLimitUsd: est.highUsd, noReuse: true };
   const started = await startEnrichmentRun(userId, sheetId, input)
     .catch((error: Error): RunFail => ({ fail: 'upstream', message: error.message }));
-  if ('fail' in started) return started;
+  if ('fail' in started) {
+    if (!setup) dropRolesSheet(userId, roles.id);
+    return started;
+  }
+  if (!setup) {
+    logSheetChange(sheetId, userId, 'hiring_created', `Made the ${roles.name} sheet for ${req.roles.join(', ')}`,
+      { detail: { roles: req.roles, websiteColumn: req.websiteColumn, country: req.country, place: req.place } });
+  }
   writeColumnDescription(sheetId, userId, column, OPEN_ROLES_WORDS.status);
   const lookups = await lookupsAfterStart(userId, sheetId, req, roles.id);
   lookAgainWhenDone(userId, sheetId, roles.id, started.ok.runId);

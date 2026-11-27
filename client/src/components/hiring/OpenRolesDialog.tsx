@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { Briefcase, Loader2 } from 'lucide-react'
 import { Modal } from '@/components/Modal'
@@ -42,7 +42,10 @@ export const OpenRolesDialog: React.FC<Props> = ({ sheetId, columns, onClose, on
   const [estimate, setEstimate] = useState<OpenRolesEstimate | null>(null)
   const [busy, setBusy] = useState(false)
 
-  // What it was last run with, when it was.
+  // What it was last run with, when it was: read once as the dialog opens (the sheet's columns are a new list at
+  // each refresh, which must not put it back over what the person changed since).
+  const columnsNow = useRef(columns)
+  columnsNow.current = columns
   useEffect(() => {
     let live = true
     openRolesAPI.setup(sheetId).then(s => {
@@ -50,7 +53,7 @@ export const OpenRolesDialog: React.FC<Props> = ({ sheetId, columns, onClose, on
       const o = s?.options
       if (o) {
         setAgain(true)
-        if (columns.includes(o.websiteColumn)) setWebsite(o.websiteColumn)
+        if (columnsNow.current.includes(o.websiteColumn)) setWebsite(o.websiteColumn)
         setRoles(o.roles.join('\n'))
         setCountry(o.country ?? '')
         setPlace(o.place ?? '')
@@ -60,7 +63,7 @@ export const OpenRolesDialog: React.FC<Props> = ({ sheetId, columns, onClose, on
       setLoaded(true)
     }).catch(() => { if (live) setLoaded(true) })
     return () => { live = false }
-  }, [sheetId, columns])
+  }, [sheetId])
 
   // Once each, as first written (the server takes them the same way).
   const titles = linesOf(roles).filter((r, i, all) => all.findIndex(x => x.toLowerCase() === r.toLowerCase()) === i)
@@ -172,6 +175,8 @@ export const OpenRolesDialog: React.FC<Props> = ({ sheetId, columns, onClose, on
                 <select className="input w-full" value={days ?? ''} aria-label="Posted within"
                   onChange={ev => setDays(ev.target.value ? Number(ev.target.value) : null)}>
                   {HIRING_POSTED_CHOICES.map(d => <option key={d} value={d}>{d} days</option>)}
+                  {days !== null && !(HIRING_POSTED_CHOICES as readonly number[]).includes(days)
+                    && <option value={days}>{days} days</option>}
                   <option value="">Any time</option>
                 </select>
               </Field>

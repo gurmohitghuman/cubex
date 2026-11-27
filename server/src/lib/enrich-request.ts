@@ -127,9 +127,11 @@ function appendQuery(query: Array<[string, string]>, name: string, value: unknow
   else for (const v of value) query.push([name, String(v)]);
 }
 
-// A list of company domains (a job search at those companies, services/open-roles.ts) under a run's domain cleaning:
-// each item cleaned as a domain input is, empty ones left out. One that read a column and came out empty is missing,
-// so the row isn't searched: with no company, the search would answer roles at any company.
+// A list of company domains laid out as a JSON template that reads a column (["{{Website}}"]: only Cubex writes those,
+// as a fixed value can't hold "{{"; services/open-roles.ts) under a run's domain cleaning: each item cleaned as a
+// domain input is, empty ones left out. One that comes out empty is missing, so the row isn't searched: with no
+// company, the search would answer roles at any company. A column bound to the input as it is (an enrichment set up
+// in the drawer or by an agent) sends its cell as before.
 const DOMAIN_LIST_INPUT_NAMES = new Set(['company_domains']);
 const TOKEN_IN = /\{\{[^{}]+\}\}/;
 function cleanDomainList(value: unknown): unknown {
@@ -165,18 +167,12 @@ export function buildRequest(
     }
     let raw = filled.value.trim();
     if (opts.cleanDomains && DOMAIN_INPUT_NAMES.has(input.name)) raw = cleanDomain(raw);
-    const companies = opts.cleanDomains && DOMAIN_LIST_INPUT_NAMES.has(input.name) && TOKEN_IN.test(template);
-    if (!raw) {
-      if (companies) noCompany.push(input.name);
-      continue;
-    }
+    if (!raw) continue;
     const t = typed(input, raw);
     if ('invalid' in t) return { ok: false, invalid: t.invalid };
     const bad = checkValue(input, t.value);
     if (bad) return { ok: false, invalid: bad };
-    const value = companies ? cleanDomainList(t.value) : t.value;
-    if (value === undefined) noCompany.push(input.name);
-    else sent[input.name] = value;
+    sent[input.name] = t.value;
   }
   // A hiring search whose role title has no word to search for would answer any role: missing, as an empty one.
   const missing = missingInputs(tool, new Set(Object.keys(sent))) ?? hiringTitleMissing(tool.id, inputMap, sent)

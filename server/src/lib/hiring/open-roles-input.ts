@@ -15,6 +15,7 @@ import type { EnrichRunInput, InputBinding } from '../enrich-run-input';
 import { countryName, directRoleTitle } from './filters';
 import { parseRoles, postedDaysRefusal, perSearchRefusal } from './input';
 import { jobFields } from './job-fields';
+import { searchesATitle } from './title-words';
 import { HIRING_DIRECT_PROVIDER, HIRING_DIRECT_TOOL_ID, OPEN_ROLES, ROLE_COLUMNS } from './names';
 import { DIRECT_ITEMS_PATH } from './search-input';
 
@@ -58,6 +59,9 @@ export function parseOpenRoles(v: unknown, names: keyof typeof NAMES = 'camel'):
   if (typeof raw === 'string') return raw;
   const roles = parseRoles(raw.map(titleOf));
   if (typeof roles === 'string') return roles;
+  // The titles are asked together, any of them: one with no word would answer every role at the company.
+  const wordless = roles.find(r => !searchesATitle(r, true));
+  if (wordless !== undefined) return `"${wordless}" has no word to search for: each role title needs one.`;
   const c = v.country ?? null;
   if (c !== null && c !== '' && (typeof c !== 'string' || !/^[A-Za-z]{2}$/.test(c))) {
     return 'country must be a two-letter country code, such as US or GB (or empty for any country).';
