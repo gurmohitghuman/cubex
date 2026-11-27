@@ -116,8 +116,9 @@ await ok('a write past its deadline that must be made waits for the running chec
   console.log(`      began after ${s.began.toFixed(0)} ms; ${s.ticks} timers ran; ${heldText(s.watched)}`)
   assert.equal(s.during, false, 'it began while the checkpoint ran')
   assert.ok(s.began >= 700, `it began ${s.began.toFixed(0)} ms in, while the checkpoint ran`)
-  assert.ok(s.ticks >= 20 && s.watched.cpuMs < 50,
-    `${s.ticks} timers ran, the loop held ${s.watched.cpuMs.toFixed(0)} ms on the CPU`)
+  // A wait takes no CPU time: this one is bound by the time this thread held the loop alone (loop-watch.ts ownMs).
+  assert.ok(s.ticks >= 20 && s.watched.ownMs < 50,
+    `${s.ticks} timers ran, this thread held the loop ${s.watched.ownMs.toFixed(0)} ms`)
   assert.equal(takeWalTurnStats().checkpointWaits, 1, 'waits for a running checkpoint')
   await asked
 })

@@ -1,3 +1,4 @@
+// Over 200 lines: three cases sharing one watch of the clear and of the formulas catching up after it.
 // A run's ⏳ clear on 200,000 rows (lib/placeholder-cells.ts, lib/row-order.ts), through the code that stops runs. A
 // run's first try on a new column, 20 formulas reading it, cancelled: the clear ends within 5 s, tells none of them
 // anything, moves the sheet's data_version as its slices land (open grids lose the ⏳ as it goes), and never holds the
@@ -14,19 +15,23 @@
 // and 1,039 ms on two runs). No slice overlaps a checkpoint there now (wal-checkpoint-waits.test.ts), but a slice
 // still takes 50 to 80 ms now and then with no checkpoint running, as on main, and the loop held up to 85 ms. The
 // 100 ms and 5 s are proven on Linux; on Windows the loop hold and the longest transaction are still printed.
-// On Linux and Windows no commit of a clear, nor of the formulas catching up, begins while the worker's checkpoint
-// runs: writers wait for it (lib/wal-checkpointer.ts), so none waits inside it, off the CPU. On the Linux runner
-// commits made meanwhile held the loop 103 to 128 ms three times. The clear's commits are the writes made in turn with
-// the worker (lib/wal-turn.ts), as every bulk slice is. The stop's own writes (each run's status as it is cancelled,
-// the change log) don't take turns, by design: with 4 runs stopped, the checkpoint one clear asked for can be running
-// when the next run is cancelled (3 such on a Windows runner, all cancelRun's). So the stop of 4 begins with a
-// checkpoint held running, and the clears' commits still wait for it.
+// On Linux and Windows no transaction on the API connection, of a clear or of the formulas catching up, begins while
+// the worker's checkpoint runs: writers wait for it (lib/wal-checkpointer.ts), so none waits inside it, off the CPU
+// (bulk-wal-kit.ts checkpointOverlaps). On the Linux runner commits made meanwhile held the loop 103 to 128 ms three
+// times. The clear's commits are the writes made in turn with the worker (lib/wal-turn.ts), as every bulk slice is,
+// and there is one at least. The stop's own writes (each run's status as cancelRun cancels it) don't take turns, by
+// design: with 4 runs stopped, the checkpoint one clear asked for can be running when the next run is cancelled (3
+// such on a Windows runner, all cancelRun's). Those are let off by where they began (services/run-lifecycle.ts) and
+// printed. So the stop of 4 begins with a checkpoint held running, and the clears' commits still wait for it. The
+// formulas' catch-up waits off the CPU for the formula engine's answers too (lib/formula/host.ts): its bound counts
+// those waits with the CPU time of their stretch (loop-watch.ts cpuWith).
 import assert from 'node:assert/strict'
 import { performance } from 'node:perf_hooks'
 import { v4 as uuid } from 'uuid'
 import { undoKit } from './run-undo-kit'
 import { heldText, loopWatch, type LoopWatched } from './loop-watch'
-import { sqliteWriteProbe, transactionLine } from './sqlite-write-probe'
+import { sqliteWriteProbe, transactionLine, type TransactionRecord } from './sqlite-write-probe'
+import { checkpointOverlaps, checkpointRunning } from './bulk-wal-kit'
 const { db, uid, ok, done, idle, sheet, cells } = undoKit('run-clear-big')
 const { seedProcessingPlaceholders, PLACEHOLDER } = await import('../../server/src/lib/placeholder-cells')
 const { startFormulaColumn } = await import('../../server/src/services/formula-column')
@@ -35,21 +40,30 @@ const { kickDerivedFollow } = await import('../../server/src/services/derived-fo
 const { onFollowQueued } = await import('../../server/src/lib/autorun-kick')
 const { PLACEHOLDER_CLEAR_BACK_ROWS } = await import('../../server/src/lib/constants')
 const { stopSheetRuns } = await import('../../server/src/services/sheet-runs-stop')
-const { checkpointAsked, checkpointInBackground, closeWalCheckpointer, setCheckpointDelayForTests,
+const { checkpointInBackground, closeWalCheckpointer, setCheckpointDelayForTests,
   walCheckpointerIdle } = await import('../../server/src/lib/wal-checkpointer')
+const { formulaHost } = await import('../../server/src/lib/formula/host')
 const { setBeforeTurnWriteForTests, takeWalTurnStats } = await import('../../server/src/lib/wal-turn')
 console.error = () => {}
-// A transaction is flagged when it is a write in turn (above) begun while a checkpoint asked of the worker had yet to
-// answer: the hook runs just before such a write's transaction begins.
-// turnWrites: how many there were, so a clear that stopped going through the turn can't pass by flagging none.
-let inTurn = false
+// turnWrites: the writes in turn (the hook runs just before each one's transaction begins), so a clear that stopped
+// going through the turn can't pass by flagging none.
 let turnWrites = 0
-setBeforeTurnWriteForTests(() => { inTurn = true; turnWrites++ })
-const probe = sqliteWriteProbe(db, process.env.DB_PATH!, () => {
-  const turn = inTurn
-  inTurn = false
-  return turn && checkpointAsked()
-})
+setBeforeTurnWriteForTests(() => { turnWrites++ })
+const probe = sqliteWriteProbe(db, process.env.DB_PATH!, checkpointRunning)
+// The stop's own writes, begun by cancelRun, skip the turn by design (above).
+const stopsOwn = (r: TransactionRecord) => /^services\/run-lifecycle\.ts:/.test(r.from ?? '')
+const overlaps = (records: TransactionRecord[], what: string) => {
+  const own = records.filter(r => r.checkpointing && stopsOwn(r))
+  if (own.length) console.log(`        the stop's own writes begun while a checkpoint ran (by design): ${own.length}`)
+  checkpointOverlaps(records.filter(r => !stopsOwn(r)), what)
+}
+// Each ask of the formula engine, its wait off the CPU: when, and how long.
+const asks: Array<{ from: number; to: number }> = []
+const request = formulaHost.request.bind(formulaHost)
+formulaHost.request = (msg, capMs) => {
+  const from = performance.now()
+  try { return request(msg, capMs) } finally { asks.push({ from, to: performance.now() }) }
+}
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
 const WINDOWS = process.platform === 'win32'
@@ -114,23 +128,20 @@ async function watched(sid: string, stop: () => Promise<unknown>, holdMs = 0) {
     watchedLoop = watch()
   }
   const w = probe.read()
-  const overlapping = probe.records().filter(r => r.checkpointing).length
   console.log(`      ${(ms / 1000).toFixed(1)} s, ${heldText(watchedLoop)}, ${w.transactions} `
-    + `transactions (longest ${w.longestTransactionMs.toFixed(0)} ms, ${overlapping} of the clear's while a `
-    + 'checkpoint ran), '
-    + `${seen.size} data_version values seen`)
+    + `transactions (longest ${w.longestTransactionMs.toFixed(0)} ms), ${seen.size} data_version values seen`)
   const inside = watchedLoop.inside.map(transactionLine).join(' | ')
   console.log(`        in the stretch this thread held longest: ${inside || 'no transaction'}`)
   const waits = takeWalTurnStats().checkpointWaits
   console.log(`        ${turnWrites} writes in turn, ${waits} of them waited for a checkpoint`)
   assert.ok(turnWrites > 0, 'the clear\'s writes went through the WAL turn')
-  if (WAITS) assert.equal(overlapping, 0, 'commits of the clear begun while a checkpoint ran')
+  overlaps(probe.records(), 'transactions of the clear')
   if (WAITS && holdMs > 0) assert.ok(waits > 0, 'a write waited for the held checkpoint')
   return { ms, loopMs: watchedLoop.cpuMs, seen: seen.size }
 }
 
 await ok(`a first run on a new column, ${READERS} formulas reading it, cancelled at ${N} rows: none told, grids `
-  + `follow${WINDOWS ? '' : ', within 5 s, the loop never held 100 ms'}`, async () => {
+  + `follow${WINDOWS ? '' : ', within 5 s, this thread never held the loop 100 ms on the CPU'}`, async () => {
   const columns = Array.from({ length: READERS }, (_, k) => `F${k}`)
   const sid = sheet([{ Name: 'n0' }], ['Name', 'Answer'])
   for (const [k, column] of columns.entries()) {
@@ -152,7 +163,10 @@ await ok(`a first run on a new column, ${READERS} formulas reading it, cancelled
 
 // The formulas told by span, kicked as the clear ended (as in the server), until none has a span left, watched.
 async function caughtUp(sid: string) {
-  probe.reset()
+  // The follow is already going (kicked as the clear ended): a reset would start the WAL over under it.
+  const mark = probe.records().length
+  const turnsBefore = turnWrites
+  asks.length = 0
   const watch = loopWatch(probe.records)
   await watch.ready
   const t0 = performance.now()
@@ -164,14 +178,17 @@ async function caughtUp(sid: string) {
   console.log(`      the formulas caught up in ${(ms / 1000).toFixed(1)} s, ${heldText(watchedLoop)}`)
   console.log(`        in the stretch this thread held longest: ${watchedLoop.inside.map(transactionLine).join(' | ')
     || 'no transaction'}`)
-  const overlapping = probe.records().filter(r => r.checkpointing).length
-  console.log(`        ${overlapping} of the formulas' writes begun while a checkpoint ran`)
-  if (WAITS) assert.equal(overlapping, 0, 'writes of the formulas begun while a checkpoint ran')
-  return { ms, loopMs: watchedLoop.cpuMs }
+  const held = watchedLoop.cpuWith(asks)
+  console.log(`        on the CPU or waiting for the formula engine at most ${held.ms.toFixed(0)} ms in one stretch; `
+    + `${turnWrites - turnsBefore} writes in turn`)
+  assert.ok(turnWrites > turnsBefore, 'the formulas\' writes went through the WAL turn')
+  overlaps(probe.records().slice(mark), 'transactions of the formulas')
+  return { ms, loopMs: held.ms }
 }
 
 await ok(`a run over earlier answers ${READERS} formulas read, cancelled at ${N} rows: every answer back, told by `
-  + `span, none queued${WINDOWS ? '' : ', within 5 s, the loop never held 100 ms'}; the formulas catch up`,
+  + `span, none queued${WINDOWS ? '' : ', within 5 s, this thread never held the loop 100 ms on the CPU'}; the `
+  + 'formulas catch up',
   async () => {
   const columns = Array.from({ length: READERS }, (_, k) => `F${k}`)
   const sid = sheet([{ Name: 'n0', Answer: 'a0' }], ['Name', 'Answer'])
@@ -202,12 +219,15 @@ await ok(`a run over earlier answers ${READERS} formulas read, cancelled at ${N}
       assert.deepEqual(cells(sid, column), answers.map(a => `${a}-${k}`), `${column} follows`)
     }
     assert.equal(queued.get(uid), 0, 'nothing left queued')
-    if (!WINDOWS) assert.ok(c.loopMs < LOOP_MS, `this thread held the event loop ${c.loopMs.toFixed(0)} ms on the CPU`)
+    if (!WINDOWS) {
+      assert.ok(c.loopMs < LOOP_MS,
+        `this thread held the event loop ${c.loopMs.toFixed(0)} ms on the CPU and waiting for the formula engine`)
+    }
   } finally { onFollowQueued(() => {}) }
 })
 
 await ok(`Stop all of 4 runs over earlier answers on a sorted sheet of ${N} rows: every answer back`
-  + `${WINDOWS ? '' : ', the loop never held 100 ms'}`, async () => {
+  + `${WINDOWS ? '' : ', this thread never held the loop 100 ms on the CPU'}`, async () => {
   const columns = ['A', 'B', 'C', 'D']
   const sid = sheet([{ Name: 'n0' }], ['Name', ...columns])
   // Row indexes far from storage order, as a sort leaves them: a step coprime with N.

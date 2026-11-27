@@ -8,23 +8,26 @@
 // pass prints its time, the loop's longest stretch and the CPU time in it (heldText), the longest transaction, the
 // full collections and the heap after them, and the sampled peak. Where the server makes the -wal file its full size
 // at start (Windows, lib/wal-file.ts; the probe's reset does the same), no commit grows it: on the Windows runner one
-// that did waited 233 ms off the CPU here. Where writers wait for a running checkpoint (Windows and Linux), no slice
-// begins while one runs (bulk-wal-kit.ts turnWritesSeen). On a Windows runner the stretch itself once went to 302 ms
-// in a first pass, no transaction in it, where 23 runs on each OS held 27 to 94 ms.
+// that did waited 233 ms off the CPU here. Where writers wait for a running checkpoint (Windows and Linux), no
+// transaction on the API connection begins while one runs (bulk-wal-kit.ts checkpointOverlaps). On a Windows runner
+// the stretch itself once went to 302 ms in a first pass, no transaction in it, where 23 runs on each OS held 27 to
+// 94 ms.
 import assert from 'node:assert/strict'
 import { constants, performance, PerformanceObserver } from 'node:perf_hooks'
 import v8 from 'node:v8'
 import vm from 'node:vm'
 import { v4 as uuid } from 'uuid'
 import { undoKit } from './run-undo-kit'
-import { heldText, loopWatch, LOOP_LIMIT_MS, turnWritesSeen } from './bulk-wal-kit'
+import {
+  checkpointOverlaps, checkpointRunning, heldText, loopWatch, LOOP_LIMIT_MS, turnWritesSeen,
+} from './bulk-wal-kit'
 import { sqliteWriteProbe, transactionLine } from './sqlite-write-probe'
 const { db, uid, ok, done, sheet } = undoKit('hiring-summarize-big')
 const { summarizeHiring } = await import('../../server/src/services/hiring-summarize')
 const { COMPANY_COLUMNS: C, ROLE_COLUMNS: R } = await import('../../server/src/lib/hiring/names')
-const { checkpointAsked, walCheckpointerIdle } = await import('../../server/src/lib/wal-checkpointer')
+const { walCheckpointerIdle } = await import('../../server/src/lib/wal-checkpointer')
 const { walFileSizing } = await import('../../server/src/lib/wal-file')
-const probe = sqliteWriteProbe(db, process.env.DB_PATH!, checkpointAsked)
+const probe = sqliteWriteProbe(db, process.env.DB_PATH!, checkpointRunning)
 const turns = turnWritesSeen()
 
 const N = process.platform === 'win32' ? 200_000 : 1_000_000
@@ -101,11 +104,12 @@ async function measured(check: { label: string; sinceLabel: string | null; runId
   console.log(`        ${turns.text()}`)
   if (walFileSizing()) assert.equal(grew, 0, 'transactions that grew the -wal file')
   turns.check()
+  checkpointOverlaps(probe.records(), 'transactions of the summary')
   return { s, loopMs: watched.cpuMs, grewMb }
 }
 
-await ok(`the first pass over ${N.toLocaleString('en-US')} roles: a row per company, the loop never held `
-  + `${LOOP_LIMIT_MS} ms, the heap well under the sheet's size`, async () => {
+await ok(`the first pass over ${N.toLocaleString('en-US')} roles: a row per company, this thread never held the loop `
+  + `${LOOP_LIMIT_MS} ms on the CPU, the heap well under the sheet's size`, async () => {
   const m = await measured({ label: '2026-11-11', sinceLabel: null, runId: first })
   assert.equal(m.s.roles, N)
   assert.equal(m.s.companiesNew, COMPANIES)
@@ -117,7 +121,8 @@ await ok(`the first pass over ${N.toLocaleString('en-US')} roles: a row per comp
   assert.equal(one[C.openRoles], String(N / COMPANIES))
 })
 
-await ok('a second pass writes no cell, the loop never held long, the heap bounded', async () => {
+await ok('a second pass writes no cell, this thread never held the loop long on the CPU, the heap bounded',
+  async () => {
   const m = await measured({ label: '2026-11-11', sinceLabel: null, runId: first })
   assert.equal(m.s.cellsWritten, 0)
   assert.equal(m.s.companiesNew, 0)

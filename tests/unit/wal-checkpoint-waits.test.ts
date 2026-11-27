@@ -6,7 +6,7 @@
 // that path too. The WAL is emptied first, as after a server start. Two bulk writers at once (lib/bulk-slices.ts), one
 // ending while the other writes, so its last checkpoint comes mid-slice for the other: no slice begins while a
 // checkpoint runs. A transform's pages (services/column-transform-pages.ts): none either. A slice that waits leaves the
-// event loop free (timers run, and this thread is on the CPU under 50 ms in any stretch, loop-watch.ts). A checkpoint
+// event loop free (timers run, and this thread holds it under 50 ms in any stretch, loop-watch.ts). A checkpoint
 // that never answers holds a writer no longer than the wait's limit, once; a worker that stops answers its waiters. One
 // that outlasts the limit: the slice waiting before it begins goes on, but a wait at the pause has no limit, so the WAL
 // stays bounded. A write whose own time runs out while it waits doesn't count as one that gave no answer: the next
@@ -137,7 +137,7 @@ async function sliceAfterHeldCheckpoint(holdMs: number, during?: () => void) {
   await asBulkWriter(bulk => bulk.slice(() => { began = performance.now() - t0; rewrite.run(51, 60) }))
   const watched = watch()
   clearInterval(timer)
-  return { began, ticks, loopMs: watched.cpuMs, held: heldText(watched), asked }
+  return { began, ticks, loopMs: watched.ownMs, held: heldText(watched), asked }
 }
 
 await ok('a slice waiting for a checkpoint leaves the event loop free, and begins once it answered', async () => {
@@ -145,7 +145,9 @@ await ok('a slice waiting for a checkpoint leaves the event loop free, and begin
   const s = await sliceAfterHeldCheckpoint(800)
   console.log(`      began after ${s.began.toFixed(0)} ms; ${s.ticks} timers ran; ${s.held}`)
   assert.ok(s.began >= 750, `the slice began ${s.began.toFixed(0)} ms after the checkpoint was asked`)
-  assert.ok(s.ticks >= 20 && s.loopMs < 50, `${s.ticks} timers ran, the loop held ${s.loopMs.toFixed(0)} ms on the CPU`)
+  // A wait takes no CPU time: this one is bound by the time this thread held the loop alone (loop-watch.ts ownMs).
+  assert.ok(s.ticks >= 20 && s.loopMs < 50,
+    `${s.ticks} timers ran, this thread held the loop ${s.loopMs.toFixed(0)} ms`)
   assert.equal(takeWalTurnStats().checkpointWaits, 1, 'waits for a running checkpoint')
 })
 

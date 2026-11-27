@@ -3,10 +3,11 @@
 // they are told at once and follow by themselves, and the auto-run sweep (every 15 s) catches up one whose kick
 // found the sheet still busy with the transform (on the Windows runner a page outlasts the kick). The event loop is
 // sampled every 5 ms from the first call to the last formula done, as transform-pages.test.ts does: this thread never
-// holds it 200 ms on the CPU in one stretch (loop-watch.ts: on a busy Mac the stretch itself went to 238 to 287 ms in
-// two of three full unit runs, and passed alone), and every formula ends right. Where writers wait for a running
-// checkpoint (writesWaitForCheckpoints: Windows and Linux), no write in turn (the pages, the formulas' slices) begins
-// while one runs, so none waits inside it, off the CPU. On a 200,000-row sheet the longest stretch was 31, 50 and 70 ms
+// holds it 200 ms in one stretch on the CPU and waiting for the formula engine's answers (loop-watch.ts cpuWith: on a
+// busy Mac the stretch itself went to 238 to 287 ms in two of three full unit runs, and passed alone), and every
+// formula ends right. Where writers wait for a running checkpoint (writesWaitForCheckpoints: Windows and Linux), no
+// transaction on the API connection begins while one runs (bulk-wal-kit.ts checkpointOverlaps), so none waits inside
+// it, off the CPU. On a 200,000-row sheet the longest stretch was 31, 50 and 70 ms
 // (170 ms once with 3, no transaction in it); this size keeps the case near a minute. The Windows runner's disk took
 // 7 minutes at it (3 formulas: written in 131 s, followed in 288 s, the loop held 128 ms): there it runs 10,000
 // rows, in slices of the same size. Printed with the longest stretch: this thread's waits for the formula engine's
@@ -14,20 +15,20 @@
 import assert from 'node:assert/strict'
 import { performance } from 'node:perf_hooks'
 import { undoKit } from './run-undo-kit'
-import { heldText, loopWatch, turnWritesSeen } from './bulk-wal-kit'
+import { checkpointOverlaps, checkpointRunning, heldText, loopWatch, turnWritesSeen } from './bulk-wal-kit'
 import { sqliteWriteProbe, transactionLine } from './sqlite-write-probe'
 const { db, uid, ok, done, idle, sheet, cells } = undoKit('transform-formula-follow')
 const { startFormulaColumn } = await import('../../server/src/services/formula-column')
 const { startDerivedFollow } = await import('../../server/src/services/derived-follow')
 const { startAutorunLoop } = await import('../../server/src/services/autorun-loop')
 const { transformColumn } = await import('../../server/src/services/column-transform')
-const { checkpointAsked, closeWalCheckpointer, walCheckpointerIdle } =
+const { closeWalCheckpointer, walCheckpointerIdle } =
   await import('../../server/src/lib/wal-checkpointer')
 const { formulaHost } = await import('../../server/src/lib/formula/host')
 startDerivedFollow()
 startAutorunLoop()
 console.error = () => {}
-const probe = sqliteWriteProbe(db, process.env.DB_PATH!, checkpointAsked)
+const probe = sqliteWriteProbe(db, process.env.DB_PATH!, checkpointRunning)
 const turns = turnWritesSeen()
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 // Each ask of the formula engine: when, how long this thread waited for its answer, and what it asked.
@@ -47,7 +48,8 @@ const NOTES = 'n'.repeat(200)
 const queued = db.prepare('SELECT EXISTS (SELECT 1 FROM autorun_pending WHERE user_id = ?)').pluck()
 
 for (const formulas of [0, 1, 3]) {
-  await ok(`a ${N}-row transform into a column ${formulas} formulas read: the loop never held 200 ms`, async () => {
+  await ok(`a ${N}-row transform into a column ${formulas} formulas read: this thread never held the loop 200 ms on `
+    + 'the CPU and waiting for the formula engine', async () => {
     const sid = sheet(Array.from({ length: N }, (_, i) => ({ Name: `p${i}`, Out: `o${i}`, Notes: NOTES })),
       ['Name', 'Out', 'Notes'])
     for (let k = 0; k < formulas; k++) {
@@ -95,8 +97,12 @@ for (const formulas of [0, 1, 3]) {
       assert.deepEqual(cells(sid, `F${k}`), outs.map(o => `${o}-${k}`), `F${k} follows`)
     }
     turns.check()
-    assert.ok(watched.cpuMs < LOOP_MS,
-      `this thread held the event loop ${watched.cpuMs.toFixed(0)} ms on the CPU in one stretch`)
+    checkpointOverlaps(probe.records(), 'transactions of the transform and its formulas')
+    // The engine's answers are waited for off the CPU (Atomics.wait): counted with the CPU time of their stretch.
+    const held = watched.cpuWith(asks.map(a => ({ from: a.at, to: a.at + a.ms })))
+    console.log(`        on the CPU or waiting for the formula engine at most ${held.ms.toFixed(0)} ms in one stretch`)
+    assert.ok(held.ms < LOOP_MS,
+      `this thread held the event loop ${held.ms.toFixed(0)} ms on the CPU and waiting for the formula engine`)
   })
 }
 

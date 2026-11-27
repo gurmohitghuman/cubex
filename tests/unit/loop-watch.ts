@@ -16,14 +16,17 @@
 // so each stretch has its own. Every stretch let off is printed with its CPU time and where what was let off came
 // from; GC pauses are printed, never let off.
 // What a test bounds depends on what it proves. One about how much work the code does at a time (a bulk job's slices,
-// a clear, a transform, a summary) bounds `cpuMs`: the most CPU time this thread spent in one stretch, GC's included.
-// A busy machine or a slow runner stretches the wall clock, not that: run-clear-big, transform-formula-follow and
-// hiring-summarize-big went over their bounds by 7 to 102 ms under load (two full unit runs on one server, a busy
-// Mac, a Windows runner) and passed alone, where this thread's own CPU in a stretch is a few tens of ms. What holds
-// such a job off the CPU is checked as the event it is, in the tests about it: a commit that began while a checkpoint
-// ran, ran SQLite's own checkpoint, started the WAL over or grew the -wal file (sqlite-write-probe.ts). One that proves
-// this thread doesn't wait (for a lock, a checkpoint or another thread) with no such event to check bounds `ownMs`,
-// as a wait takes no CPU time. On Windows a thread's CPU time moves in clock ticks of about 15.6 ms.
+// a clear, a transform, a summary) bounds `cpuMs`: the most CPU time this thread spent in one stretch, GC's included,
+// or `cpuWith` where the code also waits off the CPU on purpose (the formula engine). A busy machine or a slow runner
+// stretches the wall clock more than that: run-clear-big, transform-formula-follow and hiring-summarize-big went over
+// their bounds by 7 to 102 ms under load (two full unit runs on one server, a busy Mac, a Windows runner) and passed
+// alone. CPU time still rises some under load (a shared core, a lower clock), so the margins stay. What holds such a
+// job off the CPU is checked as an event where there is one: a transaction begun while a checkpoint ran
+// (bulk-wal-kit.ts checkpointOverlaps), one that ran SQLite's own checkpoint, started the WAL over or grew the -wal
+// file (sqlite-write-probe.ts). Other waits off the CPU (a lock's busy handler, a disk wait outside a plain commit)
+// that cpuMs doesn't see stay a test's own: one that proves this thread doesn't wait (for a lock, a checkpoint or
+// another thread) bounds `ownMs`, as a wait takes no CPU time. On Windows a thread's CPU time moves in clock ticks of
+// about 15.6 ms.
 import path from 'node:path'
 import { performance, PerformanceObserver } from 'node:perf_hooks'
 import { Worker } from 'node:worker_threads'
@@ -96,6 +99,10 @@ export interface LoopWatched {
   cpuMs: number
   cpuStretch: { at: number; ms: number }
   cpuInside: TransactionRecord[]
+  // The most this thread spent in one stretch on the CPU and in `spans` (performance.now() times): waits off the CPU
+  // the code under test owns, such as the formula engine's (lib/formula/host.ts blocks in Atomics.wait), which
+  // `cpuMs` leaves out. That stretch, and how long it was.
+  cpuWith: (spans: Span[]) => { ms: number; at: number; stretchMs: number }
   own: LetOff & { gcMs: number }
   // All that was let off: how much, over how many stretches, and from where. Each stretch let off LISTED_MS or more.
   letOffTotal: { ms: number; stretches: number; from: Array<[string, number]> }
@@ -188,6 +195,13 @@ export function loopWatch(records: () => TransactionRecord[], opts: WatchOptions
     const none = { at: 0, ms: 0, cpuMs: 0, rqMs: 0 }
     const own = watched.reduce((a, b) => (b.ms > a.ms ? b : a), { s: none, off: offFor(none), ms: 0 })
     const cpu = stretches.reduce((a, b) => (b.cpuMs > a.cpuMs ? b : a), none)
+    const cpuWith = (spans: Span[]) => {
+      const m = merged(spans)
+      return stretches.reduce((a, s) => {
+        const ms = s.cpuMs + covered(m, s.at, s.at + s.ms)
+        return ms > a.ms ? { ms, at: s.at, stretchMs: s.ms } : a
+      }, { ms: 0, at: 0, stretchMs: 0 })
+    }
     const gcMs = covered(merged(gc), own.s.at, own.s.at + own.s.ms)
     const total = new Map<string, number>()
     const offs = watched.filter(x => x.off.letOffMs >= 0.5).map(x => x.off)
@@ -204,7 +218,7 @@ export function loopWatch(records: () => TransactionRecord[], opts: WatchOptions
     }
     return { longest: { at: longest.at, ms: longest.ms }, idleMs: lateIn(longest), ownMs: own.ms,
       ownStretch: { at: own.s.at, ms: own.s.ms }, inside: inStretch(own.s), own: { ...own.off, gcMs },
-      cpuMs: cpu.cpuMs, cpuStretch: { at: cpu.at, ms: cpu.ms }, cpuInside: inStretch(cpu),
+      cpuMs: cpu.cpuMs, cpuStretch: { at: cpu.at, ms: cpu.ms }, cpuInside: inStretch(cpu), cpuWith,
       letOffTotal, letOffs: offs.filter(o => o.letOffMs >= LISTED_MS), diskFile: disk?.file ?? '', ended }
   }
   return Object.assign(stop, { ready, stallDisk: disk?.stall ?? (() => {}) })
