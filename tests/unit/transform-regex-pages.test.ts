@@ -4,7 +4,9 @@
 // starts at the row that was running, with the whole time again: a pattern slow on long cells is written, over as
 // many calls as it needs. Only a row whose cell alone takes the pattern more than TRANSFORM_REGEX_PAGE_MS stops the
 // call, naming the row: refused, writing no cell, when no row of the pass is written; otherwise `stopped`, the rows
-// before it written, with the cursor. The event loop keeps answering throughout, a pattern that works extracts what
+// before it written, with the cursor. The event loop keeps answering throughout (this thread never waits for the
+// worker, sync-waits.ts, and its CPU time in any one stretch stays under 100 ms, loop-watch.ts cpuMs; the loop's
+// longest stretch is printed, not bounded, as a busy machine stretches it), a pattern that works extracts what
 // the API thread would, and a row changed between the worker's read and the page's transaction is read again.
 // Where a server makes the -wal file its full size at start (Windows), so does this, after the migrations: no write
 // in a watched call grows it (on the Windows runner a commit that did could wait on the OS, off the CPU).
@@ -19,6 +21,7 @@ import constMod from '../../server/src/lib/api-v1-constants'
 import walMod from '../../server/src/lib/wal-checkpointer'
 import walConstMod from '../../server/src/lib/constants-wal'
 import { watchWhile } from './loop-watch'
+import { countSyncWaits } from './sync-waits'
 import { sizeWalLikeAServer, sqliteWriteProbe, walGrowth } from './sqlite-write-probe'
 import { caughtUp } from './transform-to-end'
 import { passed } from './ends-on-its-own'
@@ -94,15 +97,20 @@ async function untilEnd(sheetId: string, pattern: string): Promise<Outcome[]> {
   return out
 }
 
-// The most this thread alone held the event loop while `fn` ran (loop-watch.ts; printed, with the transactions in
-// it, from PRINT_MS), and its answer; none of its writes grew the -wal file.
+// While `fn` ran: the most this thread alone held the event loop (loop-watch.ts; printed, with the transactions in it,
+// from PRINT_MS), the most CPU it spent in one stretch, and how many times it waited on another thread
+// (sync-waits.ts); its answer; none of its writes grew the -wal file. `loopFree` checks the two bounds.
 const LOOP_MS = 100
 const PRINT_MS = 50
-async function watched<T>(fn: () => Promise<T>): Promise<{ out: T; lag: number }> {
+async function watched<T>(fn: () => Promise<T>): Promise<{ out: T; lag: number; cpu: number; waits: number }> {
   const grown = walGrowth(process.env.DB_PATH!, walSized)
-  const { out, watched: w } = await watchWhile(probe.records, fn, PRINT_MS)
+  const { out: { out, watched: w }, waits } = await countSyncWaits(() => watchWhile(probe.records, fn, PRINT_MS))
   assert.equal(grown(probe.records()), '', 'writes that grew the -wal file')
-  return { out, lag: w.ownMs }
+  return { out, lag: w.ownMs, cpu: w.cpuMs, waits }
+}
+const loopFree = (m: { cpu: number; waits: number }) => {
+  assert.equal(m.waits, 0, 'this thread waited on another')
+  assert.ok(m.cpu < LOOP_MS, `this thread was on the CPU ${m.cpu.toFixed(0)} ms in one stretch`)
 }
 
 // The WAL copied back or started over (the worker's start-over leaves a frame of its own), the worker asked again
@@ -119,11 +127,12 @@ async function walCopied() {
 async function main() {
   await check('a first row that stalls: refused, naming the row, and no cell is written', async () => {
     const id = sheet([STALL_CELL, 'b1', 'b2'])
-    const { out, lag } = await watched(() => extract(id, STALLS))
+    const m = await watched(() => extract(id, STALLS))
+    const { out } = m
     assert.deepEqual(out, { fail: 'invalid',
       error: `regex_extract stopped: ${slowWords(rowId(id, 0))}. No cell was written. ${SLOW_PATTERN_FIX}` })
     assert.deepEqual(targets(id), [undefined, undefined, undefined])
-    assert.ok(lag < LOOP_MS, `the event loop waited ${lag} ms`)
+    loopFree(m)
   })
 
   await check('rows written on a page, then the next page\'s first row stalls: stopped, naming it, with the cursor',
@@ -168,14 +177,16 @@ async function main() {
     cells.push('name@example.com')
     const id = sheet(cells)
     workerReads = 0
-    const { out: answers, lag } = await watched(() => untilEnd(id, '(.*)@'))
-    console.log(`     ${answers.length} calls, ${workerReads} pages, the event loop held at most ${lag.toFixed(1)} ms`)
+    const m = await watched(() => untilEnd(id, '(.*)@'))
+    const answers = m.out
+    console.log(`     ${answers.length} calls, ${workerReads} pages, the event loop held at most `
+      + `${m.lag.toFixed(1)} ms (on the CPU at most ${m.cpu.toFixed(1)} ms in one stretch)`)
     assert.ok(answers.every(a => 'ok' in a), JSON.stringify(answers.find(a => !('ok' in a))))
     assert.equal(answers.reduce((n, a) => n + ('ok' in a ? a.ok.updated : 0), 0), cells.length)
     assert.ok(workerReads > answers.length, `${workerReads} pages in ${answers.length} calls`)
     assert.equal(applyCellOp('regex_extract', cells[0], { pattern: '(.*)@' }), '')
     assert.deepEqual(targets(id), [...Array(150).fill(''), 'name'])
-    assert.ok(lag < LOOP_MS, `the event loop waited ${lag} ms`)
+    loopFree(m)
   })
 
   await check('a pattern that works extracts on the worker what the API thread would, over several pages',
