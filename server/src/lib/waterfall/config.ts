@@ -36,7 +36,9 @@ export interface EnrichmentChoices {
   valuePath: string | null;        // null: the result type's default field of the tool
   maxCostUsd: number | null;       // null: the tool's default cap
 }
-export interface AiChoices { kind: 'ai'; prompt: string; model: string | null; webSearch: boolean }
+// webFetch: the model may read pages on the sites in the step's inputs (lib/ai-web-tools.ts); absent on steps
+// saved before it, read as off.
+export interface AiChoices { kind: 'ai'; prompt: string; model: string | null; webSearch: boolean; webFetch?: boolean }
 export interface HttpChoices {
   kind: 'http'; method: string; url: string; headers: Record<string, string>; body: string | null;
   valuePath: string; retries: number | null;

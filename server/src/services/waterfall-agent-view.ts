@@ -36,7 +36,11 @@ export function agentSetup(s: WaterfallSetup, o: { secrets: boolean }): Record<s
           max_cost_usd: c.maxCostUsd,
         };
       }
-      if (c.kind === 'ai') return { ...base, kind: c.kind, prompt: c.prompt, model: c.model, web_search: c.webSearch };
+      if (c.kind === 'ai') {
+        return {
+          ...base, kind: c.kind, prompt: c.prompt, model: c.model, web_search: c.webSearch, web_fetch: !!c.webFetch,
+        };
+      }
       if (c.kind === 'http') {
         const shown = o.secrets ? { url: c.url, headers: c.headers, body: c.body } : maskHttpStep(c);
         return { ...base, kind: c.kind, method: c.method, ...shown, value_path: c.valuePath, retries: c.retries };

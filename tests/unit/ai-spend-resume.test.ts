@@ -163,10 +163,10 @@ await ok('a connection reset counts as maybe billed only when it came 2 s or mor
 await ok("a negative listed price is no price for a waterfall's AI step and a preview's token cost", async () => {
   const block = { resultType: 'text' } as never
   const sample = [{ name: 'N0' }]
-  const varies = await priceAiStep(uid, block, VARIES, 'Say hi to /name', false, sample)
+  const varies = await priceAiStep(uid, block, VARIES, 'Say hi to /name', { search: false, fetch: false }, sample)
   assert.ok('ok' in varies && varies.ok.priced === false && varies.ok.capUsd === 0, JSON.stringify(varies))
   assert.match(varies.ok.note ?? '', /no fixed price for this model \(it varies\)/)
-  const priced = await priceAiStep(uid, block, PRICED, 'Say hi to /name', false, sample)
+  const priced = await priceAiStep(uid, block, PRICED, 'Say hi to /name', { search: false, fetch: false }, sample)
   assert.ok('ok' in priced && priced.ok.priced === true && priced.ok.capUsd > 0, JSON.stringify(priced))
   // Token usage without a reported cost: priced from the list, or unknown when the price varies.
   const results = [{ rowIndex: 0, value: 'Hello', promptTokens: 0, completionTokens: 1000 }]

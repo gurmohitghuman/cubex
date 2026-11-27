@@ -25,7 +25,10 @@ function settingsOf(step: WaterfallStep): unknown {
         built?.route.stopAtFirst ?? false, built?.valuePath ?? c.valuePath, built?.capUsd ?? null,
         built?.cleanDomains ?? true];
     }
-    case 'ai': return ['a', c.prompt, b.kind === 'ai' ? b.model : c.model, c.webSearch];
+    case 'ai': {
+      const model = b.kind === 'ai' ? b.model : c.model;
+      return ['a', c.prompt, model, c.webSearch, ...(c.webFetch ? ['fetch'] : [])];
+    }
     case 'http': {
       const headers = Object.entries(c.headers).sort(([a], [z]) => a.localeCompare(z));
       return ['h', c.method.toUpperCase(), c.url, headers, c.body ?? '', c.valuePath];

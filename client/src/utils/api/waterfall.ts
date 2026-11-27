@@ -15,7 +15,8 @@ export interface EnrichmentChoices {
   providerOrder: string[]; skipProviders: string[]; stopAtFirst: boolean; valuePath: string | null;
   maxCostUsd: number | null
 }
-export interface AiChoices { kind: 'ai'; prompt: string; model: string | null; webSearch: boolean }
+// webFetch: read pages on the sites in the step's inputs; absent on steps saved before it (off).
+export interface AiChoices { kind: 'ai'; prompt: string; model: string | null; webSearch: boolean; webFetch?: boolean }
 export interface HttpChoices {
   kind: 'http'; method: string; url: string; headers: Record<string, string>; body: string | null; valuePath: string;
   retries: number | null

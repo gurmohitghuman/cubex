@@ -138,3 +138,25 @@ test('a formula step with an email check, tested alone from its card', async ({ 
   await shot(page, 'waterfall-test-step')
   await api.dispose()
 })
+
+test('an AI step can read pages on the sites in its inputs: the box goes with the step', async ({ page, context }) => {
+  test.setTimeout(60_000)
+  await page.setViewportSize({ width: 1600, height: 1000 })
+  const api = await authedApi()
+  const { tableId } = await seedCsv(api, ['Name,Website', 'Ada Byron,analytical.example'].join('\n'))
+  await context.addCookies((await api.storageState()).cookies)
+  await page.goto(`${BASE}/table/${tableId}`)
+  await expect(page.locator('.ag-row[row-index="0"]').first()).toBeVisible({ timeout: 15_000 })
+  await openColumnType(page, 'Waterfall')
+  await drawer(page).getByTestId('waterfall-type-email').click()
+  await drawer(page).getByRole('button', { name: 'AI prompt' }).click()
+  await drawer(page).getByLabel('AI prompt').fill('Find the work email of /full_name at /domain')
+  const box = drawer(page).getByRole('checkbox', { name: /Read pages on the sites in its inputs/ })
+  await expect(box).not.toBeChecked()
+  // The drawer's estimate carries the step as it is: ticking the box sends webFetch with it.
+  const sent = page.waitForRequest(r => r.url().includes('/estimate') && r.method() === 'POST'
+    && JSON.stringify(r.postDataJSON()?.steps ?? []).includes('"webFetch":true'), { timeout: 15_000 })
+  await box.check()
+  await expect(box).toBeChecked()
+  await sent
+})

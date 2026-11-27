@@ -48,6 +48,11 @@ export const AiStepEditor: React.FC<Props> = ({ choices, inputs, resultLabel, on
           onChange={e => onChange({ ...choices, webSearch: e.target.checked })} />
         Search the web (each search costs a little more)
       </label>
+      <label className="flex items-center gap-2 text-sm text-gray-700">
+        <input type="checkbox" checked={!!choices.webFetch}
+          onChange={e => onChange({ ...choices, webFetch: e.target.checked })} />
+        Read pages on the sites in its inputs, like a /domain (each page costs a little more)
+      </label>
     </div>
   )
 }

@@ -2,7 +2,8 @@
 // a row (services/run-estimate.ts): its messages' tokens on sample rows, the
 // output size from your past runs on the model (or the default range), the
 // model's prices, and with web search the engine the column would plan
-// (services/run-estimate-web.ts) and its fees. The cap is one call's ceiling:
+// (services/run-estimate-web.ts) and its fees; with page reading, the pages a
+// row may read, their text and fees, as an AI column prices them. The cap is one call's ceiling:
 // the longest sample row's input, the step's output token limit, the most
 // searches (a row longer than every sample row can cost more; the run counts
 // what each call really cost the moment it comes back).
@@ -28,10 +29,11 @@ export interface AiStepPrice {
 }
 
 export async function priceAiStep(
-  userId: string, w: Pick<WaterfallBlock, 'resultType' | 'phone'>, model: string, prompt: string, webSearch: boolean,
+  userId: string, w: Pick<WaterfallBlock, 'resultType' | 'phone'>, model: string, prompt: string, web: WebTools,
   sample: Array<Record<string, string>>,
 ): Promise<{ ok: AiStepPrice } | { error: string }> {
-  const web: WebTools = { search: webSearch, fetch: false };
+  const webSearch = web.search;
+  const usesWeb = web.search || web.fetch;
   const est = await estimateWebWork(userId, model, web, null);
   if ('error' in est) return est;
   const plan = est.ok.plan;
@@ -45,11 +47,11 @@ export async function priceAiStep(
   const maxIn = Math.max(avgIn, ...sizes);
   const history = tokenHistory(userId, model, web, plan?.used ?? null);
   const out = history.output.range;
-  const extra = webSearch && !history.webInput ? webInputTokensPerRow(est.ok.work) : { low: 0, high: 0 };
+  const extra = usesWeb && !history.webInput ? webInputTokensPerRow(est.ok.work) : { low: 0, high: 0 };
   const inLow = history.webInput ? Math.max(history.webInput.low, avgIn) : avgIn + extra.low;
   const inHigh = history.webInput ? Math.max(history.webInput.high, avgIn) : avgIn + extra.high;
   const inMost = history.webInput ? Math.max(history.webInput.high, maxIn) : maxIn + extra.high;
-  const fees = webSearch ? webFeesPerRow(est.ok.work) : { low: 0, high: 0 };
+  const fees = usesWeb ? webFeesPerRow(est.ok.work) : { low: 0, high: 0 };
   const result = await fetchModels(Date.now());
   const m = (result.ok ? result.models : result.stale)?.find(x => x.id === model);
   // A negative listed price (openrouter/auto's "-1": it varies) is no price, never $0.

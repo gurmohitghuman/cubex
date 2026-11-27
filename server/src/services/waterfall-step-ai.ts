@@ -33,7 +33,8 @@ export interface AiStepArgs {
 }
 
 const SYSTEM = 'You look up one fact for one row of a spreadsheet. Use the details given and, when you can '
-  + 'search the web, what you find there. Never guess or make a value up: when you can\'t find it, answer null. '
+  + 'search the web or read pages, what you find there. Never guess or make a value up: when you can\'t find it, '
+  + 'answer null. '
   + 'Plain text values only, no markdown.';
 
 const SPEC = (w: WaterfallBlock) => [{
@@ -66,7 +67,9 @@ const waitable = (e: unknown): boolean => status(e) === 429
 
 async function sendOnce(a: AiStepArgs, messages: ReturnType<typeof aiMessages>): Promise<ModelCall> {
   const search = a.built.search;
-  const tools = buildWebTools(a.choices.prompt, a.inputs, { search, fetch: false });
+  // Page reading: only sites in the inputs the prompt names (a /domain or URL input), as an AI column's rows.
+  const fetch = !!a.choices.webFetch;
+  const tools = buildWebTools(a.choices.prompt, a.inputs, { search, fetch });
   for (let tries = 0; ; tries++) {
     try {
       // No stop signal: a call that went out finishes, so what it cost is
@@ -76,7 +79,7 @@ async function sendOnce(a: AiStepArgs, messages: ReturnType<typeof aiMessages>):
       try {
         return await withConnectRetry(() => sendModelCall(a.client, {
           model: a.built.model, messages, temperature: WATERFALL_AI_TEMPERATURE, maxTokens: aiMaxTokens(null),
-          tools, searchReplay: search ? searchReplayFor(search) : null, maxToolCalls: toolCallBudget(search, false),
+          tools, searchReplay: search ? searchReplayFor(search) : null, maxToolCalls: toolCallBudget(search, fetch),
         }, deadline.signal), a.signal, a.stopped);
       } catch (error) {
         throw deadline.timedOut() ? new Error(AI_TIMEOUT_MESSAGE) : error;

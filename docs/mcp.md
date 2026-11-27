@@ -826,7 +826,7 @@ A waterfall column fills one value per row by trying steps in order and stopping
 | `kind` | It takes | It costs |
 |---|---|---|
 | `enrichment` | `tool_id` from `find_enrichments` (action `search`); optional `inputs` (the tool's input to an input key, or a fixed value), `value_path` (the answer field; by default the one `result_type` names), `provider_order`, `skip_providers` and `max_cost_usd` (its cap per row) | treg's price, on your treg balance |
-| `ai` | `prompt` with `/input_key` words; optional `model` (default: the sheet's, else the account's) and `web_search` | OpenRouter's price |
+| `ai` | `prompt` with `/input_key` words; optional `model` (default: the sheet's, else the account's), `web_search`, and `web_fetch` (read pages, only on the sites in the inputs the prompt names, such as `/domain`) | OpenRouter's price, plus about $0.001 a page read |
 | `http` | `url` with `{{input_key}}`, a saved API key as `/key_name` (needs the `secrets` scope), and `value_path`, the JSONPath of the value in the JSON reply; optional `method`, `headers`, `body` and `retries` | whatever your API charges |
 | `formula` | `formula`: JavaScript over `{{input_key}}`, such as `{{first_name}}.toLowerCase() + "@" + {{domain}}`, worked out in a sandbox like a formula column | nothing |
 | `lookup` | `other_sheet_id` (another sheet of the account, any table), `match_column` (its column to match), `input` (the input key whose value it looks for), `return_column` (its column that holds the answer) and optional `match`: `equals` (default) or `contains` | nothing |
