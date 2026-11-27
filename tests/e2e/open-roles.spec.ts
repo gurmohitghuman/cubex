@@ -109,8 +109,9 @@ test('agents: the estimate by default, the run held to its most, the run scope n
   const low = await callError(client, 'hiring_signals', { ...ask, estimate_only: false, max_cost_usd: 0.0001 })
   expect(low).toContain('more than the')
   const started = await call(client, 'hiring_signals', { ...ask, estimate_only: false, max_cost_usd: est.high_usd })
-  expect(started).toMatchObject({ column: 'Open roles found', roles_sheet_name: 'Open roles',
-    lookup_columns: ['Open roles'] })
+  // Answered at once: the count comes once the run has set up its rows (lookups_left), or is there already.
+  expect(started).toMatchObject({ column: 'Open roles found', roles_sheet_name: 'Open roles' })
+  expect(started.lookups_left !== undefined || started.lookup_columns[0] === 'Open roles').toBeTruthy()
   await finished(api, sheetId, started.run_id)
   await counts(api, sheetId, { Northwind: '2', Bluefin: '2', Copperleaf: '2' })
 

@@ -45,6 +45,8 @@ const KEYED_RUN_STARTS = new Set(['/ai-runs', '/http-runs', '/enrichment-runs', 
 export const V1_SHEET_BUSY_ALLOWED: BusyAllowed[] = [
   '/rows', '/rows/query', '/run-conditions/check', '/run-conditions/generate', '/formula-columns/write',
   '/setups', '/setups/plan', /^\/setups\/[^/]+\/apply$/, '/column-runs', '/runs/stop',
+  // Open roles' estimate is a pure read; its start checks the sheet itself (services/open-roles.ts).
+  '/open-roles',
   /^\/setup-versions\/[^/]+\/restore$/,
   ...TEST_PATHS,
   req => req.path === '/rows/update' && rawIdempotencyKey(req) !== undefined,

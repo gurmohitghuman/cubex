@@ -1,3 +1,4 @@
+// Over 200 lines: one feature's cases in order, each building on the sheet the one before left.
 // Open roles at the companies on a person's own sheet (lib/hiring/open-roles-input.ts, services/open-roles.ts,
 // lib/enrich-request.ts) against the repo's mock treg, the job queue only recording (no search runs):
 // - the ask parsed strictly (website column, titles as the index takes them, country, place, how recent, per company);
@@ -41,6 +42,17 @@ const columnsOf = (sid: string) => JSON.parse(db.prepare('SELECT column_order FR
   .get(sid) as string) as string[]
 const lookups = (sid: string) => db.prepare(`SELECT column_name, returns, match_column, source_column
   FROM lookup_columns WHERE sheet_id = ? ORDER BY column_name`).all(sid)
+// The count is made after the start without keeping it waiting: once the start has set up the rows, in the
+// background (services/open-roles-lookups.ts). Polled until it is there.
+async function countOn(sid: string, column: string, source: string): Promise<void> {
+  for (let tries = 0; tries < 200; tries++) {
+    await kit.idle(sid)
+    const made = lookups(sid) as Array<{ column_name: string; source_column: string }>
+    if (made.some(l => l.column_name === column && l.source_column === source)) return
+    await new Promise(r => setTimeout(r, 50))
+  }
+  throw new Error(`no "${column}" lookup on ${source}: ${JSON.stringify(lookups(sid))}`)
+}
 const newestConfig = (sid: string) => JSON.parse(db.prepare(`SELECT config FROM http_runs WHERE sheet_id = ?
   AND setup_only = 0 ORDER BY created_at DESC, rowid DESC LIMIT 1`).pluck().get(sid) as string)
 const parsed = (v: Record<string, unknown>) => {
@@ -181,8 +193,10 @@ await ok('the start: the Open roles sheet beside, the search column, the lookup,
   assert.ok('ok' in s && 'started' in s.ok, JSON.stringify(s))
   const st = s.ok.started
   rolesSheet = st.rolesSheetId
-  assert.deepEqual([st.column, st.rolesSheetName, st.lookups, st.lookupsLeft],
-    [OPEN_ROLES.status, OPEN_ROLES.sheet, [OPEN_ROLES.count], null])
+  assert.deepEqual([st.column, st.rolesSheetName], [OPEN_ROLES.status, OPEN_ROLES.sheet])
+  // Answered at once: the rows' setup holds the sheet, so the count comes after (or is there if it was quick).
+  assert.ok(st.lookupsLeft !== null || st.lookups[0] === OPEN_ROLES.count, JSON.stringify(st))
+  await countOn(sid, OPEN_ROLES.count, 'Website')
   assert.deepEqual(rolesSheets(), ['Open roles'])
   assert.deepEqual(columnsOf(rolesSheet), OPEN_ROLE_COLUMNS)
   assert.deepEqual(columnsOf(sid), ['Name', 'Website', OPEN_ROLES.status, OPEN_ROLES.count])
@@ -251,6 +265,7 @@ await ok('with no treg key a start is refused before anything is made; a renamed
   assert.ok('ok' in again && 'started' in again.ok, JSON.stringify(again))
   assert.deepEqual([again.ok.started.column, again.ok.started.rolesSheetId], ['Hiring?', rolesSheet])
   assert.deepEqual(rolesSheets(), ['Open roles'], 'no second sheet')
+  await countOn(sid, OPEN_ROLES.count, 'Site')
   assert.deepEqual(lookups(sid).map(l => [l.column_name, l.source_column]), [[OPEN_ROLES.count, 'Site']])
 })
 
@@ -262,8 +277,8 @@ await ok('names the person already uses are left alone; a hiring table\'s sheets
   assert.ok('ok' in e && 'estimate' in e.ok, JSON.stringify(e))
   const s = await openRoles(uid, own, { ...o, estimateOnly: false, maxCostUsd: e.ok.estimate.highUsd, timeZone: null })
   assert.ok('ok' in s && 'started' in s.ok, JSON.stringify(s))
-  assert.deepEqual([s.ok.started.column, s.ok.started.lookups],
-    [`${OPEN_ROLES.status} 2`, [`${OPEN_ROLES.count} 2`]])
+  assert.equal(s.ok.started.column, `${OPEN_ROLES.status} 2`)
+  await countOn(own, `${OPEN_ROLES.count} 2`, 'Website')
   assert.deepEqual(rolesSheets(), ['Open roles', 'Open roles 2'], 'a free name in the table')
   const missing = await openRoles(uid, sid, { ...o, websiteColumn: 'Nowhere', estimateOnly: true, maxCostUsd: null,
     timeZone: null })

@@ -39,15 +39,17 @@ export function onSheetFree(sheetId: string, then: () => void): void {
 }
 
 // Waits until the sheet is free, at most `ms`: null once it is, else what still holds it (a service that starts a
-// run and then changes the sheet waits out the start's placeholders so: services/social-find.ts, open-roles.ts).
+// run and then changes the sheet waits out the start's placeholders so: services/social-find.ts, open-roles.ts). A
+// test copy holds it with no heavy operation to wait for (onSheetFree would answer on the next turn, round and round),
+// so that is looked at again every HEAVY_JOB_RETRY_MS.
 export async function sheetFreeWithin(sheetId: string, ms: number): Promise<string | null> {
   const until = Date.now() + ms;
   for (let held = sheetBusyWith(sheetId); held; held = sheetBusyWith(sheetId)) {
     const left = until - Date.now();
     if (left <= 0) return held;
     await new Promise<void>(resolve => {
-      const t = setTimeout(resolve, left);
-      onSheetFree(sheetId, () => { clearTimeout(t); resolve(); });
+      const t = setTimeout(resolve, busy.has(sheetId) ? left : Math.min(left, HEAVY_JOB_RETRY_MS));
+      if (busy.has(sheetId)) onSheetFree(sheetId, () => { clearTimeout(t); resolve(); });
     });
   }
   return null;

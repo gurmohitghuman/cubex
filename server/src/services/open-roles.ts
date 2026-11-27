@@ -1,3 +1,4 @@
+// Over 200 lines: one flow, from the ask's checks through the estimate to the start, and the sheet it makes.
 // Open roles at the companies on a person's own sheet: one implementation for the app, /api/v1 and MCP
 // (plans/find-jobs-open-roles.md). For each company row with a website, hirebase's job index is asked for the roles
 // asked (lib/hiring/open-roles-input.ts); each role found becomes a row in an Open roles sheet beside it, and a lookup
@@ -7,8 +8,8 @@
 // Open roles sheet made the first time, the search column's run on every row (kept: only roles the Open roles sheet
 // never had are added, First seen the run's day), and the lookup made the first time. The start carries the
 // most the asker was shown: worked out again, a higher most is refused with the new estimate, so a run never spends
-// more than its estimate showed; the run's spend limit is that most. The lookups come after the start (a lookup's
-// fill holds the sheet, which a start would wait for); a sheet busy then gets them at the next start.
+// more than its estimate showed; the run's spend limit is that most. The lookups come after the start, without
+// keeping it waiting (services/open-roles-lookups.ts).
 import { db } from '../lib/db';
 import { countRows, getSheetColumns, parseRowData, verifySheetOwnership } from '../lib/sql-helpers';
 import { appendColumnsToOrder } from '../lib/sheet-columns';
@@ -22,10 +23,8 @@ import { micro, moneyUp } from '../lib/cost-ceiling';
 import { buildRequest } from '../lib/enrich-request';
 import { inputTemplates } from '../lib/enrich-run-config';
 import { cellOf } from '../lib/row-cell';
-import {
-  HIRING_CHECK_POLL_MS, HIRING_COUNT_MAX_SEARCHES, OPEN_ROLES_LOOKUPS_LATER_MS, OPEN_ROLES_LOOKUPS_WAIT_MS,
-} from '../lib/constants';
-import { busyMessage, sheetBusyWith, sheetFreeWithin } from '../lib/sheet-busy';
+import { HIRING_COUNT_MAX_SEARCHES } from '../lib/constants';
+import { busyMessage, sheetBusyWith } from '../lib/sheet-busy';
 import { HIRING_DIRECT_TOOL_ID, OPEN_ROLES, OPEN_ROLES_WORDS, ROLE_COLUMNS } from '../lib/hiring/names';
 import { OPEN_ROLE_COLUMNS, openRolesInput, openRolesOf, type OpenRolesOptions } from '../lib/hiring/open-roles-input';
 import { newestColumnRun } from './enrich-column';
@@ -33,9 +32,7 @@ import { buildEnrichmentConfig } from './enrich-run-build';
 import { estimateEnrichment, type EnrichEstimateView } from './enrich-setup';
 import { startEnrichmentRun } from './enrich-run-start';
 import { countDirectJobs, type JobCount } from './job-count';
-import { lookupInputOf, startLookupColumn } from './lookup-column';
-import { searchState } from './hiring-check-watch';
-import type { LookupColumnRow } from '../lib/lookup-columns';
+import { freeName, lookAgainWhenDone, lookupsAfterStart } from './open-roles-lookups';
 import type { RunFail } from './run-shared';
 import { getTregToken } from './treg-key';
 
@@ -90,14 +87,6 @@ function setupOf(userId: string, sheetId: string): Setup | null {
     }
   }
   return null;
-}
-
-// A name not taken in `taken`: base, else "base 2", "base 3"...
-function freeName(base: string, taken: Iterable<string>): string {
-  const lower = new Set([...taken].map(t => t.toLowerCase()));
-  let name = base;
-  for (let n = 2; lower.has(name.toLowerCase()); n++) name = `${base} ${n}`;
-  return name;
 }
 
 // Why this sheet can't be searched, or null.
@@ -193,53 +182,6 @@ function dropRolesSheet(userId: string, rolesSheetId: string): void {
     (SELECT 1 FROM rows WHERE sheet_id = ?)`).run(rolesSheetId, userId, rolesSheetId);
 }
 
-// The count on the company sheet, found by what it looks up whatever its name, made once; one that reads another
-// website column than this run's is pointed at this one (the roles' Domain copies it). It waits for the sheet first,
-// at most waitMs (the run's start, or another fill, holds it), and looks again then: another call may have made it.
-async function ensureLookups(userId: string, sheetId: string, o: OpenRolesOptions, rolesSheetId: string,
-  waitMs: number): Promise<{ lookups: string[]; left: string | null }> {
-  const ours = () => (db.prepare(`SELECT column_name, source_column FROM lookup_columns WHERE sheet_id = ?
-    AND user_id = ? AND other_sheet_id = ? AND match_column = ? AND returns = 'count'`)
-    .all(sheetId, userId, rolesSheetId, ROLE_COLUMNS.domain) as Array<{ column_name: string; source_column: string }>)
-    .find(h => getSheetColumns(sheetId, userId).includes(h.column_name));
-  const ready = (f: ReturnType<typeof ours>) => !!f && f.source_column === o.websiteColumn;
-  let found = ours();
-  if (ready(found)) return { lookups: [found!.column_name], left: null };
-  const held = await sheetFreeWithin(sheetId, waitMs);
-  found = ours();
-  if (ready(found)) return { lookups: [found!.column_name], left: null };
-  const was = found ? [found.column_name] : [];
-  if (held) {
-    return { lookups: was, left: `The "${found?.column_name ?? OPEN_ROLES.count}" column is ${found ? 'pointed at '
-      + `"${o.websiteColumn}"` : 'added'} once the sheet is free (${held}).` };
-  }
-  const column = found?.column_name ?? freeName(OPEN_ROLES.count, getSheetColumns(sheetId, userId));
-  const made = await startLookupColumn(userId, sheetId, {
-    column, sourceColumn: o.websiteColumn, otherSheetId: rolesSheetId, matchColumn: ROLE_COLUMNS.domain,
-    match: 'equals', returns: 'count',
-  });
-  if ('fail' in made) {
-    return { lookups: was, left: `The "${column}" column isn't up to date yet (${made.message}). The next run does `
-      + 'it.' };
-  }
-  if (!found) writeColumnDescription(sheetId, userId, made.ok.column, OPEN_ROLES_WORDS.count);
-  return { lookups: [made.ok.column], left: null };
-}
-
-// The lookups once the run's start has set up the sheet's rows (it holds the sheet meanwhile): now when that is quick,
-// else in the background as soon as the sheet is free (or at the next run).
-async function lookupsAfterStart(userId: string, sheetId: string, o: OpenRolesOptions, rolesSheetId: string):
-  Promise<{ lookups: string[]; left: string | null }> {
-  const now = await ensureLookups(userId, sheetId, o, rolesSheetId, OPEN_ROLES_LOOKUPS_WAIT_MS);
-  if (!now.left) return now;
-  void ensureLookups(userId, sheetId, o, rolesSheetId, OPEN_ROLES_LOOKUPS_LATER_MS).then(later => {
-    if (later.left) console.error(`Open roles: ${later.left} The next run adds it.`);
-  }, (error: Error) => {
-    console.error(`Open roles: the lookups weren't added (${error.message}); the next run adds them.`);
-  });
-  return now;
-}
-
 // What the sheet's search column was last run with (options null: not readable), for the app to show it again;
 // null when it was never run here.
 export interface OpenRolesSetupView {
@@ -254,35 +196,6 @@ export function openRolesSetup(userId: string, sheetId: string): OpenRolesSetupV
     options: openRolesOf(inputTemplates(config), config.enrichment.list?.maxItems ?? 0), column: setup.column,
     rolesSheetId: setup.rolesSheetId, rolesSheetName: setup.rolesSheetName, going: setup.active,
   };
-}
-
-// The lookups on the company sheet (whatever their names now).
-const lookupsOf = (userId: string, sheetId: string, rolesSheetId: string): LookupColumnRow[] =>
-  db.prepare(`SELECT * FROM lookup_columns WHERE sheet_id = ? AND user_id = ? AND other_sheet_id = ?
-    AND match_column = ?`).all(sheetId, userId, rolesSheetId, ROLE_COLUMNS.domain) as LookupColumnRow[];
-
-// A lookup doesn't follow the sheet it looks in: once the run is over and its roles are in the Open roles sheet
-// (hiring-check-watch.ts searchState), both look every row up again, each as soon as the sheet is free. Each look
-// is a short read. In memory: a restart meanwhile leaves the columns as they were until the next run, or the
-// person's "Look up every row again".
-const watching = new Set<string>();
-function lookAgainWhenDone(userId: string, sheetId: string, rolesSheetId: string, runId: string): void {
-  if (watching.has(runId)) return;
-  watching.add(runId);
-  const look = async (): Promise<void> => {
-    if (searchState(userId, runId).going) { setTimeout(() => void look(), HIRING_CHECK_POLL_MS).unref(); return; }
-    watching.delete(runId);
-    for (const rec of lookupsOf(userId, sheetId, rolesSheetId)) {
-      const held = await sheetFreeWithin(sheetId, OPEN_ROLES_LOOKUPS_LATER_MS);
-      const out = held ? { fail: 'conflict', message: held } : await startLookupColumn(userId, sheetId,
-        lookupInputOf(rec));
-      if ('fail' in out) {
-        console.error(`Open roles: "${rec.column_name}" wasn't looked up again (${out.message}); its menu's Look up `
-          + 'every row again does it.');
-      }
-    }
-  };
-  setTimeout(() => void look(), HIRING_CHECK_POLL_MS).unref();
 }
 
 export async function openRoles(userId: string, sheetId: string, req: OpenRolesRequest): Promise<OpenRolesAnswer> {
@@ -329,9 +242,9 @@ export async function openRoles(userId: string, sheetId: string, req: OpenRolesR
     logSheetChange(sheetId, userId, 'hiring_created', `Made the ${roles.name} sheet for ${req.roles.join(', ')}`,
       { detail: { roles: req.roles, websiteColumn: req.websiteColumn, country: req.country, place: req.place } });
   }
-  writeColumnDescription(sheetId, userId, column, OPEN_ROLES_WORDS.status);
-  const lookups = await lookupsAfterStart(userId, sheetId, req, roles.id);
+  if (!setup) writeColumnDescription(sheetId, userId, column, OPEN_ROLES_WORDS.status);
   lookAgainWhenDone(userId, sheetId, roles.id, started.ok.runId);
+  const lookups = await lookupsAfterStart(userId, sheetId, req, roles.id);
   return { ok: { started: { runId: started.ok.runId, column, rolesSheetId: roles.id, rolesSheetName: roles.name,
     lookups: lookups.lookups, lookupsLeft: lookups.left } } };
 }

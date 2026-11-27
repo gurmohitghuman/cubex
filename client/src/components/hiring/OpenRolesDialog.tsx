@@ -1,3 +1,4 @@
+// Over 200 lines: one dialog, the ask's fields, its estimate and the start, sharing their state.
 import React, { useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { Briefcase, Loader2 } from 'lucide-react'
