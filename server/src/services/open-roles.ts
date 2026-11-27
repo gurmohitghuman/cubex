@@ -25,7 +25,7 @@ import { cellOf } from '../lib/row-cell';
 import { HIRING_COUNT_MAX_SEARCHES, OPEN_ROLES_LOOKUPS_LATER_MS, OPEN_ROLES_LOOKUPS_WAIT_MS } from '../lib/constants';
 import { sheetFreeWithin } from '../lib/sheet-busy';
 import { HIRING_DIRECT_TOOL_ID, OPEN_ROLES, OPEN_ROLES_WORDS, ROLE_COLUMNS } from '../lib/hiring/names';
-import { OPEN_ROLE_COLUMNS, openRolesInput, type OpenRolesOptions } from '../lib/hiring/open-roles-input';
+import { OPEN_ROLE_COLUMNS, openRolesInput, openRolesOf, type OpenRolesOptions } from '../lib/hiring/open-roles-input';
 import { newestColumnRun } from './enrich-column';
 import { buildEnrichmentConfig } from './enrich-run-build';
 import { estimateEnrichment, type EnrichEstimateView } from './enrich-setup';
@@ -228,6 +228,22 @@ async function lookupsAfterStart(userId: string, sheetId: string, o: OpenRolesOp
     console.error(`Open roles: the lookups weren't added (${error.message}); the next run adds them.`);
   });
   return now;
+}
+
+// What the sheet's search column was last run with (options null: not readable), for the app to show it again;
+// null when it was never run here.
+export interface OpenRolesSetupView {
+  options: OpenRolesOptions | null; column: string; rolesSheetId: string; rolesSheetName: string; going: boolean;
+}
+export function openRolesSetup(userId: string, sheetId: string): OpenRolesSetupView | null {
+  if (!verifySheetOwnership(sheetId, userId)) return null;
+  const setup = setupOf(userId, sheetId);
+  if (!setup) return null;
+  const config = newestColumnRun(sheetId, userId, setup.column)!.config;
+  return {
+    options: openRolesOf(inputTemplates(config), config.enrichment.list?.maxItems ?? 0), column: setup.column,
+    rolesSheetId: setup.rolesSheetId, rolesSheetName: setup.rolesSheetName, going: setup.active,
+  };
 }
 
 export async function openRoles(userId: string, sheetId: string, req: OpenRolesRequest): Promise<OpenRolesAnswer> {

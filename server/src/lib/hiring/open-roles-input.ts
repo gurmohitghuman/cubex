@@ -79,6 +79,45 @@ export function parseOpenRoles(v: unknown, names: keyof typeof NAMES = 'camel'):
 
 const tok = (column: string) => `{{${column}}}`;
 
+// "United States" → "US": the run sends the country by name (countryName); the app asks for its code. Every
+// two-letter code's name, worked out once.
+let codes: Map<string, string> | null = null;
+function countryCodeOf(name: string): string | null {
+  if (!codes) {
+    codes = new Map();
+    const A = 'A'.charCodeAt(0);
+    for (let i = 0; i < 26 * 26; i++) {
+      const code = String.fromCharCode(A + Math.floor(i / 26), A + (i % 26));
+      const n = countryName(code);
+      if (n !== code && !codes.has(n.toLowerCase())) codes.set(n.toLowerCase(), code);
+    }
+  }
+  return codes.get(name.toLowerCase()) ?? null;
+}
+
+const parsedJson = (text: string | undefined): unknown => {
+  if (text === undefined) return undefined;
+  try { return JSON.parse(text); } catch { return undefined; }
+};
+
+// What a sheet's search column was last run with, read back from its inputs (as openRolesInput wrote them), for the
+// app to show again; null when they aren't ours.
+export function openRolesOf(templates: Record<string, string>, perCompany: number): OpenRolesOptions | null {
+  const domains = parsedJson(templates.company_domains);
+  const website = Array.isArray(domains) && typeof domains[0] === 'string' ? /^\{\{(.+)\}\}$/.exec(domains[0]) : null;
+  const titles = parsedJson(templates.job_titles);
+  if (!website || !Array.isArray(titles) || !titles.every(t => typeof t === 'string')) return null;
+  const geo = parsedJson(templates.geo_locations);
+  const where = Array.isArray(geo) && geo[0] && typeof geo[0] === 'object' ? geo[0] as Record<string, unknown> : {};
+  const days = Number(templates.days_ago);
+  return {
+    websiteColumn: website[1], roles: titles as string[],
+    country: typeof where.country === 'string' ? countryCodeOf(where.country) : null,
+    place: typeof where.city === 'string' && where.city ? where.city : null,
+    postedWithinDays: Number.isSafeInteger(days) && days > 0 ? days : null, perCompany,
+  };
+}
+
 // The job index's inputs: the row's website as the one company; the rest fixed. A filter not asked isn't sent.
 function searchInputs(o: OpenRolesOptions): Record<string, InputBinding> {
   const where: Record<string, string> = {

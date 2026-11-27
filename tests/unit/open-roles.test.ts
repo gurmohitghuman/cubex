@@ -17,7 +17,7 @@ import { tregKit } from './token-replay-treg-kit'
 const kit = await tregKit('open-roles')
 const { db, uid, ok, done, sheet } = kit
 const { parseOpenRoles, openRolesInput, OPEN_ROLE_COLUMNS } = await import('../../server/src/lib/hiring/open-roles-input')
-const { openRoles } = await import('../../server/src/services/open-roles')
+const { openRoles, openRolesSetup } = await import('../../server/src/services/open-roles')
 const { buildRequest } = await import('../../server/src/lib/enrich-request')
 const { inputTemplates } = await import('../../server/src/lib/enrich-run-config')
 const { buildEnrichmentConfig } = await import('../../server/src/services/enrich-run-build')
@@ -203,6 +203,15 @@ await ok('a run still going is refused; once it is over, a second start reuses t
     .map((x: { value: string }) => x.value), [today()])
   assert.equal(inputTemplates(c).job_titles, '["BDR"]', 'the roles asked now')
   assert.equal(runsOn(sid), 2)
+})
+
+await ok('what the sheet\'s search was last run with reads back as asked (the country by its code); a sheet never '
+  + 'searched has none', () => {
+  assert.deepEqual(openRolesSetup(uid, sid), {
+    options: { ...o, roles: ['BDR'] }, column: OPEN_ROLES.status, rolesSheetId: rolesSheet,
+    rolesSheetName: OPEN_ROLES.sheet, going: true,
+  })
+  assert.equal(openRolesSetup(uid, sheet([{ Website: 'x.io' }], ['Website'])), null)
 })
 
 await ok('names the person already uses are left alone; a hiring table\'s sheets and a missing column are refused',
