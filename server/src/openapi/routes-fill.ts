@@ -215,13 +215,12 @@ export const fillRoutes = (): RouteDoc[] => [
   op({
     method: 'post', path: '/hiring/{id}/buyers', operationId: 'findHiringBuyers', tag: 'hiring', scope: 'run',
     summary: 'Find the person each company on Companies would buy through, by job title, with a verified email.',
-    description: 'An estimate unless estimate_only is false; the run needs max_cost_usd, the estimate\'s high_usd. '
-      + 'The first call adds the Buyer columns to Companies (free; the write scope too). A company with no one '
-      + 'holding the titles costs nothing.',
+    description: 'An estimate unless estimate_only is false, which changes nothing; the run needs max_cost_usd, the '
+      + 'estimate\'s high_usd, and takes the companies whose Buyer is empty. The first run adds the Buyer columns to '
+      + 'Companies (the write scope too). A company with no one holding the titles costs nothing.',
     body: z.object({
       buyer_titles: z.array(z.string()).optional()
         .describe('Job titles to look for (at most 6). Default: the titles in use, or ones from the roles.'),
-      rows: z.enum(['empty', 'all']).optional().describe('Companies without a buyer yet (default), or all.'),
       estimate_only: z.boolean().optional().describe('false finds them for real. Default true: the cost.'),
       max_cost_usd: z.number().optional().describe('With estimate_only false: the estimate\'s high_usd.'),
     }),

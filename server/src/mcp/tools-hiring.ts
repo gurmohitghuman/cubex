@@ -21,8 +21,9 @@ export function registerHiringTool(server: McpServer, ctx: McpAuthCtx): void {
       + 'Roles and Searches. check (run scope, PAID): adds only new roles, sums up Companies. estimate_only '
       + '(default true): high_usd, its most, and a free count; then estimate_only false with max_cost_usd = '
       + 'high_usd. get: the checks. update (free): min_roles and leave_out_companies, from the next check. '
-      + 'find_buyers (run scope, PAID): the person each company would buy through (Buyer, title, LinkedIn, '
-      + 'verified email on Companies), estimated first as check is.',
+      + 'find_buyers (run scope, PAID): the person each company without one yet would buy through (Buyer, title, '
+      + 'LinkedIn, verified email on Companies). estimate_only (default true) changes nothing; the run adds the '
+      + 'columns the first time (write scope too).',
     inputSchema: z.object({
       action: z.enum(['create', 'check', 'get', 'update', 'find_buyers']).describe('check and find_buyers are paid'),
       id: z.string().optional()
@@ -51,7 +52,6 @@ export function registerHiringTool(server: McpServer, ctx: McpAuthCtx): void {
         + 'row. Their roles are still searched and paid for.'),
       buyer_titles: words().describe('find_buyers: job titles to look for at each company (default: get\'s '
         + 'buyer.titles, or its starting_titles the first time)'),
-      rows: z.enum(['empty', 'all']).optional().describe('find_buyers: companies without a buyer yet (default) or all'),
       estimate_only: lenientBoolean().optional().describe('check, find_buyers: default true'),
       // Checked as /api/v1 checks it (lib/hiring/input.ts checkMostOf): the same refusals.
       max_cost_usd: z.number().optional()

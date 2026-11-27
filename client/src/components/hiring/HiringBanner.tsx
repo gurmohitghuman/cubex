@@ -83,7 +83,7 @@ export const HiringBanner: React.FC<{ v: HiringView; sheetId: string; onChanged:
             disabled={going(last)} onClick={() => setFiltering(true)} data-testid="hiring-filters"
             title="Which companies get a row on Companies">Filters…</button>
           <button type="button" className="text-xs text-gray-600 underline disabled:opacity-50"
-            disabled={going(last) || !v.checks.some(c => c.stage === 'done')} onClick={() => setBuying(true)}
+            disabled={going(last) || !last} onClick={() => setBuying(true)}
             data-testid="hiring-find-buyers" title="The person each company would buy through, with a work email">
             Find buyers…</button>
           <button type="button" className="btn-secondary text-xs px-3 py-1 disabled:opacity-50"

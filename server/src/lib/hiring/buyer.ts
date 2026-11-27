@@ -4,6 +4,7 @@
 // billed only when it finds one), then the verified-email preset on that person's name and LinkedIn. A company with
 // no such person leaves the email's inputs empty, so its email is skipped and costs nothing.
 import type { EnrichRunInput } from '../enrich-run-input';
+import type { HTTPAPIConfig } from '../http-request-template';
 import { BUYER_COLUMNS, COMPANY_COLUMNS } from './names';
 
 export const BUYER_TOOL_ID = 'findymail.search.employees';
@@ -66,30 +67,47 @@ const base = (toolId: string, columnName: string): EnrichRunInput => ({
   saveOnly: true,
 });
 
+// What the people search reads out of its answer: the person's name, title and LinkedIn, by path.
+const SEARCH_OUTPUTS = [
+  { key: 'name', path: '$[0].name', column: BUYER_COLUMNS.name },
+  { key: 'jobTitle', path: '$[0].jobTitle', column: BUYER_COLUMNS.title },
+  { key: 'linkedinUrl', path: '$[0].linkedinUrl', column: BUYER_COLUMNS.linkedin },
+] as const;
+export type BuyerOutputNames = Record<(typeof SEARCH_OUTPUTS)[number]['key'], string>;
+
+// The columns a saved people search writes now (a rename rewrites the saved setup), else the names it starts with.
+export function buyerOutputNames(config: HTTPAPIConfig | null): BuyerOutputNames {
+  const out = Object.fromEntries(SEARCH_OUTPUTS.map(o => [o.key, o.column])) as BuyerOutputNames;
+  for (const o of SEARCH_OUTPUTS) {
+    const m = config?.responseMapping.find(r => r.jsonPath === o.path);
+    if (m) out[o.key] = m.columnName;
+  }
+  return out;
+}
+
 // The people search, saved as a setup: the company's website, the titles, one person. again: its column is there
-// (new titles save its setup again; its cells stay). perRowUsd: the tool's price for one person, its most a company
-// (Cubex prices a per-result tool as a page of 20; Findymail's own dial is count, sent as 1); null: the default.
-export function buyerSearchInput(titles: readonly string[], again: boolean, perRowUsd: number | null): EnrichRunInput {
+// (new titles save its setup again; its cells stay), names: the columns it writes now. perRowUsd: the tool's price for
+// one person, its most a company (Cubex prices a per-result tool as a page of 20; Findymail's own dial is count, sent
+// as 1); null: the default.
+export function buyerSearchInput(
+  titles: readonly string[], again: boolean, perRowUsd: number | null, names = buyerOutputNames(null),
+): EnrichRunInput {
   return {
     ...base(BUYER_TOOL_ID, BUYER_COLUMNS.search), continueColumn: again, maxCostPerRowUsd: perRowUsd,
     inputs: { website: { column: COMPANY_COLUMNS.domain }, job_titles: { value: JSON.stringify(titles) },
       count: { value: '1' } },
-    outputs: [
-      { key: 'name', path: '$[0].name', columnName: BUYER_COLUMNS.name },
-      { key: 'jobTitle', path: '$[0].jobTitle', columnName: BUYER_COLUMNS.title },
-      { key: 'linkedinUrl', path: '$[0].linkedinUrl', columnName: BUYER_COLUMNS.linkedin },
-    ],
+    outputs: SEARCH_OUTPUTS.map(o => ({ key: o.key, path: o.path, columnName: names[o.key] })),
   };
 }
 
 // The verified email, saved as a setup, with the drawer's defaults: treg's email finder on the buyer's name or
 // LinkedIn at the company's domain, a first.last guess first, each address checked (the preset's own loop and per-row
-// cap), only addresses the checker calls valid kept.
-export function buyerEmailInput(): EnrichRunInput {
+// cap), only addresses the checker calls valid kept. names: the columns the people search writes now.
+export function buyerEmailInput(names = buyerOutputNames(null)): EnrichRunInput {
   return {
     ...base(BUYER_EMAIL_TOOL_ID, BUYER_COLUMNS.emailSearch), preset: 'verified_email',
-    inputs: { domain: { column: COMPANY_COLUMNS.domain }, full_name: { column: BUYER_COLUMNS.name },
-      linkedin_url: { column: BUYER_COLUMNS.linkedin } },
+    inputs: { domain: { column: COMPANY_COLUMNS.domain }, full_name: { column: names.name },
+      linkedin_url: { column: names.linkedinUrl } },
     email: { accept: 'safest', guess: true, pattern: 'first.last' },
     outputs: [
       { key: 'email', path: '$.output.email', columnName: BUYER_COLUMNS.email },

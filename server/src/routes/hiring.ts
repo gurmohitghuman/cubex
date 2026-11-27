@@ -97,9 +97,9 @@ router.post('/:id/check', async (req: AuthRequest, res) => {
   }
 });
 
-// POST /:id/buyers: {titles, rows ('empty' | 'all'), estimateOnly, maxCostUsd}: saves the buyer columns (or new
-// titles) when needed, then answers {estimate} or, sent the estimate's most, {setup_run}; 409 {over_ceiling,
-// estimate} when the most is now higher (services/hiring-buyer.ts).
+// POST /:id/buyers: {titles, estimateOnly, maxCostUsd}: answers {estimate} (a pure read) or, sent the estimate's
+// most, saves the buyer columns (or new titles) when needed and answers {setup_run}; 409 {over_ceiling, estimate}
+// when the most is now higher (services/hiring-buyer.ts).
 router.post('/:id/buyers', async (req: AuthRequest, res) => {
   try {
     const rec = recordOf(req, res);
@@ -107,12 +107,11 @@ router.post('/:id/buyers', async (req: AuthRequest, res) => {
     const b = isObj(req.body) ? req.body : {};
     const titles = b.titles === undefined || b.titles === null ? null : parseBuyerTitles(b.titles, 'Who buys');
     if (typeof titles === 'string') return res.status(400).json({ error: titles });
-    const rows = b.rows === 'all' ? 'all' : 'empty';
     const estimateOnly = b.estimateOnly !== false;
     const most = estimateOnly ? { value: null } : usdLimitOf(b.maxCostUsd, 'maxCostUsd');
     if ('error' in most) return res.status(400).json({ error: most.error });
     if (!estimateOnly && most.value === null) return res.status(400).json({ error: 'Ask for the estimate first.' });
-    const out = await findBuyers(req.userId!, rec, { titles, rows, estimateOnly, maxCostUsd: most.value });
+    const out = await findBuyers(req.userId!, rec, { titles, estimateOnly, maxCostUsd: most.value });
     if ('fail' in out) {
       return res.status(runFailHttpStatus(out)).json({ error: out.message,
         ...(out.estimate ? { over_ceiling: true, estimate: out.estimate } : {}) });

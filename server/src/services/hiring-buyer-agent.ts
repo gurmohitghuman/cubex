@@ -1,5 +1,6 @@
 // Find buyers for agents (services/hiring-buyer.ts): the answers /api/v1 and MCP's hiring_signals find_buyers give
-// (snake_case). The estimate is the default and saves the columns the first time (free); the run needs max_cost_usd.
+// (snake_case). The estimate is the default and a pure read; the run needs max_cost_usd, and saves the columns the
+// first time (or new titles), which needs the write scope too.
 import { hiringFor } from './hiring-store';
 import { buyerOf, findBuyers, type BuyerView } from './hiring-buyer';
 import type { AgentCheckFail } from './hiring-agent';
@@ -24,7 +25,7 @@ export const buyerJson = (b: BuyerView) => ({
 });
 
 // The estimate, or the run, which needs max_cost_usd (the estimate's high_usd). canSave: the token has the write
-// scope (saving a column setup is a write).
+// scope (the run saving a column setup is a write).
 export async function agentFindBuyers(userId: string, id: unknown, b: Json, canSave: boolean):
   Promise<{ ok: Json; companiesSheetId: string; added: string[]; started: boolean } | AgentCheckFail> {
   const rec = hiringFor(userId, id);
@@ -34,8 +35,6 @@ export async function agentFindBuyers(userId: string, id: unknown, b: Json, canS
   const titles = b.buyer_titles === undefined || b.buyer_titles === null ? null
     : parseBuyerTitles(b.buyer_titles, 'buyer_titles');
   if (typeof titles === 'string') return bad(titles);
-  const rows = b.rows === undefined || b.rows === null ? 'empty' : b.rows;
-  if (rows !== 'empty' && rows !== 'all') return bad('rows must be empty (companies without a buyer yet) or all.');
   let maxCostUsd: number | null = null;
   if (!estimateOnly) {
     const most = usdLimitOf(b.max_cost_usd, 'max_cost_usd');
@@ -46,7 +45,7 @@ export async function agentFindBuyers(userId: string, id: unknown, b: Json, canS
     }
     maxCostUsd = most.value;
   }
-  const out = await findBuyers(userId, rec, { titles, rows, estimateOnly, maxCostUsd, canSave });
+  const out = await findBuyers(userId, rec, { titles, estimateOnly, maxCostUsd, canSave });
   if ('fail' in out) {
     const { estimate, ...fail } = out;
     return estimate ? { ...fail, estimate: { ...estimate } } : fail;
@@ -60,8 +59,9 @@ export async function agentFindBuyers(userId: string, id: unknown, b: Json, canS
       next: started
         ? 'Follow it with get_run (action setup, its setup_run_id); then read Companies with read_rows (Buyer, Buyer '
           + 'title, Buyer LinkedIn, Buyer email). A company with no one holding these titles has an empty Buyer.'
-        : 'Nothing was searched. Tell the user the cost; then hiring_signals action "find_buyers" with estimate_only '
-          + 'false and the estimate\'s high_usd as max_cost_usd.',
+        : 'Nothing was searched or saved. Tell the user the cost; then hiring_signals action "find_buyers" with '
+          + 'estimate_only false and the estimate\'s high_usd as max_cost_usd (the first time it adds the buyer '
+          + 'columns to Companies, which needs the write scope too).',
     },
   };
 }

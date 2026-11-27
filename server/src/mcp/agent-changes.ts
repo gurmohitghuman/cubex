@@ -44,10 +44,12 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
       {
         change: 'changed',
         tools: ['hiring_signals'],
-        summary: 'hiring_signals takes action find_buyers: for each company on Companies, the person it would buy '
-          + 'through, found by job title (Buyer, Buyer title, Buyer LinkedIn) with a verified Buyer email.',
-        details: 'Paid: an estimate by default, then estimate_only false with its high_usd as max_cost_usd. The first '
-          + 'call adds the columns (write scope too); buyer_titles defaults to ones from the roles. get answers buyer.',
+        summary: 'hiring_signals takes action find_buyers: for each company on Companies without a buyer yet, the '
+          + 'person it would buy through, found by job title (Buyer, Buyer title, Buyer LinkedIn) with a verified '
+          + 'Buyer email.',
+        details: 'Paid: an estimate by default (it changes nothing), then estimate_only false with its high_usd as '
+          + 'max_cost_usd. The first run adds the columns (write scope too); buyer_titles defaults to ones from the '
+          + 'roles. get answers buyer.',
       },
     ],
   },
