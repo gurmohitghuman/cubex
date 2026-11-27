@@ -6,7 +6,7 @@ import { aiMaxTokens, CELL_MAX_ENRICHMENT } from '../lib/constants';
 import { stripControlChars, clampCellChars } from '../lib/csv-safety';
 import { aiDataCellSummary } from '../lib/ai-data-cell';
 import {
-  buildWebTools, runSearchConfig, searchReplayFor, toolCallBudget, WEB_SYSTEM_MESSAGE,
+  buildWebTools, proseSystemMessage, runSearchConfig, searchReplayFor, toolCallBudget,
 } from '../lib/ai-web-tools';
 import { runFetchLimits } from '../lib/web-fetch-options';
 import { citationsFromCompletion } from '../lib/ai-citations';
@@ -68,13 +68,10 @@ export async function processRow(
     const search = runSearchConfig(run);
     const usingTools = !!search || !!run.use_web_fetch;
 
+    // The column's system prompt, with web tools followed by a note on using what they bring back.
     const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [];
-    if (run.system_prompt && !usingTools) {
-      messages.push({ role: 'system', content: run.system_prompt });
-    }
-    if (usingTools) {
-      messages.push({ role: 'system', content: WEB_SYSTEM_MESSAGE });
-    }
+    const system = proseSystemMessage(run.system_prompt, usingTools);
+    if (system) messages.push({ role: 'system', content: system });
     messages.push({ role: 'user', content: processedPrompt });
 
     // Web search (+ datetime) and per-row domain-limited web fetch: lib/ai-web-tools.ts.

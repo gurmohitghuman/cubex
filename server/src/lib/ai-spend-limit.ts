@@ -27,7 +27,7 @@ import {
 import { aiMaxTokens } from './constants-ai';
 import { enginePrice, nativeSearchProvider, type BilledEngine } from './web-search-pricing';
 import { buildMultiOutputInstruction, type OutputColumnSpec } from './ai-multi-output';
-import { WEB_SYSTEM_MESSAGE } from './ai-web-tools';
+import { proseSystemMessage } from './ai-web-tools';
 import { money } from './cost-ceiling';
 import type { FetchLimits } from './web-fetch-options';
 
@@ -126,7 +126,7 @@ export function rowFixedFor(r: RowSettings): RowFixed {
     fixedBytes = bytes(r.systemPrompt) + bytes(`\n\n${instruction}`);
     messages = r.systemPrompt ? 2 : 1;
   } else {
-    const system = withWeb ? WEB_SYSTEM_MESSAGE : r.systemPrompt;
+    const system = proseSystemMessage(r.systemPrompt, withWeb);
     fixedBytes = bytes(system);
     messages = system ? 2 : 1;
   }

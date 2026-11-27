@@ -91,13 +91,13 @@ const sha256 = (s: string) => createHash('sha256').update(s, 'utf8').digest('hex
 // Stable-order array (NOT object spread — key order must never drift between
 // the preview-time and run-time computations).
 export function computeConfigHash(c: DraftConfig): string {
-  // Both runners IGNORE the caller's systemPrompt when a web tool is on (they
-  // substitute a fixed tool system prompt — ai-preview-runner.ts / ai-row.ts),
-  // so hashing it there would fail reuse over a field that can't change the
-  // output. Normalize it to null for tool runs; hash the real value otherwise.
-  const usingTools = !!c.useOpenRouterWebSearch || !!c.useWebFetch;
+  // The system prompt is sent with web tools too (lib/ai-web-tools.ts
+  // proseSystemMessage), so it is hashed whatever the tools. (Runners once sent
+  // a fixed web message in its place, and the hash left it out for web runs:
+  // such a draft with a system prompt no longer matches, so its preview, made
+  // without that prompt, is never reused.)
   return sha256(JSON.stringify([
-    c.columnName, c.prompt, usingTools ? null : (c.systemPrompt ?? null),
+    c.columnName, c.prompt, c.systemPrompt ?? null,
     c.model, c.temperature,
     !!c.useOpenRouterWebSearch, !!c.useWebFetch, c.maxChars ?? null,
     // Search settings only when searching, so every other config hashes as before.

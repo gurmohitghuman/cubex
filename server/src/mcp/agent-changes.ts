@@ -50,6 +50,13 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
           + 'holds is refused when the count is known, as treg would turn down every row. Columns made before keep '
           + 'their most.',
       },
+      {
+        change: 'server',
+        summary: 'run_ai_column with one output column keeps its system_prompt when web search or web fetch is on: '
+          + 'the system prompt goes first, then a short note on using what the web tools bring back.',
+        details: 'Before, a web run sent a fixed web message in its place, so rules or format written there were '
+          + 'ignored. Runs with output_columns always kept it. Estimates and spend limits count the new message.',
+      },
     ],
   },
   {

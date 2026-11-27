@@ -13,6 +13,7 @@ import { parseTokenPrice, estimateTokens, average, rowCostUsd, roundUsd } from '
 import { priceModelId, rowPricesOf } from '../lib/ai-spend-limit';
 import { rowMostUsd } from './run-estimate-most';
 import { buildMultiOutputInstruction, type OutputColumnSpec } from '../lib/ai-multi-output';
+import { proseSystemMessage } from '../lib/ai-web-tools';
 import { webFeesPerRow, webInputTokensPerRow, type Range, type WebTools } from '../lib/ai-web-cost';
 import type { SearchOptions } from '../lib/web-search-options';
 import { estimateRows, type EstimateRowsFrom } from './run-estimate-rows';
@@ -115,7 +116,10 @@ export async function estimateAiRun(userId: string, input: AiEstimateInput): Pro
   // structured run's JSON instruction) and average. Free — no API calls.
   const web: WebTools = { search: !!input.useOpenRouterWebSearch, fetch: !!input.useWebFetch };
   const usesWeb = web.search || web.fetch;
-  const sysTokens = input.systemPrompt ? estimateTokens(input.systemPrompt) : 0;
+  // The system message a row sends: a structured run's system prompt as it is, a prose run's with the web
+  // note when it has web tools (lib/ai-web-tools.ts proseSystemMessage, which the runner sends).
+  const system = input.outputColumns ? input.systemPrompt : proseSystemMessage(input.systemPrompt, usesWeb);
+  const sysTokens = system ? estimateTokens(system) : 0;
   const instructionTokens = input.outputColumns
     ? estimateTokens(buildMultiOutputInstruction(input.outputColumns, { withSources: usesWeb })) : 0;
   const fixedTokens = sysTokens + instructionTokens;
