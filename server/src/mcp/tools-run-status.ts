@@ -6,7 +6,7 @@ import { getAiRunSummary, getHttpRunSummary } from '../services/run-status';
 import { waitForRunChange } from '../services/run-status-wait';
 import { McpAuthCtx, ok, err, type ErrResult, type OkResult } from './tool-helpers';
 import type { ToolAnswer } from './tool-outputs';
-import { kindOf } from './tools-run-manage';
+import { kindOf } from './run-kind';
 
 export interface RunStatusAsk { run_type: 'ai' | 'http' | 'enrichment' | 'waterfall'; run_id: string;
   wait_seconds?: number }

@@ -11,7 +11,6 @@ import { registerChangeRows } from './tools-change-rows';
 import { registerColumnTools } from './tools-columns';
 import { registerRunStartTools } from './tools-run-start';
 import { registerRunManageTools } from './tools-run-manage';
-import { registerRunUndoTool } from './tools-run-undo';
 import { registerGetRunTool } from './tools-get-run';
 import { registerOverviewTool } from './tools-workspace';
 import { registerStructureTools } from './tools-structure';
@@ -96,7 +95,6 @@ export function registerAllTools(server: McpServer, ctx: McpAuthCtx) {
   registerRunConditionTools(server, ctx);
   registerGetRunTool(server, ctx);
   registerRunManageTools(server, ctx);
-  registerRunUndoTool(server, ctx);
   registerStructureTools(server, ctx);
   registerImportTools(server, ctx);
   registerLinkTools(server, ctx);

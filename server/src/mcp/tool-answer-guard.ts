@@ -11,19 +11,19 @@ type IsNever<T> = [T] extends [never] ? true : false;
 // What ok() takes for an answer of type T: never when T isn't typed field by field.
 type Takes<T extends object> = Parameters<typeof ok<T>>[0];
 type Answer<T> = Promise<OkResult<T>>;
-// undo_run: every field of its answer is required.
-type Handler = ReturnType<ToolHandlerFor<'undo_run'>>;
-type Undo = ToolAnswer<'undo_run'>;
+// get_list_fields: every field of its answer is required.
+type Handler = ReturnType<ToolHandlerFor<'get_list_fields'>>;
+type Fields = ToolAnswer<'get_list_fields'>;
 // get_sheet's answer with auto_dedupe (an info field, or null) holding V.
 type SheetWith<V> = Answer<Omit<ToolAnswer<'get_sheet'>, 'auto_dedupe'> & { auto_dedupe: V }>;
 type SheetHandler = ReturnType<ToolHandlerFor<'get_sheet'>>;
 
 export type AnswerGuards = [
-  Expect<Fits<Answer<Undo>, Handler>>,
+  Expect<Fits<Answer<Fields>, Handler>>,
   // A field of the wrong type, null where the schema allows none, and a required field left out.
-  Expect<Refused<Answer<Omit<Undo, 'can_undo'> & { can_undo: string }>, Handler>>,
-  Expect<Refused<Answer<Omit<Undo, 'can_undo'> & { can_undo: null }>, Handler>>,
-  Expect<Refused<Answer<Omit<Undo, 'can_undo'>>, Handler>>,
+  Expect<Refused<Answer<Omit<Fields, 'results_read'> & { results_read: string }>, Handler>>,
+  Expect<Refused<Answer<Omit<Fields, 'results_read'> & { results_read: null }>, Handler>>,
+  Expect<Refused<Answer<Omit<Fields, 'results_read'>>, Handler>>,
   // An answer typed as any, object or an object of any keys.
   Expect<IsNever<Takes<any>>>,
   Expect<IsNever<Takes<object>>>,

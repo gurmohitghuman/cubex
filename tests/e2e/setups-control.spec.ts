@@ -34,7 +34,8 @@ test("a setup's pause and stop reach its running step; it resumes, carries on; a
     action: 'status', run_type: 'http', run_id: lookup.run_id }))
     .status, { timeout: 30_000 }).toBe('completed')
   await call(client, 'formula_column', { sheet_id: a.sheetId, column: 'Label', formula: '{{Short}} + "!"' })
-  const setup = await call(client, 'save_setup', { sheet_id: a.sheetId, name: 'Two steps', columns: ['Label'] })
+  const setup = await call(client, 'manage_setup', { action: 'save', sheet_id: a.sheetId, name: 'Two steps',
+    columns: ['Label'] })
   const b = await sheetWith(api, a.tableId, [{ Website: 'one.com' }, { Website: 'two.com' }, { Website: 'three.com' }])
   // The AI step further down reads Domain.
   await call(client, 'formula_column', { sheet_id: b.sheetId, column: 'Domain', formula: '{{Website}}?.split(".")[0]' })
@@ -48,7 +49,7 @@ test("a setup's pause and stop reach its running step; it resumes, carries on; a
   let release = rx.hold()
   const run = (await call(client, 'apply_setup', { sheet_id: b.sheetId, setup_id: setup.id, estimate_only: false }))
     .setup_run
-  const pausing = await call(client, 'control_setup_run', { setup_run_id: run.id, action: 'pause' })
+  const pausing = await call(client, 'control_run', { setup_run_id: run.id, action: 'pause' })
   expect(pausing.status).toBe('paused')
   await expect.poll(() => httpStatus(step(pausing, 'Lookup').run_id), { timeout: 10_000 }).toBe('paused')
   release()
@@ -61,7 +62,7 @@ test("a setup's pause and stop reach its running step; it resumes, carries on; a
   expect(await column(api, b.sheetId, 'Short')).toEqual(Array(3).fill('⏳ Processing...'))
   expect(step(paused, 'Label').state).toBe('waiting')
   expect((await getSheet(api, b.sheetId)).data.columns).not.toContain('Label')
-  await call(client, 'control_setup_run', { setup_run_id: run.id, action: 'resume' })
+  await call(client, 'control_run', { setup_run_id: run.id, action: 'resume' })
   expect((await waitSetup(client, run.id)).status).toBe('done')
   expect(await column(api, b.sheetId, 'Label')).toEqual(['one!', 'two!', 'three!'])
 
@@ -71,7 +72,7 @@ test("a setup's pause and stop reach its running step; it resumes, carries on; a
   release = rx.hold()
   const again = (await call(client, 'apply_setup', { sheet_id: b.sheetId, setup_id: setup.id, estimate_only: false,
     names: names2 })).setup_run
-  const stopping = await call(client, 'control_setup_run', { setup_run_id: again.id, action: 'cancel' })
+  const stopping = await call(client, 'control_run', { setup_run_id: again.id, action: 'cancel' })
   expect(stopping.status).toBe('cancelled')
   release()
   await rx.settled()
@@ -100,17 +101,18 @@ test("a setup's pause and stop reach its running step; it resumes, carries on; a
   await expect.poll(async () => (await call(secret, 'get_run', {
     action: 'status', run_type: 'http', run_id: keyedRun.run_id }))
     .status, { timeout: 30_000 }).toBe('completed')
-  const keyed = await call(secret, 'save_setup', { sheet_id: a.sheetId, name: 'Keyed chain', columns: ['User id'] })
+  const keyed = await call(secret, 'manage_setup', { action: 'save', sheet_id: a.sheetId, name: 'Keyed chain',
+    columns: ['User id'] })
   release = rx.hold()
   const keyedRun2 = (await call(secret, 'apply_setup', { sheet_id: b.sheetId, setup_id: keyed.id,
     names: { Domain: 'Domain 3' }, estimate_only: false })).setup_run
-  expect((await call(secret, 'control_setup_run', { setup_run_id: keyedRun2.id, action: 'pause' })).status)
+  expect((await call(secret, 'control_run', { setup_run_id: keyedRun2.id, action: 'pause' })).status)
     .toBe('paused')
   release()
   await rx.settled()
-  expect(await callError(client, 'control_setup_run', { setup_run_id: keyedRun2.id, action: 'resume' }))
+  expect(await callError(client, 'control_run', { setup_run_id: keyedRun2.id, action: 'resume' }))
     .toMatch(/secrets/)
-  await call(secret, 'control_setup_run', { setup_run_id: keyedRun2.id, action: 'resume' })
+  await call(secret, 'control_run', { setup_run_id: keyedRun2.id, action: 'resume' })
   expect((await waitSetup(secret, keyedRun2.id)).status).toBe('done')
   expect(await column(api, b.sheetId, 'User id')).toEqual(['1', '1', '1'])
 
@@ -123,7 +125,8 @@ test("a setup's pause and stop reach its running step; it resumes, carries on; a
     await expect.poll(async () => (await call(client, 'get_run', {
       action: 'status', run_type: 'ai', run_id: ai.run_id }))
       .status, { timeout: 30_000 }).toMatch(/completed|failed/)
-    const aiSetup = await call(client, 'save_setup', { sheet_id: a.sheetId, name: 'Fit', columns: ['Fit (Output)'],
+    const aiSetup = await call(client, 'manage_setup', { action: 'save', sheet_id: a.sheetId, name: 'Fit',
+      columns: ['Fit (Output)'],
       include_upstream: false })
     const est = await call(client, 'apply_setup', { sheet_id: b.sheetId, setup_id: aiSetup.id })
     expect(est.estimate.steps[0].kind).toBe('ai')

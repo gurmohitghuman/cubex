@@ -1,9 +1,9 @@
-// A setup called on a file's rows (services/setup-call.ts), for MCP's create_upload_link with setup_id
+// A setup called on a file's rows (services/setup-call.ts), for MCP's file_link upload with setup_id
 // (routes/file-links.ts) and REST's POST /v1/setups/:id/calls/file (routes/api-v1-setup-calls.ts): the file is
 // imported into a hidden working table made with one column per setup input (a column the setup doesn't read is
 // kept and ignored, an input the file lacks reads as empty), and the call starts once the rows are in. Nobody sees
 // an estimate first, so a file call needs max_cost_usd: a file whose estimate could pass it starts nothing, and its
-// working table goes. Results: get_run (action setup) a page at a time, or create_download_link with setup_call_id.
+// working table goes. Results: get_run (action setup) a page at a time, or file_link's download with setup_run_id.
 import { getSetup } from './setup-library';
 import { webhookIdProblem } from './run-hooks-attach';
 import {

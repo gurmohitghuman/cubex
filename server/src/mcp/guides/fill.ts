@@ -27,6 +27,13 @@ export const FILL_GUIDES: Record<string, ToolGuide> = {
       '_ is Lodash. There is no network or file access. The result is written as text (objects and lists as JSON; '
         + 'null, undefined and NaN as an empty cell). A row the formula cannot work out shows "❌ <the error>" and '
         + 'counts in error_rows (first_error names the first).',
+      'from_words: Write a formula from plain words ("the work email from Response", "first and last name joined"), '
+        + 'using ONE small call to the sheet\'s default AI model (or model). The model sees the column names and '
+        + 'what the first rows hold (the shape of JSON cells), and the formula is checked on the first rows before '
+        + 'it is returned. Returns the formula, the model used, what the call cost, and a preview (samples with '
+        + 'their inputs and results). Nothing is saved: pass the formula it answers as formula. You can also write '
+        + 'the formula yourself. A request that needs judgment or outside data is refused: use run_ai_column or an '
+        + 'enrichment for that. It needs the run scope.',
     ],
   },
   lookup_column: {
@@ -64,22 +71,18 @@ export const FILL_GUIDES: Record<string, ToolGuide> = {
       'A row with any listed column empty, unreadable as its match, or holding a run status such as "⏭️ Not found" '
         + 'is never removed.',
       'Their AI and HTTP results go.',
-    ],
-  },
-  set_auto_dedupe: {
-    text: [
-      'Blank keys, run statuses and cells over 200 characters never match.',
+      'keep_doing: Keep ONE row per key in a sheet as rows arrive, for FREE (no AI, no credits). Pick one key column '
+        + 'and a match as for columns. A row that arrives (webhook, append_rows, import_csv, transfer_rows, '
+        + 'enrichment list rows) or whose key is typed in is checked against the rows there; on a match, keep oldest '
+        + '(default: the new row is not kept) or newest (it replaces the older ones, enriched cells included).',
+      'Blank keys, run statuses and cells over 200 characters never match. Removed rows go to the trash (list_trash '
+        + 'with how auto_dedupe, one batch a day; restore_from_trash puts them back unchecked). Rows already in the '
+        + 'sheet stay: get_sheet\'s auto_dedupe.shared_rows counts those sharing a key, and a call with columns '
+        + 'cleans them once.',
       'The key column must be one rows arrive with, not an AI, HTTP, enrichment, waterfall, clean, formula or lookup '
         + 'column; to match a cleaned value, pick the raw column with a match (a website column as domain). The '
         + 'answers of the tools that add or edit rows say which were not kept or were replaced. Call again to '
-        + 'change it (fields left out stay).',
-    ],
-  },
-  write_formula: {
-    text: [
-      'The model sees the column names and what the first rows hold (the shape of JSON cells), and the formula is '
-        + 'checked on the first rows before it is returned. Returns the formula, the model used, what the call cost, '
-        + 'and a preview (samples with their inputs and results).',
+        + 'change it (fields left out stay). keep_doing needs the write scope.',
     ],
   },
 };

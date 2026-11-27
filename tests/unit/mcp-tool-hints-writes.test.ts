@@ -1,12 +1,13 @@
 // The tool hints a single call can't show (mcp-tool-hints.test.ts has the rest):
-//   - append_rows and add_list_rows can replace a row already there: on a sheet
-//     whose auto-dedupe keeps the newest row per key, an arriving row with a key
-//     the sheet has sends the older row to the trash. So both say destructiveHint
-//     true (they said false).
-//   - write_formula and write_run_condition change no row, cell, column or setup:
-//     each asks the model (a stand-in for OpenRouter on 127.0.0.1) and answers
-//     with what it wrote. Not read-only: the call is spent, and the usage history
-//     keeps it.
+//   - append_rows and stored_answers' add_rows can replace a row already there:
+//     on a sheet whose auto-dedupe keeps the newest row per key, an arriving row
+//     with a key the sheet has sends the older row to the trash. So both say
+//     destructiveHint true (they said false).
+//   - formula_column's from_words and write_run_condition change no row, cell,
+//     column or setup: each asks the model (a stand-in for OpenRouter on
+//     127.0.0.1) and answers with what it wrote. Not read-only: the call is
+//     spent, and the usage history keeps it. write_run_condition only adds;
+//     formula_column, whose formula replaces its own column's cells, does not.
 import assert from 'node:assert/strict'
 import http from 'node:http'
 import type { AddressInfo } from 'node:net'
@@ -60,7 +61,7 @@ async function main() {
     assert.equal(hints.append_rows.destructiveHint, true)
   })
 
-  await check('add_list_rows replaces a row whose key the sheet has: destructive', async () => {
+  await check('stored_answers\' add_rows replaces a row whose key the sheet has: destructive', async () => {
     const src = sheet('Companies', ['Company', 'People'], [{ Company: 'Co', People: '➕ Adding 1 row…' }])
     const srcRow = db.prepare('SELECT id FROM rows WHERE sheet_id = ?').pluck().get(src) as string
     const dest = sheet('People', ['Company', 'Name'], [{ Company: 'Co', Name: 'Ann' }])
@@ -75,28 +76,29 @@ async function main() {
     db.prepare(`INSERT INTO enrichment_list_items (id, user_id, run_id, source_sheet_id, source_row_id,
       dest_sheet_id, items_json, item_count) VALUES (?,?,?,?,?,?,?,?)`).run(journal, uid, run, src, srcRow, dest,
       JSON.stringify({ items: [{ name: 'ann' }], copy: { c1: 'Co' } }), 1)
-    // The step add_list_rows sets off: the journal's results land as rows (enrich-list-add.ts).
+    // The step add_rows sets off: the journal's results land as rows (enrich-list-add.ts).
     const out = addListItems(journal)
     assert.deepEqual(out, { added: 1, skipped: 0 })
     assert.deepEqual(names(dest), ['ann'], 'the row already there went to the trash')
-    assert.equal(hints.add_list_rows.destructiveHint, true)
+    assert.equal(hints.stored_answers.destructiveHint, true)
   })
 
-  await check('write_formula and write_run_condition change no row, cell, column or setup', async () => {
+  await check('formula_column\'s from_words and write_run_condition change no row, cell, column or setup', async () => {
     db.prepare('INSERT INTO settings (id, user_id, openrouter_api_key_encrypted) VALUES (?,?,?)')
       .run(uuid(), uid, encrypt('sk-or-test'))
     const s = sheet('Contacts', ['Name', 'Email'], [{ Name: 'Ann', Email: 'ann@x.com' }, { Name: 'Bo', Email: '' }])
     const before = snapshot()
     reply = '{{Email}}'
-    const formula = await call('write_formula', { sheet_id: s, words: 'the email', model: MODEL }, ALL)
+    const formula = await call('formula_column', { sheet_id: s, from_words: 'the email', model: MODEL }, ALL)
     assert.match(formula, /^\{.*"formula":"\{\{Email\}\}"/)
+    assert.match(formula, /"changed":\[\]/)
     reply = '{{Email}} is not empty'
     const rule = await call('write_run_condition', { sheet_id: s, text: 'rows with an email', model: MODEL }, ALL)
     assert.doesNotMatch(rule, /^ERROR/)
     assert.deepEqual(snapshot(), before)
-    for (const name of ['write_formula', 'write_run_condition']) {
-      assert.deepEqual([hints[name].readOnlyHint, hints[name].destructiveHint], [false, false], name)
-    }
+    const { formula_column: f, write_run_condition: w } = hints
+    assert.deepEqual([f.readOnlyHint, f.idempotentHint, f.openWorldHint], [false, false, true], 'formula_column')
+    assert.deepEqual([w.readOnlyHint, w.destructiveHint], [false, false], 'write_run_condition')
   })
 
   standIn.close()

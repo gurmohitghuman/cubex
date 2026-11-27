@@ -136,7 +136,7 @@ test('a column from stored answers: include_answers shows the paths, the column 
   expect(hit, 'an answer with an industry').toBeTruthy()
   const callsBefore = await tregCalls()
 
-  const added = await call(client, 'add_enrichment_field', {
+  const added = await call(client, 'stored_answers', { action: 'add_column',
     sheet_id: sheetId, column: 'Company data', json_path: '$.output.industry', column_name: 'Industry',
     row_id: hit.row_id,
   })
@@ -147,7 +147,7 @@ test('a column from stored answers: include_answers shows the paths, the column 
   expect(rows.find((r: any) => r.id === hit.row_id).data.Industry).toBe(String(hit.answer.output.industry))
   expect(await tregCalls()).toBe(callsBefore)
   // A path already a column is refused.
-  expect(await callError(client, 'add_enrichment_field', {
+  expect(await callError(client, 'stored_answers', { action: 'add_column',
     sheet_id: sheetId, column: 'Company data', json_path: '$.output.industry', column_name: 'Industry 2',
   })).toContain('already a column')
   await api.dispose()

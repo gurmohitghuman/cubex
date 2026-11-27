@@ -46,7 +46,7 @@ async function sheetWith(name: string, emails: string[]): Promise<string> {
 }
 const moveOn = (sheet: string) => call('append_rows', { sheet_id: sheet, rows: [{ Email: 'later@x.com' }] })
 async function dedupe(sheet: string, keep: string) {
-  await call('set_auto_dedupe', { sheet_id: sheet, column: 'Email', keep })
+  await call('remove_duplicates', { sheet_id: sheet, keep_doing: { column: 'Email', keep } })
   assert.equal(await maintainAutoDedupeSheet(sheet, u, Date.now() + 10_000), 'ready')
 }
 

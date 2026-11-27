@@ -32,7 +32,7 @@ Everything here is free: no AI call, nothing sent anywhere. Never use an AI colu
 - Pass `name_input: "first_name"` when a column holds only first names (`Dr. Sarah`, `MARY ANN`), or `name_input: "last_name"` when it holds only last names (`SMITH JONES`, `VAN DER BERG`); read as full names, those come out blank or cut short. Leave it out for full names.
 - Pass `the_company: "keep"` when the companies are always named with The and Company (`The Christman Company`); the default turns that into `Christman`.
 - Auto-run is on by default, so new and edited rows get cleaned on their own.
-- For what the cleaners don't do (join two columns, split on a character, pick a value out of a JSON cell), use `formula_column`: one JavaScript expression reading cells as `{{Column}}`, also free. `write_formula` writes one from plain words.
+- For what the cleaners don't do (join two columns, split on a character, pick a value out of a JSON cell), use `formula_column`: one JavaScript expression reading cells as `{{Column}}`, also free. `from_words` in place of `formula` has it written from plain words.
 
 ## 3. Remove duplicates
 
@@ -45,7 +45,7 @@ A row with any key value empty, or holding a run status such as "⏭️ Not foun
 
 ## 4. Keep it deduplicated
 
-When new rows keep arriving (a webhook, regular imports, an agent appending rows), offer `set_auto_dedupe`: one key column with its `match`, and `keep` `oldest` (a new row with a key already there is not kept) or `newest` (it replaces the older rows). It checks rows as they arrive and rows given a new key, never the rows already there, so run `remove_duplicates` once first. The key must be a column rows arrive with, not a filled one: to match on a cleaned value, pick the raw column and the match (a website column as `domain`). `append_rows` and `import_csv` answers say which rows weren't kept; `list_trash` with `how: "auto_dedupe"` lists them.
+When new rows keep arriving (a webhook, regular imports, an agent appending rows), offer `remove_duplicates` with `keep_doing`: one key column with its `match`, and `keep` `oldest` (a new row with a key already there is not kept) or `newest` (it replaces the older rows). It checks rows as they arrive and rows given a new key, never the rows already there, so run `remove_duplicates` once first. The key must be a column rows arrive with, not a filled one: to match on a cleaned value, pick the raw column and the match (a website column as `domain`). `append_rows` and `import_csv` answers say which rows weren't kept; `list_trash` with `how: "auto_dedupe"` lists them.
 
 ## 5. Report
 

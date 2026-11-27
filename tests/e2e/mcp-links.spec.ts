@@ -5,7 +5,7 @@ import path from 'path'
 import { authedApi, seedSheet, makeAccessToken, BASE, assertTestDb } from './helpers'
 import { mcpClient, parseResult } from './helpers-run-results'
 
-// One-time upload and download links (create_upload_link, create_download_link):
+// One-time upload and download links (file_link's upload and download):
 // a CSV file moves into or out of a sheet over plain HTTP, the way an agent
 // runs curl, without its contents passing through MCP. A link works once, for
 // its own operation, until it expires and while the token that made it is
@@ -30,7 +30,8 @@ test('an upload link imports a file once and reports back; a form upload leaves 
   const client = await mcpClient(await makeAccessToken(api, ['read', 'write'], 'links-up'), 'e2e-links-up')
   const http = await pwRequest.newContext()
 
-  const link = parseResult(await client.callTool({ name: 'create_upload_link', arguments: { sheet_id: sheetId } }))
+  const link = parseResult(await client.callTool({ name: 'file_link', arguments: { action: 'upload',
+    sheet_id: sheetId } }))
   expect(link.error, JSON.stringify(link)).toBeUndefined()
   expect(link.upload_url).toMatch(new RegExp(`^${BASE}/api/files/upload/[0-9a-f]{64}$`))
   expect(link.curl).toBe(`curl -sS -T <file.csv> '${link.upload_url}'`)
@@ -58,7 +59,8 @@ test('an upload link imports a file once and reports back; a form upload leaves 
 
   // curl --data-binary sends a POST labelled as a form; the body still goes in
   // whole, as the CSV it is. Replace mode swaps every row for the file's.
-  const replace = parseResult(await client.callTool({ name: 'create_upload_link', arguments: { sheet_id: sheetId, mode: 'replace' } }))
+  const replace = parseResult(await client.callTool({ name: 'file_link', arguments: { action: 'upload',
+    sheet_id: sheetId, mode: 'replace' } }))
   const posted = await http.post(replace.upload_url, {
     data: Buffer.from('email,company\nz@z.com,Zed\n'), headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
   })
@@ -67,7 +69,8 @@ test('an upload link imports a file once and reports back; a form upload leaves 
 
   // A replace with a file that has no header row would empty the sheet: refused,
   // and the reply says the link is spent.
-  const headless = parseResult(await client.callTool({ name: 'create_upload_link', arguments: { sheet_id: sheetId, mode: 'replace' } }))
+  const headless = parseResult(await client.callTool({ name: 'file_link', arguments: { action: 'upload',
+    sheet_id: sheetId, mode: 'replace' } }))
   const refused = await http.put(headless.upload_url, { data: Buffer.from('\n\n') })
   expect(refused.status()).toBe(400)
   expect((await refused.json()).error).toMatch(/no header row.*used up/)
@@ -88,7 +91,8 @@ test('a download link saves the picked rows once; HEAD leaves it unused', async 
   const http = await pwRequest.newContext()
   const where = [{ column: 'val', operator: 'neq', value: 'v1' }]
 
-  const link = parseResult(await client.callTool({ name: 'create_download_link', arguments: { sheet_id: sheetId, where } }))
+  const link = parseResult(await client.callTool({ name: 'file_link', arguments: { action: 'download',
+    sheet_id: sheetId, where } }))
   expect(link.download_url).toMatch(new RegExp(`^${BASE}/api/files/download/[0-9a-f]{64}$`))
   expect(link.curl).toBe(`curl -sS -f -o <file.csv> '${link.download_url}'`)
 
@@ -106,7 +110,8 @@ test('a download link saves the picked rows once; HEAD leaves it unused', async 
   expect((await http.get(link.download_url)).status()).toBe(404)
 
   // A typo'd column fails when the link is asked for, not when it is used.
-  const typo = await client.callTool({ name: 'create_download_link', arguments: { sheet_id: sheetId, columns: ['vall'] } })
+  const typo = await client.callTool({ name: 'file_link', arguments: { action: 'download', sheet_id: sheetId,
+    columns: ['vall'] } })
   expect(typo.isError).toBe(true)
   expect(parseResult(typo).error).toMatch(/Unknown column/)
   await http.dispose()
@@ -120,7 +125,8 @@ test('links stop working when they expire or their token is revoked', async () =
   const token = await makeAccessToken(api, ['read', 'write'], 'links-life')
   const client = await mcpClient(token, 'e2e-links-life')
   const http = await pwRequest.newContext()
-  const make = async () => parseResult(await client.callTool({ name: 'create_download_link', arguments: { sheet_id: sheetId } })).download_url
+  const make = async () => parseResult(await client.callTool({ name: 'file_link', arguments: { action: 'download',
+    sheet_id: sheetId } })).download_url
 
   const aged = await make()
   inTestDb("UPDATE file_links SET expires_at = datetime('now', '-1 second') WHERE token_hash = ?", sha(tokenOf(aged)))
@@ -140,10 +146,10 @@ test('a token without write is told it cannot make upload links, and what to do'
   const client = await mcpClient(await makeAccessToken(api, ['read'], 'links-ro'), 'e2e-links-ro')
 
   // Said up front, in the tool list this token sees...
-  const tool = (await client.listTools()).tools.find(t => t.name === 'create_upload_link')!
+  const tool = (await client.listTools()).tools.find(t => t.name === 'file_link')!
   expect(tool.description).toContain('This token has no write permission')
   // ...and in full when called anyway: nothing happened, and the two ways on.
-  const refused = await client.callTool({ name: 'create_upload_link', arguments: { sheet_id: sheetId } })
+  const refused = await client.callTool({ name: 'file_link', arguments: { action: 'upload', sheet_id: sheetId } })
   expect(refused.isError).toBe(true)
   const message = parseResult(refused).error
   expect(message).toContain("'write' scope")
@@ -151,7 +157,8 @@ test('a token without write is told it cannot make upload links, and what to do'
   expect(message).toContain('Agent access')
   expect(message).toContain('click Import')
   // Reading is still fine: a download link works with read alone.
-  const down = parseResult(await client.callTool({ name: 'create_download_link', arguments: { sheet_id: sheetId } }))
+  const down = parseResult(await client.callTool({ name: 'file_link', arguments: { action: 'download',
+    sheet_id: sheetId } }))
   expect(down.download_url).toBeTruthy()
   await client.close()
 })

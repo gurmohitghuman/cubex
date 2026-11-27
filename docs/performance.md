@@ -12,7 +12,7 @@ Measured on one sheet with 1,000,000 rows and 10 columns (a 160 MB CSV), on an A
 | Filter a run column to its failed rows ("Rows with errors"), at the top or 150,000 rows in | 0.6 s (0.9 s on an enrichment output, which reads its status column) | 0.02 s | 580 MB |
 | An agent counting the rows where any run failed (`has_error` over 4 run columns, 216,667 rows) | 1.2 s | 0.02 s | 570 MB |
 | An agent reading a page of those rows, at the start or 900,000 rows in | 0.01 s | 0.01 s | 560 MB |
-| Download those 216,667 rows as CSV (`create_download_link` with `where`) | 1.4 s | 0.01 s | 620 MB |
+| Download those 216,667 rows as CSV (`file_link` download with `where`) | 1.4 s | 0.01 s | 620 MB |
 | A run column's menu counts its rows: empty, out of date (10,000 whose input changed) and failed | 2.6 s | 0.01 s | 510 MB |
 | Find those 10,000 out-of-date rows for a rerun (mode `out_of_date`) | 1.5 s | 0.02 s | 510 MB |
 | An agent counting out-of-date rows (`where` with `out_of_date`) | 1.8 s | 0.01 s | 520 MB |
@@ -100,7 +100,7 @@ A row holding an API answer can be 16 to 200 KB, and SQLite writes a changed row
 | Prepare a run's rows (16 KB) | 20,185 pages, 79 MB of WAL | 2,025 pages | 244 ms | 43 ms |
 | Rename a column (16 KB) | 20,097 pages | 2,014 pages | 228 ms | 35 ms |
 | Delete a column (16 KB) | 20,101 pages | 2,011 pages | 160 ms | 24 ms |
-| Delete 300 rows in the grid, or 500 with `delete_rows` (100 KB) | 14,740 and 24,556 pages, 97 MB of WAL | 1,936 and 1,939 pages | 305 and 509 ms | 24 and 26 ms |
+| Delete 300 rows in the grid, or 500 with `change_rows` delete (100 KB) | 14,740 and 24,556 pages, 97 MB of WAL | 1,936 and 1,939 pages | 305 and 509 ms | 24 and 26 ms |
 | Take an import out again (16 KB) | 20,393 pages | 2,112 pages | 100 ms | 23 ms |
 | Rows into the trash, or back (100 KB) | 12,292 pages | 1,946 pages | 72 to 88 ms | 16 to 20 ms |
 | 500 rows picked from the trash, back (100 KB) | 24,592 pages, 97 MB of WAL | 1,939 pages | 444 ms | 44 ms |

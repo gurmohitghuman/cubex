@@ -49,13 +49,13 @@ export const ACCOUNT_GUIDES: Record<string, ToolGuide> = {
         + '(action balances). Read-only: costs nothing.',
       'Each row and the totals give runs, cells (rows run), reused_cells (filled at $0 from an earlier answer), '
         + 'ai_cost_usd (OpenRouter), provider_cost_usd (the user\'s own provider key), enrichment_cost_usd (treg), '
-        + 'total_cost_usd and cost_per_cell_usd. Days are UTC and a run counts on the day it started. AI previews '
-        + 'and AI helpers (write_formula, write_run_condition) count too, as kind preview or assist. Totals cover '
-        + 'the whole range; rows_total says how many rows there are (GET /api/v1/usage with format=csv has every '
-        + 'row). Deleted columns and sheets are included (column_deleted, sheet_deleted). Runs on a sheet\'s test '
-        + 'copy (manage_sheet test) count under that sheet, also after the test ends: on_test_copy: true, apart from '
-        + 'the sheet\'s own column of the same name. A call without a sheet (apply_setup or run_enrichment with items) '
-        + 'is call: true with no sheet: by column, every call adds up in one row.',
+        + 'total_cost_usd and cost_per_cell_usd. Days are UTC and a run counts on the day it started. AI previews and '
+        + 'AI helpers (formula_column\'s from_words, write_run_condition) count too, as kind preview or assist. Totals '
+        + 'cover the whole range; rows_total says how many rows there are (GET /api/v1/usage with format=csv has every '
+        + 'row). Deleted columns and sheets are included (column_deleted, sheet_deleted). Runs on a sheet\'s test copy '
+        + '(manage_sheet test) count under that sheet, also after the test ends: on_test_copy: true, apart from the '
+        + 'sheet\'s own column of the same name. A call without a sheet (apply_setup or run_enrichment with items) is '
+        + 'call: true with no sheet: by column, every call adds up in one row.',
       'saved_keys: The saved API keys (Settings > External service keys) by name, never their values: for each, '
         + 'created_at and updated_at (UTC), and where it is used: used_in lists each HTTP API, enrichment or '
         + 'waterfall column whose request names the key (sheet_id, sheet_name, table_id, table_name, column, kind, '

@@ -28,7 +28,7 @@ export function registerImportTools(server: McpServer, ctx: McpAuthCtx) {
         + 'matching existing names (exactly) append into them. mode "append" adds rows after the existing ones; mode '
         + '"replace" deletes all existing rows first (they go to the trash as one batch: restore_from_trash brings '
         + 'them back). Max ~2MB of CSV per call. For a file, use '
-        + 'create_upload_link instead: any size, and the contents never pass through your '
+        + 'file_link (action upload) instead: any size, and the contents never pass through your '
         + 'context. When auto-run is on in the sheet, auto_run lists the columns that will fill the imported rows on '
         + 'their own (an enrichment spends treg credit, an HTTP API column sends real requests): tell the user. '
         + GUIDE_POINTER,

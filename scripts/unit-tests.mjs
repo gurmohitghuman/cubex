@@ -10,6 +10,10 @@
 //        UNIT_FILE_TIMEOUT_S=<seconds> changes each file's limit (300 by default)
 //        UNIT_SHARD=k/n runs the k-th of n shares of those files, as CI's runners do (scripts/unit-shards.mjs)
 //        UNIT_SLOW_START_S=<seconds> changes when a file's process counts as slow to start (5 by default)
+//        UNIT_FILE_RETRIES=0 turns off the one retry below
+// Flaky files (Hermes Agent's policy, WORKFLOW.md 7): a file that fails runs once more in a fresh process with a
+// fresh database. Passing then, it is green but listed under FLAKY at the end (and as a warning on GitHub): a bug to
+// fix, not noise. A file stopped at its time limit is never retried: running a runaway again doubles the damage.
 import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
@@ -200,12 +204,25 @@ const run = (file, n) => new Promise(resolve => {
 
 const started = Date.now();
 const failed = [];
+const flaky = [];
+const RETRIES = process.env.UNIT_FILE_RETRIES === '0' ? 0 : 1;
 try {
   for (const [n, file] of tests.entries()) {
     if (interrupted) break;
     // Each file's start and the run's time so far: a log that ends early names the file it was in.
     console.log(`[${n + 1}/${tests.length}] tests/unit/${file}, ${Math.round((Date.now() - started) / 1000)} s in`);
-    const status = await run(file, n);
+    let status = await run(file, n);
+    if (status !== 0 && status !== 'late' && status !== 'late-part' && RETRIES > 0 && !interrupted) {
+      console.error(`[!] tests/unit/${file} failed (exit ${status}); running it once more in a fresh process`);
+      const first = status;
+      status = await run(file, `${n}r`);
+      if (status === 0) {
+        flaky.push(`${file} (failed with exit ${first}, then passed)`);
+        if (process.env.GITHUB_ACTIONS) {
+          console.log(`::warning title=Flaky unit test::tests/unit/${file} failed, then passed on its retry`);
+        }
+      }
+    }
     if (status === 'late' || status === 'late-part') {
       failed.push(`${file} (did not end within ${LIMIT_S} s)`);
       const all = status === 'late' ? ': stopped it and every process it started' : '';
@@ -231,6 +248,10 @@ const secs = Math.round((Date.now() - started) / 1000);
 if (interrupted) {
   console.error(`[stopped] interrupted after ${secs}s`);
   process.exit(130);
+}
+if (flaky.length) {
+  console.error(`[!] FLAKY: ${flaky.length} unit test file(s) passed only on a retry, a bug to fix (WORKFLOW.md 7):`
+    + `\n  ${flaky.join('\n  ')}`);
 }
 if (failed.length) {
   const list = failed.join('\n  ');

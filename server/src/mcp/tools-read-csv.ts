@@ -1,6 +1,6 @@
 // read_rows with format csv (tools-read.ts): the rows as CSV text in the answer, cut at MCP_EXPORT_MAX_CHARS
 // (lib/csv-export.ts, as REST's export). It takes columns (names only), where and view; a file of any size is
-// create_download_link's.
+// file_link's (action download).
 import { db } from '../lib/db';
 import { buildSheetCsv } from '../lib/csv-export';
 import { MCP_EXPORT_MAX_CHARS } from '../lib/api-v1-constants';
@@ -45,6 +45,6 @@ export async function readRowsCsv(ctx: McpAuthCtx, a: Args, others: string[]):
     ...answer, matching_rows: result.matchingRows, truncated: true,
     rest: `Only the first ${result.rowCount} of ${result.matchingRows ?? 'the'} matching rows fit. `
       + 'Page through the rest with read_rows (same columns and where, format json), or save everything as a file '
-      + 'with create_download_link.',
+      + 'with file_link (action download).',
   });
 }
