@@ -130,7 +130,8 @@ export const dispatchRows = async (
       }
 
       let settledAs: RowOutcome | null = null;
-      const promise: Promise<void> = processRow(runId, row, run, openai, controller.signal, myGeneration, columns)
+      const promise: Promise<void> = processRow(runId, row, run, openai, controller.signal, myGeneration, columns,
+        { maxTokens: gate?.maxTokens })
         .then(processed => {
           const outcome = next.ring && processed.kind === 'failed' ? { ...processed, provider: false } : processed;
           settledAs = outcome;

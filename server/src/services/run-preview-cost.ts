@@ -25,7 +25,7 @@ export function spendOf(r: PreviewRowResult) {
 
 export async function previewCosts(
   userId: string, results: PreviewRowResult[], model: string, count: number,
-  o: { maxChars: number | null; concurrency: number; web: boolean },
+  o: { maxChars: number | null; concurrency: number; web: boolean; structured: boolean },
 ): Promise<{ fields: Record<string, unknown>; notes: string[] }> {
   const priced = results.filter(r => r.completionTokens !== undefined || r.promptTokens !== undefined
     || r.costUsd !== undefined);
@@ -59,7 +59,8 @@ export async function previewCosts(
   // (lib/ai-in-flight.ts).
   const sent = Math.max(0, ...results.map(r => r.promptTokens ?? 0));
   const ownKey = results.some(r => r.paidWith === 'own_key' || r.providerCostUsd !== undefined);
-  const inFlight = sent > 0 ? await inFlightFor(userId, model, sent, o.maxChars, o.concurrency, ownKey) : null;
+  const inFlight = sent > 0
+    ? await inFlightFor(userId, model, sent, o.maxChars, o.concurrency, ownKey, o.structured) : null;
   const fellBack = ownKey && results.some(r => r.paidWith === 'credits');
 
   const notes: string[] = [];

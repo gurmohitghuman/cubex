@@ -177,7 +177,7 @@ async function previewRows(userId: string, input: PreviewInput): Promise<Preview
   }, results);
 
   const costs = await previewCosts(userId, results, model, count, {
-    maxChars: input.maxChars, concurrency: input.concurrency, web: web.search || web.fetch,
+    maxChars: input.maxChars, concurrency: input.concurrency, web: web.search || web.fetch, structured: !!specs,
   });
 
   return {

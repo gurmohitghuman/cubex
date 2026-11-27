@@ -36,6 +36,7 @@ import type { RowOutcome } from '../lib/run-breaker';
 // pause: why the run stops starting rows; reason: its pause_reason when it isn't spend_limit.
 export type GateAnswer = { start: number } | { wait: true } | { pause: string; reason?: 'provider_errors' };
 export interface SpendGate {
+  maxTokens: number;                 // a row's max_tokens, as held (ai-row.ts sends it)
   admit(row: SheetRow): GateAnswer;  // start: the micro-dollars held for this row
   settle(micro: number, outcome: RowOutcome | null): void;  // a row this worker started settled
   close(): void;                     // the worker's loop ended
@@ -115,15 +116,19 @@ export async function openSpendGate(
   const limitUsd = run.spend_limit_usd;
   if (limitUsd === null || limitUsd === undefined) return null;
   const prices = await modelPrices(run.model);
-  if (prices === 'unread') {
-    return { admit: () => ({ pause: PRICE_UNREAD_MESSAGE, reason: 'provider_errors' }), settle() {}, close() {} };
-  }
   const fixed = rowFixedOf(run);
+  if (prices === 'unread') {
+    return {
+      maxTokens: fixed.maxTokens, admit: () => ({ pause: PRICE_UNREAD_MESSAGE, reason: 'provider_errors' }),
+      settle() {}, close() {},
+    };
+  }
   // In whole micro-dollars, rounded as a resume checks it (ai-run-limit.ts) and the dialog does.
   const limitMicro = micro(limitUsd);
   let out = 0;      // what this worker's rows still out hold
   let unsaved = 0;  // cut-off calls' most this worker couldn't add to the run's total: its hold keeps it
   return {
+    maxTokens: fixed.maxTokens,
     admit(row) {
       const rowMicro = prices
         ? rowMaxMicro(prices, fixed, bytes(processPromptTemplate(run.prompt, row.data, columns))) : 0;
