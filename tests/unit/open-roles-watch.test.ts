@@ -2,8 +2,10 @@
 // started from the dialog: a rerun from the column's own menu (services/enrich-rerun.ts, which never goes through
 // services/open-roles.ts) is watched through the run start's listeners (lib/run-start-listeners.ts) and keeps its
 // First seen a day copy (the day each role is found, not the first run's); and at boot a run left going is watched
-// again (resumeOpenRolesWatches). Each looks the count up again once its run is over. The job queue only records, so
-// a run's end is written here; the count's last look is marked old first, so a new one shows.
+// again (resumeOpenRolesWatches). Each looks the count up again once its run is over. A sheet searched on v0.8.48 (the
+// count on the website as written, each role's Domain the website as written then) has its roles' Domain cleaned at
+// its next start before the count moves to the domain column, so they keep counting. The job queue only records, so a
+// run's end is written here; the count's last look is marked old first, so a new one shows.
 import assert from 'node:assert/strict'
 import { v4 as uuid } from 'uuid'
 import { tregKit } from './token-replay-treg-kit'
@@ -47,6 +49,7 @@ const ALL = { mode: 'all' as const, status: 'any' as const, test: null, rowIndex
 
 let high = 0
 let first = ''
+let rolesSheet = ''
 await ok('the dialog\'s run: once it is over, the count is looked up again', async () => {
   const est = await openRoles(uid, sid, { ...o, estimateOnly: true, maxCostUsd: null, timeZone: null })
   assert.ok('ok' in est && 'estimate' in est.ok, JSON.stringify(est))
@@ -54,6 +57,7 @@ await ok('the dialog\'s run: once it is over, the count is looked up again', asy
   const s = await openRoles(uid, sid, { ...o, estimateOnly: false, maxCostUsd: high, timeZone: 'America/Toronto' })
   assert.ok('ok' in s && 'started' in s.ok, JSON.stringify(s))
   first = s.ok.started.runId
+  rolesSheet = s.ok.started.rolesSheetId
   await until('count', () => count() !== undefined)
   await settled()
   markOld()
@@ -91,6 +95,26 @@ await ok('at boot, a run left going is watched again', async () => {
   assert.equal(count(), OLD, 'not before the run is over')
   over(left)
   await lookedAgain()
+})
+
+await ok('a sheet searched on v0.8.48: its roles\' Domain cleaned before the count moves to the domain column, so '
+  + 'they keep counting', async () => {
+  // As v0.8.48 left it: the count on the website column, each role's Domain the website cell as written then.
+  db.prepare(`UPDATE lookup_columns SET source_column = 'Website' WHERE sheet_id = ? AND returns = 'count'`).run(sid)
+  const add = db.prepare('INSERT INTO rows (id, sheet_id, user_id, row_index, data) VALUES (?, ?, ?, ?, ?)')
+  const raw = ['https://www.Northwind-Labs.io/', 'bluefin-data.io/careers', 'bluefin-data.io']
+  raw.forEach((domain, i) => add.run(uuid(), rolesSheet, uid, 1000 + i, JSON.stringify({ [R.title]: 'SDR',
+    [R.domain]: domain, [R.link]: `https://jobs.example/old-${i}` })))
+  db.prepare(`UPDATE http_runs SET status = 'completed', placeholder_work = NULL WHERE sheet_id = ?`).run(sid)
+  const s = await openRoles(uid, sid, { ...o, estimateOnly: false, maxCostUsd: high, timeZone: null })
+  assert.ok('ok' in s && 'started' in s.ok, JSON.stringify(s))
+  const source = () => db.prepare(`SELECT source_column FROM lookup_columns WHERE sheet_id = ? AND returns = 'count'`)
+    .pluck().get(sid)
+  await until('the count on the domain column', () => source() === 'Website (domain)')
+  await settled()
+  assert.deepEqual(kit.cells(rolesSheet, R.domain).slice(-3), ['northwind-labs.io', 'bluefin-data.io',
+    'bluefin-data.io'])
+  assert.deepEqual(kit.cells(sid, OPEN_ROLES.count), ['1', '2'])
 })
 
 done()

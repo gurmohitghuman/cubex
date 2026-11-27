@@ -18,6 +18,11 @@ import { inputTemplates, type EnrichRunConfig } from '../lib/enrich-run-config';
 import { onEnrichmentRunStarted } from '../lib/run-start-listeners';
 import { lookupInputOf, startLookupColumn } from './lookup-column';
 import { startCleanColumn } from './clean-column';
+import { runInCheckpointedSlices } from '../lib/bulk-slices';
+import { cleanDomain as rootDomain } from '../lib/clean/domain';
+import { jsonPath } from '../lib/json-path';
+import { parseRowData } from '../lib/sql-helpers';
+import { cellOf } from '../lib/row-cell';
 import { searchState } from './hiring-check-watch';
 import type { LookupColumnRow } from '../lib/lookup-columns';
 
@@ -38,6 +43,37 @@ const domainColumnOf = (userId: string, sheetId: string, website: string): strin
   return (db.prepare(`SELECT column_name FROM clean_columns WHERE sheet_id = ? AND user_id = ? AND source_column = ?
     AND cleaner = 'domain'`).pluck().all(sheetId, userId, website) as string[]).find(c => listed.has(c)) ?? null;
 };
+
+// A sheet searched before the count read the domain column (v0.8.48): its roles' Domain is the website cell as written
+// then, which the domain column's keys don't match. Cleaned in place by the same cleaner, CONVERT_ROWS rows a slice in
+// row order (a bulk writer, lib/bulk-slices.ts), before the count is pointed at the domain column, so those roles keep
+// counting. A cell the cleaner can't read stays as it is. Cleaning a domain gives it back unchanged, so a conversion
+// cut short (a restart) is finished by the next start, which finds the count still on the old column.
+const CONVERT_ROWS = 500;
+async function cleanRolesDomains(userId: string, rolesSheetId: string): Promise<number> {
+  const read = db.prepare(`SELECT rowid AS rid, row_index, data FROM rows WHERE sheet_id = ? AND user_id = ?
+    AND row_index > ? ORDER BY row_index LIMIT ?`);
+  const set = db.prepare(`UPDATE rows SET data = json_set(data, ?, ?), updated_at = datetime('now') WHERE rowid = ?`);
+  const path = jsonPath(ROLE_COLUMNS.domain);
+  let after = -1;
+  let changed = 0;
+  await runInCheckpointedSlices(() => {
+    const got = read.all(rolesSheetId, userId, after, CONVERT_ROWS) as Array<{ rid: number; row_index: number;
+      data: string }>;
+    for (const r of got) {
+      const was = String(cellOf(parseRowData(r.data) as Record<string, string>, ROLE_COLUMNS.domain) ?? '').trim();
+      const now = was ? rootDomain(was) : '';
+      if (now && now !== was) { set.run(path, now, r.rid); changed++; }
+    }
+    if (got.length) after = got[got.length - 1].row_index;
+    return got.length === CONVERT_ROWS;
+  });
+  if (changed) {
+    db.prepare(`UPDATE sheets SET data_version = data_version + 1, updated_at = datetime('now')
+      WHERE id = ? AND user_id = ?`).run(rolesSheetId, userId);
+  }
+  return changed;
+}
 
 // The domain column, then the count on it, each made once (found by what it reads, whatever its name); a count that
 // reads another column is pointed at this run's domain column. Each waits for the sheet first, at most waitMs (the
@@ -73,6 +109,8 @@ async function ensureLookups(userId: string, sheetId: string, o: OpenRolesOption
     held = await sheetFreeWithin(sheetId, waitMs);
     if (held) return later();
   }
+  // A count from before the domain column (v0.8.48): its roles' Domain made the same key first.
+  if (found) await cleanRolesDomains(userId, rolesSheetId);
   const column = found?.column_name ?? freeName(OPEN_ROLES.count, getSheetColumns(sheetId, userId));
   const made = await startLookupColumn(userId, sheetId, {
     column, sourceColumn: domain, otherSheetId: rolesSheetId, matchColumn: ROLE_COLUMNS.domain,
