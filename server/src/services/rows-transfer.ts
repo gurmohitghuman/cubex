@@ -177,8 +177,11 @@ function executeTransfer(
   applyTransferColumnOrder(request.destinationSheetId, userId, plan.finalOrder);
   // Into a sheet still as created, the new list leaves out its starter "Column 1": gone for good, with its pass.
   forgetUnlistedTransformPasses(request.destinationSheetId, userId);
-  // Auto-dedupe in the destination: a row it already has isn't added again (or replaces it).
-  const settled = settleRows(request.destinationSheetId, userId, rids, 'arrived');
+  // Auto-dedupe in the destination: a row it already has isn't added again (or replaces it). The rows it takes out
+  // are written in this same transaction, so they get what is left of a copy's cap, a move's rows counting twice
+  // (TRANSFER_MAX_MOVE_BYTES); checks past it are made by the background round (auto_dedupe.checking_later).
+  const room = TRANSFER_MAX_STORED_BYTES - preflight.bytes * (request.operation === 'move' ? 2 : 1);
+  const settled = settleRows(request.destinationSheetId, userId, rids, 'arrived', Math.max(0, room));
   const auto = autoDedupeAnswer(userId, settled, added, surface);
   if (auto) result.auto_dedupe = auto;
   // Moved rows leave the source: auto-run's fence there follows. The copies are
