@@ -127,6 +127,17 @@ function appendQuery(query: Array<[string, string]>, name: string, value: unknow
   else for (const v of value) query.push([name, String(v)]);
 }
 
+// A list of company domains (a job search at those companies, services/open-roles.ts) under a run's domain cleaning:
+// each item cleaned as a domain input is, empty ones left out. One that read a column and came out empty is missing,
+// so the row isn't searched: with no company, the search would answer roles at any company.
+const DOMAIN_LIST_INPUT_NAMES = new Set(['company_domains']);
+const TOKEN_IN = /\{\{[^{}]+\}\}/;
+function cleanDomainList(value: unknown): unknown {
+  if (!Array.isArray(value)) return value;
+  const kept = value.map(v => (typeof v === 'string' ? cleanDomain(v) : v)).filter(v => v !== '');
+  return kept.length ? kept : undefined;
+}
+
 export function buildRequest(
   tool: RequestTool, inputMap: Record<string, string>, row: Record<string, string>,
   opts: { cleanDomains: boolean; columns: string[] },
@@ -135,13 +146,17 @@ export function buildRequest(
     return { ok: false, invalid: `"${tool.id.slice(0, 60)}" isn't a treg tool id.` };
   }
   const sent: Record<string, unknown> = {};
+  const noCompany: string[] = [];
   for (const input of tool.inputs) {
     const template = inputMap[input.name];
     if (typeof template !== 'string') continue;
     const json = jsonInput(input, template, row, opts.columns);
     if (json && 'invalid' in json) return { ok: false, invalid: json.invalid };
     if (json) {
-      if (json.value !== undefined) sent[input.name] = json.value;
+      const companies = opts.cleanDomains && DOMAIN_LIST_INPUT_NAMES.has(input.name);
+      const value = companies ? cleanDomainList(json.value) : json.value;
+      if (value !== undefined) sent[input.name] = value;
+      else if (companies && TOKEN_IN.test(template)) noCompany.push(input.name);
       continue;
     }
     const filled = fillTemplate(template, row, opts.columns);
@@ -150,15 +165,22 @@ export function buildRequest(
     }
     let raw = filled.value.trim();
     if (opts.cleanDomains && DOMAIN_INPUT_NAMES.has(input.name)) raw = cleanDomain(raw);
-    if (!raw) continue;
+    const companies = opts.cleanDomains && DOMAIN_LIST_INPUT_NAMES.has(input.name) && TOKEN_IN.test(template);
+    if (!raw) {
+      if (companies) noCompany.push(input.name);
+      continue;
+    }
     const t = typed(input, raw);
     if ('invalid' in t) return { ok: false, invalid: t.invalid };
     const bad = checkValue(input, t.value);
     if (bad) return { ok: false, invalid: bad };
-    sent[input.name] = t.value;
+    const value = companies ? cleanDomainList(t.value) : t.value;
+    if (value === undefined) noCompany.push(input.name);
+    else sent[input.name] = value;
   }
   // A hiring search whose role title has no word to search for would answer any role: missing, as an empty one.
-  const missing = missingInputs(tool, new Set(Object.keys(sent))) ?? hiringTitleMissing(tool.id, inputMap, sent);
+  const missing = missingInputs(tool, new Set(Object.keys(sent))) ?? hiringTitleMissing(tool.id, inputMap, sent)
+    ?? (noCompany.length ? noCompany.join(', ') : null);
   if (missing) return { ok: false, missing };
 
   const method = tool.method.toUpperCase();

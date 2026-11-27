@@ -38,6 +38,21 @@ export function onSheetFree(sheetId: string, then: () => void): void {
   freeWaiters.set(sheetId, [...(freeWaiters.get(sheetId) ?? []), then]);
 }
 
+// Waits until the sheet is free, at most `ms`: null once it is, else what still holds it (a service that starts a
+// run and then changes the sheet waits out the start's placeholders so: services/social-find.ts, open-roles.ts).
+export async function sheetFreeWithin(sheetId: string, ms: number): Promise<string | null> {
+  const until = Date.now() + ms;
+  for (let held = sheetBusyWith(sheetId); held; held = sheetBusyWith(sheetId)) {
+    const left = until - Date.now();
+    if (left <= 0) return held;
+    await new Promise<void>(resolve => {
+      const t = setTimeout(resolve, left);
+      onSheetFree(sheetId, () => { clearTimeout(t); resolve(); });
+    });
+  }
+  return null;
+}
+
 function release(sheetId: string, entry: BusyEntry): void {
   if (busy.get(sheetId) !== entry) return;
   busy.delete(sheetId);
