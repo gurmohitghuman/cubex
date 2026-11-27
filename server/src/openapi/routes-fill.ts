@@ -212,4 +212,25 @@ export const fillRoutes = (): RouteDoc[] => [
       time_zone: z.string().optional().describe("The user's IANA time zone, for the check's day. Default UTC."),
     }),
   }),
+  op({
+    method: 'post', path: '/sheets/{id}/open-roles', operationId: 'openRoles', tag: 'hiring', scope: 'run',
+    summary: 'Find the open roles at the companies on this sheet: each into an Open roles sheet, counted per company.',
+    description: 'An estimate unless estimate_only is false: the most it can cost (high_usd) and a free count of '
+      + 'matching roles. The first run adds the Open roles sheet beside this one and two columns here that count and '
+      + 'list each company\'s roles; a later run adds only roles not seen before. A run never spends more than its '
+      + 'estimate (409 with the new estimate when it would).',
+    body: z.object({
+      website_column: z.string().describe("The column holding each company's website."),
+      roles: z.array(z.string()).describe(`The role titles to look for. At most ${HIRING_MAX_ROLES}.`),
+      country: z.string().length(2).optional().describe('The country of the roles, such as US. Left out: any.'),
+      place: z.string().optional().describe('A city or region, such as Texas.'),
+      posted_within_days: z.number().int().min(1).max(HIRING_MAX_POSTED_DAYS).nullable().optional()
+        .describe(`Only roles posted in the last N days. Default ${HIRING_DEFAULT_POSTED_DAYS}; null: any time.`),
+      per_company: z.number().int().min(1).max(ENRICH_LIST_MAX_ITEMS).optional()
+        .describe('Roles a company adds at most. Default 10.'),
+      estimate_only: z.boolean().optional().describe('false runs it. Default true: the cost and the count.'),
+      max_cost_usd: z.number().optional().describe("With estimate_only false: the estimate's high_usd."),
+      time_zone: z.string().optional().describe("The user's IANA time zone, for First seen. Default UTC."),
+    }),
+  }),
 ];
