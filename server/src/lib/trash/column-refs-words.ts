@@ -46,7 +46,8 @@ export function droppedEntry(ref: DroppedRef, name: string, old: string, s: RefS
     case 'list_field':
       return w(`sheet ${q(ref.sheet)}, column ${q(ref.column)}`,
         `the list enrichment ${q(ref.column)} in ${q(ref.sheet)} put one of its fields in this column`, by(s, {
-          mcp: `add_list_rows (sheet ${ref.sheet_id}, column ${q(ref.column)}) with a field into ${q(name)}`,
+          mcp: `stored_answers with action add_rows (sheet ${ref.sheet_id}, column ${q(ref.column)}) with a field into `
+            + q(name),
           rest: `POST /api/v1/sheets/${ref.sheet_id}/enrichment-list-fields with a field into ${q(name)}`,
           app: `Pick the field again in ${q(ref.column)}'s list settings in ${q(ref.sheet)}.` }));
     case 'ai_output':
@@ -80,10 +81,11 @@ export function droppedEntry(ref: DroppedRef, name: string, old: string, s: RefS
         app: `Set ${q(ref.column)} up again in ${q(ref.sheet)}.` }));
     case 'auto_dedupe':
       return w('auto-dedupe', `kept one row per value of this column (the ${ref.keep}), and is off now`, by(s, {
-        mcp: `set_auto_dedupe with column ${q(name)}`, rest: `PUT ${sheetPath}/auto-dedupe with column ${q(name)}`,
+        mcp: `remove_duplicates with keep_doing { column: ${q(name)} }`,
+        rest: `PUT ${sheetPath}/auto-dedupe with column ${q(name)}`,
         app: 'Turn auto-dedupe on again from the sheet menu.' }));
     case 'undo':
-      return w('undo_run', `undoing ${ref.runs === 1 ? 'the run' : `${ref.runs} runs`} that wrote this column no `
+      return w('run undo', `undoing ${ref.runs === 1 ? 'the run' : `${ref.runs} runs`} that wrote this column no `
         + 'longer puts its cells back', 'Nothing to set up: those undos leave this column as it is.');
     case 'output_taken':
       return takenEntry(ref, name, s, sheetPath, w);
@@ -92,7 +94,7 @@ export function droppedEntry(ref: DroppedRef, name: string, old: string, s: RefS
 
 const TOOL = {
   http: { mcp: 'run_http_enrichment', rest: 'http-runs' },
-  enrichment: { mcp: 'add_enrichment_field', rest: 'enrichment-fields' },
+  enrichment: { mcp: 'stored_answers (action add_column)', rest: 'enrichment-fields' },
   waterfall: { mcp: 'waterfall_column', rest: 'waterfall-columns' },
 } as const;
 

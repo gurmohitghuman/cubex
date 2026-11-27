@@ -1,5 +1,5 @@
 // Columns still filling: from stored answers ("Add as column", MCP
-// add_enrichment_field: services/answer-field-fill.ts) or a clean, formula or
+// stored_answers' add_column: services/answer-field-fill.ts) or a clean, formula or
 // lookup column's fill (services/derived-fill.ts). Every read of the sheet shows them
 // as processing until the fill is done, the grid's and the agents' alike, so
 // nobody reads a half-filled column as the answer.

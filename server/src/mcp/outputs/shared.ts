@@ -30,7 +30,7 @@ export const autoRunNotice = z.array(obj({
   paused: nul(str), note: opt(str),
 })).describe('Auto-run columns that will fill the new rows, and what they may cost');
 
-export const autoDedupe = info('What auto-dedupe did not keep or replaced (set_auto_dedupe)');
+export const autoDedupe = info('What auto-dedupe did not keep or replaced (remove_duplicates\' keep_doing)');
 
 // The versions a write or read answers, to echo on the next call.
 export const versions = { data_version: num, row_generation: num };

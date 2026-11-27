@@ -259,7 +259,7 @@ export function getAiRunResults(
   };
 }
 
-// answers: each row's stored answer too (the paths add_enrichment_field takes).
+// answers: each row's stored answer too (the paths stored_answers' add_column takes).
 export function getHttpRunResults(
   runId: string, userId: string, after: number, limit: number,
   filter: RunResultStatusFilter = 'all', answers = false,

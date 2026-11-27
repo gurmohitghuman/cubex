@@ -45,6 +45,18 @@ export interface ToolBodyOptions {
 export function toolBody(tool: string, opts: ToolBodyOptions = {}): z.ZodObject {
   const shape = captured().get(tool);
   if (!shape) throw new Error(`openapi: no MCP tool named ${tool}`);
+  return bodyOf(tool, shape, opts);
+}
+
+// The same for one action of a tool that does several (fewer MCP tools): the action's own fields, as the tool file
+// exports them (required where the action needs them), which the tool's schema is built from. The REST body stays
+// what that action's old tool took.
+export function actionBody(tool: string, shape: Shape, opts: ToolBodyOptions = {}): z.ZodObject {
+  if (!captured().has(tool)) throw new Error(`openapi: no MCP tool named ${tool}`);
+  return bodyOf(tool, shape, opts);
+}
+
+function bodyOf(tool: string, shape: Shape, opts: ToolBodyOptions): z.ZodObject {
   for (const key of [...(opts.omit ?? []), ...(opts.pick ?? [])]) {
     if (!(key in shape)) throw new Error(`openapi: MCP tool ${tool} has no field ${key}`);
   }

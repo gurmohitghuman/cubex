@@ -59,7 +59,7 @@ test('MCP 2026-07-28 with the v2 client: discover, a fixed tool list, calls and 
 
   // The same list on every call and for two tokens with the same scopes. A read-only token gets the same
   // tools in the same order: it is refused inside the tools it can't use, never hidden from them (only
-  // create_upload_link's description adds that this token can't write).
+  // file_link's description adds that this token can't upload).
   const list = async (c: Client) => (await c.listTools({}, { cacheMode: 'bypass' })).tools
   const first = await list(rw)
   expect(first.length).toBeGreaterThan(45)
@@ -67,7 +67,7 @@ test('MCP 2026-07-28 with the v2 client: discover, a fixed tool list, calls and 
   const readOnly = await list(ro)
   expect(readOnly.map(t => t.name)).toEqual(first.map(t => t.name))
   expect(readOnly.filter((t, i) => JSON.stringify(t) !== JSON.stringify(first[i])).map(t => t.name))
-    .toEqual(['create_upload_link'])
+    .toEqual(['file_link'])
   const readRows = first.find(t => t.name === 'read_rows')!
   expect(readRows.inputSchema.$schema).toBe('https://json-schema.org/draft/2020-12/schema')
   const { type, minimum, maximum } = readRows.inputSchema.properties!.max_chars_per_cell as Record<string, unknown>

@@ -1,6 +1,6 @@
 // What undoing a run would do, and why it can't now (pure reads): the app's
 // column menu ("Undo last run"), GET /api/v1/{ai,http}-runs/:id/undo and MCP
-// undo_run's dry run. services/run-undo.ts does it.
+// control_run's undo, as a dry run. services/run-undo.ts does it.
 import { db } from '../lib/db';
 import { UNDO_KEEP_DAYS } from '../lib/constants';
 import { verifySheetOwnership } from '../lib/sql-helpers';

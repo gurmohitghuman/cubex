@@ -212,6 +212,114 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
       },
       {
         change: 'renamed',
+        tools: ['undo_run'],
+        replaced_by: 'control_run',
+        summary: 'undo_run is now control_run with action "undo": the same run_type and run_id, or sheet_id and '
+          + 'column, and dry_run, and the same answer.',
+      },
+      {
+        change: 'renamed',
+        tools: ['control_setup_run'],
+        replaced_by: 'control_run',
+        summary: 'control_setup_run is now control_run with setup_run_id and action pause, resume or cancel, and the '
+          + 'same answer.',
+      },
+      {
+        change: 'renamed',
+        tools: ['save_setup'],
+        replaced_by: 'manage_setup',
+        summary: 'save_setup is now manage_setup with action "save": the same sheet_id, name, description, columns, '
+          + 'include_upstream and preview, and the same answer.',
+      },
+      {
+        change: 'renamed',
+        tools: ['delete_setup'],
+        replaced_by: 'manage_setup',
+        summary: 'delete_setup is now manage_setup with action "delete": the same setup_id, and the same answer.',
+      },
+      {
+        change: 'renamed',
+        tools: ['restore_setup_version'],
+        replaced_by: 'manage_setup_version',
+        summary: 'restore_setup_version is now manage_setup_version with action "restore": the same sheet_id, '
+          + 'version_id and dry_run, and the same answer.',
+      },
+      {
+        change: 'renamed',
+        tools: ['write_formula'],
+        replaced_by: 'formula_column',
+        summary: 'write_formula is now formula_column with from_words (it was words) and model: the same answer, with '
+          + 'changed: [], and nothing is saved.',
+      },
+      {
+        change: 'renamed',
+        tools: ['set_auto_dedupe'],
+        replaced_by: 'remove_duplicates',
+        summary: 'set_auto_dedupe is now remove_duplicates with keep_doing in place of columns, and the same answer.',
+        details: 'Send remove_duplicates keep_doing: { column, match, phone_country, keep } to turn it on or change '
+          + 'it, or keep_doing: false to turn it off (it was off: true); it answers auto_dedupe and changed as before.',
+      },
+      {
+        change: 'renamed',
+        tools: ['add_enrichment_field'],
+        replaced_by: 'stored_answers',
+        summary: 'add_enrichment_field is now stored_answers with action "add_column": the same sheet_id, column, '
+          + 'json_path, column_name and row_id, and the same answer.',
+      },
+      {
+        change: 'renamed',
+        tools: ['add_list_rows'],
+        replaced_by: 'stored_answers',
+        summary: 'add_list_rows is now stored_answers with action "add_rows": the same sheet_id, column, fields and '
+          + 'dedupe_path, and the same answer.',
+      },
+      {
+        change: 'renamed',
+        tools: ['create_upload_link'],
+        replaced_by: 'file_link',
+        summary: 'create_upload_link is now file_link with action "upload": the same sheet_id, mode, setup_id, '
+          + 'max_cost_usd, allow_unpriced, models and webhook_id, and the same answer.',
+      },
+      {
+        change: 'renamed',
+        tools: ['create_download_link'],
+        replaced_by: 'file_link',
+        summary: 'create_download_link is now file_link with action "download": the same sheet_id, columns, where, '
+          + 'view and format, and the same answer.',
+        details: 'Call file_link with action "download" and the same fields; a setup call\'s items take setup_run_id, '
+          + 'the call\'s id as get_run (action setup) takes it (it was setup_call_id).',
+      },
+      {
+        change: 'changed',
+        tools: ['control_run'],
+        summary: 'control_run takes action "undo" (undo_run\'s), and setup_run_id with pause, resume or cancel '
+          + '(control_setup_run\'s).',
+        details: 'An undo needs the write scope, its dry run read; every other action still needs run.',
+      },
+      {
+        change: 'changed',
+        tools: ['formula_column'],
+        summary: 'formula_column takes from_words (with model) in place of formula: one small AI call writes a '
+          + 'formula, and nothing is saved (write_formula\'s).',
+        details: 'from_words needs the run scope and costs money; pass the formula it answers as formula to fill the '
+          + 'column.',
+      },
+      {
+        change: 'changed',
+        tools: ['remove_duplicates'],
+        summary: 'remove_duplicates takes keep_doing in place of columns, keep and dry_run: one row per key is kept as '
+          + 'rows arrive (set_auto_dedupe\'s).',
+        details: 'keep_doing needs the write scope; rows already there stay, so call with columns once to remove '
+          + 'those.',
+      },
+      {
+        change: 'changed',
+        tools: ['manage_setup_version'],
+        summary: 'manage_setup_version takes action "restore" (restore_setup_version\'s), and its save, rename and '
+          + 'delete now answer changed: [].',
+      },
+      {
+        change: 'renamed',
         tools: ['call_setup'],
         replaced_by: 'apply_setup',
         summary: 'call_setup is apply_setup with items instead of sheet_id: a saved setup run on 1-100 items without a '

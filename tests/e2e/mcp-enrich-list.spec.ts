@@ -60,10 +60,10 @@ test('MCP: test 5 rows, read the fields, add those rows, run the rest', async ()
   expect(first).toMatchObject({ filled: 15 })
   expect(first.sample).toBeTruthy()
 
-  expect(await callError(client, 'add_list_rows', {
+  expect(await callError(client, 'stored_answers', { action: 'add_rows',
     sheet_id: sheetId, column: 'People', fields: FIELDS, dedupe_path: '$.title',
   })).toContain('dedupe_path')
-  const picked = await call(client, 'add_list_rows', {
+  const picked = await call(client, 'stored_answers', { action: 'add_rows',
     sheet_id: sheetId, column: 'People', fields: FIELDS, dedupe_path: '$.employee_linkedin',
   })
   expect(picked.source_rows_released).toBe(5)

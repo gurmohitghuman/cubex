@@ -1,5 +1,5 @@
 // The agent surfaces' column-from-answers and list-field actions (MCP
-// add_enrichment_field, get_list_fields, add_list_rows; /api/v1 enrichment-
+// stored_answers (add_column, add_rows), get_list_fields; /api/v1 enrichment-
 // fields and enrichment-list-fields), over the services the answer panel and
 // the drawer's Test step use: answer-field-add.ts and enrich-list-fields.ts.
 import { db } from '../lib/db';

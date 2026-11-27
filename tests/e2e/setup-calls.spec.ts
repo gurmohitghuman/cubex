@@ -8,7 +8,7 @@ import { sheetWith } from './helpers-setups'
 // and refuses a sheet's arguments beside items; started, it runs on a working table no list shows, and get_setup_run
 // answers each item's outputs in the order sent. REST
 // does the same (estimate_only defaults to false there), refuses an item with a name the setup doesn't read, a
-// token without "run", and answers 404 for a call that isn't there. control_setup_run takes a call's id.
+// token without "run", and answers 404 for a call that isn't there. control_run takes a call's id.
 
 test('a setup called on items: priced, run without a sheet, each item\'s outputs', async () => {
   test.setTimeout(120_000)
@@ -20,7 +20,7 @@ test('a setup called on items: priced, run without a sheet, each item\'s outputs
   await call(client, 'formula_column', { sheet_id: a.sheetId, column: 'Domain', formula: '{{Website}}?.split(".")[0]' })
   await call(client, 'clean_column', { sheet_id: a.sheetId, source_column: 'Name', cleaner: 'person_name',
     column: 'Clean name' })
-  const setup = await call(client, 'save_setup', { sheet_id: a.sheetId, name: 'Call me',
+  const setup = await call(client, 'manage_setup', { action: 'save', sheet_id: a.sheetId, name: 'Call me',
     columns: ['Domain', 'Clean name'] })
   expect([...setup.inputs].sort()).toEqual(['Name', 'Website'])
   const tables = async () => (await call(client, 'get_workspace', { all_tables: true })).tables.length
@@ -84,13 +84,13 @@ test('a setup called on items: priced, run without a sheet, each item\'s outputs
   expect((await (await api.get('/api/tables')).json()).some((t: any) => t.name.startsWith('Setup call')))
     .toBe(false)
 
-  // control_setup_run takes a call's id (a finished one says it has ended).
-  expect(await callError(client, 'control_setup_run', { setup_run_id: started.id, action: 'cancel' }))
+  // control_run takes a call's id as setup_run_id (a finished one says it has ended).
+  expect(await callError(client, 'control_run', { setup_run_id: started.id, action: 'cancel' }))
     .toContain('already ended')
 })
 
 // A file's rows as a setup call's items: an upload link with setup_id (max_cost_usd required) starts the call once
-// the file is in, its results page with next_from, a download link with setup_call_id saves them; REST takes the file
+// the file is in, its results page with next_from, a download link with setup_run_id saves them; REST takes the file
 // as multipart.
 test('a setup called on a file: an upload link and REST, results paged and downloaded', async () => {
   test.setTimeout(120_000)
@@ -100,12 +100,14 @@ test('a setup called on a file: an upload link and REST, results paged and downl
   const a = await sheetWith(api, null, [{ Name: 'ada lovelace' }])
   await call(client, 'clean_column', { sheet_id: a.sheetId, source_column: 'Name', cleaner: 'person_name',
     column: 'Clean name' })
-  const setup = await call(client, 'save_setup', { sheet_id: a.sheetId, name: `File call ${Date.now()}`,
+  const setup = await call(client, 'manage_setup', { action: 'save', sheet_id: a.sheetId,
+    name: `File call ${Date.now()}`,
     columns: ['Clean name'] })
-  expect(await callError(client, 'create_upload_link', { setup_id: setup.id })).toContain('max_cost_usd')
-  expect(await callError(client, 'create_upload_link', { sheet_id: a.sheetId, setup_id: setup.id, max_cost_usd: 1 }))
+  expect(await callError(client, 'file_link', { action: 'upload', setup_id: setup.id })).toContain('max_cost_usd')
+  expect(await callError(client, 'file_link', { action: 'upload', sheet_id: a.sheetId, setup_id: setup.id,
+    max_cost_usd: 1 }))
     .toContain('Pass sheet_id, or setup_id')
-  const link = await call(client, 'create_upload_link', { setup_id: setup.id, max_cost_usd: 1 })
+  const link = await call(client, 'file_link', { action: 'upload', setup_id: setup.id, max_cost_usd: 1 })
   const names = Array.from({ length: 150 }, (_, i) => `person ${i}`)
   const csv = `Name,Extra\n${names.map(n => `${n},x`).join('\n')}\n`
   const up = await api.put(link.upload_url, { data: Buffer.from(csv), headers: { 'Content-Type': 'text/csv' } })
@@ -124,7 +126,7 @@ test('a setup called on a file: an upload link and REST, results paged and downl
   expect(rest.next_from).toBeNull()
   expect(await callError(client, 'get_setup_call', { setup_call_id: started.id }))
     .toContain('renamed to get_run')
-  const dl = await call(client, 'create_download_link', { setup_call_id: started.id })
+  const dl = await call(client, 'file_link', { action: 'download', setup_run_id: started.id })
   const file = await (await api.get(dl.download_url)).text()
   expect(file.split('\n')[0]).toContain('Clean name')
   expect(file).toContain('Person 149')

@@ -72,7 +72,7 @@ export const getSheet = obj({
   formula_columns: z.array(info('A formula column\'s setup')),
   lookup_columns: z.array(info('A lookup column\'s setup')),
   views: z.array(view), column_details: z.array(columnDetail),
-  auto_dedupe: nul(info('The set_auto_dedupe setting')),
+  auto_dedupe: nul(info('The auto-dedupe setting (remove_duplicates\' keep_doing)')),
   test: opt(nul(sheetTest)).describe('A test of column changes open on it, or null'),
   limits: obj({ max_rows: num, rows_remaining: num, max_columns: num, columns_remaining: num }),
 });

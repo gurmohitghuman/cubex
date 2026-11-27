@@ -3,7 +3,7 @@
 // enrichment run: the tool, what it cost (the run's ledger total), its limits
 // and why it paused, and for a list job where its rows go. Per row: what the
 // row cost, who found it, and on request the stored answer whose paths
-// add_enrichment_field takes.
+// stored_answers' add_column takes.
 import { db } from '../lib/db';
 import { enrichConcurrency, isEnrichmentConfig, type EnrichRunConfig } from '../lib/enrich-run-config';
 import { parseStored, readStored } from '../lib/answer-store';

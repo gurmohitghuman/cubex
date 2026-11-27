@@ -66,7 +66,8 @@ async function main() {
     for (const name of Object.keys(WITHOUT_CHANGED)) {
       assert.equal(tools[name]?.annotations?.readOnlyHint, false, `${name} in WITHOUT_CHANGED is a write tool`)
     }
-    assert.ok(writers >= 40, `${writers} write tools`)
+    // Fewer MCP tools' plan leaves 34 write tools: a floor under it, so an empty or cut list still fails.
+    assert.ok(writers >= 30, `${writers} write tools`)
   })
 
   db.prepare('INSERT INTO users (id,password_hash) VALUES (?,?)').run('other', 'x')
@@ -191,8 +192,8 @@ async function main() {
     assert.equal(a.changed[0].row_generation, versions(dest).row_generation)
   })
 
-  await check('set_auto_dedupe names its key column', async () => {
-    const a = await call('set_auto_dedupe', { sheet_id: dest, column: 'Company' })
+  await check('remove_duplicates\' keep_doing names its key column', async () => {
+    const a = await call('remove_duplicates', { sheet_id: dest, keep_doing: { column: 'Company' } })
     assert.deepEqual(a.changed.map(i => [i.sheet_id, i.columns, i.rows]), [[dest, ['Company'], 0]])
   })
 

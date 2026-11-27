@@ -54,7 +54,7 @@ test('a token at its spend cap: refused and paused, then resumed after a raise i
     expect((await call(client, 'get_tool_guide', { tool: name })).guide, name)
       .toContain('Calls already in flight finish and count')
   }
-  expect(text('write_formula')).toContain('At the cap this is refused.')
+  expect(text('formula_column')).toContain('At the cap this is refused.')
   expect(text('read_rows')).not.toContain('SPEND CAP')
   expect((await call(client, 'get_account', { action: 'balances' })).access_token)
     .toMatchObject({ spend_cap_usd: 0.02, left_usd: 0.02 })

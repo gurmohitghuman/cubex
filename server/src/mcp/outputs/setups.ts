@@ -11,11 +11,11 @@ const setupFields = {
 const setup = obj(setupFields);
 // No setup_id: setups. With one: that setup and its spec.
 export const listSetups = obj({
-  setups: opt(z.array(setup)), ...setup.partial().shape, spec: opt(info('The setup as save_setup takes it')),
+  setups: opt(z.array(setup)), ...setup.partial().shape, spec: opt(info('The setup as manage_setup saves it')),
 });
 export const saveSetup = obj({
   ...setup.partial().shape, inputs: setupFields.inputs, keys: setupFields.keys, steps: setupFields.steps,
-  spec: info('The setup as save_setup takes it'),
+  spec: info('The setup as manage_setup saves it'),
 });
 export const deleteSetup = obj({ deleted: str });
 
