@@ -74,18 +74,22 @@ async function countOne(token: string, c: (typeof COUNTS)[string], body: Json) {
 // find counts twice); counted: the searches it covers (the first
 // HIRING_COUNT_MAX_SEARCHES); capped: some count stopped at its ceiling;
 // leftOut: what the searches send that the count doesn't take. null: no count.
+// partial (one search per company, services/open-roles.ts): the searches whose
+// count answered, summed, and counted those; null only when none did. Else one
+// that didn't answer leaves no count, as a total missing a search would mislead.
 export interface JobCount { about: number; counted: number; capped: boolean; leftOut: Array<'place'> }
 
-async function countAll(userId: string, c: (typeof COUNTS)[string] | undefined, bodies: Json[]):
+async function countAll(userId: string, c: (typeof COUNTS)[string] | undefined, bodies: Json[], partial = false):
   Promise<Omit<JobCount, 'leftOut'> | null> {
   const token = getTregToken(userId);
   if (!c || !token || bodies.length === 0) return null;
   if (!(await countIsFree(c.toolId))) return null;
   const first = bodies.slice(0, HIRING_COUNT_MAX_SEARCHES);
   const answers = await Promise.all(first.map(b => countOne(token, c, b)));
-  if (answers.some(a => a === null)) return null;
+  const answered = answers.filter((a): a is NonNullable<typeof a> => a !== null);
+  if (answered.length === 0 || (!partial && answered.length < first.length)) return null;
   return {
-    about: answers.reduce((sum, a) => sum + a!.n, 0), counted: first.length, capped: answers.some(a => a!.capped),
+    about: answered.reduce((sum, a) => sum + a.n, 0), counted: answered.length, capped: answered.some(a => a.capped),
   };
 }
 
@@ -105,7 +109,8 @@ export function directCountBody(search: Json): Json {
 
 // The searches of a table with More filters (each its request body, in order):
 // their count on the job index, which takes every filter they send.
-export async function countDirectJobs(userId: string, searches: Json[]): Promise<JobCount | null> {
-  const n = await countAll(userId, COUNTS.hirebase, searches.map(directCountBody));
+// partial: as countAll takes it (one search per company).
+export async function countDirectJobs(userId: string, searches: Json[], partial = false): Promise<JobCount | null> {
+  const n = await countAll(userId, COUNTS.hirebase, searches.map(directCountBody), partial);
   return n && { ...n, leftOut: [] };
 }

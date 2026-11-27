@@ -135,7 +135,8 @@ export const EnrichmentDrawer: React.FC<Props> = (p) => {
           <LoadingSpinner size="sm" message="Loading the enrichment…" className="py-8" />
         ) : step === 'find' ? (
           <FindStep query={draft.query} setQuery={query => update({ query })} hasKey={hasKey} active={isOpen}
-            onPick={card => update(d => pickTool(d, card))} />
+            onPick={card => update(d => pickTool(d, card))} sheetId={sheetId} columns={columns}
+            onRunStarted={runId => { p.onRunStarted(runId); onClose() }} />
         ) : step === 'setup' ? (
           <SetupStep {...shared} runBlock={runBlock} onChangeTool={() => update({ step: 'find' })} onCancel={onClose}
             onSaved={onSaved} />

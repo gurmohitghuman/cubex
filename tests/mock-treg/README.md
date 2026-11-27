@@ -64,6 +64,9 @@ replaced: people are fictional (Ada Lovelace, Grace Hopper), domains are `.examp
   The job search and its two free counts (`treg.companies.jobs.search`, `hirebase.jobs.search.count`,
   `jobspipe.jobs.search.count`) are from treg's catalog of 2026-11-17; jobs.mjs answers each provider's own job
   row shape with five made-up companies, one of them giving no domain from the sixth role on.
+  `findymail.search.employees` (a company's people by job title) is from treg's public catalog of 2026-11-27;
+  people-titles.mjs answers one made-up person per title asked, named after the website, and none (free) for a
+  website naming "nobody".
 - `access/`, `account/`: as treg answered.
 - `calls/`: one live answer each (status, `X-Treg-*` headers, body), with a `note` on what it
   shows: a hit, its free replay, a repeat lookup at 10% (treg's archive), a miss, a capped miss,

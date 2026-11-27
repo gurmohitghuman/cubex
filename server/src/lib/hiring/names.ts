@@ -10,6 +10,18 @@ export const HIRING_DIRECT_PROVIDER = 'hirebase';
 export const isHiringSearchTool = (toolId: string | undefined): boolean =>
   toolId === HIRING_TOOL_ID || toolId === HIRING_DIRECT_TOOL_ID;
 
+// Open roles at the companies on a person's own sheet (services/open-roles.ts): the sheet the roles go in, beside it;
+// the column there that searches each company row; and the lookup on that sheet that counts each company's roles.
+// The roles sheet has a hiring table's Roles columns but Search.
+export const OPEN_ROLES = { sheet: 'Open roles', status: 'Open roles found', count: 'Open roles' } as const;
+export const OPEN_ROLES_WORDS = {
+  sheet: 'Every open role found at the companies of the sheet beside it, one row each. Domain is that company\'s '
+    + 'website as its sheet has it. A role found again later is not added again; First seen is the day of the run '
+    + 'that found it.',
+  status: 'Searches each company\'s open roles for the roles asked, and adds them to the Open roles sheet.',
+  count: 'How many roles in the Open roles sheet are at this company (filter its Domain for them).',
+};
+
 export const HIRING_SHEETS = { companies: 'Companies', roles: 'Roles', searches: 'Searches' } as const;
 
 export const COMPANY_COLUMNS = {
@@ -17,6 +29,13 @@ export const COMPANY_COLUMNS = {
   links: 'Links', newSince: 'New since last check', newRoles: 'New roles', firstSeen: 'First seen',
 } as const;
 export type CompanyColumn = keyof typeof COMPANY_COLUMNS;
+
+// The buyer on each Companies row (lib/hiring/buyer.ts), added by the first "Find buyers": the people search's
+// status column and what it reads out, then the verified email's status column and its address and status.
+export const BUYER_COLUMNS = {
+  search: 'Buyer search', name: 'Buyer', title: 'Buyer title', linkedin: 'Buyer LinkedIn',
+  emailSearch: 'Buyer email search', email: 'Buyer email', emailStatus: 'Buyer email status',
+} as const;
 
 export const ROLE_COLUMNS = {
   title: 'Title', company: 'Company', domain: 'Domain', team: 'Team', location: 'Location', posted: 'Posted',

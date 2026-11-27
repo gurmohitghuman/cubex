@@ -13,7 +13,9 @@
 //     (a provider that ignores it), each billed per result;
 //   jobCounts {word: n}: what a count mentioning `word` answers (default 120);
 //   jobCountRefuses [field]: a count sent one of these fields answers 422, as
-//     an index refusing a field it doesn't take would.
+//     an index refusing a field it doesn't take would;
+//   jobCountFailDomains [domain]: a count for one of these companies
+//     (company_domains) answers 422, as live one company's count failed.
 // hirebase.jobs.search called directly (a hiring table with More options):
 // the same roles, each with a level, a job type and a description, and the
 // filters applied as the index applies them (description words keep only
@@ -102,6 +104,10 @@ export function jobSearchAnswer(body) {
 export function jobCountAnswer(toolId, body) {
   const refused = (state.jobCountRefuses ?? []).find(f => body[f] !== undefined)
   if (refused) return { refusal: { detail: `${refused} is not a field of this endpoint` } }
+  const failed = (state.jobCountFailDomains ?? []).map(lower)
+  if (listOf(body.company_domains).some(d => failed.includes(lower(d)))) {
+    return { refusal: { detail: 'the count failed for this company' } }
+  }
   const title = String(wanted(body.job_titles)[0] ?? body.job_title_or?.[0] ?? '')
   const hit = Object.entries(state.jobCounts ?? {}).find(([w]) => title.toLowerCase().includes(w.toLowerCase()))
   const base = hit ? Number(hit[1]) : 120

@@ -24,6 +24,10 @@ export const HIRING_COUNT_MAX_SEARCHES = 20;
 export const HIRING_COUNT_TIMEOUT_MS = 5_000;
 // A check waits for its search's run and that run's rows: how often it looks.
 export const HIRING_CHECK_POLL_MS = 2_000;
+// Open roles on a person's sheet (services/open-roles-lookups.ts) adds its lookup once its run's start has set up
+// the sheet's rows, in the background as soon as the sheet is free, within this wait (else at the next run); the
+// counts are looked up again after a run within it too.
+export const OPEN_ROLES_LOOKUPS_LATER_MS = 30 * 60_000;
 // The summary per company (services/hiring-summarize.ts): Roles rows read a
 // slice (the reads yield between slices), and Companies rows read, compared
 // and written in one bulk writer slice.

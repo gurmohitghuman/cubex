@@ -33,6 +33,8 @@ export interface WriteProbeStats {
 export interface TransactionRecord {
   n: number; at: number; ms: number; cpuMs: number; before: WalNow; after: WalNow; startedOver: boolean
   checkpointing: boolean; ownCheckpoint: boolean; grew: boolean
+  // Kept only for one begun while a checkpoint ran: the app's frames that began it (where to look).
+  from?: string
 }
 interface WalNow { log: number; checkpointed: number }
 // One short line: `#n 12.3 ms (cpu 11.8 ms), WAL 1500/1500 -> 53/0, started over, checkpoint asked, grew the -wal`.
@@ -40,6 +42,14 @@ export const transactionLine = (r: TransactionRecord) => `#${r.n} ${r.ms.toFixed
   + `(cpu ${r.cpuMs.toFixed(1)} ms), WAL ${r.before.log}/${r.before.checkpointed} -> `
   + `${r.after.log}/${r.after.checkpointed}${r.startedOver ? ', started over' : ''}`
   + `${r.checkpointing ? ', checkpoint asked' : ''}${r.grew ? ', grew the -wal' : ''}`
+
+// The first app frames of the stack (server/src), shortest form: `services/run-cancel.ts:41 < ...`.
+function appFrames(): string {
+  const lines = (new Error().stack ?? '').split('\n')
+    .filter(l => l.includes('/server/src/') || l.includes('\\server\\src\\'))
+  return lines.slice(0, 3).map(l => (l.match(/server[\\/]src[\\/]([^:)]+:\d+)/)?.[1] ?? l.trim()).replace(/\\/g, '/'))
+    .join(' < ') || 'not in server/src'
+}
 
 const NOOP = /^\s*(PRAGMA\s+)?wal_checkpoint\s*\(\s*noop\s*\)\s*;?\s*$/i
 
@@ -72,6 +82,7 @@ export function sqliteWriteProbe(db: Database.Database, dbPath: string, checkpoi
     const w0 = wal()
     const h0 = walHeader()
     const asked = checkpointing()
+    const from = asked ? appFrames() : undefined
     const c0 = process.threadCpuUsage()
     const t0 = performance.now()
     try { return f(...a) } finally {
@@ -87,7 +98,7 @@ export function sqliteWriteProbe(db: Database.Database, dbPath: string, checkpoi
       const ownCheckpoint = auto > 0 && log1 >= auto
       if (ownCheckpoint) s.ownCheckpoints++
       records.push({ n: s.transactions, at: t0, ms, cpuMs: (c.user + c.system) / 1000, before: w0, after: w1,
-        checkpointing: asked, ownCheckpoint, grew: walBytes() > bytes0,
+        checkpointing: asked, from, ownCheckpoint, grew: walBytes() > bytes0,
         startedOver: (h1 !== null && h1 !== h0) || log1 < w0.log })
       s.mostTransactionFrames = Math.max(s.mostTransactionFrames, log1 >= w0.log ? log1 - w0.log : log1)
       s.mostWalFrames = Math.max(s.mostWalFrames, log1)

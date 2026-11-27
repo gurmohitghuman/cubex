@@ -212,4 +212,38 @@ export const fillRoutes = (): RouteDoc[] => [
       time_zone: z.string().optional().describe("The user's IANA time zone, for the check's day. Default UTC."),
     }),
   }),
+  op({
+    method: 'post', path: '/hiring/{id}/buyers', operationId: 'findHiringBuyers', tag: 'hiring', scope: 'run',
+    summary: 'Find the person each company on Companies would buy through, by job title, with a verified email.',
+    description: 'An estimate unless estimate_only is false, which changes nothing; the run needs max_cost_usd, the '
+      + 'estimate\'s high_usd, and takes the companies whose Buyer is empty. The first run adds the Buyer columns to '
+      + 'Companies (the write scope too). A company with no one holding the titles costs nothing.',
+    body: z.object({
+      buyer_titles: z.array(z.string()).optional()
+        .describe('Job titles to look for (at most 6). Default: the titles in use, or ones from the roles.'),
+      estimate_only: z.boolean().optional().describe('false finds them for real. Default true: the cost.'),
+      max_cost_usd: z.number().optional().describe('With estimate_only false: the estimate\'s high_usd.'),
+    }),
+  }),
+  op({
+    method: 'post', path: '/sheets/{id}/open-roles', operationId: 'openRoles', tag: 'hiring', scope: 'run',
+    summary: 'Find the open roles at the companies on this sheet: each into an Open roles sheet, counted per company.',
+    description: 'An estimate unless estimate_only is false: the most it can cost (high_usd) and a free count of '
+      + 'matching roles. The first run adds the Open roles sheet beside this one and a column here counting each '
+      + 'company\'s roles; a later run adds only roles not seen before. A run never spends more than its '
+      + 'estimate (409 with the new estimate when it would).',
+    body: z.object({
+      website_column: z.string().describe("The column holding each company's website."),
+      roles: z.array(z.string()).describe(`The role titles to look for. At most ${HIRING_MAX_ROLES}.`),
+      country: z.string().length(2).optional().describe('The country of the roles, such as US. Left out: any.'),
+      place: z.string().optional().describe('A city or region, such as Texas.'),
+      posted_within_days: z.number().int().min(1).max(HIRING_MAX_POSTED_DAYS).nullable().optional()
+        .describe(`Only roles posted in the last N days. Default ${HIRING_DEFAULT_POSTED_DAYS}; null: any time.`),
+      per_company: z.number().int().min(1).max(ENRICH_LIST_MAX_ITEMS).optional()
+        .describe('Roles a company adds at most. Default 10.'),
+      estimate_only: z.boolean().optional().describe('false runs it. Default true: the cost and the count.'),
+      max_cost_usd: z.number().optional().describe("With estimate_only false: the estimate's high_usd."),
+      time_zone: z.string().optional().describe("The user's IANA time zone, for First seen. Default UTC."),
+    }),
+  }),
 ];
