@@ -31,6 +31,8 @@ const RULES: ReadonlyArray<{ cls: HttpErrorClass; re: RegExp }> = [
   { cls: 'configuration', re: /^The provider answered [34]\d\d\b/ },
   { cls: 'configuration', re: /doesn't match a column or a saved key|not a valid header name|^JSONPath "/ },
   { cls: 'configuration', re: /private\/internal address|Only http\(s\) URLs|^Invalid URL|missing a hostname|^Could not resolve|^URL not allowed/ },
+  // A redirect it won't follow (lib/http-redirect.ts, lib/http-request.ts): the API's setup, not a blip.
+  { cls: 'configuration', re: /^HTTP 3\d\d redirected|^A redirect was refused|^More than \d+ redirects/ },
   { cls: 'response_format', re: /only supports (?:valid )?JSON|expects a JSON object or array|exceeds the \d+MB cap/ },
   // Transport failures: errno codes in Node's messages ("connect ECONNREFUSED …")
   // and undici's ("Headers Timeout Error", "other side closed").

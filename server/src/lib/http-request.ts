@@ -1,9 +1,11 @@
-// Over 200 lines: one outbound request path (template, cache, address check, request, bounded body) kept whole.
+// Over 200 lines: one outbound request path (template, cache, address check, request and its redirects, bounded
+// body) kept whole; which redirect to follow and with what is lib/http-redirect.ts.
 import { request, Agent } from 'undici';
 import { HTTP_REQUEST_TIMEOUT_MS, HTTP_MIN_TIMEOUT_MS, HTTP_MAX_TIMEOUT_MS, HTTP_TOTAL_SLACK_MS } from './constants';
 import { callDeadline, deadlineWords } from './call-deadline';
 import { getCachedResponse, setCachedResponse } from './http-request-cache';
 import { checkOutboundUrl, pinnedLookup } from './outbound-guard';
+import { HTTP_MAX_REDIRECTS, nextHop, type Hop } from './http-redirect';
 import {
   replaceTemplateVariables,
   type HTTPRequestConfig, type ResponseMapping, type HTTPAPIConfig,
@@ -100,13 +102,13 @@ export async function sendHTTPRequest(
   // SSRF guard runs per-row because /column substitutions may resolve to different
   // hostnames in different rows. Runs AFTER the cache check, so a cached hit
   // doesn't pay for the DNS resolution.
-  const guard = await checkOutboundUrl(processedUrl);
+  let guard = await checkOutboundUrl(processedUrl);
   if (!guard.ok) throw new OutboundBlockedError(guard.reason || 'URL not allowed');
 
   // Pin DNS to IPs already validated in checkOutboundUrl — prevents DNS rebinding,
   // where an attacker's domain could return a public IP during the guard and a
   // private IP during the actual fetch.
-  const dispatcher = new Agent({ connect: { lookup: pinnedLookup(guard.addresses || []) } });
+  let dispatcher = new Agent({ connect: { lookup: pinnedLookup(guard.addresses || []) } });
   let deadline: ReturnType<typeof callDeadline> | null = null;
   try {
 
@@ -122,27 +124,44 @@ export async function sendHTTPRequest(
   const totalMs = timeoutMs * 2 + HTTP_TOTAL_SLACK_MS;
   deadline = callDeadline(totalMs, signal);
 
-  const requestOptions: any = {
-    method: config.method,
-    headers: processedHeaders,
-    headersTimeout: timeoutMs,
-    bodyTimeout: timeoutMs,
-    dispatcher,
-    signal: deadline.signal,
-  };
-  // DELETE carries a body too: the dialog offers one and some APIs (bulk deletes) read it.
-  if (processedBody && ['POST', 'PUT', 'DELETE'].includes(config.method)) requestOptions.body = processedBody;
-
   // No answer at all (refused, reset, timed out) is a NetworkError, which a
   // retry may fix; a stop (the signal) stays an abort, and an error raised
   // before anything was sent (a header with a line break) stays as it is.
-  // undici never follows a redirect here: a 3xx is an answer like any other.
   const noAnswer = (error: any): never => {
     if (deadline?.timedOut()) throw new NetworkError(`No full answer within ${deadlineWords(totalMs)}.`);
     if (signal?.aborted || error?.name === 'AbortError' || !isTransportFailure(error)) throw error;
     throw new NetworkError(error?.message || 'The request failed.');
   };
-  const response = await request(processedUrl, requestOptions).catch(noAnswer);
+  // DELETE carries a body too: the dialog offers one and some APIs (bulk deletes) read it.
+  let hop: Hop = {
+    url: processedUrl, method: config.method, headers: processedHeaders,
+    body: processedBody && ['POST', 'PUT', 'DELETE'].includes(config.method) ? processedBody : undefined,
+  };
+  // undici follows no redirect itself: a 3xx this follows (lib/http-redirect.ts) goes through the full guard and a
+  // pinned connection of its own, like the first request; one it doesn't follow is the answer, as any other status.
+  let response: Awaited<ReturnType<typeof request>>;
+  // A redirect to another host left the request's headers behind (a key among them): a refusal then says so.
+  let headersLeft = false;
+  for (let redirects = 0; ; redirects++) {
+    const requestOptions: any = {
+      method: hop.method, headers: hop.headers, headersTimeout: timeoutMs, bodyTimeout: timeoutMs, dispatcher,
+      signal: deadline.signal, ...(hop.body !== undefined ? { body: hop.body } : {}),
+    };
+    response = await request(hop.url, requestOptions).catch(noAnswer);
+    const next = nextHop(hop, response.statusCode, response.headers.location);
+    if (next === null) break;
+    await response.body.dump().catch(() => {});
+    if ('error' in next) throw new UpstreamStatusError(response.statusCode, null, next.error);
+    if (redirects >= HTTP_MAX_REDIRECTS) {
+      throw new UpstreamStatusError(response.statusCode, null, `More than ${HTTP_MAX_REDIRECTS} redirects in a row.`);
+    }
+    guard = await checkOutboundUrl(next.ok.url);
+    if (!guard.ok) throw new OutboundBlockedError(`A redirect was refused: ${guard.reason || 'URL not allowed'}`);
+    dispatcher.close().catch(() => {});
+    dispatcher = new Agent({ connect: { lookup: pinnedLookup(guard.addresses || []) } });
+    if (Object.keys(next.ok.headers).length < Object.keys(hop.headers).length) headersLeft = true;
+    hop = next.ok;
+  }
   const status = response.statusCode;
 
   // Non-2xx → throw, so the runner records the row as failed (with status context).
@@ -152,7 +171,8 @@ export async function sendHTTPRequest(
     const snippet = await readErrorSnippet(response.body);
     const after = response.headers['retry-after'];
     throw new UpstreamStatusError(status, (Array.isArray(after) ? after[0] : after) ?? null,
-      `HTTP ${status} from upstream${snippet ? `: ${snippet}` : ''}`);
+      `HTTP ${status} from upstream${snippet ? `: ${snippet}` : ''}${headersLeft
+        ? ' (a redirect sent the request to another host, without its headers)' : ''}`);
   }
 
   // Reject early if the server advertises a response larger than our cap.
