@@ -254,6 +254,15 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
           + 'then change_rows with action "delete".',
       },
       {
+        change: 'server',
+        summary: 'Auto-dedupe takes rows with big cells out of a sheet a few at a time: what a call\'s own '
+          + 'transaction has no room for is checked in the background within seconds, counted in '
+          + 'auto_dedupe.checking_later.',
+        details: 'A transfer_rows near its cap leaves less room, a move\'s rows counting twice. Auto-run waits for '
+          + 'those checks, so a row about to go isn\'t paid for; read the rows again after a few seconds to see what '
+          + 'stayed.',
+      },
+      {
         change: 'changed',
         tools: ['manage_table'],
         summary: 'manage_table takes action star or unstar with table_id: a starred table is in the user\'s '

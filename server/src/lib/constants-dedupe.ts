@@ -1,4 +1,5 @@
 // Removing duplicate rows (services/dedupe-*.ts, lib/dedupe/).
+import { HEAVY_SLICE_BYTES } from './constants';
 
 // A check reads rows in pages and works out their keys between requests: it
 // lets other requests in whenever DEDUPE_SLICE_MS of key work has passed, even
@@ -47,11 +48,21 @@ export const AUTO_DEDUPE_STEP_MS = 60;
 // fit); checks past that wait too.
 export const AUTO_DEDUPE_INLINE_MS = 25;
 export const AUTO_DEDUPE_INLINE_ROWS = 10_000;
+// Within those, the rows it removes hold at most this many bytes of writes (lib/slice-bytes.ts reads their sizes):
+// a row already in the sheet counts twice (into the trash, and zeroed out of the rows: secure_delete), a row the same
+// transaction added once. With keep newest, a 15 MB move replacing 150 rows of 200 KB wrote 90 MB of WAL in one
+// commit, and a 1 MB move replacing 300 of them 123 MB, past journal_size_limit (64 MB). Half of that limit, the rest
+// left for the write's own rows; transfer_rows, which writes up to 32 MB itself, passes what its cap leaves
+// (services/rows-transfer.ts). Checks past it wait for the background round, which auto-run waits for too.
+export const AUTO_DEDUPE_INLINE_BYTES = 32 * 1024 * 1024;
 // Waiting checks are made on the API thread a transaction at a time: at most
 // AUTO_DEDUPE_LOOK_ROWS rows looked at, AUTO_DEDUPE_CHECK_ROWS rows removed
 // (the WAL copied back on the checkpoint worker's thread, as when removing duplicates:
 // a delete dirties about a page a row) or AUTO_DEDUPE_CHECK_MS, by a round this often.
 export const AUTO_DEDUPE_CHECK_ROWS = 250;
+// And at most HEAVY_SLICE_BYTES of writes, counted the same way (as removing duplicates' chunks); a row bigger than
+// that still goes, alone.
+export const AUTO_DEDUPE_CHECK_BYTES = HEAVY_SLICE_BYTES;
 export const AUTO_DEDUPE_LOOK_ROWS = 2_000;
 export const AUTO_DEDUPE_CHECK_MS = 25;
 export const AUTO_DEDUPE_TICK_MS = 2_000;

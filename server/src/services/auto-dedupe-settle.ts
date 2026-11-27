@@ -10,7 +10,9 @@
 // and rows a restore brings back, are stored but never checked.
 import { db } from '../lib/db';
 import { sheetBusyWith } from '../lib/sheet-busy';
-import { AUTO_DEDUPE_CHECK_ROWS, AUTO_DEDUPE_INLINE_MS, AUTO_DEDUPE_INLINE_ROWS } from '../lib/constants-dedupe';
+import {
+  AUTO_DEDUPE_CHECK_ROWS, AUTO_DEDUPE_INLINE_BYTES, AUTO_DEDUPE_INLINE_MS, AUTO_DEDUPE_INLINE_ROWS,
+} from '../lib/constants-dedupe';
 import { whoGoes, type AutoDedupeKeep } from '../lib/auto-dedupe/key';
 import { autoDedupeOf, queueCheckRows, storedKey, type AutoDedupe } from '../lib/auto-dedupe/store';
 import { drainWithin, readKeyCells, writeKeys } from './auto-dedupe-index';
@@ -28,7 +30,8 @@ export interface AutoDedupeOutcome {
 
 // One row's check, its key stored and current: 'done'; 'wait' when a row that
 // should go can't go now; 'more' when more than `budget` rows should go and
-// some of the first ones went (check it again for the rest).
+// some of the first ones went, or the removal's bytes ran out (check it again
+// for the rest, in another transaction).
 export function checkRow(removal: AutoDedupeRemoval, rid: number, key: string, budget: number):
   'done' | 'wait' | 'more' {
   const s = removal.s;
@@ -39,14 +42,13 @@ export function checkRow(removal: AutoDedupeRemoval, rid: number, key: string, b
   if (goes === 'none') return 'done';
   if (goes === 'self') {
     if (!removal.canRemove(rid)) return 'wait';
-    removal.remove([rid]);
-    return 'done';
+    return removal.take([rid]) === 1 ? 'done' : 'more';
   }
   const others = db.prepare(`SELECT rid FROM auto_dedupe_keys WHERE dedupe_id = ? AND key = ? AND rid <> ?
     ORDER BY rid LIMIT ?`).pluck().all(s.id, key, rid, budget + 1) as number[];
   const first = others.slice(0, budget);
   const now = first.filter(r => removal.canRemove(r));
-  removal.remove(now);
+  if (removal.take(now) < now.length) return 'more';
   if (others.length > budget && now.length > 0) return 'more';
   return now.length < others.length ? 'wait' : 'done';
 }
@@ -56,14 +58,16 @@ export function checkRow(removal: AutoDedupeRemoval, rid: number, key: string, b
 // change isn't checked). Null when the sheet has no auto-dedupe. Its work is a
 // savepoint of that transaction: if it fails, only it is undone and the rows
 // are kept as written (a webhook delivery or an append is never lost to it).
+// `bytes`: what the rows it removes may write in that transaction (RemovalBudget).
 export function settleRows(
   sheetId: string, userId: string, rids: readonly number[], how: 'arrived' | 'edited',
+  bytes = AUTO_DEDUPE_INLINE_BYTES,
 ): AutoDedupeOutcome | null {
   if (rids.length === 0) return null;
   const s = autoDedupeOf(sheetId, userId);
   if (!s) return null;
   try {
-    return db.transaction(() => settle(s, rids, how)).immediate();
+    return db.transaction(() => settle(s, rids, how, bytes)).immediate();
   } catch (err) {
     console.error(`Auto-dedupe couldn't check rows of sheet ${sheetId}; they were kept:`, err);
     // Rows that arrived are checked later (an edit's check needs the key it replaced, which is gone).
@@ -79,7 +83,7 @@ export function settleRows(
 const beingReplaced = (sheetId: string, userId: string): boolean =>
   !!db.prepare('SELECT 1 FROM import_jobs WHERE sheet_id = ? AND user_id = ? AND is_replace = 1').get(sheetId, userId);
 
-function settle(s: AutoDedupe, rids: readonly number[], how: 'arrived' | 'edited'): AutoDedupeOutcome {
+function settle(s: AutoDedupe, rids: readonly number[], how: 'arrived' | 'edited', bytes: number): AutoDedupeOutcome {
   const sheetId = s.sheet_id;
   const out: AutoDedupeOutcome = {
     column: s.column_name, keep: s.keep, removed: [], trashId: null, seqs: [], waiting: 0,
@@ -98,17 +102,24 @@ function settle(s: AutoDedupe, rids: readonly number[], how: 'arrived' | 'edited
     out.waiting = toCheck.length;
     return out;
   }
-  const removal = new AutoDedupeRemoval(s, new Set(how === 'arrived' ? sorted : []), !sheetBusyWith(sheetId));
+  const removal = new AutoDedupeRemoval(s, new Set(how === 'arrived' ? sorted : []), !sheetBusyWith(sheetId),
+    { bytes, oneAtLeast: false });
+  // waits: a run holds a row that should go (tried again in a while); later: past this transaction's rows or bytes,
+  // checked by the next background round and, like a check never tried yet, waited for by auto-run (a row about to
+  // go isn't paid for: lib/auto-dedupe/store.ts).
   const waits: number[] = [];
+  const later: number[] = [];
   for (const rid of toCheck) {
     const room = AUTO_DEDUPE_INLINE_ROWS - removal.count;
     const key = keys.get(rid)!.now!;
-    const result = room > 0 ? checkRow(removal, rid, key, Math.min(AUTO_DEDUPE_CHECK_ROWS, room)) : 'wait';
-    if (result !== 'done') waits.push(rid);
+    const result = room > 0 ? checkRow(removal, rid, key, Math.min(AUTO_DEDUPE_CHECK_ROWS, room)) : 'more';
+    if (result === 'wait') waits.push(rid);
+    else if (result === 'more') later.push(rid);
   }
   if (waits.length > 0) queueCheckRows(s.id, waits, Date.now());
+  if (later.length > 0) queueCheckRows(s.id, later);
   const { trashId, seqs } = removal.finish();
-  return { ...out, removed: removal.removed, trashId, seqs, waiting: waits.length };
+  return { ...out, removed: removal.removed, trashId, seqs, waiting: waits.length + later.length };
 }
 
 // Inside an edit's transaction (change_rows' update): the rows whose key cell it
