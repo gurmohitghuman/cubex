@@ -1,152 +1,323 @@
 {
-  "release": "v0.8.45",
+  "release": "v0.8.47",
   "lines": [
     {
-      "change": "added",
+      "change": "renamed",
       "tools": [
-        "get_tool_guide"
-      ]
+        "update_cells"
+      ],
+      "replaced_by": "change_rows"
     },
     {
-      "change": "added",
+      "change": "renamed",
       "tools": [
-        "call_setup",
-        "get_setup_call"
-      ]
+        "delete_rows"
+      ],
+      "replaced_by": "change_rows"
     },
     {
-      "change": "added",
+      "change": "renamed",
       "tools": [
-        "call_enrichment"
+        "add_column"
+      ],
+      "replaced_by": "manage_column"
+    },
+    {
+      "change": "renamed",
+      "tools": [
+        "rename_column"
+      ],
+      "replaced_by": "manage_column"
+    },
+    {
+      "change": "renamed",
+      "tools": [
+        "delete_column"
+      ],
+      "replaced_by": "manage_column"
+    },
+    {
+      "change": "renamed",
+      "tools": [
+        "set_column_order"
+      ],
+      "replaced_by": "manage_column"
+    },
+    {
+      "change": "renamed",
+      "tools": [
+        "set_description"
+      ],
+      "replaced_by": "manage_column"
+    },
+    {
+      "change": "renamed",
+      "tools": [
+        "sort_sheet"
+      ],
+      "replaced_by": "manage_sheet"
+    },
+    {
+      "change": "renamed",
+      "tools": [
+        "export_csv"
+      ],
+      "replaced_by": "read_rows"
+    },
+    {
+      "change": "changed",
+      "tools": [
+        "manage_sheet"
       ]
     },
     {
       "change": "changed",
       "tools": [
-        "create_upload_link",
-        "create_download_link"
+        "read_rows"
+      ]
+    },
+    {
+      "change": "renamed",
+      "tools": [
+        "get_run_status"
+      ],
+      "replaced_by": "get_run"
+    },
+    {
+      "change": "renamed",
+      "tools": [
+        "get_run_results"
+      ],
+      "replaced_by": "get_run"
+    },
+    {
+      "change": "renamed",
+      "tools": [
+        "list_runs"
+      ],
+      "replaced_by": "get_run"
+    },
+    {
+      "change": "renamed",
+      "tools": [
+        "get_setup_run"
+      ],
+      "replaced_by": "get_run"
+    },
+    {
+      "change": "renamed",
+      "tools": [
+        "get_balances"
+      ],
+      "replaced_by": "get_account"
+    },
+    {
+      "change": "renamed",
+      "tools": [
+        "get_usage"
+      ],
+      "replaced_by": "get_account"
+    },
+    {
+      "change": "renamed",
+      "tools": [
+        "list_saved_keys"
+      ],
+      "replaced_by": "get_account"
+    },
+    {
+      "change": "renamed",
+      "tools": [
+        "get_version"
+      ],
+      "replaced_by": "get_account"
+    },
+    {
+      "change": "renamed",
+      "tools": [
+        "list_tables"
+      ],
+      "replaced_by": "get_workspace"
+    },
+    {
+      "change": "renamed",
+      "tools": [
+        "get_sheet_history"
+      ],
+      "replaced_by": "get_sheet"
+    },
+    {
+      "change": "renamed",
+      "tools": [
+        "search_enrichments"
+      ],
+      "replaced_by": "find_enrichments"
+    },
+    {
+      "change": "renamed",
+      "tools": [
+        "get_enrichment"
+      ],
+      "replaced_by": "find_enrichments"
+    },
+    {
+      "change": "changed",
+      "tools": [
+        "get_workspace"
       ]
     },
     {
       "change": "changed",
       "tools": [
-        "manage_sheet",
         "get_sheet"
       ]
     },
     {
+      "change": "renamed",
+      "tools": [
+        "undo_run"
+      ],
+      "replaced_by": "control_run"
+    },
+    {
+      "change": "renamed",
+      "tools": [
+        "control_setup_run"
+      ],
+      "replaced_by": "control_run"
+    },
+    {
+      "change": "renamed",
+      "tools": [
+        "save_setup"
+      ],
+      "replaced_by": "manage_setup"
+    },
+    {
+      "change": "renamed",
+      "tools": [
+        "delete_setup"
+      ],
+      "replaced_by": "manage_setup"
+    },
+    {
+      "change": "renamed",
+      "tools": [
+        "restore_setup_version"
+      ],
+      "replaced_by": "manage_setup_version"
+    },
+    {
+      "change": "renamed",
+      "tools": [
+        "write_formula"
+      ],
+      "replaced_by": "formula_column"
+    },
+    {
+      "change": "renamed",
+      "tools": [
+        "set_auto_dedupe"
+      ],
+      "replaced_by": "remove_duplicates"
+    },
+    {
+      "change": "renamed",
+      "tools": [
+        "add_enrichment_field"
+      ],
+      "replaced_by": "stored_answers"
+    },
+    {
+      "change": "renamed",
+      "tools": [
+        "add_list_rows"
+      ],
+      "replaced_by": "stored_answers"
+    },
+    {
+      "change": "renamed",
+      "tools": [
+        "create_upload_link"
+      ],
+      "replaced_by": "file_link"
+    },
+    {
+      "change": "renamed",
+      "tools": [
+        "create_download_link"
+      ],
+      "replaced_by": "file_link"
+    },
+    {
       "change": "changed",
       "tools": [
-        "get_usage"
+        "control_run"
       ]
     },
     {
       "change": "changed",
       "tools": [
-        "get_usage"
+        "formula_column"
       ]
     },
     {
       "change": "changed",
       "tools": [
-        "manage_sheet_webhook"
+        "remove_duplicates"
       ]
     },
     {
       "change": "changed",
       "tools": [
-        "manage_sheet_webhook"
+        "manage_setup_version"
+      ]
+    },
+    {
+      "change": "renamed",
+      "tools": [
+        "call_setup"
+      ],
+      "replaced_by": "apply_setup"
+    },
+    {
+      "change": "renamed",
+      "tools": [
+        "get_setup_call"
+      ],
+      "replaced_by": "get_run"
+    },
+    {
+      "change": "renamed",
+      "tools": [
+        "call_enrichment"
+      ],
+      "replaced_by": "run_enrichment"
+    },
+    {
+      "change": "changed",
+      "tools": [
+        "apply_setup",
+        "run_enrichment"
+      ]
+    },
+    {
+      "change": "server"
+    },
+    {
+      "change": "changed",
+      "tools": [
+        "manage_table"
+      ]
+    },
+    {
+      "change": "changed",
+      "tools": [
+        "get_workspace"
       ]
     }
   ],
   "tools": {
-    "add_column": {
-      "properties": {
-        "description": {
-          "type": "string"
-        },
-        "name": {
-          "type": "string"
-        },
-        "sheet_id": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "name",
-        "sheet_id"
-      ],
-      "type": "object"
-    },
-    "add_enrichment_field": {
-      "additionalProperties": false,
-      "properties": {
-        "column": {
-          "type": "string"
-        },
-        "column_name": {
-          "maxLength": 200,
-          "type": "string"
-        },
-        "json_path": {
-          "maxLength": 1000,
-          "type": "string"
-        },
-        "row_id": {
-          "type": "string"
-        },
-        "sheet_id": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "column",
-        "column_name",
-        "json_path",
-        "sheet_id"
-      ],
-      "type": "object"
-    },
-    "add_list_rows": {
-      "additionalProperties": false,
-      "properties": {
-        "column": {
-          "type": "string"
-        },
-        "dedupe_path": {
-          "type": "string"
-        },
-        "fields": {
-          "items": {
-            "additionalProperties": false,
-            "properties": {
-              "column_name": {
-                "type": "string"
-              },
-              "path": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "column_name",
-              "path"
-            ],
-            "type": "object"
-          },
-          "minItems": 1,
-          "type": "array"
-        },
-        "sheet_id": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "column",
-        "fields",
-        "sheet_id"
-      ],
-      "type": "object"
-    },
     "ai_visibility": {
       "additionalProperties": false,
       "properties": {
@@ -283,115 +454,6 @@
           },
           "type": "object"
         },
-        "max_cost_usd": {
-          "exclusiveMinimum": 0,
-          "maximum": 1000000,
-          "type": "number"
-        },
-        "models": {
-          "additionalProperties": {
-            "type": "string"
-          },
-          "propertyNames": {
-            "type": "string"
-          },
-          "type": "object"
-        },
-        "names": {
-          "additionalProperties": {
-            "type": "string"
-          },
-          "propertyNames": {
-            "type": "string"
-          },
-          "type": "object"
-        },
-        "setup_id": {
-          "type": "string"
-        },
-        "sheet_id": {
-          "type": "string"
-        },
-        "webhook_id": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "setup_id",
-        "sheet_id"
-      ],
-      "type": "object"
-    },
-    "call_enrichment": {
-      "additionalProperties": false,
-      "properties": {
-        "allow_unpriced": {
-          "type": "boolean"
-        },
-        "estimate_only": {
-          "type": "boolean"
-        },
-        "fields": {
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "items": {
-          "items": {
-            "additionalProperties": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "boolean"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "propertyNames": {
-              "type": "string"
-            },
-            "type": "object"
-          },
-          "maxItems": 1000,
-          "minItems": 1,
-          "type": "array"
-        },
-        "max_cost_usd": {
-          "exclusiveMinimum": 0,
-          "maximum": 1000000,
-          "type": "number"
-        },
-        "tool_id": {
-          "maxLength": 200,
-          "type": "string"
-        },
-        "webhook_id": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "items",
-        "tool_id"
-      ],
-      "type": "object"
-    },
-    "call_setup": {
-      "additionalProperties": false,
-      "properties": {
-        "allow_unpriced": {
-          "type": "boolean"
-        },
-        "estimate_only": {
-          "type": "boolean"
-        },
         "items": {
           "items": {
             "additionalProperties": {
@@ -433,7 +495,19 @@
           },
           "type": "object"
         },
+        "names": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "propertyNames": {
+            "type": "string"
+          },
+          "type": "object"
+        },
         "setup_id": {
+          "type": "string"
+        },
+        "sheet_id": {
           "type": "string"
         },
         "webhook_id": {
@@ -441,8 +515,102 @@
         }
       },
       "required": [
-        "items",
         "setup_id"
+      ],
+      "type": "object"
+    },
+    "change_rows": {
+      "properties": {
+        "action": {
+          "enum": [
+            "update",
+            "delete"
+          ],
+          "type": "string"
+        },
+        "data": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "propertyNames": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "idempotency_key": {
+          "maxLength": 200,
+          "minLength": 1,
+          "type": "string"
+        },
+        "row_id": {
+          "type": "string"
+        },
+        "row_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 1000,
+          "minItems": 1,
+          "type": "array"
+        },
+        "sheet_id": {
+          "type": "string"
+        },
+        "updates": {
+          "items": {
+            "properties": {
+              "data": {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "propertyNames": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              "row_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "data",
+              "row_id"
+            ],
+            "type": "object"
+          },
+          "maxItems": 1000,
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "action"
       ],
       "type": "object"
     },
@@ -540,14 +708,21 @@
             "resume",
             "cancel",
             "rerun",
+            "undo",
             "cancel_all"
           ],
+          "type": "string"
+        },
+        "column": {
           "type": "string"
         },
         "concurrency": {
           "maximum": 100,
           "minimum": 1,
           "type": "integer"
+        },
+        "dry_run": {
+          "type": "boolean"
         },
         "first_rows": {
           "maximum": 1000,
@@ -585,6 +760,9 @@
           ],
           "type": "string"
         },
+        "setup_run_id": {
+          "type": "string"
+        },
         "sheet_id": {
           "type": "string"
         },
@@ -601,29 +779,18 @@
       ],
       "type": "object"
     },
-    "control_setup_run": {
-      "additionalProperties": false,
+    "file_link": {
       "properties": {
         "action": {
           "enum": [
-            "pause",
-            "resume",
-            "cancel"
+            "upload",
+            "download"
           ],
           "type": "string"
         },
-        "setup_run_id": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "action",
-        "setup_run_id"
-      ],
-      "type": "object"
-    },
-    "create_download_link": {
-      "properties": {
+        "allow_unpriced": {
+          "type": "boolean"
+        },
         "columns": {
           "items": {
             "type": "string"
@@ -637,131 +804,6 @@
             "jsonl"
           ],
           "type": "string"
-        },
-        "setup_call_id": {
-          "type": "string"
-        },
-        "sheet_id": {
-          "type": "string"
-        },
-        "view": {
-          "minLength": 1,
-          "type": "string"
-        },
-        "where": {
-          "items": {
-            "anyOf": [
-              {
-                "properties": {
-                  "column": {
-                    "type": "string"
-                  },
-                  "enabled": {
-                    "type": "boolean"
-                  },
-                  "operator": {
-                    "enum": [
-                      "eq",
-                      "neq",
-                      "contains",
-                      "not_contains",
-                      "starts_with",
-                      "ends_with",
-                      "empty",
-                      "not_empty",
-                      "any_of",
-                      "not_any_of",
-                      "gt",
-                      "gte",
-                      "lt",
-                      "lte",
-                      "date_eq",
-                      "date_neq",
-                      "date_gt",
-                      "date_gte",
-                      "date_lt",
-                      "date_lte",
-                      "has_error",
-                      "has_result",
-                      "not_run",
-                      "condition_not_met",
-                      "running",
-                      "out_of_date"
-                    ],
-                    "type": "string"
-                  },
-                  "value": {
-                    "type": "string"
-                  },
-                  "values": {
-                    "items": {
-                      "type": "string"
-                    },
-                    "maxItems": 200,
-                    "minItems": 1,
-                    "type": "array"
-                  }
-                },
-                "required": [
-                  "operator"
-                ],
-                "type": "object"
-              },
-              {
-                "additionalProperties": false,
-                "properties": {
-                  "or": {
-                    "items": {
-                      "additionalProperties": {},
-                      "propertyNames": {
-                        "type": "string"
-                      },
-                      "type": "object"
-                    },
-                    "maxItems": 50,
-                    "minItems": 1,
-                    "type": "array"
-                  }
-                },
-                "required": [
-                  "or"
-                ],
-                "type": "object"
-              },
-              {
-                "additionalProperties": false,
-                "properties": {
-                  "and": {
-                    "items": {
-                      "additionalProperties": {},
-                      "propertyNames": {
-                        "type": "string"
-                      },
-                      "type": "object"
-                    },
-                    "maxItems": 50,
-                    "minItems": 1,
-                    "type": "array"
-                  }
-                },
-                "required": [
-                  "and"
-                ],
-                "type": "object"
-              }
-            ]
-          },
-          "maxItems": 50,
-          "minItems": 1,
-          "type": "array"
-        }
-      },
-      "type": "object"
-    },
-    "create_upload_link": {
-      "properties": {
-        "allow_unpriced": {
-          "type": "boolean"
         },
         "max_cost_usd": {
           "exclusiveMinimum": 0,
@@ -787,76 +829,17 @@
         "setup_id": {
           "type": "string"
         },
-        "sheet_id": {
+        "setup_run_id": {
           "type": "string"
-        },
-        "webhook_id": {
-          "type": "string"
-        }
-      },
-      "type": "object"
-    },
-    "delete_column": {
-      "properties": {
-        "column": {
-          "type": "string"
-        },
-        "sheet_id": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "column",
-        "sheet_id"
-      ],
-      "type": "object"
-    },
-    "delete_rows": {
-      "properties": {
-        "row_ids": {
-          "items": {
-            "type": "string"
-          },
-          "maxItems": 1000,
-          "minItems": 1,
-          "type": "array"
-        },
-        "sheet_id": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "row_ids",
-        "sheet_id"
-      ],
-      "type": "object"
-    },
-    "delete_setup": {
-      "additionalProperties": false,
-      "properties": {
-        "setup_id": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "setup_id"
-      ],
-      "type": "object"
-    },
-    "export_csv": {
-      "properties": {
-        "columns": {
-          "items": {
-            "type": "string"
-          },
-          "minItems": 1,
-          "type": "array"
         },
         "sheet_id": {
           "type": "string"
         },
         "view": {
           "minLength": 1,
+          "type": "string"
+        },
+        "webhook_id": {
           "type": "string"
         },
         "where": {
@@ -968,7 +951,30 @@
         }
       },
       "required": [
-        "sheet_id"
+        "action"
+      ],
+      "type": "object"
+    },
+    "find_enrichments": {
+      "properties": {
+        "action": {
+          "enum": [
+            "search",
+            "get"
+          ],
+          "type": "string"
+        },
+        "query": {
+          "maxLength": 200,
+          "type": "string"
+        },
+        "tool_id": {
+          "maxLength": 200,
+          "type": "string"
+        }
+      },
+      "required": [
+        "action"
       ],
       "type": "object"
     },
@@ -989,6 +995,13 @@
           "maxLength": 4000,
           "type": "string"
         },
+        "from_words": {
+          "maxLength": 1000,
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
         "preview": {
           "type": "boolean"
         },
@@ -997,24 +1010,66 @@
         }
       },
       "required": [
-        "formula",
         "sheet_id"
       ],
       "type": "object"
     },
-    "get_balances": {
-      "properties": {},
-      "type": "object"
-    },
-    "get_enrichment": {
+    "get_account": {
       "properties": {
-        "tool_id": {
-          "maxLength": 200,
+        "action": {
+          "enum": [
+            "balances",
+            "usage",
+            "saved_keys",
+            "version"
+          ],
+          "type": "string"
+        },
+        "after": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "from": {
+          "type": "string"
+        },
+        "group_by": {
+          "enum": [
+            "column",
+            "day",
+            "run"
+          ],
+          "type": "string"
+        },
+        "limit": {
+          "maximum": 200,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "name": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "range": {
+          "enum": [
+            "this_week",
+            "this_month",
+            "last_week",
+            "last_month"
+          ],
+          "type": "string"
+        },
+        "sheet_id": {
+          "type": "string"
+        },
+        "since": {
+          "type": "string"
+        },
+        "to": {
           "type": "string"
         }
       },
       "required": [
-        "tool_id"
+        "action"
       ],
       "type": "object"
     },
@@ -1033,12 +1088,29 @@
       ],
       "type": "object"
     },
-    "get_run_results": {
+    "get_run": {
       "properties": {
+        "action": {
+          "enum": [
+            "status",
+            "results",
+            "list",
+            "setup"
+          ],
+          "type": "string"
+        },
         "cursor": {
           "maximum": 9007199254740991,
           "minimum": 0,
           "type": "integer"
+        },
+        "filter": {
+          "enum": [
+            "active",
+            "terminal",
+            "all"
+          ],
+          "type": "string"
         },
         "include_answers": {
           "type": "boolean"
@@ -1048,6 +1120,11 @@
           "minimum": 1,
           "type": "integer"
         },
+        "results_from": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        },
         "run_id": {
           "type": "string"
         },
@@ -1058,6 +1135,15 @@
             "enrichment",
             "waterfall"
           ],
+          "type": "string"
+        },
+        "setup_id": {
+          "type": "string"
+        },
+        "setup_run_id": {
+          "type": "string"
+        },
+        "sheet_id": {
           "type": "string"
         },
         "status_filter": {
@@ -1067,27 +1153,6 @@
             "all"
           ],
           "type": "string"
-        }
-      },
-      "required": [
-        "run_id",
-        "run_type"
-      ],
-      "type": "object"
-    },
-    "get_run_status": {
-      "properties": {
-        "run_id": {
-          "type": "string"
-        },
-        "run_type": {
-          "enum": [
-            "ai",
-            "http",
-            "enrichment",
-            "waterfall"
-          ],
-          "type": "string"
         },
         "wait_seconds": {
           "maximum": 25,
@@ -1096,74 +1161,11 @@
         }
       },
       "required": [
-        "run_id",
-        "run_type"
+        "action"
       ],
-      "type": "object"
-    },
-    "get_setup_call": {
-      "additionalProperties": false,
-      "properties": {
-        "limit": {
-          "maximum": 100,
-          "minimum": 1,
-          "type": "integer"
-        },
-        "results_from": {
-          "maximum": 9007199254740991,
-          "minimum": 0,
-          "type": "integer"
-        },
-        "setup_call_id": {
-          "type": "string"
-        },
-        "wait_seconds": {
-          "maximum": 25,
-          "minimum": 0,
-          "type": "integer"
-        }
-      },
-      "required": [
-        "setup_call_id"
-      ],
-      "type": "object"
-    },
-    "get_setup_run": {
-      "additionalProperties": false,
-      "properties": {
-        "setup_id": {
-          "type": "string"
-        },
-        "setup_run_id": {
-          "type": "string"
-        },
-        "sheet_id": {
-          "type": "string"
-        }
-      },
       "type": "object"
     },
     "get_sheet": {
-      "properties": {
-        "columns": {
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "include_counts": {
-          "type": "boolean"
-        },
-        "sheet_id": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "sheet_id"
-      ],
-      "type": "object"
-    },
-    "get_sheet_history": {
       "properties": {
         "before": {
           "maximum": 9007199254740991,
@@ -1172,6 +1174,18 @@
         },
         "column": {
           "type": "string"
+        },
+        "columns": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "history": {
+          "type": "boolean"
+        },
+        "include_counts": {
+          "type": "boolean"
         },
         "limit": {
           "maximum": 200,
@@ -1196,52 +1210,12 @@
       },
       "type": "object"
     },
-    "get_usage": {
-      "properties": {
-        "from": {
-          "type": "string"
-        },
-        "group_by": {
-          "enum": [
-            "column",
-            "day",
-            "run"
-          ],
-          "type": "string"
-        },
-        "limit": {
-          "maximum": 200,
-          "minimum": 1,
-          "type": "integer"
-        },
-        "range": {
-          "enum": [
-            "this_week",
-            "this_month",
-            "last_week",
-            "last_month"
-          ],
-          "type": "string"
-        },
-        "sheet_id": {
-          "type": "string"
-        },
-        "to": {
-          "type": "string"
-        }
-      },
-      "type": "object"
-    },
-    "get_version": {
-      "properties": {
-        "since": {
-          "type": "string"
-        }
-      },
-      "type": "object"
-    },
     "get_workspace": {
-      "properties": {},
+      "properties": {
+        "all_tables": {
+          "type": "boolean"
+        }
+      },
       "type": "object"
     },
     "hiring_signals": {
@@ -1491,40 +1465,6 @@
       },
       "type": "object"
     },
-    "list_runs": {
-      "properties": {
-        "filter": {
-          "enum": [
-            "active",
-            "terminal",
-            "all"
-          ],
-          "type": "string"
-        },
-        "limit": {
-          "maximum": 50,
-          "minimum": 1,
-          "type": "integer"
-        },
-        "sheet_id": {
-          "type": "string"
-        }
-      },
-      "type": "object"
-    },
-    "list_saved_keys": {
-      "properties": {
-        "after": {
-          "minLength": 1,
-          "type": "string"
-        },
-        "name": {
-          "minLength": 1,
-          "type": "string"
-        }
-      },
-      "type": "object"
-    },
     "list_setup_versions": {
       "additionalProperties": false,
       "properties": {
@@ -1547,10 +1487,6 @@
           "type": "string"
         }
       },
-      "type": "object"
-    },
-    "list_tables": {
-      "properties": {},
       "type": "object"
     },
     "list_trash": {
@@ -1680,6 +1616,48 @@
       ],
       "type": "object"
     },
+    "manage_column": {
+      "properties": {
+        "action": {
+          "enum": [
+            "add",
+            "rename",
+            "describe",
+            "reorder",
+            "delete"
+          ],
+          "type": "string"
+        },
+        "column": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "new_name": {
+          "type": "string"
+        },
+        "order": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 200,
+          "minItems": 1,
+          "type": "array"
+        },
+        "sheet_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "sheet_id"
+      ],
+      "type": "object"
+    },
     "manage_run_schedule": {
       "additionalProperties": false,
       "properties": {
@@ -1806,6 +1784,47 @@
       ],
       "type": "object"
     },
+    "manage_setup": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "enum": [
+            "save",
+            "delete"
+          ],
+          "type": "string"
+        },
+        "columns": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "description": {
+          "type": "string"
+        },
+        "include_upstream": {
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string"
+        },
+        "preview": {
+          "type": "boolean"
+        },
+        "setup_id": {
+          "type": "string"
+        },
+        "sheet_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "type": "object"
+    },
     "manage_setup_version": {
       "additionalProperties": false,
       "properties": {
@@ -1813,12 +1832,16 @@
           "enum": [
             "save",
             "rename",
-            "delete"
+            "delete",
+            "restore"
           ],
           "type": "string"
         },
         "description": {
           "type": "string"
+        },
+        "dry_run": {
+          "type": "boolean"
         },
         "name": {
           "type": "string"
@@ -1845,6 +1868,8 @@
             "copy",
             "delete",
             "reorder",
+            "sort",
+            "describe",
             "test",
             "test_add_rows",
             "apply_test",
@@ -1855,12 +1880,25 @@
         "after_sheet_id": {
           "type": "string"
         },
+        "column": {
+          "type": "string"
+        },
         "columns": {
           "items": {
             "type": "string"
           },
           "minItems": 1,
           "type": "array"
+        },
+        "description": {
+          "type": "string"
+        },
+        "direction": {
+          "enum": [
+            "asc",
+            "desc"
+          ],
+          "type": "string"
         },
         "dry_run": {
           "type": "boolean"
@@ -1905,8 +1943,7 @@
         }
       },
       "required": [
-        "action",
-        "table_id"
+        "action"
       ],
       "type": "object"
     },
@@ -2108,6 +2145,8 @@
           "enum": [
             "create",
             "rename",
+            "star",
+            "unstar",
             "delete",
             "create_sample"
           ],
@@ -2398,6 +2437,13 @@
         "expected_view_version": {
           "type": "string"
         },
+        "format": {
+          "enum": [
+            "json",
+            "csv"
+          ],
+          "type": "string"
+        },
         "group_by": {
           "items": {
             "type": "string"
@@ -2611,31 +2657,50 @@
           ],
           "type": "string"
         },
+        "keep_doing": {
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "column": {
+                  "type": "string"
+                },
+                "keep": {
+                  "enum": [
+                    "oldest",
+                    "newest"
+                  ],
+                  "type": "string"
+                },
+                "match": {
+                  "enum": [
+                    "text",
+                    "email",
+                    "domain",
+                    "phone",
+                    "company",
+                    "person_name"
+                  ],
+                  "type": "string"
+                },
+                "phone_country": {
+                  "maxLength": 2,
+                  "minLength": 2,
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "type": "boolean"
+            }
+          ]
+        },
         "sheet_id": {
           "type": "string"
         }
       },
       "required": [
-        "columns",
-        "sheet_id"
-      ],
-      "type": "object"
-    },
-    "rename_column": {
-      "properties": {
-        "column": {
-          "type": "string"
-        },
-        "new_name": {
-          "type": "string"
-        },
-        "sheet_id": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "column",
-        "new_name",
         "sheet_id"
       ],
       "type": "object"
@@ -2668,25 +2733,6 @@
           "type": "array"
         }
       },
-      "type": "object"
-    },
-    "restore_setup_version": {
-      "additionalProperties": false,
-      "properties": {
-        "dry_run": {
-          "type": "boolean"
-        },
-        "sheet_id": {
-          "type": "string"
-        },
-        "version_id": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "sheet_id",
-        "version_id"
-      ],
       "type": "object"
     },
     "run_ai_column": {
@@ -3003,6 +3049,9 @@
         "add_to_column": {
           "type": "boolean"
         },
+        "allow_unpriced": {
+          "type": "boolean"
+        },
         "auto_run": {
           "additionalProperties": false,
           "properties": {
@@ -3059,6 +3108,12 @@
         "estimate_only": {
           "type": "boolean"
         },
+        "fields": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "fresh": {
           "type": "boolean"
         },
@@ -3103,6 +3158,33 @@
             "type": "string"
           },
           "type": "object"
+        },
+        "items": {
+          "items": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "maxItems": 1000,
+          "minItems": 1,
+          "type": "array"
         },
         "list": {
           "additionalProperties": false,
@@ -3171,6 +3253,11 @@
         },
         "max_cost_per_row_usd": {
           "exclusiveMinimum": 0,
+          "type": "number"
+        },
+        "max_cost_usd": {
+          "exclusiveMinimum": 0,
+          "maximum": 1000000,
           "type": "number"
         },
         "outputs": {
@@ -3300,8 +3387,6 @@
         }
       },
       "required": [
-        "column_name",
-        "sheet_id",
         "tool_id"
       ],
       "type": "object"
@@ -3434,88 +3519,6 @@
       ],
       "type": "object"
     },
-    "save_setup": {
-      "additionalProperties": false,
-      "properties": {
-        "columns": {
-          "items": {
-            "type": "string"
-          },
-          "minItems": 1,
-          "type": "array"
-        },
-        "description": {
-          "type": "string"
-        },
-        "include_upstream": {
-          "type": "boolean"
-        },
-        "name": {
-          "type": "string"
-        },
-        "preview": {
-          "type": "boolean"
-        },
-        "sheet_id": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "columns",
-        "sheet_id"
-      ],
-      "type": "object"
-    },
-    "search_enrichments": {
-      "properties": {
-        "query": {
-          "maxLength": 200,
-          "type": "string"
-        }
-      },
-      "type": "object"
-    },
-    "set_auto_dedupe": {
-      "additionalProperties": false,
-      "properties": {
-        "column": {
-          "type": "string"
-        },
-        "keep": {
-          "enum": [
-            "oldest",
-            "newest"
-          ],
-          "type": "string"
-        },
-        "match": {
-          "enum": [
-            "text",
-            "email",
-            "domain",
-            "phone",
-            "company",
-            "person_name"
-          ],
-          "type": "string"
-        },
-        "off": {
-          "type": "boolean"
-        },
-        "phone_country": {
-          "maxLength": 2,
-          "minLength": 2,
-          "type": "string"
-        },
-        "sheet_id": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "sheet_id"
-      ],
-      "type": "object"
-    },
     "set_auto_run": {
       "additionalProperties": false,
       "properties": {
@@ -3602,27 +3605,6 @@
       ],
       "type": "object"
     },
-    "set_column_order": {
-      "additionalProperties": false,
-      "properties": {
-        "order": {
-          "items": {
-            "type": "string"
-          },
-          "maxItems": 200,
-          "minItems": 1,
-          "type": "array"
-        },
-        "sheet_id": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "order",
-        "sheet_id"
-      ],
-      "type": "object"
-    },
     "set_default_model": {
       "properties": {
         "model": {
@@ -3641,24 +3623,6 @@
       },
       "required": [
         "model"
-      ],
-      "type": "object"
-    },
-    "set_description": {
-      "properties": {
-        "column": {
-          "type": "string"
-        },
-        "description": {
-          "type": "string"
-        },
-        "sheet_id": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "description",
-        "sheet_id"
       ],
       "type": "object"
     },
@@ -3746,16 +3710,51 @@
       ],
       "type": "object"
     },
-    "sort_sheet": {
+    "stored_answers": {
+      "additionalProperties": false,
       "properties": {
+        "action": {
+          "enum": [
+            "add_column",
+            "add_rows"
+          ],
+          "type": "string"
+        },
         "column": {
           "type": "string"
         },
-        "direction": {
-          "enum": [
-            "asc",
-            "desc"
-          ],
+        "column_name": {
+          "maxLength": 200,
+          "type": "string"
+        },
+        "dedupe_path": {
+          "type": "string"
+        },
+        "fields": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "column_name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "column_name",
+              "path"
+            ],
+            "type": "object"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "json_path": {
+          "maxLength": 1000,
+          "type": "string"
+        },
+        "row_id": {
           "type": "string"
         },
         "sheet_id": {
@@ -3763,8 +3762,8 @@
         }
       },
       "required": [
+        "action",
         "column",
-        "direction",
         "sheet_id"
       ],
       "type": "object"
@@ -4098,109 +4097,6 @@
         "sheet_id",
         "target_column"
       ],
-      "type": "object"
-    },
-    "undo_run": {
-      "properties": {
-        "column": {
-          "type": "string"
-        },
-        "dry_run": {
-          "type": "boolean"
-        },
-        "run_id": {
-          "type": "string"
-        },
-        "run_type": {
-          "enum": [
-            "ai",
-            "http",
-            "enrichment",
-            "waterfall"
-          ],
-          "type": "string"
-        },
-        "sheet_id": {
-          "type": "string"
-        }
-      },
-      "type": "object"
-    },
-    "update_cells": {
-      "properties": {
-        "data": {
-          "additionalProperties": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "number"
-              },
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "propertyNames": {
-            "type": "string"
-          },
-          "type": "object"
-        },
-        "idempotency_key": {
-          "maxLength": 200,
-          "minLength": 1,
-          "type": "string"
-        },
-        "row_id": {
-          "type": "string"
-        },
-        "sheet_id": {
-          "type": "string"
-        },
-        "updates": {
-          "items": {
-            "properties": {
-              "data": {
-                "additionalProperties": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "type": "number"
-                    },
-                    {
-                      "type": "boolean"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "propertyNames": {
-                  "type": "string"
-                },
-                "type": "object"
-              },
-              "row_id": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "data",
-              "row_id"
-            ],
-            "type": "object"
-          },
-          "maxItems": 1000,
-          "minItems": 1,
-          "type": "array"
-        }
-      },
       "type": "object"
     },
     "waterfall_column": {
@@ -5008,26 +4904,6 @@
       "required": [
         "column_name",
         "sheet_id"
-      ],
-      "type": "object"
-    },
-    "write_formula": {
-      "additionalProperties": false,
-      "properties": {
-        "model": {
-          "type": "string"
-        },
-        "sheet_id": {
-          "type": "string"
-        },
-        "words": {
-          "maxLength": 1000,
-          "type": "string"
-        }
-      },
-      "required": [
-        "sheet_id",
-        "words"
       ],
       "type": "object"
     },
