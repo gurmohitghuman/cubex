@@ -118,6 +118,9 @@ cmd_status() {
   else
     if [ "$QUIET" = 1 ]; then return 1; fi
     if service_running; then say "Cubex is starting, or failing to start (see: cubex logs)."
+    elif service_gave_up; then
+      say "Cubex is stopped: it failed on each of its last 10 starts, so systemd stopped starting it again."
+      say "  See why with: cubex logs. Once fixed: cubex start"
     elif port_in_use; then say "Cubex is stopped, and another program is using port $PORT."
     else say "Cubex is stopped. Start it with: cubex start"; fi
   fi
