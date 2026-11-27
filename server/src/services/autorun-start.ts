@@ -18,6 +18,7 @@ import { PLACEHOLDER } from '../lib/placeholder-cells';
 import { jsonPath, parseRowData } from '../lib/sql-rows';
 import { candidateVerdict, type CandidatePlan } from '../lib/autorun-rules';
 import { isEnrichmentConfig, listOf } from '../lib/enrich-run-config';
+import { enrichmentRunStarted } from '../lib/run-start-listeners';
 import { recallChoices, rerunInput } from '../lib/enrich-run-recall';
 import type { HTTPAPIConfig } from '../lib/http-request-template';
 import { clearRunPlaceholders } from '../lib/run-placeholders';
@@ -199,6 +200,8 @@ export async function startAutorunRun(
     try {
       await enqueueHTTPRerun(runId, targets);
       kickSpanReaders(e.sheet_id);
+      // What follows any enrichment run (an Open roles count's look after it: lib/run-start-listeners.ts).
+      if (isEnrichmentConfig(prep.config)) enrichmentRunStarted(e.user_id, e.sheet_id, runId, prep.config);
     } catch (error) {
       const reason = redactSecrets(error instanceof Error ? error.message : String(error)).slice(0, 400);
       // Its rows wait in the queue, and auto-run tries again a few minutes on (a restart, a busy queue).

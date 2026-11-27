@@ -18,8 +18,8 @@ export { LIST_MARK };
 // A result's field (a path inside one result) and the destination column it fills.
 export interface ListField { path: string; columnName: string }
 // A source column copied into every row a source row adds, or (value set,
-// from '') the same text written into each of them. Set by Cubex only, never
-// by an asker (lib/enrich-list-input.ts takes neither), and kept by a rerun:
+// from '') the same text written into each of them. Set by Cubex only (lib/enrich-list-input.ts takes them back
+// only as the app sends a setup it recalled), and kept by a rerun:
 // clean 'domain', the source cell as the clean column's domain cleaner gives
 // it (lib/clean/domain.ts), so a lookup on such a column matches it exactly;
 // day (from ''), the day the row is added in that IANA time zone (null: UTC),

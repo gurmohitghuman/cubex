@@ -16,8 +16,10 @@ export const isHiringSearchTool = (toolId: string | undefined): boolean =>
 export const OPEN_ROLES = { sheet: 'Open roles', status: 'Open roles found', count: 'Open roles' } as const;
 export const OPEN_ROLES_WORDS = {
   sheet: 'Every open role found at the companies of the sheet beside it, one row each. Domain is that company\'s '
-    + 'website as its sheet has it. A role found again later is not added again; First seen is the day of the run '
-    + 'that found it.',
+    + 'domain (its website, cleaned), which the count there matches. A role found again later is not added again; '
+    + 'First seen is the day it was found.',
+  roleDomain: 'The company\'s domain: its website on the sheet beside, cleaned as that sheet\'s domain column cleans '
+    + 'it, so the Open roles count there finds it.',
   status: 'Searches each company\'s open roles for the roles asked, and adds them to the Open roles sheet.',
   count: 'How many roles in the Open roles sheet are at this company (filter its Domain for them).',
   domain: 'This company\'s website as a domain, which the Open roles count matches (written another way, it stays '
