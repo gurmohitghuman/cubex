@@ -158,3 +158,32 @@ test('v1 authz: a read-only token gets 403 on every mutation', async () => {
   expect((await ro.post(`/api/v1/sheets/${sheetId}/columns`, { data: { name: 'X' } })).status()).toBe(403)
   await ro.dispose()
 })
+
+test('v1 a whole row in one write: 100 cells patched and appended, more than the column limit refused', async () => {
+  const api = await authedApi()
+  const { sheetId } = await seedSheet(api, 1)
+  // 100 columns: past the 80 a write once took, under the sheet's 200.
+  const names = Array.from({ length: 99 }, (_, i) => `c${i + 1}`)
+  for (const columnName of names) {
+    expect((await api.post(`/api/sheets/${sheetId}/columns`, { data: { columnName } })).ok()).toBeTruthy()
+  }
+  const cells = Object.fromEntries(['val', ...names].map(n => [n, `${n}!`]))
+  const v1 = await bearer(await makeToken(api, ['read', 'write'], 'e2e v1 whole row'))
+
+  const rowId = (await (await v1.get(`/api/v1/sheets/${sheetId}/rows?limit=1`)).json()).rows[0].id
+  const patch = await v1.patch(`/api/v1/rows/${rowId}`, { data: { data: cells } })
+  expect(patch.status()).toBe(200)
+  expect((await patch.json()).data).toMatchObject(cells)
+
+  const app = await v1.post(`/api/v1/sheets/${sheetId}/rows`, { data: { rows: [{ data: cells }] } })
+  expect(app.status()).toBe(201)
+  const added = await (await v1.get(`/api/v1/sheets/${sheetId}/rows?limit=2`)).json()
+  expect(added.rows[1].data).toMatchObject(cells)
+
+  // More cells than a sheet can have columns: refused before any column is looked up.
+  const tooMany = Object.fromEntries(Array.from({ length: 201 }, (_, i) => [`x${i}`, 'v']))
+  const refused = await v1.patch(`/api/v1/rows/${rowId}`, { data: { data: tooMany } })
+  expect(refused.status()).toBe(400)
+  expect((await refused.json()).error).toContain('more than 200 columns')
+  await v1.dispose()
+})

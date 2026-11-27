@@ -3,6 +3,8 @@
 // an agent retries cleanly on a 400, so we prefer small hard caps over
 // generosity. Client mirror not needed — no browser code calls /api/v1.
 
+import { MAX_COLUMNS_PER_SHEET } from './constants';
+
 // Route-level JSON body cap (the 32MB global parser is skipped for the prefix
 // so Bearer auth runs before any body parse; see applyServerMiddleware).
 export const API_V1_MAX_JSON_BYTES = 2 * 1024 * 1024;
@@ -78,8 +80,10 @@ export const TRANSFORM_QUEUED_ROWS = 2000;
 export const TRANSFORM_SETTLE_RETRY_MS = 500;
 export const TRANSFORM_SETTLE_TRIES = 120;
 
-// PATCH /v1/rows/:id — at most one value per possible column.
-export const API_V1_MAX_PATCH_CELLS = 80;
+// The cells one row takes in one write (PATCH /v1/rows/:id, REST appends and batch updates, MCP append_rows and
+// change_rows): one value per possible column, so a whole row fits (200 at 8,000 characters is about 1.6 MB, under
+// API_V1_MAX_JSON_BYTES). It was 80, from when a sheet took at most 80 columns.
+export const API_V1_MAX_PATCH_CELLS = MAX_COLUMNS_PER_SHEET;
 
 // MCP run-start tools' sliding window, per access token (services/run-shared.ts).
 // Agents can loop and every run start spends credits, so MCP gets this on top
