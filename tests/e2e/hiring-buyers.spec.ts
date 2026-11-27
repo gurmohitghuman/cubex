@@ -136,6 +136,8 @@ test('the app: Find buyers… opens at once on the roles\' titles and the cost, 
   // One person a company: its most is Findymail's price for one, $0.0198.
   await expect(dialog.getByTestId('column-run-estimate-row').first()).toContainText('$0.10')
   await expect(page.getByText(/9 columns/i).first()).toBeVisible()
+  // Catch-all emails are off at first (only addresses the check confirms are kept).
+  await expect(dialog.getByTestId('hiring-buyers-catch-all')).not.toBeChecked()
   // The titles don't change the cost: editing them keeps it.
   await dialog.getByTestId('hiring-buyers-titles').fill('VP Sales, Head of Sales')
   await dialog.getByTestId('hiring-buyers-go').click()

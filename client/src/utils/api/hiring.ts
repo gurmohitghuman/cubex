@@ -42,7 +42,8 @@ export interface HiringEstimate {
 
 // The buyer columns on Companies (server services/hiring-buyer.ts): added or not, the titles the search uses, the
 // titles a first "Find buyers" starts with.
-export interface HiringBuyer { added: boolean; titles: string[]; starting: string[] }
+// catchAll: Buyer email keeps catch-all addresses too (off until chosen).
+export interface HiringBuyer { added: boolean; titles: string[]; starting: string[]; catchAll: boolean }
 // A find's answer: the estimate, or the started column run; saved: the setups it saved, titles: the titles in use.
 export type FindBuyersAnswer = ({ estimate: ColumnRunEstimate } | { setup_run: { id: string } })
   & { saved: string[]; titles: string[]; buyer: HiringBuyer }
@@ -59,7 +60,7 @@ export const hiringAPI = {
   buyer: (id: string): Promise<HiringBuyer> => api.get(`/hiring/${id}`, noServerToast).then(res => res.data.buyer),
   // The estimate (a pure read), or the run under maxCostUsd (the most the estimate showed; over it now: 409 with
   // over_ceiling), which saves the buyer columns (or new titles) when needed.
-  findBuyers: (id: string, body: { titles: string; estimateOnly: boolean; maxCostUsd?: number })
+  findBuyers: (id: string, body: { titles: string; estimateOnly: boolean; maxCostUsd?: number; catchAll?: boolean })
     : Promise<FindBuyersAnswer> => api.post(`/hiring/${id}/buyers`, body, noServerToast).then(res => res.data),
   estimate: (id: string): Promise<{ plan: HiringPlan; estimate: HiringEstimate }> =>
     api.post(`/hiring/${id}/check`, { estimateOnly: true, timeZone: timeZone() }, noServerToast)

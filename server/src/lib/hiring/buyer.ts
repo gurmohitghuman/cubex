@@ -102,13 +102,16 @@ export function buyerSearchInput(
 
 // The verified email, saved as a setup, with the drawer's defaults: treg's email finder on the buyer's name or
 // LinkedIn at the company's domain, a first.last guess first, each address checked (the preset's own loop and per-row
-// cap), only addresses the checker calls valid kept. names: the columns the people search writes now.
-export function buyerEmailInput(names = buyerOutputNames(null)): EnrichRunInput {
+// cap), only addresses the checker calls valid kept, or with catchAll catch-all ones too (the check's balanced: more
+// found, some may bounce). names: the columns the people search writes now. again: its column is there (a new choice
+// saves its setup again, its cells kept).
+export function buyerEmailInput(names = buyerOutputNames(null), o: { catchAll?: boolean; again?: boolean } = {})
+  : EnrichRunInput {
   return {
-    ...base(BUYER_EMAIL_TOOL_ID, BUYER_COLUMNS.emailSearch), preset: 'verified_email',
+    ...base(BUYER_EMAIL_TOOL_ID, BUYER_COLUMNS.emailSearch), preset: 'verified_email', continueColumn: !!o.again,
     inputs: { domain: { column: COMPANY_COLUMNS.domain }, full_name: { column: names.name },
       linkedin_url: { column: names.linkedinUrl } },
-    email: { accept: 'safest', guess: true, pattern: 'first.last' },
+    email: { accept: o.catchAll ? 'balanced' : 'safest', guess: true, pattern: 'first.last' },
     outputs: [
       { key: 'email', path: '$.output.email', columnName: BUYER_COLUMNS.email },
       { key: 'email_status', path: null, columnName: BUYER_COLUMNS.emailStatus },

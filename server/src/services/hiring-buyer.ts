@@ -22,8 +22,9 @@ import type { HiringRecord } from './hiring-store';
 import type { RunFail } from './run-shared';
 
 // added: the people search's column is on Companies; titles: the titles it searches (none until added);
-// starting: the titles "Find buyers" starts with for this table's roles (lib/hiring/buyer.ts).
-export interface BuyerView { added: boolean; titles: string[]; starting: string[] }
+// starting: the titles "Find buyers" starts with for this table's roles (lib/hiring/buyer.ts); catchAll: the email
+// column keeps catch-all addresses too (its check's balanced; off until chosen).
+export interface BuyerView { added: boolean; titles: string[]; starting: string[]; catchAll: boolean }
 
 const rolesOf = (rec: HiringRecord): string[] => {
   try {
@@ -40,16 +41,19 @@ function savedRun(userId: string, sheet: string, column: string) {
 
 export function buyerOf(userId: string, rec: HiringRecord): BuyerView {
   const run = savedRun(userId, rec.companies_sheet_id, BUYER_COLUMNS.search);
+  const email = savedRun(userId, rec.companies_sheet_id, BUYER_COLUMNS.emailSearch);
   return {
     added: !!run, titles: run ? titlesOfInput(inputTemplates(run.config)) ?? [] : [],
-    starting: buyerTitlesFor(rolesOf(rec)),
+    starting: buyerTitlesFor(rolesOf(rec)), catchAll: email?.config.enrichment.email?.strategy === 'balanced',
   };
 }
 
 // canSave: the caller may save column setups (an access token with the write scope); without it, a run that would
-// save one is refused before anything changes.
+// save one is refused before anything changes. catchAll: keep catch-all emails too; null or left out: as saved (off
+// the first time). A new choice saves the email column's setup again, as new titles save the search's.
 export interface FindBuyersOpts {
   titles: string[] | null; estimateOnly: boolean; maxCostUsd: number | null; canSave?: boolean;
+  catchAll?: boolean | null;
 }
 type ColumnRunOk = Extract<ColumnRunOutcome, { ok: unknown }>['ok'];
 type ColumnRunFail = Exclude<ColumnRunOutcome, { ok: unknown }>;
@@ -97,6 +101,8 @@ export async function findBuyers(userId: string, rec: HiringRecord, opts: FindBu
   ]);
   if (clash) return bad(clash);
   const saveSearch = !search || !same(titles, view.titles);
+  const catchAll = opts.catchAll ?? view.catchAll;
+  const saveEmail = !emailThere || catchAll !== view.catchAll;
   const one = saveSearch || !emailThere ? await onePersonUsd() : null;
   const columns = [BUYER_COLUMNS.search, BUYER_COLUMNS.emailSearch];
 
@@ -105,7 +111,7 @@ export async function findBuyers(userId: string, rec: HiringRecord, opts: FindBu
     if ('fail' in pick) return pick;
     if (!search || !emailThere) {
       const est = await priceUnsaved(userId, [buyerSearchInput(titles, !!search, one, names),
-        buyerEmailInput(names)], pick.ok.rows);
+        buyerEmailInput(names, { catchAll })], pick.ok.rows);
       return 'fail' in est ? est : { ok: { estimate: est.ok, saved: [], added: [], titles } };
     }
     const run = await runColumns(userId, sheet, {
@@ -115,8 +121,9 @@ export async function findBuyers(userId: string, rec: HiringRecord, opts: FindBu
     return 'fail' in run ? run : { ok: { ...run.ok, saved: [], added: [], titles } };
   }
 
-  if ((saveSearch || !emailThere) && opts.canSave === false) {
-    return { fail: 'forbidden', message: 'Finding buyers the first time, or with new titles, saves the buyer columns: '
+  if ((saveSearch || saveEmail) && opts.canSave === false) {
+    return { fail: 'forbidden', message: 'Finding buyers the first time, with new titles or a new catch-all choice, '
+      + 'saves the buyer columns: '
       + 'that needs the write scope. Ask for a token with it, or find them in the app (Find buyers on the hiring '
       + 'table).' };
   }
@@ -127,8 +134,8 @@ export async function findBuyers(userId: string, rec: HiringRecord, opts: FindBu
     if ('fail' in out) return out;
     saved.push(BUYER_COLUMNS.search);
   }
-  if (!emailThere) {
-    const out = await startEnrichmentRun(userId, sheet, buyerEmailInput(names));
+  if (saveEmail) {
+    const out = await startEnrichmentRun(userId, sheet, buyerEmailInput(names, { catchAll, again: emailThere }));
     if ('fail' in out) return out;
     saved.push(BUYER_COLUMNS.emailSearch);
   }
