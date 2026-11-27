@@ -1,4 +1,4 @@
-// Row writes with an idempotency key: MCP append_rows and update_cells and
+// Row writes with an idempotency key: MCP append_rows and change_rows' update and
 // their /api/v1 routes. The same key with the same arguments returns the first
 // answer (replayed: true) and writes nothing; with other arguments it's
 // refused. The ledger check, the rows and the ledger entry go in ONE immediate

@@ -7,7 +7,7 @@
 // told, only clean, formula and lookup columns reading a restored cell follow
 // it. The journal is 'undoing' with a cursor while it goes, so a restart goes
 // on (resumeRunUndos). The app's column menu, POST /api/v1/{ai,http}-runs/:id/undo
-// and MCP undo_run all come here; services/run-undo-view.ts reads what it would do.
+// and MCP control_run's undo all come here; services/run-undo-view.ts reads what it would do.
 import { db } from '../lib/db';
 import { UNDO_QUEUE_ROWS, UNDO_RETRY_MAX, UNDO_SLICE_ROWS, UNDO_WAIT_ROWS } from '../lib/constants';
 import { continueInBackground, stayBusyToFinish, whenSheetFree, withSheetBusy } from '../lib/sheet-busy';

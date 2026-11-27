@@ -1,11 +1,11 @@
-// One enrichment tool called on 1-ENRICH_CALL_MAX_ITEMS items without a sheet (MCP call_enrichment, REST POST
+// One enrichment tool called on 1-ENRICH_CALL_MAX_ITEMS items without a sheet (MCP run_enrichment with items, REST POST
 // /api/v1/enrichments/:toolId/calls). The items become the rows of a hidden working table (setup-call.ts), one
 // column per tool input, and the tool runs there through run_enrichment's own start (enrich-token-run.ts): every
 // input mapped to its column, every output field (or those asked for) to a column of its name. Priced first, on
 // the items in memory (enrich-call-estimate.ts: an estimate writes nothing); refused before anything is made when
 // the estimate's high end is over max_cost_usd, today's daily limit left, the treg balance or the token's cap, or
 // the tool has no known price (unless allow_unpriced). A start gets a spend limit of that high end, so it never
-// pauses halfway on a limit. The call is the run: get_run_status and get_run_results (an item's number is its
+// pauses halfway on a limit. The call is the run: get_run's status and results (an item's number is its
 // row_index) answer for it, control_run stops it, and its run webhook is an enrichment run's. Its working table
 // goes as a setup call's does (sweepSetupCalls).
 import { db } from '../lib/db';
@@ -45,7 +45,8 @@ type Estimate = {
   may_pass_balance?: boolean; daily_limit: { remaining_usd: number | null };
 };
 
-// The working table's column names. Each output field keeps its own (get_run_results reads it by that name); an
+// The working table's column names. Each output field keeps its own (get_run (action results) reads it by that name);
+// an
 // input named like one, in any case, gets " (input)", and the status column is "Status" unless a field or input
 // takes it (an email check's tool answers a "status" field), then "Status 2" and on.
 export function callColumns(used: string[], fields: string[]): { input: Map<string, string>; status: string } {
@@ -79,7 +80,7 @@ export function callRefusal(est: Estimate, input: EnrichCallInput, c: TokenCalle
 }
 
 export async function callEnrichment(c: TokenCaller, input: EnrichCallInput): Promise<EnrichCallOutcome> {
-  if (!TREG_TOOL_ID_PATTERN.test(input.toolId)) return bad('tool_id must be a tool id from search_enrichments.');
+  if (!TREG_TOOL_ID_PATTERN.test(input.toolId)) return bad('tool_id must be a tool id from find_enrichments.');
   const found = await getTool(input.toolId);
   if (!('ok' in found)) {
     return { fail: found.fail === 'not_found' || found.fail === 'hidden' ? 'not_found' : 'upstream',
@@ -95,7 +96,9 @@ export async function callEnrichment(c: TokenCaller, input: EnrichCallInput): Pr
   const known = tool.outputs.map(o => o.field);
   const fields = input.fields?.length ? input.fields : known;
   const unknown = fields.find(f => !known.includes(f));
-  if (unknown !== undefined) return bad(`"${unknown}" isn't an output field of this tool (get_enrichment lists them).`);
+  if (unknown !== undefined) {
+    return bad(`"${unknown}" isn't an output field of this tool (find_enrichments get lists them).`);
+  }
   if (fields.length === 0) return bad('This tool lists no output fields to keep.');
   const used = inputNames.filter(n => items.some(it => n in it));
   if (used.length === 0) return bad('No item has any of the tool\'s inputs.');

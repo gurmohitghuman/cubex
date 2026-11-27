@@ -24,71 +24,59 @@ const write = (
   ({ title, readOnlyHint: false, destructiveHint, idempotentHint, openWorldHint });
 
 export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
-  get_workspace: read('Get the workspace overview'),
-  list_tables: read('List tables and sheets'),
-  get_sheet: read('Get sheet details'),
+  // The overview, or with all_tables every table and its sheets.
+  get_workspace: read('Get the workspace overview or every table'),
+  get_sheet: read('Get sheet details or its change log'),
   read_rows: read('Read rows'),
-  export_csv: read('Export rows as CSV'),
-  list_runs: read('List runs'),
-  get_run_status: read('Get run status'),
-  get_run_results: read('Get run results'),
+  // A run's status or results, the runs, or a setup run: reads Cubex's own records only.
+  get_run: read('Get runs: status, results, the list, setup runs'),
+  // Balances asks treg.to and OpenRouter (open world); usage, saved keys and the version are Cubex's own.
+  get_account: read('Read balances, usage, saved keys or the version', true),
+  find_enrichments: read('Find enrichment tools', true),
   list_models: read('List AI models', true),
-  get_balances: read('Read balances', true),
-  get_usage: read('Read usage and costs'),
-  get_version: read('Read the Cubex version'),
   get_tool_guide: read("Read a tool's guide"),
   list_trash: read('List the trash'),
-  get_sheet_history: read("Read a sheet's change log"),
   // With auto-dedupe keeping the newest row per key, a row with a key the sheet has replaces the older row.
   append_rows: write('Append rows', true, false),
-  update_cells: write('Update cells', true, true),
-  // Deletes go to the trash (kept the days set in Settings): restore_from_trash brings them back.
-  delete_rows: write('Delete rows (to the trash)', true, true),
-  add_column: write('Add a column', false, false),
-  rename_column: write('Rename a column', true, true),
-  set_description: write('Describe a sheet or column', true, true),
-  delete_column: write('Delete a column (to the trash)', true, true),
-  // Only the order columns show in; repeating the same order changes nothing more.
-  set_column_order: write('Reorder columns', true, true),
-  sort_sheet: write('Sort a sheet (permanent reorder)', true, true),
+  // Deletes go to the trash (kept the days set in Settings): restore_from_trash brings them back. The same update
+  // or delete again changes nothing more.
+  change_rows: write('Update or delete rows (deletes go to the trash)', true, true),
+  // A second add of the same name is refused, so not idempotent; a deleted column goes to the trash.
+  manage_column: write('Add, rename, describe, reorder or delete columns (to the trash)', true, false),
   // A dry run (the default) changes nothing; a removal moves rows to the trash. Repeating it removes nothing more.
-  remove_duplicates: write('Remove duplicate rows (to the trash)', true, true),
-  // Rows it later removes go to the trash; the same call again changes nothing.
-  set_auto_dedupe: write('Keep one row per key as rows arrive', true, true),
+  // keep_doing removes rows as they arrive from then on (to the trash); the same call again changes nothing.
+  remove_duplicates: write('Remove duplicate rows (to the trash), now or as rows arrive', true, true),
   manage_table: write('Create, rename, star or delete a table (to the trash)', true, false),
   manage_sheet_webhook: write("Set up or change a sheet's incoming webhook", true, false),
-  manage_sheet: write('Create, rename, copy, delete, reorder or test sheets (to the trash)', true, false),
+  // sort reorders the rows permanently.
+  manage_sheet: write('Create, rename, copy, delete, reorder, sort, describe or test sheets (to the trash)', true,
+    false),
   import_csv: write('Import a CSV', true, false),
   // A one-time link is not read-only (it is a credential for one transfer), so
   // careful clients ask first; open world, since the file moves outside Cubex.
   // An upload link in replace mode moves the rows to the trash when the file arrives.
-  create_upload_link: write('Create a one-time CSV upload link', true, false, true),
-  create_download_link: write('Create a one-time CSV download link', false, false, true),
+  file_link: write('Create a one-time CSV upload or download link', true, false, true),
   set_default_model: write('Set the default AI model', true, true),
   run_ai_column: write('Run an AI column', true, false, true),
   run_http_enrichment: write('Run an HTTP enrichment', true, false, true),
   check_run_condition: read('Check an "Only run if" rule'),
   // Changes nothing, but spends one small AI call on OpenRouter.
   write_run_condition: write('Write an "Only run if" rule with AI', false, false, true),
-  // One run, or with cancel_all every run on a sheet; a rerun spends again (open world).
-  control_run: write('Pause, resume, cancel or rerun runs', true, false, true),
-  // Writes back the cells a run overwrote (a cell changed since stays); repeating it finds it already undone.
-  undo_run: write('Undo a run', true, true),
+  // One run, a setup run, or with cancel_all every run on a sheet; a rerun spends again (open world); undo writes
+  // back the cells a run overwrote (a cell changed since stays).
+  control_run: write('Pause, resume, cancel, rerun or undo runs', true, false, true),
   transfer_rows: write('Copy or move rows between sheets', true, true),
   transform_column: write('Transform a column', true, false),
   // Adds a column, or cleans its own clean column again from the source (replacing what is in it, hand edits
   // included); no other column is written.
   clean_column: write('Clean a column (free)', true, true),
   // Adds a column, or works its own formula column out again with a new formula (replacing what is in it, hand
-  // edits included); no other column is written.
-  formula_column: write('Fill a column with a formula (free)', true, true),
+  // edits included); no other column is written. from_words changes nothing, but spends one small AI call on
+  // OpenRouter, so it is neither idempotent nor closed.
+  formula_column: write('Fill a column with a formula (free), or write one with AI', true, false, true),
   // Adds a column, or looks its own lookup column up again with new settings (replacing what is in it, hand
   // edits included); only reads the other sheet.
   lookup_column: write('Look up values from another sheet (free)', true, true),
-  // Changes nothing, but spends one small AI call on OpenRouter.
-  write_formula: write('Write a formula with AI', false, false, true),
-  search_enrichments: read('Search enrichment tools', true),
-  get_enrichment: read('Get an enrichment tool', true),
   get_list_fields: read('Get the fields of list results'),
   // Spends the treg balance and calls providers through treg.
   run_enrichment: write('Run an enrichment (paid)', true, false, true),
@@ -100,35 +88,26 @@ export const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   // create and get are free; check (estimate_only false) starts a paid treg run and rewrites Companies' summary cells.
   hiring_signals: write('Find companies hiring (check is paid)', true, false, true),
   social_research: write('Research social posts (find_posts is paid)', true, false, true),
-  add_enrichment_field: write('Add a column from stored answers', false, false),
-  // Lands rows like append_rows: auto-dedupe keeping the newest can replace a row already there.
-  add_list_rows: write('Add list results as rows', true, false),
+  // add_column adds a column; add_rows lands rows like append_rows: auto-dedupe keeping the newest can replace a
+  // row already there.
+  stored_answers: write('Add a column or rows from stored answers', true, false),
   // Turning it on makes later rows spend (or send requests) on their own.
   set_auto_run: write('Turn auto-run on, off or pause it', true, true, true),
   list_setups: read('List setups'),
-  // Adds a setup; the sheet is only read. preview: true saves nothing.
-  save_setup: write('Save columns as a setup', false, false),
-  delete_setup: write('Delete a setup (permanent)', true, true),
+  // save adds a setup (the sheet is only read; preview: true saves nothing); delete removes one permanently.
+  manage_setup: write('Save or delete a setup', true, false),
   // Adds columns and starts their runs, which spend (AI, enrichments) or send requests. An estimate changes nothing.
-  apply_setup: write('Use a setup on a sheet', true, false, true),
+  apply_setup: write('Use a setup on a sheet or items', true, false, true),
   // Starts the chosen columns' reruns, which spend (AI, enrichments, waterfalls) or send requests.
   // An estimate changes nothing.
   run_columns: write('Run chosen columns on chosen rows', true, false, true),
-  get_setup_run: read('Get a setup run'),
-  call_setup: write('Call a setup on items', false, false, true),
-  get_setup_call: read('Get a setup call'),
-  call_enrichment: write('Call an enrichment on items', false, false, true),
   manage_run_schedule: write('Manage run schedules', true, false, true),
-  control_setup_run: write('Pause, resume or stop a setup run', true, false, true),
   list_setup_versions: read("List or compare a sheet's setup versions"),
-  // Saves a version, renames one, or deletes one for good; the sheet itself never changes.
-  manage_setup_version: write('Save, rename or delete a setup version', true, false),
-  // Puts columns' setups back (and gone columns, empty); nothing runs, but later runs and auto-run use it.
-  restore_setup_version: write('Restore a setup version', true, true),
+  // Saves a version, renames one, or deletes one permanently, and the sheet itself never changes; or restore puts
+  // columns' setups back (and gone columns, empty): nothing runs, but later runs and auto-run use it.
+  manage_setup_version: write('Save, rename, delete or restore a setup version', true, false),
   list_run_webhooks: read('List run webhooks'),
   list_prompt_starters: read('List prompt starters for an AI column'),
-  // Names and where they're used; a value never leaves Settings.
-  list_saved_keys: read('List saved API keys (names only)'),
   // Adds, changes or deletes where Cubex sends run notices; test sends one now (outside Cubex).
   manage_run_webhook: write('Add, change, delete or test a run webhook', true, false, true),
   // A saved view's name, filters and hidden columns; rows and columns never change.

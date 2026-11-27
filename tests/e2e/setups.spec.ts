@@ -25,7 +25,7 @@ async function seedPeople(api: APIRequestContext): Promise<string> {
 
 async function waitRun(client: Client, type: 'ai' | 'http', runId: string) {
   await expect.poll(async () =>
-    (await call(client, 'get_run_status', { run_type: type, run_id: runId, wait_seconds: 2 })).status,
+    (await call(client, 'get_run', { action: 'status', run_type: type, run_id: runId, wait_seconds: 2 })).status,
   { timeout: 60_000 }).toMatch(/completed|failed/)
 }
 
@@ -61,7 +61,8 @@ test('a chain saved as a setup over MCP and REST, exported and imported', async 
   }
 
   // A preview from the AI column brings everything it reads, each step after what it reads.
-  const preview = await call(client, 'save_setup', { sheet_id: sheetId, columns: ['Fit (Output)'], preview: true })
+  const preview = await call(client, 'manage_setup', { action: 'save', sheet_id: sheetId, columns: ['Fit (Output)'],
+    preview: true })
   const order = preview.steps.map((s: any) => s.column)
   expect([...order].sort()).toEqual(['Clean name', 'Domain', 'Fit (Output)', 'Lookup'])
   expect(order.indexOf('Domain')).toBeLessThan(order.indexOf('Lookup'))
@@ -69,7 +70,8 @@ test('a chain saved as a setup over MCP and REST, exported and imported', async 
   expect([...preview.inputs].sort()).toEqual(['Name', 'Website'])
   expect((await call(client, 'list_setups', {})).setups).toEqual([])
 
-  const saved = await call(client, 'save_setup', { sheet_id: sheetId, name: 'Lead fit', columns: ['Fit (Output)'],
+  const saved = await call(client, 'manage_setup', { action: 'save', sheet_id: sheetId, name: 'Lead fit',
+    columns: ['Fit (Output)'],
     description: 'Domain, lookup, then fit' })
   expect(saved.steps).toHaveLength(4)
   const full = await call(client, 'list_setups', { setup_id: saved.id })
@@ -77,18 +79,19 @@ test('a chain saved as a setup over MCP and REST, exported and imported', async 
   expect(http1.request.url).toContain('{{Domain}}')
   expect(http1.runIf).toBe('{{Domain}} is not empty')
   expect(full.spec.steps.find((s: any) => s.kind === 'ai').model).toBe('deepseek/deepseek-v4-flash')
-  expect(await callError(client, 'save_setup', { sheet_id: sheetId, name: 'LEAD FIT', columns: ['Domain'] }))
+  expect(await callError(client, 'manage_setup', { action: 'save', sheet_id: sheetId, name: 'LEAD FIT',
+    columns: ['Domain'] }))
     .toContain('already exists')
-  expect(await callError(client, 'save_setup', { sheet_id: sheetId, name: 'x', columns: ['Name'] }))
+  expect(await callError(client, 'manage_setup', { action: 'save', sheet_id: sheetId, name: 'x', columns: ['Name'] }))
     .toContain("isn't a filled column")
 
   // A read-only token can look and preview, not save or delete.
   const reader = await mcpClient(await makeAccessToken(api, ['read'], 'setups-e2e-read'), 'reader')
   expect((await call(reader, 'list_setups', {})).setups).toHaveLength(1)
-  await call(reader, 'save_setup', { sheet_id: sheetId, columns: ['Domain'], preview: true })
-  expect(await callError(reader, 'save_setup', { sheet_id: sheetId, name: 'y', columns: ['Domain'] }))
+  await call(reader, 'manage_setup', { action: 'save', sheet_id: sheetId, columns: ['Domain'], preview: true })
+  expect(await callError(reader, 'manage_setup', { action: 'save', sheet_id: sheetId, name: 'y', columns: ['Domain'] }))
     .toMatch(/scope/i)
-  expect(await callError(reader, 'delete_setup', { setup_id: saved.id })).toMatch(/scope/i)
+  expect(await callError(reader, 'manage_setup', { action: 'delete', setup_id: saved.id })).toMatch(/scope/i)
 
   // REST: the list, export (keys by name only), import under a free name, delete.
   const auth = { Authorization: `Bearer ${token}` }
@@ -105,7 +108,7 @@ test('a chain saved as a setup over MCP and REST, exported and imported', async 
   const steps = await (await api.get(`${BASE}/api/v1/sheets/${sheetId}/setup-steps`, { headers: auth })).json()
   expect(steps.steps.map((s: any) => s.column).sort()).toEqual(['Clean name', 'Domain', 'Fit (Output)', 'Lookup'])
 
-  expect((await call(client, 'delete_setup', { setup_id: saved.id })).deleted).toBe(saved.id)
+  expect((await call(client, 'manage_setup', { action: 'delete', setup_id: saved.id })).deleted).toBe(saved.id)
   expect((await call(client, 'list_setups', {})).setups.map((s: any) => s.name)).toEqual(['Lead fit (2)'])
   await clearSetups(api)
 })

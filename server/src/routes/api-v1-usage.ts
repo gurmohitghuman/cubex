@@ -1,6 +1,6 @@
 // GET /v1/usage: what runs cost, by column (deleted ones too), day or run, for
 // one sheet (sheet_id) or the whole account, over a range (range, or from and
-// to). format=csv downloads every row. Shared with MCP get_usage and the app's
+// to). format=csv downloads every row. Shared with MCP get_account (action usage) and the app's
 // Usage view (services/usage.ts).
 import express from 'express';
 import { requireScope, TokenAuthRequest } from '../middleware/access-token-auth';

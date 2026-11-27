@@ -59,15 +59,15 @@ test('MCP 2026-07-28 with the v2 client: discover, a fixed tool list, calls and 
 
   // The same list on every call and for two tokens with the same scopes. A read-only token gets the same
   // tools in the same order: it is refused inside the tools it can't use, never hidden from them (only
-  // create_upload_link's description adds that this token can't write).
+  // file_link's description adds that this token can't upload).
   const list = async (c: Client) => (await c.listTools({}, { cacheMode: 'bypass' })).tools
   const first = await list(rw)
-  expect(first.length).toBeGreaterThan(60)
+  expect(first.length).toBeGreaterThan(45)
   for (const again of [await list(rw), await list(rw2)]) expect(again).toEqual(first)
   const readOnly = await list(ro)
   expect(readOnly.map(t => t.name)).toEqual(first.map(t => t.name))
   expect(readOnly.filter((t, i) => JSON.stringify(t) !== JSON.stringify(first[i])).map(t => t.name))
-    .toEqual(['create_upload_link'])
+    .toEqual(['file_link'])
   const readRows = first.find(t => t.name === 'read_rows')!
   expect(readRows.inputSchema.$schema).toBe('https://json-schema.org/draft/2020-12/schema')
   const { type, minimum, maximum } = readRows.inputSchema.properties!.max_chars_per_cell as Record<string, unknown>
@@ -107,23 +107,24 @@ test('MCP 2026-07-28 on the wire: resultType, serverInfo, cache fields, headers 
     .toEqual(['complete', 300_000, 'private', STAMP])
 
   // tools/call: resultType and the server's identity; an Mcp-Session-Id is ignored and none is minted.
-  const call = await raw(token, 'tools/call', { name: 'list_tables', arguments: {} },
-    { ...std('tools/call', 'list_tables'), 'Mcp-Session-Id': 'made-up' })
+  const call = await raw(token, 'tools/call', { name: 'get_workspace', arguments: { all_tables: true } },
+    { ...std('tools/call', 'get_workspace'), 'Mcp-Session-Id': 'made-up' })
   expect([call.status, call.body.result.resultType, call.body.result._meta]).toEqual([200, 'complete', STAMP])
   expect(call.headers.get('mcp-session-id')).toBeNull()
   // Mcp-Name may come Base64-encoded; it is decoded before the comparison.
-  const encoded = `=?base64?${Buffer.from('list_tables').toString('base64')}?=`
-  expect((await raw(token, 'tools/call', { name: 'list_tables', arguments: {} },
+  const encoded = `=?base64?${Buffer.from('get_workspace').toString('base64')}?=`
+  expect((await raw(token, 'tools/call', { name: 'get_workspace', arguments: { all_tables: true } },
     std('tools/call', encoded))).status).toBe(200)
 
   // Headers missing, or disagreeing with the body: 400 with HeaderMismatch (-32020).
   const mismatch = async (headers: Record<string, string>, method = 'tools/call') => {
-    const res = await raw(token, method, method === 'tools/call' ? { name: 'list_tables', arguments: {} } : {}, headers)
+    const res = await raw(token, method,
+      method === 'tools/call' ? { name: 'get_workspace', arguments: { all_tables: true } } : {}, headers)
     expect([res.status, res.body.error.code, res.body.id]).toEqual([400, -32020, 41])
     return res.body.error.message as string
   }
   expect(await mismatch(std('tools/call', 'read_rows'))).toBe('Bad Request: the request headers and body disagree: '
-    + 'the body carries params.name="list_tables" but the Mcp-Name header names "read_rows"')
+    + 'the body carries params.name="get_workspace" but the Mcp-Name header names "read_rows"')
   expect(await mismatch(std('tools/call'))).toContain('the required Mcp-Name header is absent')
   expect(await mismatch(std('tools/list'))).toContain('the Mcp-Method header names tools/list')
   expect(await mismatch({ 'MCP-Protocol-Version': MODERN }, 'tools/list'))
@@ -189,8 +190,8 @@ test('MCP 2026-07-28: a write is credited to the token that made it', async () =
     return res.structuredContent as Record<string, any>
   }
   const { rows } = await call('read_rows', { sheet_id: sheetId, limit: 1 })
-  await call('delete_rows', { sheet_id: sheetId, row_ids: [rows[0].id] })
-  const { changes: [newest] } = await call('get_sheet_history', { sheet_id: sheetId, limit: 1 })
+  await call('change_rows', { action: 'delete', sheet_id: sheetId, row_ids: [rows[0].id] })
+  const { changes: [newest] } = await call('get_sheet', { history: true, sheet_id: sheetId, limit: 1 })
   expect({ action: newest.action, via: newest.via, token_name: newest.token_name, by: newest.by })
     .toEqual({ action: 'rows_deleted', via: 'mcp', token_name: name, by: `the token "${name}" (MCP)` })
   await client.close()

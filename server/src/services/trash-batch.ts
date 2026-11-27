@@ -7,7 +7,8 @@
 // goes on filling it. With Settings keeping deleted rows 0 days there is none.
 import { db } from '../lib/db';
 import { oneTransaction } from '../lib/slices';
-import { TRASH_SLICE_ROWS } from '../lib/constants';
+import { HEAVY_SLICE_BYTES, TRASH_SLICE_ROWS } from '../lib/constants';
+import { keysWithinBytes } from '../lib/slice-bytes';
 import { runInCheckpointedSlices } from '../lib/bulk-slices';
 import { removeRows, sealBatch } from '../lib/trash/move';
 import { insertTrashItem, sheetFacts, trashKeeps } from '../lib/trash/store';
@@ -47,11 +48,13 @@ export async function trashRowRange(
   sheetId: string, userId: string, first: number, end: number, how: SlicedHow,
 ): Promise<{ trashId: number | null; moved: number }> {
   const item = openSlicedBatch(sheetId, userId, how);
-  const slice = db.prepare(`SELECT rowid FROM rows WHERE sheet_id = ? AND user_id = ? AND row_index >= ?
-    AND row_index < ? ORDER BY row_index LIMIT ?`).pluck();
+  const slice = db.prepare(`SELECT rowid, octet_length(data) FROM rows WHERE sheet_id = ? AND user_id = ?
+    AND row_index >= ? AND row_index < ? ORDER BY row_index LIMIT ?`).raw();
   let moved = 0;
   await runInCheckpointedSlices(() => {
-    const rowids = slice.all(sheetId, userId, first, end, TRASH_SLICE_ROWS) as number[];
+    // Each row written twice (into the batch, out of the rows): half the bytes (lib/slice-bytes.ts).
+    const rowids = keysWithinBytes(slice.all(sheetId, userId, first, end, TRASH_SLICE_ROWS) as Array<[number, number]>,
+      HEAVY_SLICE_BYTES / 2);
     if (rowids.length === 0) return false;
     oneTransaction(() => { moved += removeRows(sheetId, userId, { rowids }, item, false).count; });
     return true;

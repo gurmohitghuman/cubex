@@ -18,7 +18,7 @@ export const TREG_META_TIMEOUT_MS = 10_000;
 export const TREG_CATALOG_CACHE_TTL_MS = 10 * 60 * 1000;
 export const TREG_CATALOG_CACHE_MAX_ENTRIES = 200;
 export const TREG_SEARCH_LIMIT = 100;     // treg's own maximum; hidden kinds are filtered after
-export const ENRICH_SEARCH_RESULTS = 25;  // what the drawer and search_enrichments show
+export const ENRICH_SEARCH_RESULTS = 25;  // what the drawer and find_enrichments' search show
 // A tool's /access for the team (Set up's provider badges): read on each drawer
 // open, plus one read per waterfall provider treg's plan leaves out.
 export const TREG_ACCESS_CACHE_MS = 5 * 60 * 1000;
@@ -111,7 +111,7 @@ export const AUTORUN_DEFAULT_DAILY_CAP_USD = 5;
 // An agent's append answers with the auto-runs it sets off (auto_run); pricing
 // them reads treg's catalog, which waits at most this long (then no estimate).
 export const AUTORUN_NOTICE_PRICE_MS = 3_000;
-// A stored answer an agent reads (get_run_results include_answers) is cut to
+// A stored answer an agent reads (get_run (action results) include_answers) is cut to
 // this many characters of JSON, largest parts first, so a page stays readable
 // in its context (agents' context is counted in characters, not bytes).
 export const AGENT_ANSWER_MAX_CHARS = 32 * 1024;

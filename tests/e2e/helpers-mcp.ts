@@ -49,7 +49,8 @@ export async function callError(client: Client, name: string, args: Record<strin
 export async function waitMcpRun(client: Client, runId: string, statuses: string[], timeoutMs = 30_000) {
   const until = Date.now() + timeoutMs
   for (;;) {
-    const s = await call(client, 'get_run_status', { run_type: 'enrichment', run_id: runId, wait_seconds: 2 })
+    const s = await call(client, 'get_run', {
+      action: 'status', run_type: 'enrichment', run_id: runId, wait_seconds: 2 })
     if (statuses.includes(s.status)) return s
     if (Date.now() > until) throw new Error(`run ${runId} is ${s.status}, wanted ${statuses.join('/')}`)
   }

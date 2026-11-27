@@ -1,5 +1,5 @@
 // JSON lines downloads (lib/csv-write.ts writeSheetJsonl): GET /api/v1/sheets/:id/export?format=jsonl and a
-// create_download_link link made with format jsonl give one {"id", "data"} object a line, as read_rows answers a
+// file_link download made with format jsonl give one {"id", "data"} object a line, as read_rows answers a
 // row: every exported column in data in the export's order, '' where the row has no value, numbers and true/false
 // keeping their type, no formula quote, a column named "id" or "constructor" kept apart from the row id and from
 // inherited members. The rows and order are the CSV's (a where, the columns asked for); the file is

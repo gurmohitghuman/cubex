@@ -72,7 +72,7 @@ export const getSheet = obj({
   formula_columns: z.array(info('A formula column\'s setup')),
   lookup_columns: z.array(info('A lookup column\'s setup')),
   views: z.array(view), column_details: z.array(columnDetail),
-  auto_dedupe: nul(info('The set_auto_dedupe setting')),
+  auto_dedupe: nul(info('The auto-dedupe setting (remove_duplicates\' keep_doing)')),
   test: opt(nul(sheetTest)).describe('A test of column changes open on it, or null'),
   limits: obj({ max_rows: num, rows_remaining: num, max_columns: num, columns_remaining: num }),
 });
@@ -91,14 +91,13 @@ export const readRows = obj({
   filling: opt(strs).describe('updated_since: columns still filling'),
   rows_matched: opt(num), group_count: opt(num), truncated: opt(bool),
   groups: opt(z.array(obj({ group: keyed(str), count: num, values: opt(keyed(nul(num))) }))),
+  // format csv: the CSV and what it holds.
+  sheet_id: opt(str), sheet_name: opt(nul(str)), csv: opt(str).describe('format csv'), row_count: opt(num),
+  columns: opt(strs), matching_rows: opt(nul(num)), rest: opt(str).describe('How to read the rows cut off'),
 });
 
-export const exportCsv = obj({
-  sheet_id: str, sheet_name: nul(str), csv: str, row_count: num, columns: opt(strs),
-  matching_rows: opt(nul(num)), truncated: opt(bool), rest: opt(str).describe('How to read the rows cut off'),
-});
-
-// A run as list_runs and get_run_status show it (services/run-status.ts RunSummary): other fields by run type.
+// A run as get_run (action list) and get_run (action status) show it (services/run-status.ts RunSummary): other fields
+// by run type.
 export const runSummary = open({
   id: str, sheet_id: str, type: z.enum(['ai', 'http']), column_name: nul(str), status: str,
   processed_rows: num, total_rows: num, target_row_count: nul(num), error_message: nul(str),

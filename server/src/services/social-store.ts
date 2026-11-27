@@ -18,7 +18,8 @@ export interface SocialView {
   created_at: string;
 }
 
-// A table's record by its id, or by the id of one of its sheets (what list_tables shows, so an agent that
+// A table's record by its id, or by the id of one of its sheets (what get_workspace (all_tables) shows, so an agent
+// that
 // didn't keep the id finds it again); not one in the trash.
 export const loadSocial = (userId: string, id: string): SocialRecord | undefined =>
   db.prepare(`SELECT r.* FROM social_research r JOIN tables t ON t.id = r.table_id AND t.user_id = r.user_id

@@ -84,7 +84,7 @@ export function liveColumnClash(sheetId: string, userId: string, mains: string[]
   const clash = mains.filter(c => busy.has(c.toLowerCase()));
   if (!clash.length) return null;
   return { fail: 'conflict', message: `A setup or column run working on this sheet fills ${quoted(clash)}. `
-    + 'Wait for it to end (get_setup_run), or stop it, then run these columns.' };
+    + 'Wait for it to end (get_run (action setup)), or stop it, then run these columns.' };
 }
 
 export function planColumnRun(

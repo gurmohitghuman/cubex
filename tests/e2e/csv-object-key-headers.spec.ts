@@ -34,7 +34,7 @@ test('a CSV with __proto__, constructor and prototype columns imports through ev
 
   // An upload link.
   const b = (await seedSheet(api, 0)).sheetId
-  const link = await call(client, 'create_upload_link', { sheet_id: b })
+  const link = await call(client, 'file_link', { action: 'upload', sheet_id: b })
   const up = await api.put(link.upload_url, { data: Buffer.from(CSV), headers: { 'Content-Type': 'text/csv' } })
   expect(up.status(), await up.text()).toBe(201)
   expectRows(await readBack(b))

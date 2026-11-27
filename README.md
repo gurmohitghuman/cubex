@@ -305,7 +305,7 @@ A date can be written in a cell as 2024-01-31, 1/31/2024, 31.1.2024, Jan 31, 202
 
 A view saves what you're looking at: its filters and which columns are hidden. Every sheet starts with a **Default** view. Use the bar above the grid to switch views, to add one (it starts as a copy of the one showing), or to rename, describe or delete one. Hide a column from its menu (**Hide column**) or from the **12/15 columns** picker; hiding never deletes anything, and every view shares the same rows and column order.
 
-Two ready-made views are a click away in the view menu: **Rows with errors** (any AI, HTTP API or enrichment column has an error) and **Fully filled rows** (every one of those columns has a result). **Export** then asks whether you want this view (only its rows and visible columns) or the whole sheet. Agents can read through a view too: `read_rows`, `export_csv` and the REST API take its name.
+Two ready-made views are a click away in the view menu: **Rows with errors** (any AI, HTTP API or enrichment column has an error) and **Fully filled rows** (every one of those columns has a result). **Export** then asks whether you want this view (only its rows and visible columns) or the whole sheet. Agents can read through a view too: `read_rows` (as rows or as CSV) and the REST API take its name.
 
 ### Search
 
@@ -335,7 +335,7 @@ Deleted rows, sheets and tables go to the trash (**Trash** in the sidebar), and 
 
 In the trash, search by table, sheet or the access token that deleted something, then restore one item or several. A sheet or table comes back as it was, with its rows, columns, runs, views and webhook. Rows go back to their old places when the sheet hasn't been sorted or replaced since, otherwise to the end of the sheet, and columns they need that the sheet lost come back too. Look inside a batch of rows to find the ones you want by any column and restore only those, or download them as CSV. A deleted column's values aren't kept.
 
-**History**, in the **⋯** menu of a sheet's toolbar, lists what changed on it in the last 90 days: columns added, renamed and deleted, runs started, stopped and undone, auto-run, views, its webhook, and rows deleted, restored, imported or sorted, each with when and who: you in the app, an access token by name, or Cubex itself. Agents read the same with `get_sheet_history`, and use `list_trash` and `restore_from_trash`.
+**History**, in the **⋯** menu of a sheet's toolbar, lists what changed on it in the last 90 days: columns added, renamed and deleted, runs started, stopped and undone, auto-run, views, its webhook, and rows deleted, restored, imported or sorted, each with when and who: you in the app, an access token by name, or Cubex itself. Agents read the same with `get_sheet` with `history`, and use `list_trash` and `restore_from_trash`.
 
 ### Webhook
 

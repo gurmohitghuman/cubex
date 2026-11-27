@@ -1,7 +1,7 @@
 // Settings → Account → Version: the running version, the latest release and whether the daily check
 // is on (services/version-info.ts). Cookie session only (mounted under /api/settings); GET /v1/version
-// and get_version read the same, but only here can the check be turned off or asked at once, and only
-// here can Cubex update itself: self_update says how this install updates and how the last update from
+// and get_account (action version) read the same, but only here can the check be turned off or asked at once,
+// and only here can Cubex update itself: self_update says how this install updates and how the last update from
 // here went (lib/self-update.ts).
 import express from 'express';
 import { authenticateToken, AuthRequest } from '../middleware/auth';

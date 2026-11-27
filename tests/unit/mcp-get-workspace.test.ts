@@ -149,10 +149,11 @@ async function main() {
     assert.deepEqual(a.active_setup_runs[1],
       { setup_run_id: 'sr1', setup: 'Setup 1', sheet_id: 't24s1', status: 'paused' })
     assert.equal(a.active_setup_runs.length, 20)
-    assert.equal(a.note, '50 of 75 sheets shown, in 20 of 26 tables: list_tables lists them all. 20 of 22 runs going '
-      + 'now shown: list_runs with filter "active" lists the newest, up to 50 with limit, or one sheet\'s with '
-      + 'sheet_id. 20 of 21 setup runs going now shown: get_sheet lists a sheet\'s. get_sheet gives a sheet\'s columns '
-      + 'and what fills them; get_balances reads the live treg and OpenRouter balances.')
+    assert.equal(a.note, '50 of 75 sheets shown, in 20 of 26 tables: get_workspace with all_tables lists them all. '
+      + '20 of 22 runs going now shown: get_run (action list) with filter "active" lists the newest, up to 50 with '
+      + 'limit, or one sheet\'s with sheet_id. 20 of 21 setup runs going now shown: get_sheet lists a sheet\'s. '
+      + 'get_sheet gives a sheet\'s columns and what fills them; get_account (action balances) reads the live treg and '
+      + 'OpenRouter balances.')
   })
 
   await check('an account with nothing yet answers zeros and empty lists', () => {
@@ -161,19 +162,19 @@ async function main() {
       active_setup_run_count: 0, active_setup_runs: [] })
   })
 
-  await check('a 1M-row sheet answers faster than list_tables counting every row (after a restart)', async () => {
-    const best = async (name: string) => {
+  await check('a 1M-row sheet answers faster than all_tables counting every row (after a restart)', async () => {
+    const best = async (args: Record<string, unknown>) => {
       let least = Infinity
       for (let i = 0; i < 3; i++) {
         forgetRowCounts()
         const started = performance.now()
-        await modern('tools/call', { name, arguments: {} }, name)
+        await modern('tools/call', { name: 'get_workspace', arguments: args }, 'get_workspace')
         least = Math.min(least, performance.now() - started)
       }
       return least
     }
-    const [workspace, tables] = [await best('get_workspace'), await best('list_tables')]
-    const took = `get_workspace ${workspace.toFixed(1)} ms, list_tables ${tables.toFixed(1)} ms`
+    const [workspace, tables] = [await best({}), await best({ all_tables: true })]
+    const took = `get_workspace ${workspace.toFixed(1)} ms, with all_tables ${tables.toFixed(1)} ms`
     assert.ok(workspace < tables, took)
     console.log(`     ${took}`)
   })

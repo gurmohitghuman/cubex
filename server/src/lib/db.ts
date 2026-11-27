@@ -3,7 +3,10 @@ import type { Database as DatabaseType } from 'better-sqlite3';
 import fs from 'fs';
 import { isMainThread, workerData } from 'worker_threads';
 import { DB_PATH as dbPath, DATA_DIR as dataDir } from './db-path';
-import { DB_AUTO_CHECKPOINT_FRAMES, DB_CHECK_NOTICE_BYTES, DB_CHECKED_ENV, DB_WAL_SIZE_LIMIT } from './constants';
+import {
+  DB_AUTO_CHECKPOINT_FRAMES, DB_CHECK_NOTICE_BYTES, DB_CHECKED_ENV, DB_WAL_SIZE_LIMIT, WAL_WATCHED_ENV,
+} from './constants';
+import { walRoomFrames } from './wal-room';
 import { registerRowFilterFunctions } from './row-filter/sql-functions';
 import { registerRunInputFunctions } from './run-inputs/fingerprint';
 
@@ -82,16 +85,18 @@ db.pragma('temp_store = MEMORY');
 // wild. journal_size_limit truncates the WAL back down at the next
 // checkpoint after it exceeds the limit; it does NOT cap mid-transaction
 // growth, so a single huge write can still exceed it briefly. Nor what other
-// writers commit while the WAL checkpoint worker copies the WAL back during a
-// background bulk job (lib/bulk-slices.ts).
+// writers commit while the WAL checkpoint worker copies the WAL back
+// (lib/wal-watch.ts, lib/bulk-slices.ts): their own checkpoint finds it busy.
 db.pragma(`journal_size_limit = ${DB_WAL_SIZE_LIMIT}`);
 // Trigger an auto-checkpoint after ~2000 WAL pages (~8MB at 4KB pages),
 // up from the SQLite default of 1000. Slightly less checkpoint chatter
 // during burst writes (CSV import, AI run streaming) at the cost of a
 // marginally larger WAL between checkpoints — well within the size limit.
-// Raised on the API connection while a background bulk writer runs (lib/bulk-slices.ts): its checkpoints go to
-// the WAL checkpoint worker's thread.
+// Once the server's WAL watch runs, at the bulk writers' room instead, a backstop: the watch asks the checkpoint
+// worker to copy the WAL back (lib/wal-watch.ts). A connection opened after it starts, in a thread or a process the
+// server starts (a run's job, the lookup worker), finds its mark in the environment and is set so here.
 db.pragma(`wal_autocheckpoint = ${DB_AUTO_CHECKPOINT_FRAMES}`);
+if (process.env[WAL_WATCHED_ENV] === dbPath) db.pragma(`wal_autocheckpoint = ${walRoomFrames(db)}`);
 
 // Seed the query planner's stats so the first few queries on a fresh
 // connection don't pick a bad plan. Mask 0x10002 = "analyze any table that

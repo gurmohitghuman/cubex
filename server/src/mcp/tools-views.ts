@@ -1,7 +1,7 @@
 // manage_view: create, change and delete a sheet's saved views. The same
 // service as the app and REST /v1/sheets/:id/views (services/views.ts), so the
 // checks, limits and the sheet's History lines are the same; get_sheet lists
-// views and read_rows, export_csv and create_download_link read through one.
+// views and read_rows, read_rows' format csv and file_link read through one.
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/server';
 import { createView, deleteView, updateView, type ViewOutcome } from '../services/views';
@@ -17,7 +17,7 @@ export function registerViewTools(server: McpServer, ctx: McpAuthCtx): void {
     description:
       'Create, change or delete a saved view of a sheet: a name, a description, filters (a where) and hidden '
       + 'columns. A view never sorts, changes the column order or touches rows; get_sheet lists the views, and '
-      + 'read_rows, export_csv and create_download_link read through one with view. It never switches the view '
+      + 'read_rows and file_link (download) read through one with view. It never switches the view '
       + 'the app shows. delete deletes view (never rows or '
       + 'columns); the Default view can\'t be deleted, and deleting the view the app shows switches it to Default. '
       + GUIDE_POINTER,

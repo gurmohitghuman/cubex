@@ -15,6 +15,7 @@ import constMod from '../../server/src/lib/api-v1-constants'
 import mcpMod from '../../server/src/mcp/build-server'
 import walMod from '../../server/src/lib/wal-checkpointer'
 import { unfinished } from './transform-pass-words'
+import { passed } from './ends-on-its-own'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { TRANSFORM_MAX_CALL_MS } = constMod as typeof import('../../server/src/lib/api-v1-constants')
@@ -131,5 +132,5 @@ main()
   .finally(() => {
     if (failures) { console.log(`\n${failures} failure(s)`); process.exit(1) }
     console.log('All transform-limit-stop assertions passed.')
-    process.exit(0)
+    passed()
   })

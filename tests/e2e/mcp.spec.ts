@@ -37,32 +37,18 @@ test('MCP: discover tools, read and write a sheet end-to-end', async () => {
   const tools = (await client.listTools()).tools.map(t => t.name).sort()
   // Keep this list sorted: it's compared with toEqual.
   expect(tools).toEqual([
-    'add_column', 'add_enrichment_field', 'add_list_rows', 'ai_visibility', 'append_rows', 'apply_setup',
-    'call_enrichment', 'call_setup', 'check_run_condition',
-    'clean_column', 'control_run', 'control_setup_run',
-    'create_download_link', 'create_upload_link', 'delete_column', 'delete_rows', 'delete_setup', 'export_csv',
-    'formula_column',
-    'get_balances', 'get_enrichment', 'get_list_fields', 'get_run_results', 'get_run_status',
-    'get_setup_call', 'get_setup_run',
-    'get_sheet', 'get_sheet_history', 'get_tool_guide', 'get_usage', 'get_version', 'get_workspace', 'hiring_signals',
-    'import_csv',
-    'list_models', 'list_prompt_starters', 'list_run_webhooks', 'list_runs', 'list_saved_keys', 'list_setup_versions',
-    'list_setups', 'list_tables', 'list_trash', 'lookup_column',
-    'manage_run_schedule', 'manage_run_webhook', 'manage_setup_version', 'manage_sheet', 'manage_sheet_webhook',
-    'manage_table', 'manage_view',
-    'read_rows',
-    'remove_duplicates',
-    'rename_column', 'restore_from_trash', 'restore_setup_version',
-    'run_ai_column', 'run_columns', 'run_enrichment', 'run_http_enrichment', 'save_setup', 'search_enrichments',
-    'set_auto_dedupe',
-    'set_auto_run',
-    'set_column_order', 'set_default_model', 'set_description', 'social_research', 'sort_sheet',
-    'transfer_rows', 'transform_column',
-    'undo_run', 'update_cells', 'waterfall_column', 'write_formula', 'write_run_condition',
+    'ai_visibility', 'append_rows', 'apply_setup', 'change_rows', 'check_run_condition', 'clean_column', 'control_run',
+    'file_link', 'find_enrichments', 'formula_column', 'get_account', 'get_list_fields', 'get_run', 'get_sheet',
+    'get_tool_guide', 'get_workspace', 'hiring_signals', 'import_csv', 'list_models', 'list_prompt_starters',
+    'list_run_webhooks', 'list_setup_versions', 'list_setups', 'list_trash', 'lookup_column', 'manage_column',
+    'manage_run_schedule', 'manage_run_webhook', 'manage_setup', 'manage_setup_version', 'manage_sheet',
+    'manage_sheet_webhook', 'manage_table', 'manage_view', 'read_rows', 'remove_duplicates', 'restore_from_trash',
+    'run_ai_column', 'run_columns', 'run_enrichment', 'run_http_enrichment', 'set_auto_run', 'set_default_model',
+    'social_research', 'stored_answers', 'transfer_rows', 'transform_column', 'waterfall_column', 'write_run_condition',
   ])
 
   // Discovery → read: resolve the seeded sheet, read its rows.
-  const tablesRes = parseResult(await client.callTool({ name: 'list_tables', arguments: {} }))
+  const tablesRes = parseResult(await client.callTool({ name: 'get_workspace', arguments: { all_tables: true } }))
   const sheet = tablesRes.tables.flatMap((t: any) => t.sheets).find((s: any) => s.id === sheetId)
   expect(sheet.row_count).toBe(3)
 
@@ -75,14 +61,14 @@ test('MCP: discover tools, read and write a sheet end-to-end', async () => {
 
   // Write path: add a column, append a row, update it by stable id.
   expect(parseResult(await client.callTool({
-    name: 'add_column', arguments: { sheet_id: sheetId, name: 'Status' },
+    name: 'manage_column', arguments: { action: 'add', sheet_id: sheetId, name: 'Status' },
   })).name).toBe('Status')
   const appended = parseResult(await client.callTool({
     name: 'append_rows', arguments: { sheet_id: sheetId, rows: [{ val: 'v3', Status: 'new' }] },
   }))
   expect(appended.rows).toHaveLength(1)
   const updated = parseResult(await client.callTool({
-    name: 'update_cells', arguments: { row_id: appended.rows[0].id, data: { Status: 'done' } },
+    name: 'change_rows', arguments: { action: 'update', row_id: appended.rows[0].id, data: { Status: 'done' } },
   }))
   expect(updated.data).toMatchObject({ val: 'v3', Status: 'done' })
 
@@ -93,7 +79,7 @@ test('MCP: discover tools, read and write a sheet end-to-end', async () => {
 
   // Sort permanently reorders; row ids survive.
   const sorted = parseResult(await client.callTool({
-    name: 'sort_sheet', arguments: { sheet_id: sheetId, column: 'val', direction: 'desc' },
+    name: 'manage_sheet', arguments: { action: 'sort', sheet_id: sheetId, column: 'val', direction: 'desc' },
   }))
   expect(sorted.rows_reordered).toBe(4)
   const after = parseResult(await client.callTool({ name: 'read_rows', arguments: { sheet_id: sheetId } }))
@@ -102,10 +88,10 @@ test('MCP: discover tools, read and write a sheet end-to-end', async () => {
 
   // Cleanup: delete the appended row + column.
   expect(parseResult(await client.callTool({
-    name: 'delete_rows', arguments: { sheet_id: sheetId, row_ids: [appended.rows[0].id] },
+    name: 'change_rows', arguments: { action: 'delete', sheet_id: sheetId, row_ids: [appended.rows[0].id] },
   })).deleted).toBe(1)
   expect(parseResult(await client.callTool({
-    name: 'delete_column', arguments: { sheet_id: sheetId, column: 'Status' },
+    name: 'manage_column', arguments: { action: 'delete', sheet_id: sheetId, column: 'Status' },
   })).deleted).toBe(true)
 
   await client.close()

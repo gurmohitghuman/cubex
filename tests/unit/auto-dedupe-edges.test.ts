@@ -30,6 +30,7 @@ import storeMod from '../../server/src/lib/auto-dedupe/store'
 import constMod from '../../server/src/lib/constants-dedupe'
 import type { DedupeMatch } from '../../server/src/lib/dedupe/key'
 import { v4 as uuid } from 'uuid'
+import { passed } from './ends-on-its-own'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { setAutoDedupe, autoDedupeView, insertAutoDedupeSetting } =
@@ -257,6 +258,6 @@ async function main() {
   })
 
   console.log(failures === 0 ? '\nauto-dedupe edges: all passed' : `\nauto-dedupe edges: ${failures} FAILED`)
-  process.exit(failures === 0 ? 0 : 1)
+  if (failures === 0) passed(); else process.exit(1)
 }
 main()

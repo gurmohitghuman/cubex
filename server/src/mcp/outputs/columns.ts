@@ -3,15 +3,11 @@ import { z } from 'zod';
 import { obj, open } from '../output-schema';
 import { bool, changed, info, nul, num, opt, str, strs, trash } from './shared';
 
-export const addColumn = obj({ name: str, description: opt(str), changed });
-export const setDescription = obj({
-  column: opt(str).describe('Left out for the sheet\'s own'), description: nul(str).describe('null: cleared'),
-  changed,
+// add, rename: name; describe: column and description; reorder: order; delete: deleted and its trash.
+export const manageColumn = obj({
+  name: opt(str), column: opt(str), description: opt(nul(str)).describe('null: cleared'), order: opt(strs),
+  deleted: opt(bool), trash: opt(trash), changed,
 });
-export const renameColumn = obj({ name: str, changed });
-export const deleteColumn = obj({ deleted: bool, trash, changed });
-export const sortSheet = obj({ rows_reordered: num, changed });
-export const setColumnOrder = obj({ order: strs, changed });
 
 const sheetRef = obj({ id: str, name: str, position: opt(num), row_count: opt(num) });
 // A sheet's incoming webhook (services/sheet-webhook.ts sheetWebhookView).
@@ -61,6 +57,7 @@ export const manageSheet = obj({
   trash: opt(trash), test: opt(sheetTest), added: opt(num).describe('test_add_rows'),
   apply: opt(info('apply_test: what it did or would do')),
   rows_copied: opt(num), columns: opt(strs), list_results_dropped: opt(info('List results that were not added')),
+  rows_reordered: opt(num).describe('sort'), description: opt(nul(str)).describe('describe; null: cleared'),
   ...madeWebhook, changed,
 });
 

@@ -80,8 +80,8 @@ export async function agentFindPosts(userId: string, tokenId: string, id: unknow
   }
   return {
     ok: { day: out.ok.day, runs: out.ok.runs, ...estimateJson(out.ok.estimate),
-      next: 'Follow each run with get_run_status (run_type enrichment). The posts land in each platform\'s sheet; '
-        + 'then run the steps on the Top posts view\'s rows.' },
+      next: 'Follow each run with get_run (action status, run_type enrichment). The posts land in each platform\'s '
+        + 'sheet; then run the steps on the Top posts view\'s rows.' },
     sheetId: rec.searches_sheet_id,
   };
 }

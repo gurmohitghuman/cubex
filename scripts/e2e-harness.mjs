@@ -44,6 +44,9 @@ const TEST_PASSWORD = 'password123'; // keep in sync with TEST_PASSWORD in tests
 const LIVE_SPEC = 'tests/e2e/enrich-live-smoke.spec.ts';
 const DO_BUILD = !process.argv.includes('--no-build');
 const PW_ARGS = process.argv.slice(2).filter(arg => arg !== '--no-build');
+// On GitHub also its own reporter: a failed or flaky test (passed on a retry) is an annotation on the pull request,
+// so a flaky one is seen, not only a line in a green job's log (WORKFLOW.md 7).
+const REPORTER = env.GITHUB_ACTIONS ? '--reporter=list,github' : '--reporter=list';
 
 class Refused extends Error {}
 const fail = (message, log) => { throw new Refused(log ? `${message}\n${tail(log, 20)}` : message); };
@@ -154,7 +157,7 @@ async function main() {
   if (setup?.status !== 200) fail(`setup failed: HTTP ${setup?.status ?? 'no answer'}`, SERVER_LOG);
 
   console.log(`[test] ${SPEC} ...`);
-  const playwright = track(start(process.execPath, [playwrightCli, 'test', SPEC, '--reporter=list', ...PW_ARGS], {
+  const playwright = track(start(process.execPath, [playwrightCli, 'test', SPEC, REPORTER, ...PW_ARGS], {
     env: { ...runEnv, E2E_BASE: `http://localhost:${PORT}`, E2E_TREG: tregBase,
       E2E_CLOCK_FILE: runEnv.CUBEX_TEST_CLOCK_FILE, E2E_SERVER_LOG: SERVER_LOG },
   }));

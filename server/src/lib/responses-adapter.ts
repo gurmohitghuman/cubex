@@ -166,7 +166,7 @@ export function usageOf(completion: { usage?: ChatLikeUsage }): CallUsage {
   };
 }
 
-// A row's tokens as the answers show them (preview_rows, get_run_results): null where not reported.
+// A row's tokens as the answers show them (preview_rows, get_run (action results)): null where not reported.
 export interface RowTokens { input: number | null; output: number | null; reasoning: number | null }
 export const tokensOf = (u: {
   promptTokens?: number | null; completionTokens?: number | null; reasoningTokens?: number | null;

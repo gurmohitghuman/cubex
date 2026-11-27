@@ -27,10 +27,10 @@ test('MCP refusals: a batch, a body that is not JSON, the media type and a null 
     return { status: res.status, body: await res.json() }
   }
 
-  // A batch, 2025-era or with the 2026-07-28 envelope, is refused whole: its add_column never runs.
+  // A batch, 2025-era or with the 2026-07-28 envelope, is refused whole: its manage_column's add never runs.
   const { sheetId } = await seedSheet(api, 1)
   const add = { jsonrpc: '2.0', id: 2, method: 'tools/call',
-    params: { name: 'add_column', arguments: { sheet_id: sheetId, name: 'Batched' } } }
+    params: { name: 'manage_column', arguments: { action: 'add', sheet_id: sheetId, name: 'Batched' } } }
   const legacy = [{ jsonrpc: '2.0', id: 1, method: 'tools/list' }, add]
   const modern = legacy.map(m => ({ ...m, params: { ...m.params, _meta: META } }))
   for (const [batch, headers] of [[legacy, {}], [modern, MODERN_HEADERS], [[], {}]] as const) {

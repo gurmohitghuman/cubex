@@ -47,10 +47,11 @@ test('MCP structure: table + sheets + CSV import lifecycle, all over MCP', async
   // Rename the table.
   expect((await call('manage_table', { action: 'rename', table_id: table.id, name: 'MCP Leads 2' })).name)
     .toBe('MCP Leads 2')
-  // Star it (the user's Favorites): list_tables says so.
+  // Star it (the user's Favorites): get_workspace with all_tables says so.
   expect(await call('manage_table', { action: 'star', table_id: table.id }))
     .toEqual({ id: table.id, name: 'MCP Leads 2', starred: true, changed: [] })
-  expect((await call('list_tables', {})).tables.find((t: any) => t.id === table.id).starred).toBe(true)
+  const all = await call('get_workspace', { all_tables: true })
+  expect(all.tables.find((t: any) => t.id === table.id).starred).toBe(true)
 
   // Sheets: create a second tab, rename it, reorder it first.
   const created = await call('manage_sheet', { action: 'create', table_id: table.id, name: 'Enriched' })
@@ -95,7 +96,7 @@ test('MCP structure: table + sheets + CSV import lifecycle, all over MCP', async
   expect(lastSheet.isError).toBe(true)
   expect(parseResult(lastSheet as any).error).toContain('at least one sheet')
   expect((await call('manage_table', { action: 'delete', table_id: table.id })).deleted).toBe(true)
-  expect((await call('list_tables', {})).tables.find((t: any) => t.id === table.id)).toBeUndefined()
+  expect((await call('get_workspace', { all_tables: true })).tables.find((t: any) => t.id === table.id)).toBeUndefined()
 
   await client.close()
 })

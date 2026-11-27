@@ -1,5 +1,5 @@
 // GET /v1/saved-keys: the saved API keys by name and where each is used, never
-// a value (services/saved-key-uses.ts, shared with MCP list_saved_keys).
+// a value (services/saved-key-uses.ts, shared with MCP get_account (action saved_keys)).
 // ?name= narrows it to one key; ?after= pages on (next_after). 'read' scope.
 import express from 'express';
 import { requireScope, TokenAuthRequest } from '../middleware/access-token-auth';

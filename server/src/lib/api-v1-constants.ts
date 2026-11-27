@@ -24,10 +24,10 @@ export const API_V1_MAX_ROWS_PAGE = 500;
 export const MCP_MAX_ROWS_PAGE = 100;
 // read_rows / rows/query `row_ids`: the most rows one read names (services/rows-by-id.ts).
 export const ROWS_BY_ID_MAX = 1000;
-// get_run_results with include_answers: stored answers can be large (a few KB each), so such a page is short.
+// get_run (action results) with include_answers: stored answers can be large (a few KB each), so such a page is short.
 export const ANSWERS_PAGE_MAX = 10;
 // Over MCP a read by id keeps rows up to about this many characters and lists
-// the rest in unread_ids, as export_csv does (MCP_EXPORT_MAX_CHARS below).
+// the rest in unread_ids, as read_rows' format csv does (MCP_EXPORT_MAX_CHARS below).
 export const MCP_ROWS_BY_ID_MAX_CHARS = 40_000;
 
 // Batch caps per call. The rows-per-sheet cap still governs on top; these
@@ -39,6 +39,11 @@ export const API_V1_MAX_BATCH_UPDATES = 1000;
 export const TRANSFER_STARTS_PER_MIN = 10;
 export const TRANSFER_MAX_ROWS = 10000;
 export const TRANSFER_MAX_STORED_BYTES = 32 * 1024 * 1024;
+// A move's one transaction writes each row about three times (into the destination, into the trash, and zeroed out
+// of the source): 30 MB of rows wrote 77 MB of WAL, past journal_size_limit. Half a copy's cap keeps it under, for
+// the rows it moves: rows auto-dedupe replaces in the destination (keep newest) go to the trash in the same
+// transaction and aren't counted (TODO.md: "transfer_rows counts the rows auto-dedupe replaces").
+export const TRANSFER_MAX_MOVE_BYTES = TRANSFER_MAX_STORED_BYTES / 2;
 export const TRANSFER_MAX_WRITER_MS = 2000;
 export const TRANSFER_SCAN_BATCH = 250;
 
@@ -85,7 +90,7 @@ export const MCP_RUN_STARTS_PER_MIN = 30;
 // each one writes as many rows as the sheet holds, and agents can loop.
 export const SHEET_COPIES_PER_MIN = 5;
 
-// export_csv (MCP) returns the CSV inline, in the agent's context, so it stops
+// read_rows' format csv (MCP) returns the CSV inline, in the agent's context, so it stops
 // adding rows at this many characters and says how many more matched. Claude
 // Code moves tool results over ~25k tokens out to a file, and ~50k characters
 // is where clients start spilling; 40k stays under both. A whole sheet of any
@@ -97,7 +102,7 @@ export const MCP_EXPORT_MAX_CHARS = 40_000;
 export const FILE_LINK_TTL_MINUTES = 15;
 export const FILE_LINK_TOKEN_PATTERN = /^[0-9a-f]{64}$/;
 
-// Idempotency keys on row writes (append_rows, update_cells and their REST
+// Idempotency keys on row writes (append_rows, change_rows' update and their REST
 // routes; lib/write-idempotency.ts): a key replays its first answer for a day,
 // on the ledger runs use. A user keeps the newest KEYS_MAX of them (run and
 // transfer keys don't count); a one-row update's stored answer keeps the row's
@@ -115,7 +120,7 @@ export const IDEMPOTENT_WRITE_KEY_MAX_CHARS = 200;
 export const IDEMPOTENT_WRITE_PRUNE_ROWS = 250;
 export const IDEMPOTENT_WRITE_PRUNE_APPENDS = 25;
 
-// list_saved_keys / GET /api/v1/saved-keys. Without a name: at most KEYS_LISTED
+// get_account (action saved_keys) / GET /api/v1/saved-keys. Without a name: at most KEYS_LISTED
 // keys a call (keys_count is whole; `after` pages on) and BRIEF places and
 // setups a key. With a name: up to USES_LISTED of each. Every count is whole.
 export const SAVED_KEYS_LISTED = 20;

@@ -15,6 +15,7 @@ import path from 'node:path'
 import { createRequire } from 'node:module'
 import { v4 as uuid } from 'uuid'
 import type BetterSqlite from 'better-sqlite3'
+import { passed } from './ends-on-its-own'
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 const Database = createRequire(path.resolve('server/src/queue.ts'))('better-sqlite3') as typeof BetterSqlite
@@ -172,4 +173,4 @@ await ok('a use is written in turn with the checkpoint worker: one write, after 
 await closeWalCheckpointer()
 if (failures) { console.log(`${failures} failed`); process.exit(1) }
 console.log('all passed')
-process.exit(0)
+passed()

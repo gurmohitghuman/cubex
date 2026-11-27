@@ -49,7 +49,7 @@ export function aiVisibilityForSheet(userId: string, sheetId: string): AiVisibil
     .get(sheetId, userId) as AiVisibilityRecord | undefined) ?? null;
 }
 
-// A table by its id or by its questions sheet's id (what list_tables shows).
+// A table by its id or by its questions sheet's id (what get_workspace (all_tables) shows).
 export const aiVisibilityFor = (userId: string, idOrSheet: unknown): AiVisibilityRecord | null =>
   (typeof idOrSheet === 'string'
     ? aiVisibilityRecord(userId, idOrSheet) ?? aiVisibilityForSheet(userId, idOrSheet) : null);

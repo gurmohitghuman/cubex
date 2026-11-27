@@ -5,8 +5,8 @@
 // once and the open's time is written when the write lock is free (lib/table-opened.ts), to the millisecond, never
 // moved back. Neither moves updated_at. PATCH /v1/tables/:id takes starred, alone or with name: a starred that isn't
 // true or false, a rename refused or a star refused changes nothing. manage_table star and unstar answer the
-// table with changed [], and list_tables shows both fields, checked against the tools' output schemas strictly (as
-// e2e does). A table in the trash, a hidden working table and another account's are not found.
+// table with changed [], and get_workspace with all_tables shows both fields, checked against the tools' output
+// schemas strictly (as e2e does). A table in the trash, a hidden working table and another account's are not found.
 import assert from 'node:assert/strict'
 import type { AddressInfo } from 'node:net'
 
@@ -188,12 +188,12 @@ try {
     assert.equal((await call('PATCH', `/api/v1/tables/${theirs}`, token, { starred: true })).status, 404)
   })
 
-  await check('manage_table star and unstar answer the table with changed []; list_tables shows both fields',
+  await check('manage_table star and unstar answer the table with changed []; all_tables shows both fields',
     async () => {
       const star = await tool('manage_table', { action: 'star', table_id: people })
       assert.ok(!star.isError, star.content[0].text)
       assert.deepEqual(star.structuredContent, { id: people, name: 'People', starred: true, changed: [] })
-      const listed = await tool('list_tables', {})
+      const listed = await tool('get_workspace', { all_tables: true })
       assert.ok(!listed.isError, listed.content[0].text)
       const tables = (listed.structuredContent as { tables: Listed[] }).tables
       const p = tables.find(x => x.id === people)!

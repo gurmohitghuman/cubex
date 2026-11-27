@@ -111,7 +111,8 @@ test('a run waiting on a waterfall says so in the app, /api/v1 and MCP; paused, 
     held_by: { run_type: 'waterfall', run_id: holder, column_name: COLUMN, status: 'running' },
   })
   expect(waiting.sheet_id).toBeUndefined()
-  expect((await call(mcp, 'get_run_status', { run_type: 'http', run_id: readerId })).waiting).toEqual(waiting)
+  expect((await call(mcp, 'get_run', {
+    action: 'status', run_type: 'http', run_id: readerId })).waiting).toEqual(waiting)
   expect((await listed(api, 'http', sheetId, readerId))!.waiting).toEqual(waiting)
 
   // The app: the line, and its link to the waterfall's column and drawer.

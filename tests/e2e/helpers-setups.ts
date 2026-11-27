@@ -30,7 +30,7 @@ export async function sheetWith(api: APIRequestContext, tableId: string | null, 
 
 export async function waitSetup(client: Client, id: string) {
   let last: any
-  await expect.poll(async () => (last = await call(client, 'get_setup_run', { setup_run_id: id })).status,
+  await expect.poll(async () => (last = await call(client, 'get_run', { action: 'setup', setup_run_id: id })).status,
     { timeout: 60_000 }).toMatch(/done|failed|cancelled/)
   return last
 }

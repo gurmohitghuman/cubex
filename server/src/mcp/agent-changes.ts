@@ -42,6 +42,326 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
     version: 'v0.8.47',
     changes: [
       {
+        change: 'renamed',
+        tools: ['update_cells'],
+        replaced_by: 'change_rows',
+        summary: 'update_cells is now change_rows with action "update": the same row_id and data, or sheet_id and '
+          + 'updates, and idempotency_key.',
+      },
+      {
+        change: 'renamed',
+        tools: ['delete_rows'],
+        replaced_by: 'change_rows',
+        summary: 'delete_rows is now change_rows with action "delete": the same sheet_id and row_ids.',
+      },
+      {
+        change: 'renamed',
+        tools: ['add_column'],
+        replaced_by: 'manage_column',
+        summary: 'add_column is now manage_column with action "add": the same sheet_id, name and description.',
+      },
+      {
+        change: 'renamed',
+        tools: ['rename_column'],
+        replaced_by: 'manage_column',
+        summary: 'rename_column is now manage_column with action "rename": the same sheet_id, column and new_name.',
+      },
+      {
+        change: 'renamed',
+        tools: ['delete_column'],
+        replaced_by: 'manage_column',
+        summary: 'delete_column is now manage_column with action "delete": the same sheet_id and column.',
+      },
+      {
+        change: 'renamed',
+        tools: ['set_column_order'],
+        replaced_by: 'manage_column',
+        summary: 'set_column_order is now manage_column with action "reorder": the same sheet_id and order.',
+      },
+      {
+        change: 'renamed',
+        tools: ['set_description'],
+        replaced_by: 'manage_column',
+        summary: 'set_description is now manage_column with action "describe": the same sheet_id, column and '
+          + 'description.',
+        details: 'A column\'s is manage_column with action "describe" and the same sheet_id, column and description; '
+          + 'a sheet\'s own (no column) is manage_sheet with action "describe", sheet_id and description.',
+      },
+      {
+        change: 'renamed',
+        tools: ['sort_sheet'],
+        replaced_by: 'manage_sheet',
+        summary: 'sort_sheet is now manage_sheet with action "sort": the same sheet_id, column and direction, '
+          + 'without table_id.',
+      },
+      {
+        change: 'renamed',
+        tools: ['export_csv'],
+        replaced_by: 'read_rows',
+        summary: 'export_csv is now read_rows with format "csv": the same sheet_id, columns, where and view, and '
+          + 'the same answer.',
+        details: 'Call read_rows with format "csv" and the same sheet_id, columns, where and view; its answer adds '
+          + 'data_version and row_generation, and other read_rows fields are refused with it.',
+      },
+      {
+        change: 'changed',
+        tools: ['manage_sheet'],
+        summary: 'manage_sheet takes action "sort" (column, direction) and "describe" (description) on a sheet_id '
+          + 'alone: only its other actions need table_id.',
+      },
+      {
+        change: 'changed',
+        tools: ['read_rows'],
+        summary: 'read_rows takes format "csv": the rows as CSV text in csv, from columns, where and view only, cut '
+          + 'at 40,000 characters as export_csv was.',
+        details: 'The answer adds sheet_id, sheet_name, row_count and columns, and when cut, matching_rows, '
+          + 'truncated and rest.',
+      },
+      {
+        change: 'renamed',
+        tools: ['get_run_status'],
+        replaced_by: 'get_run',
+        summary: 'get_run_status is now get_run with action "status": the same run_type, run_id and wait_seconds, '
+          + 'and the same answer.',
+      },
+      {
+        change: 'renamed',
+        tools: ['get_run_results'],
+        replaced_by: 'get_run',
+        summary: 'get_run_results is now get_run with action "results": the same run_type, run_id, status_filter, '
+          + 'cursor, limit and include_answers, and the same answer.',
+      },
+      {
+        change: 'renamed',
+        tools: ['list_runs'],
+        replaced_by: 'get_run',
+        summary: 'list_runs is now get_run with action "list": the same sheet_id, filter and limit, and the same '
+          + 'answer.',
+      },
+      {
+        change: 'renamed',
+        tools: ['get_setup_run'],
+        replaced_by: 'get_run',
+        summary: 'get_setup_run is now get_run with action "setup": the same setup_run_id, sheet_id, setup_id, '
+          + 'wait_seconds, results_from and limit, and the same answer.',
+      },
+      {
+        change: 'renamed',
+        tools: ['get_balances'],
+        replaced_by: 'get_account',
+        summary: 'get_balances is now get_account with action "balances", and the same answer.',
+      },
+      {
+        change: 'renamed',
+        tools: ['get_usage'],
+        replaced_by: 'get_account',
+        summary: 'get_usage is now get_account with action "usage": the same sheet_id, group_by, range, from, to and '
+          + 'limit, and the same answer.',
+      },
+      {
+        change: 'renamed',
+        tools: ['list_saved_keys'],
+        replaced_by: 'get_account',
+        summary: 'list_saved_keys is now get_account with action "saved_keys": the same name and after, and the same '
+          + 'answer.',
+      },
+      {
+        change: 'renamed',
+        tools: ['get_version'],
+        replaced_by: 'get_account',
+        summary: 'get_version is now get_account with action "version": the same since, and the same answer.',
+      },
+      {
+        change: 'renamed',
+        tools: ['list_tables'],
+        replaced_by: 'get_workspace',
+        summary: 'list_tables is now get_workspace with all_tables: true, and the same answer: every table with its '
+          + 'sheets.',
+      },
+      {
+        change: 'renamed',
+        tools: ['get_sheet_history'],
+        replaced_by: 'get_sheet',
+        summary: 'get_sheet_history is now get_sheet with history: true: the same sheet_id, column, before and '
+          + 'limit, and the same answer.',
+      },
+      {
+        change: 'renamed',
+        tools: ['search_enrichments'],
+        replaced_by: 'find_enrichments',
+        summary: 'search_enrichments is now find_enrichments with action "search": the same query, and the same '
+          + 'answer.',
+      },
+      {
+        change: 'renamed',
+        tools: ['get_enrichment'],
+        replaced_by: 'find_enrichments',
+        summary: 'get_enrichment is now find_enrichments with action "get": the same tool_id, and the same answer.',
+      },
+      {
+        change: 'changed',
+        tools: ['get_workspace'],
+        summary: 'get_workspace takes all_tables: true, which answers every table with its sheets (list_tables\' '
+          + 'answer) in place of the overview.',
+      },
+      {
+        change: 'changed',
+        tools: ['get_sheet'],
+        summary: 'get_sheet takes history: true with column, before and limit, which answers the sheet\'s change log '
+          + '(get_sheet_history\'s answer) in place of its details.',
+      },
+      {
+        change: 'renamed',
+        tools: ['undo_run'],
+        replaced_by: 'control_run',
+        summary: 'undo_run is now control_run with action "undo": the same run_type and run_id, or sheet_id and '
+          + 'column, and dry_run, and the same answer.',
+      },
+      {
+        change: 'renamed',
+        tools: ['control_setup_run'],
+        replaced_by: 'control_run',
+        summary: 'control_setup_run is now control_run with setup_run_id and action pause, resume or cancel, and the '
+          + 'same answer.',
+      },
+      {
+        change: 'renamed',
+        tools: ['save_setup'],
+        replaced_by: 'manage_setup',
+        summary: 'save_setup is now manage_setup with action "save": the same sheet_id, name, description, columns, '
+          + 'include_upstream and preview, and the same answer.',
+      },
+      {
+        change: 'renamed',
+        tools: ['delete_setup'],
+        replaced_by: 'manage_setup',
+        summary: 'delete_setup is now manage_setup with action "delete": the same setup_id, and the same answer.',
+      },
+      {
+        change: 'renamed',
+        tools: ['restore_setup_version'],
+        replaced_by: 'manage_setup_version',
+        summary: 'restore_setup_version is now manage_setup_version with action "restore": the same sheet_id, '
+          + 'version_id and dry_run, and the same answer.',
+      },
+      {
+        change: 'renamed',
+        tools: ['write_formula'],
+        replaced_by: 'formula_column',
+        summary: 'write_formula is now formula_column with from_words (it was words) and model: the same answer, with '
+          + 'changed: [], and nothing is saved.',
+      },
+      {
+        change: 'renamed',
+        tools: ['set_auto_dedupe'],
+        replaced_by: 'remove_duplicates',
+        summary: 'set_auto_dedupe is now remove_duplicates with keep_doing in place of columns, and the same answer.',
+        details: 'Send remove_duplicates keep_doing: { column, match, phone_country, keep } to turn it on or change '
+          + 'it, or keep_doing: false to turn it off (it was off: true); it answers auto_dedupe and changed as before.',
+      },
+      {
+        change: 'renamed',
+        tools: ['add_enrichment_field'],
+        replaced_by: 'stored_answers',
+        summary: 'add_enrichment_field is now stored_answers with action "add_column": the same sheet_id, column, '
+          + 'json_path, column_name and row_id, and the same answer.',
+      },
+      {
+        change: 'renamed',
+        tools: ['add_list_rows'],
+        replaced_by: 'stored_answers',
+        summary: 'add_list_rows is now stored_answers with action "add_rows": the same sheet_id, column, fields and '
+          + 'dedupe_path, and the same answer.',
+      },
+      {
+        change: 'renamed',
+        tools: ['create_upload_link'],
+        replaced_by: 'file_link',
+        summary: 'create_upload_link is now file_link with action "upload": the same sheet_id, mode, setup_id, '
+          + 'max_cost_usd, allow_unpriced, models and webhook_id, and the same answer.',
+      },
+      {
+        change: 'renamed',
+        tools: ['create_download_link'],
+        replaced_by: 'file_link',
+        summary: 'create_download_link is now file_link with action "download": the same sheet_id, columns, where, '
+          + 'view and format, and the same answer.',
+        details: 'Call file_link with action "download" and the same fields; a setup call\'s items take setup_run_id, '
+          + 'the call\'s id as get_run (action setup) takes it (it was setup_call_id).',
+      },
+      {
+        change: 'changed',
+        tools: ['control_run'],
+        summary: 'control_run takes action "undo" (undo_run\'s), and setup_run_id with pause, resume or cancel '
+          + '(control_setup_run\'s).',
+        details: 'An undo needs the write scope, its dry run read; every other action still needs run.',
+      },
+      {
+        change: 'changed',
+        tools: ['formula_column'],
+        summary: 'formula_column takes from_words (with model) in place of formula: one small AI call writes a '
+          + 'formula, and nothing is saved (write_formula\'s).',
+        details: 'from_words needs the run scope and costs money; pass the formula it answers as formula to fill the '
+          + 'column.',
+      },
+      {
+        change: 'changed',
+        tools: ['remove_duplicates'],
+        summary: 'remove_duplicates takes keep_doing in place of columns, keep and dry_run: one row per key is kept as '
+          + 'rows arrive (set_auto_dedupe\'s).',
+        details: 'keep_doing needs the write scope; rows already there stay, so call with columns once to remove '
+          + 'those.',
+      },
+      {
+        change: 'changed',
+        tools: ['manage_setup_version'],
+        summary: 'manage_setup_version takes action "restore" (restore_setup_version\'s), and its save, rename and '
+          + 'delete now answer changed: [].',
+      },
+      {
+        change: 'renamed',
+        tools: ['call_setup'],
+        replaced_by: 'apply_setup',
+        summary: 'call_setup is apply_setup with items instead of sheet_id: a saved setup run on 1-100 items without a '
+          + 'sheet, like a function.',
+        details: 'Send apply_setup the same setup_id, items and choices with no sheet_id: estimate_only still defaults '
+          + 'to true, and the answer is the same setup_call.',
+      },
+      {
+        change: 'renamed',
+        tools: ['get_setup_call'],
+        replaced_by: 'get_run',
+        summary: 'get_setup_call is get_run with action "setup": a call on items answers there, with its results paged '
+          + 'as before.',
+        details: 'Call get_run with action "setup" and the call\'s id as setup_run_id (it was setup_call_id); '
+          + 'wait_seconds, results_from and limit work as before.',
+      },
+      {
+        change: 'renamed',
+        tools: ['call_enrichment'],
+        replaced_by: 'run_enrichment',
+        summary: 'call_enrichment is run_enrichment with items instead of sheet_id: one enrichment tool on 1-1,000 '
+          + 'items without a sheet.',
+        details: 'Send run_enrichment the same tool_id, items, fields, max_cost_usd, allow_unpriced and webhook_id '
+          + 'with no sheet_id: estimate_only still defaults to true with items (on a sheet it stays false).',
+      },
+      {
+        change: 'changed',
+        tools: ['apply_setup', 'run_enrichment'],
+        summary: 'apply_setup and run_enrichment take items instead of sheet_id, and get_run (action setup) answers a '
+          + 'call on items with each item\'s outputs.',
+        details: 'get_run\'s setup also takes wait_seconds, for any setup run. With items, the arguments only a sheet '
+          + 'takes (inputs, names, first_rows; column_name, outputs and the rest) are refused by name.',
+      },
+      {
+        change: 'server',
+        summary: 'transfer_rows with a move takes rows holding at most 16 MB a call (a copy still 32 MB): a move '
+          + 'past it is refused, naming both caps, and nothing moves.',
+        details: 'A move writes each row three times in one transaction, so 32 MB of rows passed the database\'s '
+          + 'room. The refusal says how much the call picked: move fewer rows, or copy a single row past the cap, '
+          + 'then change_rows with action "delete".',
+      },
+      {
         change: 'changed',
         tools: ['manage_table'],
         summary: 'manage_table takes action star or unstar with table_id: a starred table is in the user\'s '
@@ -51,9 +371,9 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
       },
       {
         change: 'changed',
-        tools: ['list_tables'],
-        summary: 'list_tables gives each table starred (in the user\'s Favorites) and last_opened_at (when the user '
-          + 'last opened it in the app, null until then).',
+        tools: ['get_workspace'],
+        summary: 'get_workspace with all_tables gives each table starred (in the user\'s Favorites) and last_opened_at '
+          + '(when the user last opened it in the app, null until then).',
         details: 'Use them to find the tables the user works in. GET /api/v1/tables answers the same.',
       },
     ],

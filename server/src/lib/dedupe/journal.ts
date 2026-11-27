@@ -50,6 +50,12 @@ export function dropDedupeChunk(sheetId: string, chunk: number): void {
   db.prepare('DELETE FROM dedupe_chunks WHERE sheet_id = ? AND chunk = ?').run(sheetId, chunk);
 }
 
+// A chunk whose rows didn't all fit one slice (services/dedupe-remove.ts): it keeps the ones still to go.
+export function keepDedupeChunk(sheetId: string, chunk: number, rowIds: number[]): void {
+  db.prepare('UPDATE dedupe_chunks SET plan = ? WHERE sheet_id = ? AND chunk = ?')
+    .run(Buffer.from(Float64Array.from(rowIds).buffer), sheetId, chunk);
+}
+
 export function dedupeJobs(): DedupeJob[] {
   return db.prepare('SELECT sheet_id, user_id, floor, row_count, stage FROM dedupe_jobs').all() as DedupeJob[];
 }

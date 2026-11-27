@@ -4,7 +4,7 @@
 // this thread held alone (a pause of the whole process let off, loop-watch.ts); the API connection is
 // watched (sqlite-write-probe.ts) for any checkpoint it ran, any commit that ran SQLite's own checkpoint and any
 // that started the WAL over. With none of those, no checkpoint's disk sync ran on the API thread. Also the WAL's
-// peak against journal_size_limit, SQLite's own checkpoint back at DB_AUTO_CHECKPOINT_FRAMES afterwards, and the
+// peak against journal_size_limit, SQLite's own checkpoint at the room afterwards (the WAL watch runs), and the
 // next commit there neither checkpointing nor starting the WAL over (the job left the WAL started over). Each
 // measure prints its numbers (on a pass too, so a Windows run keeps them) and the transactions inside its longest
 // stretch. Bulk writers the job left going in the background (an undo dropping its journal) are waited for and
@@ -14,14 +14,16 @@ import { performance } from 'node:perf_hooks'
 import dbMod from '../../server/src/lib/db'
 import constMod from '../../server/src/lib/constants'
 import walMod from '../../server/src/lib/wal-checkpointer'
-import bulkMod from '../../server/src/lib/bulk-slices'
+import watchMod from '../../server/src/lib/wal-watch'
+import roomMod from '../../server/src/lib/wal-room'
 import { sqliteWriteProbe, transactionLine } from './sqlite-write-probe'
 import { heldText, loopWatch, type LoopWatched } from './loop-watch'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { DB_AUTO_CHECKPOINT_FRAMES, WAL_BULK_PAUSE_FRAMES } = constMod as typeof import('../../server/src/lib/constants')
 const { checkpointAsked, checkpointInBackground, setCheckpointDelayForTests, takeWalCheckpointerStats,
   walCheckpointerIdle } = walMod as typeof import('../../server/src/lib/wal-checkpointer')
-const { autoCheckpointHolders } = bulkMod as typeof import('../../server/src/lib/bulk-slices')
+const { bulkWritersRunning } = watchMod as typeof import('../../server/src/lib/wal-watch')
+const { walRoomFrames } = roomMod as typeof import('../../server/src/lib/wal-room')
 
 export const SLOW_CHECKPOINT_MS = 300
 // The event loop's longest stretch allowed while a bulk writer runs, by this thread alone (loop-watch.ts).
@@ -73,7 +75,8 @@ export function bulkWalKit() {
   // `pastAuto`: enough for it to pass DB_AUTO_CHECKPOINT_FRAMES, where a commit with SQLite's own checkpoint on
   // would copy the WAL back inside it. `turns`: no two slices written in one turn of the event loop.
   async function measure(
-    label: string, job: () => Promise<unknown>, opts: { pause?: boolean; pastAuto?: boolean; turns?: boolean } = {},
+    label: string, job: () => Promise<unknown>,
+    opts: { pause?: boolean; pastAuto?: boolean; turns?: boolean; loop?: boolean } = {},
   ) {
     // The worker started first: starting it isn't part of the job.
     await checkpointInBackground()
@@ -95,7 +98,7 @@ export function bulkWalKit() {
       await job()
       ms = performance.now() - t0
       // What the job left going in the background (an undo drops its journal so) is measured too.
-      for (const end = Date.now() + 120_000; autoCheckpointHolders() > 0 && Date.now() < end;) {
+      for (const end = Date.now() + 120_000; bulkWritersRunning() > 0 && Date.now() < end;) {
         await new Promise(r => setTimeout(r, 5))
       }
     } finally {
@@ -105,8 +108,8 @@ export function bulkWalKit() {
       setCheckpointDelayForTests(0)
     }
     await walCheckpointerIdle()
-    // The next commit on the API connection, SQLite's own checkpoint back on: the job left nothing for it to copy
-    // back and the WAL started over, so it neither checkpoints nor starts the WAL over itself.
+    // The next commit on the API connection: the job left nothing for it to copy back and the WAL started over, so
+    // it neither checkpoints nor starts the WAL over itself.
     db.transaction(() => { after.run() }).immediate()
     const w = probe.read()
     const k = takeWalCheckpointerStats()
@@ -123,14 +126,17 @@ export function bulkWalKit() {
     console.log(`        in the stretch this thread held longest: ${held || 'no transaction'}`)
     if (opts.turns) console.log(`        slices written in a turn another slice was written in: ${sharedTurns}`)
     const startedOver = records.filter(r => r.startedOver).map(transactionLine)
-    assert.ok(watched.ownMs < LOOP_LIMIT_MS, `the event loop was held ${watched.ownMs.toFixed(0)} ms by this thread`)
+    // loop: false where a job's limit isn't the event loop's on this machine (a caller says why).
+    if (opts.loop !== false) {
+      assert.ok(watched.ownMs < LOOP_LIMIT_MS, `the event loop was held ${watched.ownMs.toFixed(0)} ms by this thread`)
+    }
     assert.equal(w.checkpoints, 0, 'checkpoints run on the API connection')
     assert.equal(w.ownCheckpoints, 0, 'commits on the API connection that ran SQLite\'s own checkpoint')
     assert.deepEqual(startedOver, [], 'transactions on the API connection that started the WAL over')
     assert.equal(k.onThisThread, 0, 'checkpoints run on this thread')
     assert.ok(peakBytes < sizeLimit, `the WAL peaked at ${peakBytes} bytes, past journal_size_limit`)
-    assert.equal(auto(), DB_AUTO_CHECKPOINT_FRAMES, 'SQLite\'s own checkpoint is back on')
-    assert.equal(autoCheckpointHolders(), 0, 'bulk writers still holding SQLite\'s own checkpoint')
+    assert.equal(auto(), walRoomFrames(db), 'SQLite\'s own checkpoint waits for the room (the WAL watch runs)')
+    assert.equal(bulkWritersRunning(), 0, 'bulk writers still counted as running')
     assert.deepEqual([...new Set(nested)], [], 'transactions nested in a slice (savepoints)')
     if (opts.pastAuto) {
       assert.ok(w.mostWalFrames >= DB_AUTO_CHECKPOINT_FRAMES,

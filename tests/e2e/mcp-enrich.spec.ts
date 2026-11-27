@@ -31,11 +31,11 @@ test('search, estimate_only creates nothing, run, status cost (V11, V14)', async
   const { sheetId } = await seedLeadRows(api, LEADS)
   const client = await mcpClient(await makeAccessToken(api, ['read', 'write', 'run'], 'e2e mcp enrich'))
 
-  const found = await call(client, 'search_enrichments', { query: 'work email' })
+  const found = await call(client, 'find_enrichments', { action: 'search', query: 'work email' })
   expect(found.tools.map((t: any) => t.tool_id)).toContain('treg.people.email.find')
-  const popular = await call(client, 'search_enrichments', {})
+  const popular = await call(client, 'find_enrichments', { action: 'search' })
   expect(popular.popular).toBe(true)
-  const tool = await call(client, 'get_enrichment', { tool_id: 'treg.people.email.find' })
+  const tool = await call(client, 'find_enrichments', { action: 'get', tool_id: 'treg.people.email.find' })
   expect(tool.inputs.map((i: any) => i.name)).toEqual(expect.arrayContaining(['domain', 'full_name']))
   expect(tool.presets[0].preset).toBe('verified_email')
   expect(tool.providers.length).toBeGreaterThan(1)
@@ -100,7 +100,8 @@ test('search, estimate_only creates nothing, run, status cost (V11, V14)', async
     sheet_id: sheetId, ...EMAIL_RUN, column_name: 'Other', idempotency_key: KEY,
   })).toContain('different arguments')
 
-  const results = await call(client, 'get_run_results', {
+  const results = await call(client, 'get_run', {
+    action: 'results',
     run_type: 'enrichment', run_id: started.run_id, status_filter: 'all',
   })
   expect(results.results).toHaveLength(3)
@@ -109,7 +110,7 @@ test('search, estimate_only creates nothing, run, status cost (V11, V14)', async
     expect(typeof r.cost_usd).toBe('number')
   }
   expect(results.results.some((r: any) => typeof r.found_by === 'string' && r.found_by)).toBe(true)
-  const listed = await call(client, 'list_runs', { sheet_id: sheetId })
+  const listed = await call(client, 'get_run', { action: 'list', sheet_id: sheetId })
   expect(listed.runs[0].enrichment.tool_id).toBe('treg.people.email.find')
   expect(listed.runs[0].cost_usd).toBeCloseTo(spent, 6)
   await api.dispose()
@@ -126,7 +127,8 @@ test('a column from stored answers: include_answers shows the paths, the column 
     inputs: { domain: 'Website' }, outputs: [{ field: 'name', column_name: 'Company name' }],
   })
   await waitMcpRun(client, started.run_id, ['completed'])
-  const page = await call(client, 'get_run_results', {
+  const page = await call(client, 'get_run', {
+    action: 'results',
     run_type: 'enrichment', run_id: started.run_id, status_filter: 'completed', include_answers: true, limit: 50,
   })
   expect(page.results.length).toBeLessThanOrEqual(10)
@@ -134,7 +136,7 @@ test('a column from stored answers: include_answers shows the paths, the column 
   expect(hit, 'an answer with an industry').toBeTruthy()
   const callsBefore = await tregCalls()
 
-  const added = await call(client, 'add_enrichment_field', {
+  const added = await call(client, 'stored_answers', { action: 'add_column',
     sheet_id: sheetId, column: 'Company data', json_path: '$.output.industry', column_name: 'Industry',
     row_id: hit.row_id,
   })
@@ -145,7 +147,7 @@ test('a column from stored answers: include_answers shows the paths, the column 
   expect(rows.find((r: any) => r.id === hit.row_id).data.Industry).toBe(String(hit.answer.output.industry))
   expect(await tregCalls()).toBe(callsBefore)
   // A path already a column is refused.
-  expect(await callError(client, 'add_enrichment_field', {
+  expect(await callError(client, 'stored_answers', { action: 'add_column',
     sheet_id: sheetId, column: 'Company data', json_path: '$.output.industry', column_name: 'Industry 2',
   })).toContain('already a column')
   await api.dispose()

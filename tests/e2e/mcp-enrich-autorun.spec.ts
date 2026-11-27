@@ -84,7 +84,8 @@ test(
 })
 
 async function waitMcpRunHttp(client: Awaited<ReturnType<typeof mcpClient>>, runId: string) {
-  await expect.poll(async () => (await call(client, 'get_run_status', { run_type: 'http', run_id: runId })).status,
+  await expect.poll(async () => (await call(client, 'get_run', {
+    action: 'status', run_type: 'http', run_id: runId })).status,
     { timeout: 30_000 }).toBe('completed')
 }
 

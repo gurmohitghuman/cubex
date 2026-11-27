@@ -1,9 +1,26 @@
-// The guides of the enrichment, waterfall and auto-run tools (guide.ts says what a guide holds).
+// The guides of the enrichment, waterfall, stored answers and auto-run tools (guide.ts says what a guide holds).
 import { RUN_IF_HELP } from '../run-if-schema';
 import { saveOnlyHelp } from '../save-only-schema';
 import type { ToolGuide } from './guide';
+import { ENRICH_ITEMS_TEXT } from './items';
 
 export const ENRICH_GUIDES: Record<string, ToolGuide> = {
+  find_enrichments: {
+    text: [
+      'search: Search treg.to\'s catalog of enrichment tools (work email, phone, person or company data, people or '
+        + 'companies lists, web search). No query: the popular jobs. Each tool has tool_id, kind (waterfall: treg asks '
+        + 'many providers in turn; single: one provider), its price, and adds_rows (its results become rows in '
+        + 'another sheet). needs_own_key: treg can\'t serve it on its own key, the team needs its own provider key at '
+        + 'treg.',
+      'get: One enrichment tool, ready for run_enrichment: its inputs (name, type, required; identity_sets lists the '
+        + 'inputs that are enough together; filter inputs narrow a search), its outputs (field names for '
+        + 'run_enrichment outputs; for a tool that adds rows, only the fields outside its results, which fill the '
+        + 'asking row; the results\' own fields come from real results), its price, and for a waterfall each provider '
+        + '(price, hit rate, the inputs it accepts, and with a treg key saved, access as treg\'s plan says: your_key '
+        + '(the team\'s own key), your_connection_metered, free, treg (treg\'s key), or null when the plan doesn\'t '
+        + 'say). The email finder also offers the verified_email preset.',
+    ],
+  },
   waterfall_column: {
     text: [
       'A value result_type can\'t read is no answer, and the next step runs. A row with none of a step\'s requires '
@@ -21,9 +38,27 @@ export const ENRICH_GUIDES: Record<string, ToolGuide> = {
       'A row whose exact lookup found something within the days set in Settings reuses it at $0.',
       'A row whose providers all answer 429 asks again for free (rate_limit_retries), then fails; lower concurrency '
         + 'if 429s go on.',
+      ...ENRICH_ITEMS_TEXT,
     ],
     fields: { run_if: RUN_IF_HELP, save_only: saveOnlyHelp('run_enrichment') },
     spendCap: true,
+  },
+  stored_answers: {
+    text: [
+      'add_column: Free: no treg calls and no requests. Find json_path in a stored answer: get_run (action results) '
+        + 'with include_answers:true shows them (paths start at the answer\'s root, e.g. '
+        + '$.output.company.linkedin_url or $.raw.location). Later runs of the column fill it too. It fills in the '
+        + 'background: its cells read "⏳ Processing..." and the sheet refuses other changes until done. A part of '
+        + 'an answer too big to keep, and columns that add rows to another sheet, are refused. Returns the column '
+        + 'and whether it is still filling: get_sheet\'s filling_columns says when it is done.',
+      'add_rows: Pick the fields to keep for a list job\'s results waiting for them (from get_list_fields), and add '
+        + 'those results as rows in the destination sheet, one row per result: free, the results are already paid '
+        + 'for. Each field becomes a column there (an existing column of that name is filled). dedupe_path (one of '
+        + 'the fields) skips a result whose value matches a row added before. The column keeps these fields, so '
+        + 'control_run rerun mode "empty" then runs the rest of the rows. Adding them costs nothing here, but '
+        + 'auto-runs on the destination sheet fill new rows there: auto_run lists them, as for append_rows.',
+      'Both need the write scope.',
+    ],
   },
   set_auto_run: {
     text: [

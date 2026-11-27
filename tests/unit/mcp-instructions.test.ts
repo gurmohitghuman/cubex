@@ -20,6 +20,7 @@ const FIELDS: Record<string, { tools: string[]; in: 'input' | 'output' }> = {
   aggregates: { tools: ['read_rows'], in: 'input' },
   include_status: { tools: ['read_rows'], in: 'input' },
   dry_run: { tools: ['remove_duplicates'], in: 'input' },
+  all_tables: { tools: ['get_workspace'], in: 'input' },
   estimate_only: {
     tools: ['run_ai_column', 'run_http_enrichment', 'run_enrichment', 'waterfall_column', 'apply_setup'], in: 'input',
   },

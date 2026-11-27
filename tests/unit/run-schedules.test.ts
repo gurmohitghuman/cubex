@@ -16,6 +16,7 @@ import http from 'node:http'
 import type { AddressInfo } from 'node:net'
 import assert from 'node:assert/strict'
 import { v4 as uuid } from 'uuid'
+import { passed } from './ends-on-its-own'
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 const prices = http.createServer((req, res) => {
@@ -264,4 +265,4 @@ await check('the cap per sheet, and delete', () => {
 prices.close()
 if (failures > 0) { console.error(`${failures} run-schedules check(s) failed`); process.exit(1) }
 console.log('run-schedules: all assertions passed')
-process.exit(0)
+passed()

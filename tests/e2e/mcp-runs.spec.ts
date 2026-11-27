@@ -30,7 +30,7 @@ async function pollStatus(client: Client, runType: string, runId: string, timeou
   let last: any = null
   while (Date.now() < deadline) {
     last = parseResult(await client.callTool({
-      name: 'get_run_status', arguments: { run_type: runType, run_id: runId },
+      name: 'get_run', arguments: { action: 'status', run_type: runType, run_id: runId },
     }))
     if (['completed', 'failed', 'cancelled'].includes(last?.status)) return last
     await new Promise(r => setTimeout(r, 750))
@@ -114,7 +114,7 @@ test('MCP runs: AI no-model error is actionable; scope denials name the scope', 
   })
   expect(controlDenied.isError).toBe(true)
   const statusOk = await noRun.callTool({
-    name: 'get_run_status', arguments: { run_type: 'ai', run_id: 'nonexistent' },
+    name: 'get_run', arguments: { action: 'status', run_type: 'ai', run_id: 'nonexistent' },
   })
   expect(parseResult(statusOk as any).error).toContain('Run not found') // read allowed, run just missing
   await noRun.close()

@@ -8,7 +8,7 @@ import { mcpClient, call, callError } from './helpers-mcp'
 import { choose } from './helpers-ui'
 
 // Saved views through every surface: REST create/list/update/delete and reads
-// through a view (rows/query, export), MCP get_sheet/read_rows/export_csv with
+// through a view (rows/query, export), MCP get_sheet/read_rows (also as CSV) with
 // a view, and the app: hide a column from its menu and the columns picker, new
 // view, switch views, a ready-made view, export "this view" or the whole
 // sheet; a column rename and delete rewrite every view. The run column is a
@@ -51,7 +51,8 @@ test('saved views and hidden columns: REST, MCP, the grid and export', async ({ 
   try {
     const ai = await call(client, 'run_ai_column', { sheet_id: sheetId, column_name: 'Fit', prompt: 'Is /val a fit?',
       model: 'deepseek/deepseek-v4-flash', target_row_ids: first.rows.map((r: { id: string }) => r.id) })
-    await expect.poll(async () => (await call(client, 'get_run_status', { run_type: 'ai', run_id: ai.run_id }))
+    await expect.poll(async () => (await call(client, 'get_run', {
+      action: 'status', run_type: 'ai', run_id: ai.run_id }))
       .status, { timeout: 30_000 }).toMatch(/completed|failed/)
   } finally {
     await api.delete('/api/settings/openrouter-key')
@@ -100,7 +101,7 @@ test('saved views and hidden columns: REST, MCP, the grid and export', async ({ 
   expect(meta.views[1].where).toEqual([{ column: 'Industry', operator: 'eq', value: 'saas' }])
   const mcpRows = await call(client, 'read_rows', { sheet_id: sheetId, view: 'SaaS', return_mode: 'count' })
   expect(mcpRows.count).toBe(3)
-  const mcpCsv = await call(client, 'export_csv', { sheet_id: sheetId, view: saas.id, columns: ['val'] })
+  const mcpCsv = await call(client, 'read_rows', { format: 'csv', sheet_id: sheetId, view: saas.id, columns: ['val'] })
   expect(mcpCsv.csv).toBe('"val"\r\n"v0"\r\n"v2"\r\n"v5"')
   expect(await callError(client, 'read_rows', { sheet_id: sheetId, view: 'Nope' })).toContain('No view "Nope"')
 

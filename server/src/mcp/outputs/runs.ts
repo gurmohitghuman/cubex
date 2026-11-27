@@ -44,7 +44,8 @@ export const writeRunCondition = obj({
   check: info('check_run_condition\'s answer for the rule written, with the rule'),
 });
 
-// The run (list_runs' fields), with what its type adds: enrichment, waterfall, providers, waiting. waited and
+// The run (get_run (action list)' fields), with what its type adds: enrichment, waterfall, providers, waiting. waited
+// and
 // retry_after_seconds only when a wait was asked for and every wait slot of the account was taken.
 export const getRunStatus = open({
   ...runSummary.shape,

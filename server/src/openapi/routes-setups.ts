@@ -1,3 +1,4 @@
+// Over 200 lines: one route list per area of the REST document: setups, setup runs, calls and versions.
 // /api/v1 routes: setups (a saved chain of filled columns) and setup versions
 // (a sheet's column setup kept by name) (api-v1-setups.ts, api-v1-setup-versions.ts).
 import { z } from 'zod';
@@ -6,12 +7,17 @@ import {
   MAX_SETUP_DESCRIPTION_CHARS, MAX_SETUP_NAME_CHARS, SETUP_FILE_FORMAT, SETUP_FILE_VERSION,
 } from '../lib/constants-setups';
 import { op, type RouteDoc } from './route-doc';
-import { toolBody } from './tool-schemas';
+import { actionBody, toolBody } from './tool-schemas';
+import { RESTORE_INPUT } from '../mcp/tools-setup-versions';
+import { SETUP_RUN_CONTROL_INPUT } from '../mcp/tools-setup-runs';
+import { SETUP_ITEMS } from '../mcp/setup-items';
+import { ENRICH_ITEMS } from '../mcp/enrich-items';
 
 const setupName = z.string().max(MAX_SETUP_NAME_CHARS);
 const setupDescription = z.string().max(MAX_SETUP_DESCRIPTION_CHARS).nullable();
 const columns = z.array(z.string()).min(1).describe('The filled columns to save, such as ["Fit (Output)"].');
 const upstream = z.boolean().optional().describe('Also save the filled columns they read. Default true.');
+const estimate_only = z.boolean().optional().describe('true prices it and starts nothing. Default false.');
 const named = z.object({ name: setupName.optional(), description: setupDescription.optional() });
 
 export const setupRoutes = (): RouteDoc[] => [
@@ -67,7 +73,7 @@ export const setupRoutes = (): RouteDoc[] => [
     description: "Same as MCP's apply_setup, but estimate_only defaults to false here. Saved keys need secrets. "
       + 'A missing input or a name taken answers missing or taken.',
     body: toolBody('apply_setup', {
-      omit: ['sheet_id', 'setup_id', 'estimate_only'],
+      omit: ['sheet_id', 'items', 'setup_id', 'estimate_only'],
       extend: { estimate_only: z.boolean().optional().describe('true prices it and starts nothing. Default false.') },
     }),
     responses: { 200: 'The estimate.', 201: 'Started: the setup_run.' },
@@ -75,12 +81,12 @@ export const setupRoutes = (): RouteDoc[] => [
   op({
     method: 'post', path: '/setups/{setupId}/calls', operationId: 'callSetup', tag: 'setups', scope: 'run',
     summary: 'Run a saved setup on 1-100 items without a sheet, or price that first.',
-    description: "Same as MCP's call_setup, but estimate_only defaults to false here. Each item is an object keyed by "
-      + "the setup's input names. Poll GET /setup-calls/{callId} for each item's outputs; "
+    description: "Same as MCP's apply_setup with items, but estimate_only defaults to false here. Each item is an "
+      + "object keyed by the setup's input names. Poll GET /setup-calls/{callId} for each item's outputs; "
       + 'POST /setup-runs/{runId}/control with the call id pauses, resumes or cancels it.',
-    body: toolBody('call_setup', {
-      omit: ['setup_id', 'estimate_only'],
-      extend: { estimate_only: z.boolean().optional().describe('true prices it and starts nothing. Default false.') },
+    body: toolBody('apply_setup', {
+      pick: ['models', 'webhook_id', 'max_cost_usd', 'allow_unpriced'],
+      extend: { items: SETUP_ITEMS, estimate_only },
     }),
     responses: { 200: 'The estimate.', 201: 'Started: the setup_call.' },
   }),
@@ -103,12 +109,12 @@ export const setupRoutes = (): RouteDoc[] => [
   op({
     method: 'post', path: '/enrichments/{toolId}/calls', operationId: 'callEnrichment', tag: 'enrich', scope: 'run',
     summary: 'Run one enrichment tool on 1-1,000 items without a sheet, or price that first.',
-    description: "Same as MCP's call_enrichment, but estimate_only defaults to false here. Refused (409, over_ceiling) "
-      + "instead of pausing halfway when it could pass max_cost_usd, today's daily limit, the treg balance or the "
-      + "token's cap. GET /http-runs/{id} and its /results answer for the run; row_index is the item.",
-    body: toolBody('call_enrichment', {
-      omit: ['tool_id', 'estimate_only'],
-      extend: { estimate_only: z.boolean().optional().describe('true prices it and starts nothing. Default false.') },
+    description: "Same as MCP's run_enrichment with items, but estimate_only defaults to false here. Refused (409, "
+      + "over_ceiling) instead of pausing halfway when it could pass max_cost_usd, today's daily limit, the treg "
+      + "balance or the token's cap. GET /http-runs/{id} and its /results answer for the run; row_index is the item.",
+    body: toolBody('run_enrichment', {
+      pick: ['fields', 'max_cost_usd', 'allow_unpriced', 'webhook_id'],
+      extend: { items: ENRICH_ITEMS, estimate_only },
     }),
     responses: { 200: 'The estimate.', 202: 'Started: the run_id.' },
   }),
@@ -180,7 +186,7 @@ export const setupRoutes = (): RouteDoc[] => [
   op({
     method: 'post', path: '/setup-runs/{runId}/control', operationId: 'controlSetupRun', tag: 'setups',
     scope: 'run', summary: 'Pause, resume or cancel a setup being used on a sheet.',
-    body: toolBody('control_setup_run', { pick: ['action'] }),
+    body: actionBody('control_run', SETUP_RUN_CONTROL_INPUT, { pick: ['action'] }),
   }),
   op({
     method: 'get', path: '/sheets/{id}/setup-versions', operationId: 'listSetupVersions', tag: 'versions',
@@ -209,7 +215,7 @@ export const setupRoutes = (): RouteDoc[] => [
     tag: 'versions', scope: 'read', scopeNote: 'Restoring (dry_run false) needs write and run, and secrets when '
       + 'a request it puts back reads a saved key.',
     summary: 'Say what restoring a setup version would do, or restore it when dry_run is false.',
-    body: toolBody('restore_setup_version', { pick: ['dry_run'] }),
+    body: actionBody('manage_setup_version', RESTORE_INPUT, { pick: ['dry_run'] }),
   }),
   // Tests of column changes on sample rows (api-v1-sheet-test.ts): {id} is the sheet's or its test copy's.
   op({

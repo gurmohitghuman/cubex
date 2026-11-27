@@ -22,6 +22,7 @@ import restoreMod from '../../server/src/services/trash-restore'
 import renameMod from '../../server/src/services/column-rename'
 import storeMod from '../../server/src/lib/auto-dedupe/store'
 import { v4 as uuid } from 'uuid'
+import { passed } from './ends-on-its-own'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { autoDedupeKey, whoGoes } = keyMod as typeof import('../../server/src/lib/auto-dedupe/key')
@@ -254,6 +255,6 @@ async function main() {
   })
 
   console.log(failures === 0 ? '\nauto-dedupe: all passed' : `\nauto-dedupe: ${failures} FAILED`)
-  process.exit(failures === 0 ? 0 : 1)
+  if (failures === 0) passed(); else process.exit(1)
 }
 main()

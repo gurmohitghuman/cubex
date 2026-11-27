@@ -1,5 +1,5 @@
 // What a usage read asks for (pure), the same on every surface (the app,
-// /api/v1/usage, MCP get_usage): how rows are grouped, how many, and the date
+// /api/v1/usage, MCP get_account (action usage)): how rows are grouped, how many, and the date
 // range: this week, this month, last week, last month or two days picked, as
 // whole UTC days (the daily limit's days), both ends included. Weeks start on Monday.
 import { USAGE_DEFAULT_ROWS, USAGE_MAX_RANGE_DAYS, USAGE_MAX_ROWS } from './constants';

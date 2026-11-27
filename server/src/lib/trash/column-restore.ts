@@ -7,6 +7,7 @@
 import { db } from '../db';
 import { oneTransaction } from '../slices';
 import { MAX_COLUMN_NAME_LENGTH } from '../constants-columns';
+import { HEAVY_SLICE_BYTES } from '../constants';
 import { appendColumnsToOrder, getSheetColumns, jsonPath } from '../sql-helpers';
 import { stripInvisibleNameChars } from '../name-safety';
 import { pendingPurges } from '../column-purge';
@@ -55,8 +56,10 @@ export function freeColumnName(sheetId: string, userId: string, old: string): st
 interface Cell { seq: number; row_id: string; value: string; size: number }
 
 // One transaction: up to `limit` of the item's cells after its cursor (in seq order) go back to their rows
-// under `name`, found by stable id. A row holding a value there now keeps it (kept), and a row gone since is
-// skipped: either cell stays in the item, for a later restore. The counts say which.
+// under `name`, found by stable id, and no more once the rows written hold HEAVY_SLICE_BYTES (each one's whole
+// record is written again, and its cell's trash row zeroed as it goes: lib/slice-bytes.ts). A row holding a
+// value there now keeps it (kept), and a row gone since is skipped: either cell stays in the item, for a later
+// restore. The counts say which.
 // Clean, formula and lookup columns reading `name` work the rows written out again (quietly: no paid run).
 // Returns how many cells it went through.
 export function restoreCellsSlice(itemId: number, sheetId: string, userId: string, name: string,
@@ -71,22 +74,27 @@ export function restoreCellsSlice(itemId: number, sheetId: string, userId: strin
       .all(jsonPath(item.column_name), itemId, item.restore_cursor, limit) as Cell[];
     if (cells.length === 0) return;
     const path = jsonPath(name);
-    const rows = db.prepare(`SELECT rowid AS rid, id, IFNULL(json_extract(data, ?), '') != '' AS held FROM rows
-      WHERE id IN (SELECT value FROM json_each(?)) AND +sheet_id = ? AND +user_id = ?`)
+    const rows = db.prepare(`SELECT rowid AS rid, id, IFNULL(json_extract(data, ?), '') != '' AS held,
+      octet_length(data) AS bytes FROM rows WHERE id IN (SELECT value FROM json_each(?)) AND +sheet_id = ?
+      AND +user_id = ?`)
       .all(path, JSON.stringify(cells.map(c => c.row_id)), sheetId, userId) as
-      Array<{ rid: number; id: string; held: number }>;
+      Array<{ rid: number; id: string; held: number; bytes: number | null }>;
     const byId = new Map(rows.map(r => [r.id, r]));
     const write = db.prepare(`UPDATE rows SET data = json_set(data, ?, json(?)), updated_at = datetime('now')
       WHERE rowid = ?`);
     const written: number[] = [];
     const done: number[] = [];
-    let skipped = 0, kept = 0, bytes = 0;
+    let skipped = 0, kept = 0, bytes = 0, rewritten = 0, through = 0;
     for (const c of cells) {
       const row = byId.get(c.row_id);
+      const cost = (row?.bytes ?? 0) + 2 * c.size;
+      if (row && !row.held && written.length > 0 && rewritten + cost > HEAVY_SLICE_BYTES) break;
+      through++;
       if (!row) { skipped++; continue; }
       if (row.held) { kept++; continue; }
       done.push(c.seq);
       bytes += c.size;
+      rewritten += cost;
       write.run(path, c.value, row.rid);
       written.push(row.rid);
     }
@@ -98,8 +106,8 @@ export function restoreCellsSlice(itemId: number, sheetId: string, userId: strin
     db.prepare(`UPDATE trash_items SET restored = restored + ?, restore_skipped = restore_skipped + ?,
       restore_kept = restore_kept + ?, row_count = MAX(0, row_count - ?), bytes = MAX(0, bytes - ?),
       restore_cursor = ? WHERE id = ?`)
-      .run(written.length, skipped, kept, done.length, bytes, cells[cells.length - 1].seq, itemId);
-    n = cells.length;
+      .run(written.length, skipped, kept, done.length, bytes, cells[through - 1].seq, itemId);
+    n = through;
   });
   return n;
 }

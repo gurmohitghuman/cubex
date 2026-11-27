@@ -111,6 +111,13 @@ const listed = Object.entries(parsed.paths)
 assert.deepEqual(listed.sort(), keys.slice().sort(), 'the document lists every mounted route once')
 assert.ok(parsed.paths['/sheets/{sourceId}/rows/transfer']?.post, 'the document lists the transfer route')
 assert.ok(parsed.paths['/openapi.json']?.get, 'the document lists GET /openapi.json')
+// A body built from a tool's schema lists only what its route reads: read_rows' format (csv) is MCP's, and the query
+// route answers JSON rows whatever a client sends.
+const queryBody = (parsed.paths['/sheets/{id}/rows/query'] as unknown as Record<string, { requestBody?: { content:
+  Record<string, { schema: { properties?: Record<string, unknown> } }> } }>)?.post?.requestBody
+assert.ok(queryBody, 'the rows query route has a body')
+assert.ok(!('format' in (queryBody!.content['application/json'].schema.properties ?? {})),
+  'the rows query body leaves out read_rows\' format, which the route never reads')
 for (const [path, ops] of Object.entries(parsed.paths)) {
   const named = [...path.matchAll(/\{([^}]+)\}/g)].map(m => m[1])
   for (const [method, operation] of Object.entries(ops)) {

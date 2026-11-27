@@ -1,3 +1,4 @@
+// Over 200 lines: the plumbing every MCP tool shares (results, scopes, the busy-sheet rule, registerTool).
 // Shared plumbing for Cubex's MCP tools. Every tool handler closes over the
 // request's authenticated context (built per-request in routes/mcp.ts — the
 // transport is stateless, the Bearer token is the identity) and returns its
@@ -27,7 +28,7 @@ export const lenientInt = (min: number, max: number, message?: string) =>
   z.preprocess(v => digitsAsNumber(v), z.number(message).int(message).min(min, message).max(max, message));
 
 // The sheet_id every sheet tool takes.
-export const SHEET_ID = 'The sheet\'s id (list_tables lists them)';
+export const SHEET_ID = 'The sheet\'s id (get_workspace lists them)';
 
 export interface McpAuthCtx {
   userId: string;
@@ -162,20 +163,24 @@ export function registerTool<N extends ToolName>(
 // reason back, except tools that only read, that append rows (appends land
 // above the busy operation's reserved range) or that stop runs.
 const RUNS_WHILE_SHEET_BUSY = new Set([
-  'list_tables', 'get_sheet', 'read_rows', 'export_csv', 'list_models',
-  'list_runs', 'get_run_status', 'get_run_results', 'append_rows', 'get_list_fields', 'get_usage',
-  // The trash and the change log: a column's cells keep moving into the trash after its delete answered.
-  'list_trash', 'get_sheet_history',
+  'get_sheet', 'read_rows', 'list_models',
+  // Runs and setup runs (get_run), and the account's usage of a sheet (get_account).
+  'get_run', 'append_rows', 'get_list_fields', 'get_account',
+  // The trash, and the change log (get_sheet's history): a column's cells keep moving into the trash after its
+  // delete answered.
+  'list_trash',
   // Making a link doesn't touch the sheet; using it checks for busy then.
-  'create_upload_link', 'create_download_link',
+  'file_link',
   // Its get reads; every other action refuses a busy sheet itself (mcp/tools-sheet-webhook.ts).
   'manage_sheet_webhook',
-  // Only cancel_all names a sheet, and stopping its runs is allowed while it is
+  // cancel_all names a sheet, and stopping its runs is allowed while it is
   // busy: a run still writing its placeholders is what holds it (as /runs/stop).
+  // undo names one too: its dry run only reads, and an undo takes the sheet's
+  // busy hold itself, refusing a busy sheet in these words (services/run-undo.ts).
   'control_run',
 ]);
 
-// With an idempotency_key, update_cells reads the ledger first: a replay
+// With an idempotency_key, change_rows' update reads the ledger first: a replay
 // writes nothing, and one that would write is refused there, in these words
 // (services/rows-write-keyed.ts; the one-row form's patchRowById checks too).
 // A run start with a key replays its first start, so a retry gets its run_id
@@ -183,7 +188,7 @@ const RUNS_WHILE_SHEET_BUSY = new Set([
 // sheet is refused right after the replay, in these words (run-start-token.ts
 // busyRefusal).
 const KEYED_RUNS_WHILE_SHEET_BUSY = new Set([
-  'update_cells', 'run_ai_column', 'run_http_enrichment', 'run_enrichment', 'waterfall_column',
+  'change_rows', 'run_ai_column', 'run_http_enrichment', 'run_enrichment', 'waterfall_column',
   // A retry answers its first transfer; any other keyed transfer is refused as busy there (rows-transfer.ts).
   'transfer_rows',
 ]);

@@ -1,0 +1,122 @@
+name: E2E
+
+# The Playwright e2e suite (tests/e2e) on Linux, on every pull request that changes what ships or the e2e tests
+# themselves: the production build and the stand-in providers as `npm run e2e:all` runs them locally
+# (scripts/e2e-harness.mjs), split over 4 runners by spec file (Playwright --shard). Each runner still runs its
+# specs one at a time against its own server, as a part of e2e:all does. One result, "E2E", is the check to
+# require: it passes when every part passed, or when the pull request changes none of those paths.
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+# A newer commit on the same branch cancels the run of the one before.
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: What changed
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.paths.outputs.run }}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Does it touch the app, its build or the e2e tests?
+        id: paths
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ "$EVENT" != "pull_request" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          changed=$(git diff --name-only "$BASE...$HEAD")
+          echo "$changed"
+          # Docs, unit tests, other workflows and notes alone don't change what the suite tests. sidequest.jobs.cjs is
+          # read by the server at run time (every AI and HTTP run's worker finds its jobs there); .npmrc by the install.
+          ships='^(client/|server/|scripts/|tests/e2e/|tests/mock-treg/|package(-lock)?\.json$'
+          ships="$ships|playwright\.config\.ts$|\.github/workflows/e2e\.yml$|sidequest\.jobs\.cjs$|\.npmrc$)"
+          if echo "$changed" | grep -qE "$ships"; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  e2e:
+    name: E2E ${{ matrix.shard }}/4
+    needs: changes
+    if: ${{ needs.changes.outputs.run == 'true' }}
+    runs-on: ubuntu-latest
+    # A quarter of the suite, its build and the browser: about 10 minutes.
+    timeout-minutes: 35
+    strategy:
+      # Every part reports, so a failure in one never hides another.
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          # As checks.yml: Node 24, which the installers and the Docker image run.
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright and Chromium
+        # As CONTRIBUTING.md says to locally: not in package.json, so pinned here to the version the suite runs on.
+        run: |
+          npm install --no-save @playwright/test@1.65.1
+          npx playwright install --with-deps chromium
+
+      - name: Build (server + client)
+        run: npm run build
+
+      - name: E2E tests, part ${{ matrix.shard }} of 4
+        env:
+          E2E_SPEC: tests/e2e
+        run: node scripts/e2e-harness.mjs --no-build --shard=${{ matrix.shard }}/4
+
+      # Also when a test passed only on a retry (its failed try's trace is kept: retain-on-failure) or the part was
+      # cancelled at its time limit: a flaky test leaves a trace to fix it from (WORKFLOW.md 7).
+      - name: Keep what a failure left
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-part-${{ matrix.shard }}
+          # Traces and screenshots of failed tests, and the server's and the stand-in treg's logs.
+          path: |
+            test-results/
+            /tmp/cubex-e2e-*.log
+          retention-days: 7
+          if-no-files-found: ignore
+
+  result:
+    # The check to require on main. It runs whatever happened before it (always()), so a part that failed or was
+    # cancelled makes it fail; a pull request that changes none of the paths above passes it at once.
+    name: E2E
+    needs: [changes, e2e]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every part passed, or there was nothing to test
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          RUN: ${{ needs.changes.outputs.run }}
+          E2E: ${{ needs.e2e.result }}
+        run: |
+          echo "What changed: $CHANGES (run: $RUN); the parts: $E2E"
+          test "$CHANGES" = success
+          if [ "$RUN" = "true" ]; then test "$E2E" = success; fi

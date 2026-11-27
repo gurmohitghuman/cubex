@@ -7,6 +7,7 @@
 // a page when the model's provider fetches on its own (its price is the provider's), Exa's $0.001 a page otherwise.
 import assert from 'node:assert/strict'
 import { endsWithin, PRICED, startStandIn, world } from './ai-spend-kit'
+import { passed } from './ends-on-its-own'
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 
@@ -132,4 +133,4 @@ await ok("the estimate counts $0 to $0.001 a page on a model's own fetch, and pr
 stand.close()
 w.done()
 console.log('ai-web-fetch-limits: ok')
-process.exit(0)
+passed()

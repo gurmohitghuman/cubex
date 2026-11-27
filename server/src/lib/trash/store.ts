@@ -10,7 +10,7 @@ import { v4 as uuidv4 } from 'uuid';
 
 export type TrashKind = 'rows' | 'sheet' | 'table' | 'column';
 export const TRASH_KINDS: readonly TrashKind[] = ['rows', 'sheet', 'table', 'column'];
-// How the rows went: the grid, delete_rows (REST/MCP), removing duplicates,
+// How the rows went: the grid, change_rows' delete (REST/MCP), removing duplicates,
 // auto-dedupe as rows arrived, a CSV import replacing the rows, transfer_rows
 // moving them out, a list job's rerun replacing the rows it added before; or
 // the sheet, table or column itself was deleted.
@@ -25,6 +25,8 @@ export interface TrashItem {
   table_name: string; sheet_name: string | null; how: TrashHow; via: string; token_name: string | null;
   row_count: number; bytes: number; columns: string; row_generation: number | null; top_index: number | null;
   state: TrashState; restore_at: number | null; restored: number; deleted_at: string; seq_high: number;
+  // Rows picked from it while they go back (seqs, JSON; migration 077), else null.
+  restore_picks: string | null;
   // A column (migration 054): its name and place, its setup and what referred to it (JSON), and a restore's
   // name and counts.
   column_name: string | null; column_position: number | null; column_setup: string | null;

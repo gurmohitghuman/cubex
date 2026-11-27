@@ -41,7 +41,7 @@ async function seed(): Promise<{ tableId: string; sheetId: string; crmId: string
 
 async function waitDone(runId: string) {
   for (let i = 0; i < 60; i++) {
-    const s = await call(mcp, 'get_run_status', { run_type: 'waterfall', run_id: runId, wait_seconds: 2 })
+    const s = await call(mcp, 'get_run', { action: 'status', run_type: 'waterfall', run_id: runId, wait_seconds: 2 })
     if (['completed', 'failed', 'cancelled', 'paused'].includes(s.status)) return s
   }
   throw new Error(`run ${runId} didn't finish`)
@@ -69,8 +69,8 @@ test('MCP: a free lookup first, the API only for rows it misses; renames followe
     ['maya@stripe.com', 'Contacts'], ['owen@parkco.example', 'Contacts'], ['found@nowhere.example', 'Own API'],
   ])
   expect(rx.hitsOn('/fallback').length - hitsBefore).toBe(1)
-  const res = await call(mcp, 'get_run_results',
-    { run_type: 'waterfall', run_id: started.run_id, status_filter: 'all' })
+  const res = await call(mcp, 'get_run',
+    { action: 'results', run_type: 'waterfall', run_id: started.run_id, status_filter: 'all' })
   const trace = res.results.find((r: { row_index: number }) => r.row_index === 2).trace
   expect(trace.map((t: { kind: string; outcome: string }) => [t.kind, t.outcome]))
     .toEqual([['lookup', 'not_found'], ['http', 'answered']])
@@ -81,7 +81,7 @@ test('MCP: a free lookup first, the API only for rows it misses; renames followe
   expect(answer.fill.steps[0]).toMatchObject({ kind: 'lookup', other_sheet: 'Contacts', match_column: 'Domain' })
 
   // A rename in the CRM sheet is followed: the setup reads the new name and a rerun still answers.
-  await call(mcp, 'rename_column', { sheet_id: crmId, column: 'Email', new_name: 'Work Email' })
+  await call(mcp, 'manage_column', { action: 'rename', sheet_id: crmId, column: 'Email', new_name: 'Work Email' })
   const setup = await call(mcp, 'waterfall_column',
     { action: 'describe', sheet_id: sheetId, column_name: 'Work email' })
   expect(setup.steps[0]).toMatchObject({ kind: 'lookup', other_sheet_id: crmId, return_column: 'Work Email' })
@@ -91,7 +91,7 @@ test('MCP: a free lookup first, the API only for rows it misses; renames followe
   expect((await rowsOf(api, sheetId))[0]['Work email']).toBe('maya@stripe.com')
 
   // A column it reads deleted there: the waterfall is refused until it's edited.
-  await call(mcp, 'delete_column', { sheet_id: crmId, column: 'Domain' })
+  await call(mcp, 'manage_column', { action: 'delete', sheet_id: crmId, column: 'Domain' })
   const refused = await mcp.callTool({ name: 'waterfall_column', arguments:
     { sheet_id: sheetId, column_name: 'Work email', add_to_column: true, rows: 'any' } }) as
     { isError?: boolean; content?: Array<{ text?: string }> }

@@ -11,8 +11,8 @@ import { Receiver } from './helpers-receiver'
 // it back at its place with its cells; a delete that answers "moving" offers no Restore in its toast and says to
 // restore it from the Trash once its cells are in. Over REST: an HTTP API column's delete answers where it went,
 // list and look inside find it, restore brings it back set up as it was, and its rerun fills it again through the
-// receiver; refusals answer their status and words. Over MCP: delete_column, list_trash and restore_from_trash, the
-// answer's references_dropped, and a refusal as an isError result.
+// receiver; refusals answer their status and words. Over MCP: manage_column's delete, list_trash and
+// restore_from_trash, the answer's references_dropped, and a refusal as an isError result.
 const SHOT_DIR = process.env.SHOT_DIR || os.tmpdir()
 const HEADER = (name: string) => `.ag-header-cell[col-id^="col_"]:has-text("${name}")`
 const rx = new Receiver()
@@ -186,12 +186,12 @@ test('REST: an HTTP API column goes to the trash, comes back set up, and its rer
   await v1.dispose()
 })
 
-test('MCP: delete_column, list_trash and restore_from_trash, with what did not come back', async () => {
+test('MCP: manage_column delete, list_trash and restore_from_trash, with what did not come back', async () => {
   const client = await mcpClient(await makeToken(api, ['read', 'write'], 'e2e column trash mcp'))
   const { sheetId } = await csvSheet('Email,Name\nann@acme.com,Ann\nbo@beta.io,Bo\n')
   await call(client, 'manage_view', { sheet_id: sheetId, action: 'create', name: 'Slim', hidden_columns: ['Email'] })
-  await call(client, 'set_auto_dedupe', { sheet_id: sheetId, column: 'Email' })
-  const out = await call(client, 'delete_column', { sheet_id: sheetId, column: 'Email' })
+  await call(client, 'remove_duplicates', { sheet_id: sheetId, keep_doing: { column: 'Email' } })
+  const out = await call(client, 'manage_column', { action: 'delete', sheet_id: sheetId, column: 'Email' })
   expect(out.deleted).toBe(true)
   const id = out.trash.trash_id as number
   expect(out.trash.how_to_restore).toBe(`restore_from_trash with trash_ids [${id}] puts it back (list_trash shows `
@@ -203,14 +203,14 @@ test('MCP: delete_column, list_trash and restore_from_trash, with what did not c
   expect(one.rows.map((r: { cells: unknown }) => r.cells)).toEqual([{ Email: 'bo@beta.io' }])
   expect(await callError(client, 'restore_from_trash', { trash_id: id, seqs: [1] }))
     .toBe('A column comes back whole: restore it without seqs.')
-  await call(client, 'add_column', { sheet_id: sheetId, name: 'email' })
+  await call(client, 'manage_column', { action: 'add', sheet_id: sheetId, name: 'email' })
   const { results } = await call(client, 'restore_from_trash', { trash_ids: [id] })
   expect(results[0].restored).toMatchObject({ name: 'Email (restored)', renamed: true, position: 0,
     cells_restored: 2 })
   expect(results[0].restored.references_dropped.map((r: { where: string; redo: string }) => [r.where, r.redo]))
     .toEqual([['view "Slim"', 'manage_view with action "change", view "Slim" and "Email (restored)" in hidden_columns'],
-      ['auto-dedupe', 'set_auto_dedupe with column "Email (restored)"']])
-  const history = await call(client, 'get_sheet_history', { sheet_id: sheetId, column: 'Email (restored)' })
+      ['auto-dedupe', 'remove_duplicates with keep_doing { column: "Email (restored)" }']])
+  const history = await call(client, 'get_sheet', { history: true, sheet_id: sheetId, column: 'Email (restored)' })
   expect(history.changes[0].summary).toBe('Restored the column "Email" as "Email (restored)" from the trash (2 cells '
     + 'back)')
   await client.close()

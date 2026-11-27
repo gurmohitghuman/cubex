@@ -5,7 +5,7 @@ import { McpServer } from '@modelcontextprotocol/server';
 import { db } from '../lib/db';
 import { MCP_MAX_ROWS_PAGE, MCP_ROWS_BY_ID_MAX_CHARS, ROWS_BY_ID_MAX } from '../lib/api-v1-constants';
 import { MAX_ROWS_PER_SHEET, MAX_COLUMNS_PER_SHEET } from '../lib/constants';
-import { listTablesWithSheets, readRowsPage } from '../services/workspace-read';
+import { readRowsPage } from '../services/workspace-read';
 import { readSheetDetails } from '../services/sheet-details';
 import { queryRows, type WhereItem } from '../services/row-selection';
 import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean, SHEET_ID } from './tool-helpers';
@@ -15,24 +15,13 @@ import { aggregatesSchema, columnsSchema, fitGroups, groupBySchema, maxCharsPerC
 import { parseColumns } from '../lib/row-select/paths';
 import { parseAggregate } from '../lib/row-aggregate/spec';
 import { testOfSheet, testView } from '../services/sheet-test-store';
+import { CSV_WORDS, readRowsCsv } from './tools-read-csv';
+import { HISTORY_FIELDS, HISTORY_WORDS, sheetHistoryAnswer } from './tools-sheet-history';
 
 const ownsSheet = (sheetId: string, userId: string): boolean =>
   !!db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ? AND trash_id IS NULL').get(sheetId, userId);
 
 export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
-  registerTool(server, 
-    'list_tables',
-    {
-      description:
-        'List every table in the workspace with its sheets (tabs): ids, names, positions and row counts. A '
-        + 'sheet still being counted after a change answers its last count with row_count_updating: true. '
-        + 'get_workspace is the first look; use this to turn a table or sheet name it left out into a sheet_id, '
-        + 'then get_sheet for its columns or read_rows for its rows.',
-      inputSchema: {},
-    },
-    async () => missingScope(ctx, 'read') ?? ok({ tables: await listTablesWithSheets(ctx.userId) }),
-  );
-
   registerTool(server, 
     'get_sheet',
     {
@@ -43,7 +32,7 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
         + 'is and what fills it. It also answers active runs, views, auto_dedupe and test (a test of its column '
         + 'changes, manage_sheet\'s test, or null: the sheet takes no changes until it is applied or discarded; work '
         + 'in test_sheet_id). include_counts counts filled, '
-        + `empty and error rows per column. ${GUIDE_POINTER}`,
+        + `empty and error rows per column. ${HISTORY_WORDS} ${GUIDE_POINTER}`,
       inputSchema: {
         sheet_id: z.string().describe(SHEET_ID),
         columns: z.array(z.string()).optional()
@@ -51,11 +40,19 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
         include_counts: lenientBoolean().optional()
           .describe('Count filled, empty and error rows per column (reads every row; slower on big sheets). '
             + 'Default false'),
+        ...HISTORY_FIELDS,
       },
     },
-    async ({ sheet_id, columns, include_counts }, mcp) => {
+    async ({ sheet_id, columns, include_counts, history, ...log }, mcp) => {
       const denied = missingScope(ctx, 'read');
       if (denied) return denied;
+      if (history) {
+        if (columns !== undefined || include_counts !== undefined) {
+          return err('columns and include_counts are for the details: history takes column, before and limit.');
+        }
+        return sheetHistoryAnswer(ctx, sheet_id, log);
+      }
+      if (Object.values(log).some(v => v !== undefined)) return err('column, before and limit are for history: true.');
       // Counting stops on a cancel or a hang-up (an initialize-era client's hang-up aborts only ctx.abortSignal).
       const read = await readSheetDetails(sheet_id, ctx.userId, { columns, counts: include_counts === true,
         stop: () => mcp.mcpReq.signal.aborted || ctx.abortSignal?.aborted === true });
@@ -85,12 +82,12 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
       description:
         'Read a sheet\'s rows as {id, index, data}, in index order, up to ' + `${MCP_MAX_ROWS_PAGE} a call. `
         + 'Pass columns: reading every column of a wide sheet is what makes reads expensive. Row ids stay the '
-        + 'same across sorts: use them with update_cells and delete_rows. '
+        + 'same across sorts: use them with change_rows. '
         + 'PAGES: cursor = the last row\'s index; next_cursor is null at the end. '
         + 'where filters by text, numbers, dates, lists of values, OR groups and run state '
         + '([{"operator":"has_error"}]). return_mode count or ids answers without cells. group_by and aggregates '
         + 'count, sum and average per value without reading rows. row_ids reads rows by id (the way to re-read rows '
-        + `a run just touched), and updated_since the rows changed since a time. ${GUIDE_POINTER}`,
+        + `a run just touched), and updated_since the rows changed since a time. ${CSV_WORDS} ${GUIDE_POINTER}`,
       inputSchema: {
         sheet_id: z.string().describe(SHEET_ID),
         // Digits sent as text are the number cursor (a model often quotes it).
@@ -119,16 +116,23 @@ export function registerReadTools(server: McpServer, ctx: McpAuthCtx) {
         updated_since: z.string().optional()
           .describe('Rows whose cells changed at or after this UTC time (2026-11-05T10:00:00Z or 2026-11-05 10:00:00)'),
         max_chars_per_cell: maxCharsPerCellSchema.optional(),
+        format: z.enum(['json', 'csv']).optional().describe('json (default): rows as {id, index, data}; csv: CSV text'),
       },
     },
     async ({
       sheet_id, cursor, limit, columns, where, return_mode, include_status, expected_data_version,
       expected_row_generation, view, expected_view_version, group_by, aggregates, row_ids, updated_since,
-      max_chars_per_cell,
+      max_chars_per_cell, format,
     }) => {
       const denied = missingScope(ctx, 'read');
       if (denied) return denied;
       if (!ownsSheet(sheet_id, ctx.userId)) return err('Sheet not found');
+      if (format === 'csv') {
+        const rest = { cursor, limit, return_mode, include_status, expected_data_version, expected_row_generation,
+          group_by, aggregates, expected_view_version, row_ids, updated_since, max_chars_per_cell };
+        const others = Object.entries(rest).filter(([, v]) => v !== undefined).map(([k]) => k);
+        return readRowsCsv(ctx, { sheet_id, columns, where, view }, others);
+      }
       const after = typeof cursor === 'number' ? cursor : -1;
       const byIdOrTime = row_ids !== undefined || updated_since !== undefined || typeof cursor === 'string';
       if (!columns && !where && !view && !return_mode && !group_by && !aggregates && !byIdOrTime

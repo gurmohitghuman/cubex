@@ -17,15 +17,9 @@ export const WITHOUT_CHANGED: Record<string, string> = {
   set_default_model: 'a model setting, no sheet data',
   manage_view: 'a saved view: filters and hidden columns, no data',
   manage_run_webhook: 'a webhook setting',
-  call_setup: 'runs on its own hidden working table, never a sheet the user has',
-  call_enrichment: 'runs on its own hidden working table, never a sheet the user has',
-  manage_run_schedule: 'a schedule setting; each firing is a column run, followed with get_setup_run',
-  save_setup: 'the setup library',
-  delete_setup: 'the setup library',
-  manage_setup_version: 'the setup library',
-  create_upload_link: 'a link; the import happens later, over HTTP',
-  create_download_link: 'a link',
-  write_formula: 'writes no data: it answers a formula',
+  manage_run_schedule: 'a schedule setting; each firing is a column run, followed with get_run (action setup)',
+  manage_setup: 'the setup library',
+  file_link: 'a link; an upload\'s import happens later, over HTTP',
   write_run_condition: 'writes no data: it answers a rule',
 };
 
@@ -127,7 +121,7 @@ export function arrivedTouch(
   return { sheetId, columns, rows: rowIds.length, rowIds, moreComing };
 }
 
-// Rows a write edited (update_cells): each of them, one auto-dedupe then took out too, and the older rows it
+// Rows a write edited (change_rows' update): each of them, one auto-dedupe then took out too, and the older rows it
 // replaced with them, which left the sheet. replaced: its answer's list (the first AUTO_DEDUPE_LIST_IDS, 100).
 export function editedTouch(
   sheetId: string, columns: readonly string[], edited: readonly string[],

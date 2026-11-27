@@ -13,7 +13,10 @@
 // cascades). A table: each of its sheets, then the table. The sweep also
 // prunes the change log and old undo journals (services/run-undo-prune.ts).
 import { db } from '../lib/db';
-import { HEAVY_SLICE_ROWS, TRASH_PURGE_BATCH_ROWS, TRASH_SLICE_ROWS, TRASH_SWEEP_MS } from '../lib/constants';
+import {
+  HEAVY_SLICE_BYTES, HEAVY_SLICE_ROWS, TRASH_PURGE_BATCH_ROWS, TRASH_SLICE_ROWS, TRASH_SWEEP_MS,
+} from '../lib/constants';
+import { keysWithinBytes } from '../lib/slice-bytes';
 import { runInCheckpointedSlices } from '../lib/bulk-slices';
 import { sheetHeld } from '../lib/sheet-busy';
 import { purgeSheetResults } from '../lib/import-undo';
@@ -80,11 +83,18 @@ async function purgeDue(): Promise<void> {
   }
 }
 
-// A batch's rows in their order (cheap: the primary key's order), then the item.
+// A batch's rows in their order (cheap: the primary key's order), as many a slice as fit HEAVY_SLICE_BYTES
+// (lib/slice-bytes.ts: SQLite zeroes every page it frees), then the item.
 async function purgeBatch(itemId: number): Promise<void> {
-  const slice = db.prepare(`DELETE FROM trash_rows WHERE rowid IN (SELECT rowid FROM trash_rows WHERE item_id = ?
-    ORDER BY seq LIMIT ?)`);
-  await runInCheckpointedSlices(() => slice.run(itemId, TRASH_PURGE_BATCH_ROWS).changes > 0);
+  const next = db.prepare(`SELECT rowid, octet_length(data) FROM trash_rows WHERE item_id = ? ORDER BY seq
+    LIMIT ?`).raw();
+  // `+item_id`: found by rowid. Else SQLite walks the item's whole (item_id, seq) index every slice.
+  const del = db.prepare('DELETE FROM trash_rows WHERE rowid IN (SELECT value FROM json_each(?)) AND +item_id = ?');
+  await runInCheckpointedSlices(() => {
+    const ids = keysWithinBytes(next.all(itemId, TRASH_PURGE_BATCH_ROWS) as Array<[number, number]>,
+      HEAVY_SLICE_BYTES);
+    return ids.length > 0 && del.run(JSON.stringify(ids), itemId).changes > 0;
+  });
   db.prepare('DELETE FROM trash_items WHERE id = ?').run(itemId);
 }
 
@@ -108,8 +118,15 @@ export async function purgeSheet(sheetId: string, userId: string, itemId: number
     db.prepare(`UPDATE trash_items SET state = 'purging' WHERE id = ?`).run(batch);
     await purgeBatch(batch);
   }
-  await deleteInSlices(`DELETE FROM rows WHERE rowid IN (SELECT rowid FROM rows WHERE sheet_id = ? AND user_id = ?
-    LIMIT ?)`, [sheetId, userId], TRASH_SLICE_ROWS);
+  const rows = db.prepare('SELECT rowid, octet_length(data) FROM rows WHERE sheet_id = ? AND user_id = ? LIMIT ?')
+    .raw();
+  const dropRows = db.prepare(`DELETE FROM rows WHERE rowid IN (SELECT value FROM json_each(?)) AND +sheet_id = ?
+    AND +user_id = ?`);
+  await runInCheckpointedSlices(() => {
+    const ids = keysWithinBytes(rows.all(sheetId, userId, TRASH_SLICE_ROWS) as Array<[number, number]>,
+      HEAVY_SLICE_BYTES);
+    return ids.length > 0 && dropRows.run(JSON.stringify(ids), sheetId, userId).changes > 0;
+  });
   rowsChanged(sheetId);
   await purgeSheetResults(sheetId, userId);
   await dropSheetUndos(sheetId);

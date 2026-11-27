@@ -81,7 +81,7 @@ async function main() {
   console.log(`tools/list: ${modernList.tools.length} tools, ${modernList.chars} characters`)
 
   await check('every tool has a title, hints, a description, described inputs and an open outputSchema', () => {
-    assert.ok(modernList.tools.length >= 60, `only ${modernList.tools.length} tools listed`)
+    assert.ok(modernList.tools.length >= 45, `only ${modernList.tools.length} tools listed`)
     assert.deepEqual(problems(modernList.tools), [])
   })
 
@@ -106,7 +106,7 @@ async function main() {
     assert.match(say('formula_column'),
       /^To clean names, companies, emails or phones, or to take the domain out of an email or a URL, use clean_column/)
     assert.match(say('clean_column'), /root domain out of an email or a URL/)
-    assert.match(say('get_run_status'), /answers when the status changes/)
+    assert.match(say('get_run'), /answers when the status changes/)
   })
 
   done()

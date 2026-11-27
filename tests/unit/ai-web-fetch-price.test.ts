@@ -9,6 +9,7 @@
 import assert from 'node:assert/strict'
 import { v4 as uuid } from 'uuid'
 import { endsWithin, PRICED, startStandIn, world } from './ai-spend-kit'
+import { passed } from './ends-on-its-own'
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 
@@ -150,4 +151,4 @@ await ok("the column menu and a setup's estimate say when the fetch fee is the p
 stand.close()
 w.done()
 console.log('ai-web-fetch-price: ok')
-process.exit(0)
+passed()
