@@ -2,7 +2,9 @@
 // outbound guard on every hop (lib/http-request.ts); the e2e spec http-redirects covers that end to end.
 import assert from 'node:assert/strict'
 import mod from '../../server/src/lib/http-redirect'
+import classifyMod from '../../server/src/lib/http-error-classify'
 const { nextHop, HTTP_MAX_REDIRECTS } = mod as typeof import('../../server/src/lib/http-redirect')
+const { classifyHttpError } = classifyMod as typeof import('../../server/src/lib/http-error-classify')
 
 const get = { url: 'https://api.example.com/v1/people?q=x', method: 'GET', body: undefined,
   headers: { Accept: 'application/json', 'X-Api-Key': 'k', Authorization: 'Bearer t', 'User-Agent': 'u' } }
@@ -24,10 +26,16 @@ console.log('ok   same origin: the Location resolved, the headers kept')
 for (const to of ['https://www.example.com/v1/people', 'https://api.example.com:8443/v1', 'https://other.example/x']) {
   assert.deepEqual(ok(nextHop(get, 308, to)).headers, { Accept: 'application/json', 'User-Agent': 'u' }, to)
 }
-const http = { ...get, url: 'http://example.com/x' }
-assert.deepEqual(Object.keys(ok(nextHop(http, 301, 'https://example.com/x')).headers), ['Accept', 'User-Agent'],
-  'http to https is another origin too')
-console.log('ok   another origin: no key, token or cookie goes along')
+// The same host moving to TLS on the default ports keeps them (the key already went there, now encrypted); another
+// port or host doesn't.
+const http = { ...get, url: 'http://api.example.com/v1' }
+assert.deepEqual(ok(nextHop(http, 301, 'https://api.example.com/v1')).headers, get.headers, 'http to https, same host')
+assert.deepEqual(ok(nextHop({ ...get, url: 'http://api.example.com:80/v1' }, 301, 'https://api.example.com:443/v1'))
+  .headers, get.headers, 'the default ports written out')
+const keys = (to: string) => Object.keys(ok(nextHop(http, 301, to)).headers)
+assert.deepEqual(keys('https://api.example.com:8443/v1'), ['Accept', 'User-Agent'])
+assert.deepEqual(keys('https://www.example.com/v1'), ['Accept', 'User-Agent'])
+console.log('ok   another origin: no key, token or cookie goes along; the same host moving to https keeps them')
 
 // Never https to http, never another scheme, never an unreadable address.
 assert.match((nextHop(get, 302, 'http://api.example.com/x') as { error: string }).error, /from https to http/)
@@ -53,4 +61,11 @@ assert.equal(ok(nextHop({ ...get, method: 'PUT', body: 'b' }, 302, '/x')).method
 console.log('ok   303 and a POST\'s 301 or 302 go on as GET without a body; 307 and 308 keep it, on the same origin')
 
 assert.equal(HTTP_MAX_REDIRECTS, 5)
+
+// The errors a refused redirect writes read as the API's setup, not as unknown.
+for (const m of ['HTTP 302 redirected from https to http (x.example); Cubex doesn\'t follow that.',
+  'A redirect was refused: Could not resolve x.example.', 'More than 5 redirects in a row.']) {
+  assert.equal(classifyHttpError(m), 'configuration', m)
+}
+console.log('ok   a refused redirect reads as the API\'s setup')
 console.log('http-redirect: all assertions passed')

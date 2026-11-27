@@ -7,7 +7,8 @@
 // - 303, and 301 or 302 after a POST, go on as GET with no body (as browsers do); 307 and 308 keep method and body.
 // - To another origin (scheme, host or port), only HTTP_REDIRECT_KEPT_HEADERS go along: a key, a token or a cookie
 //   in the template's headers is never sent to a host it wasn't written for. A body (307 or 308 keep it) never goes
-//   to another origin either: such a redirect is refused.
+//   to another origin either: such a redirect is refused. The same host moving from http to https (on the default
+//   ports) counts as the same: it only adds TLS to where the headers already went.
 
 export const HTTP_MAX_REDIRECTS = 5;
 export const HTTP_REDIRECT_KEPT_HEADERS: ReadonlySet<string> = new Set(['accept', 'accept-language', 'user-agent']);
@@ -15,6 +16,10 @@ export const HTTP_REDIRECT_KEPT_HEADERS: ReadonlySet<string> = new Set(['accept'
 export interface Hop { url: string; method: string; headers: Record<string, string>; body: string | undefined }
 
 const FOLLOWED = new Set([301, 302, 303, 307, 308]);
+
+// http to https on the same host, on the default ports (URL leaves port '' for 80 on http and 443 on https).
+const toTls = (from: URL, next: URL): boolean => from.protocol === 'http:' && next.protocol === 'https:'
+  && from.hostname === next.hostname && from.port === '' && next.port === '';
 
 // The next request a redirect answer asks for; { error } when it asks for one that must not be sent; null when the
 // answer isn't a redirect to follow (it is then the answer, as any other status).
@@ -40,7 +45,7 @@ export function nextHop(current: Hop, status: number, location: string | string[
   const asGet = status === 303 || ((status === 301 || status === 302) && current.method === 'POST');
   const method = asGet && current.method !== 'HEAD' ? 'GET' : current.method;
   const body = asGet ? undefined : current.body;
-  const sameOrigin = next.origin === from.origin;
+  const sameOrigin = next.origin === from.origin || toTls(from, next);
   if (!sameOrigin && body) {
     return { error: `HTTP ${status} redirected a request with a body to another host (${next.host}); Cubex doesn't `
       + 'send it there.' };

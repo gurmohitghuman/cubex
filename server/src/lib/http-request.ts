@@ -140,6 +140,8 @@ export async function sendHTTPRequest(
   // undici follows no redirect itself: a 3xx this follows (lib/http-redirect.ts) goes through the full guard and a
   // pinned connection of its own, like the first request; one it doesn't follow is the answer, as any other status.
   let response: Awaited<ReturnType<typeof request>>;
+  // A redirect to another host left the request's headers behind (a key among them): a refusal then says so.
+  let headersLeft = false;
   for (let redirects = 0; ; redirects++) {
     const requestOptions: any = {
       method: hop.method, headers: hop.headers, headersTimeout: timeoutMs, bodyTimeout: timeoutMs, dispatcher,
@@ -157,6 +159,7 @@ export async function sendHTTPRequest(
     if (!guard.ok) throw new OutboundBlockedError(`A redirect was refused: ${guard.reason || 'URL not allowed'}`);
     dispatcher.close().catch(() => {});
     dispatcher = new Agent({ connect: { lookup: pinnedLookup(guard.addresses || []) } });
+    if (Object.keys(next.ok.headers).length < Object.keys(hop.headers).length) headersLeft = true;
     hop = next.ok;
   }
   const status = response.statusCode;
@@ -168,7 +171,8 @@ export async function sendHTTPRequest(
     const snippet = await readErrorSnippet(response.body);
     const after = response.headers['retry-after'];
     throw new UpstreamStatusError(status, (Array.isArray(after) ? after[0] : after) ?? null,
-      `HTTP ${status} from upstream${snippet ? `: ${snippet}` : ''}`);
+      `HTTP ${status} from upstream${snippet ? `: ${snippet}` : ''}${headersLeft
+        ? ' (a redirect sent the request to another host, without its headers)' : ''}`);
   }
 
   // Reject early if the server advertises a response larger than our cap.

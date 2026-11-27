@@ -52,6 +52,12 @@ test('to another host it goes without the template\'s headers', async () => {
   const end = rx.hitsOn('/x-end')
   expect(end).toHaveLength(1)
   expect(end[0].headers['x-key']).toBeUndefined()
+
+  // When that host then refuses, the error says the headers were left behind (a key among them).
+  rx.on('/k-start', { status: 302, headers: { Location: rx.url('/k-end', 'other') }, body: '' })
+  rx.on('/k-end', { status: 401, body: '{"error":"no key"}' })
+  const refused = await runOn('/k-start')
+  expect(refused.results).toMatch(/HTTP 401 from upstream.*another host, without its headers/)
 })
 
 test('a redirect to an address Cubex doesn\'t call is refused, and a loop stops', async () => {
