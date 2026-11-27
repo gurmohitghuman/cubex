@@ -6,7 +6,9 @@
 // must be one the tool returns. Its cap and route come from the same functions
 // an enrichment column's start uses (lib/enrich-estimate.ts), so a step spends
 // what its estimate said.
-import { defaultMaxCostPerRow, noProviderCanRun, reservedRows, type ProviderPick } from '../lib/enrich-estimate';
+import {
+  defaultMaxCostPerRow, dialOf, noProviderCanRun, reservedRows, type ProviderPick,
+} from '../lib/enrich-estimate';
 import { checkStepProviders, type SavedProviderNames } from '../lib/enrich-provider-names';
 import { missingInputs } from '../lib/enrich-request';
 import { validateHttpJsonPath } from '../lib/jsonpath-extract';
@@ -44,6 +46,18 @@ function mapInputs(
   return { ok: out };
 }
 
+// A per-result tool's dial as a step sends it (lib/enrich-estimate.ts reservedRows): a fixed value as it is, a
+// waterfall input (it differs by row) at the tool's most, not given its default.
+export function stepDialRows(
+  tool: EnrichTool, inputs: Record<string, string | { value: string }>, given: string[],
+): number | null {
+  const sent = Object.fromEntries(given.filter(name => Object.prototype.hasOwnProperty.call(inputs, name)).map(name => {
+    const src = inputs[name];
+    return [name, typeof src === 'string' ? `{{${src}}}` : src.value];
+  }));
+  return reservedRows(tool, dialOf(tool, sent));
+}
+
 export async function buildEnrichmentStep(
   where: string, choices: EnrichmentChoices, resultType: ResultType, inputKeys: string[], mappedKeys: Set<string>,
   saved?: SavedProviderNames,
@@ -69,11 +83,9 @@ export async function buildEnrichmentStep(
     where, order: choices.providerOrder, skip: choices.skipProviders, orderTools: [tool], saved,
   });
   if (providers.error) return bad(providers.error);
-  // A per-result tool's dial: a fixed value as it is, an input (it differs by row) at the tool's most.
-  const dial = inputs[tool.price.reserve?.input ?? ''];
   const pick: ProviderPick = {
     skip: choices.skipProviders, given, order: choices.providerOrder, stopAtFirst: choices.stopAtFirst,
-    limit: reservedRows(tool, dial === undefined ? undefined : typeof dial === 'string' ? `{{${dial}}}` : dial.value),
+    limit: stepDialRows(tool, inputs, given),
   };
   if (noProviderCanRun(tool, pick)) {
     return bad(`${where}: no provider can run with these inputs and switches. Map more inputs or switch providers on.`);

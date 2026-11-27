@@ -29,6 +29,7 @@ import { HIRING_DIRECT_TOOL_ID, OPEN_ROLES, OPEN_ROLES_WORDS, ROLE_COLUMNS } fro
 import { OPEN_ROLE_COLUMNS, openRolesInput, openRolesOf, type OpenRolesOptions } from '../lib/hiring/open-roles-input';
 import { newestColumnRun } from './enrich-column';
 import { buildEnrichmentConfig } from './enrich-run-build';
+import { fixedInputs } from '../lib/enrich-estimate-input';
 import { estimateEnrichment, type EnrichEstimateView } from './enrich-setup';
 import { startEnrichmentRun } from './enrich-run-start';
 import { countDirectJobs, type JobCount } from './job-count';
@@ -138,7 +139,7 @@ async function estimateOf(userId: string, sheetId: string, o: OpenRolesOptions, 
     estimateEnrichment(userId, {
       toolId: HIRING_DIRECT_TOOL_ID, rows: companies, preset: null, maxCostPerRowUsd: null, limit: null,
       list: { provider: null, maxItems: o.perCompany, destSheetId: setup?.rolesSheetId ?? null },
-      skip: [], given: Object.keys(input.inputs), order: [], stopAtFirst: false,
+      skip: [], given: Object.keys(input.inputs), order: [], stopAtFirst: false, fixed: fixedInputs(input.inputs),
     }),
     buildEnrichmentConfig(input, columns, companies),
   ]);

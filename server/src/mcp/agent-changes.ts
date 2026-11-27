@@ -43,6 +43,15 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
     changes: [
       {
         change: 'server',
+        summary: 'A tool billed per result is priced at the results a call asks for (its own count input, else its '
+          + 'default) instead of 20: run_enrichment\'s and apply_setup\'s estimates and default max_cost_per_row_usd '
+          + 'follow it.',
+        details: 'A count set from a column is priced at the tool\'s most. A max_cost_per_row_usd under what one call '
+          + 'holds is refused when the count is known, as treg would turn down every row. Columns made before keep '
+          + 'their most.',
+      },
+      {
+        change: 'server',
         summary: 'Auto-dedupe takes rows with big cells out of a sheet a few at a time: what a call\'s own '
           + 'transaction has no room for is checked in the background within seconds, counted in '
           + 'auto_dedupe.checking_later.',

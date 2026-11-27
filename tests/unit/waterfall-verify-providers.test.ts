@@ -192,7 +192,7 @@ await ok('preset: checks priced on the checkers left; skips that leave none are 
   const est = async (skip: string[]) => {
     const r = await estimateEnrichment('u-verify', { toolId: 'treg.people.email.find', rows: 10,
       preset: 'verified_email', given: ['full_name', 'domain'], skip, order: [], stopAtFirst: false,
-      maxCostPerRowUsd: null, limit: null, list: null })
+      maxCostPerRowUsd: null, limit: null, list: null, fixed: {} })
     assert.ok('ok' in r, JSON.stringify(r))
     return r.ok.defaultMaxCostPerRowUsd
   }

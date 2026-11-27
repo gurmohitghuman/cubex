@@ -48,23 +48,54 @@ export function enabledProviders(tool: EnrichTool, pick: ProviderPick = {}): Too
 // One call to a single tool: its price, times the results it asks for when
 // it bills per result, as treg holds them: `limit` (the results the call
 // asks for), else the tool's own default (its catalog's reserve rule: 1 for
-// Findymail's people search, 10 for hirebase's job search), else 20 when the
-// catalog gives none; never past the tool's most (100 without one). Overflow
-// pricing (an aggregator serving when treg's own account is out) counts as the worst case.
+// Findymail's people search, 10 for hirebase's job search), never past its
+// most; where the rule is silent on the default, its most. A tool with no
+// rule: 20 (treg's page when no limit is sent), at most 100. Overflow pricing
+// (an aggregator serving when treg's own account is out) counts as the worst case.
 function singleCallCost(tool: EnrichTool, limit: number | null): number {
   const unit = Math.max(tool.price.usd ?? 0, tool.price.overflowUsd ?? 0);
   if (tool.price.type !== 'per_result') return unit;
   const r = tool.price.reserve;
-  return unit * Math.min(Math.max(limit ?? r?.default ?? 20, 1), r?.max ?? 100);
+  if (!r) return unit * Math.min(Math.max(limit ?? 20, 1), 100);
+  const rows = Math.max(limit ?? r.default ?? r.max ?? RULE_NO_MOST_ROWS, 1);
+  return unit * (r.max === null ? rows : Math.min(rows, r.max));
+}
+
+// A dial a column sets (or a rule silent on both its default and its most),
+// on a tool whose rule names no most: a row could ask for any number, so the
+// estimate counts this many.
+const RULE_NO_MOST_ROWS = 100;
+const WHOLE = /^[1-9]\d*$/;
+
+// The dial's template among a call's inputs (an own property: no input is
+// named like an Object method); undefined when it isn't sent.
+export function dialOf(tool: EnrichTool, templates: Record<string, string>): string | undefined {
+  const input = tool.price.reserve?.input;
+  return input !== undefined && Object.prototype.hasOwnProperty.call(templates, input) ? templates[input] : undefined;
 }
 
 // The results a call to a per-result tool asks for, from what its dial input
-// (the reserve rule's) is sent: a whole number as it is; a column, which can
-// differ by row, at the tool's most; not sent, null (its default then).
+// (the reserve rule's) is sent: a whole number from 1 up as it is; anything
+// else (a column, which can differ by row, or a value like 0 that treg reads
+// its own way) at the tool's most; not sent, null (its default then).
 export function reservedRows(tool: EnrichTool, sent: string | undefined): number | null {
   const r = tool.price.reserve;
   if (!r || sent === undefined || sent.trim() === '') return null;
-  return /^\d+$/.test(sent.trim()) ? Number(sent.trim()) : r.max ?? 100;
+  return WHOLE.test(sent.trim()) ? Number(sent.trim()) : r.max ?? RULE_NO_MOST_ROWS;
+}
+
+// What treg holds for one call to a single tool billed per result, when the
+// results it asks for are known before the run: a list job's results per row
+// (listLimit), or on a tool with a rule a whole number sent or none (its
+// default). null otherwise: a column sets them (they differ by row), a tool
+// with no rule, or another kind of tool. A per-row most under it is turned
+// down at treg on every row ("Over the per-row budget"), so a start refuses it.
+export function knownCallHold(tool: EnrichTool, sent: string | undefined, listLimit: number | null): number | null {
+  if (tool.kind !== 'single' || tool.price.type !== 'per_result') return null;
+  if (listLimit !== null) return round6(singleCallCost(tool, listLimit));
+  if (!tool.price.reserve) return null;
+  const known = sent === undefined || sent.trim() === '' || WHOLE.test(sent.trim());
+  return known ? round6(singleCallCost(tool, reservedRows(tool, sent))) : null;
 }
 
 // A waterfall whose plan is known but leaves no provider a row can reach

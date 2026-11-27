@@ -8,6 +8,7 @@ import { db } from '../lib/db';
 import { estimateListOf, recallChoices, rerunInput } from '../lib/enrich-run-recall';
 import type { RerunInput } from '../lib/enrich-run-input';
 import { countFor, enrichRowCounts } from './enrich-row-count';
+import { fixedInputs } from '../lib/enrich-estimate-input';
 import { estimateEnrichment } from './enrich-setup';
 import { loadColumnRun } from './enrich-column';
 import { startEnrichmentRun, type EnrichStartOutcome } from './enrich-run-start';
@@ -75,6 +76,7 @@ export async function rerunEnrichmentColumn(
     toolId: choices.toolId, rows: paid, preset: choices.preset, given: Object.keys(choices.inputs).sort(),
     skip: choices.skipProviders, order: choices.providerOrder, stopAtFirst: choices.stopAtFirst,
     maxCostPerRowUsd: choices.maxCostPerRowUsd, limit: null, list: estimateListOf(choices),
+    fixed: fixedInputs(choices.inputs),
   });
   if (!('ok' in est)) {
     const upstream = est.fail === 'unreachable' || est.fail === 'upstream';

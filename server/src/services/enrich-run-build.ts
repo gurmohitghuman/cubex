@@ -7,7 +7,8 @@
 import { ENRICH_FEATURED, ENRICH_VERIFY_TOOL_ID, TREG_BASE_URL } from '../lib/constants';
 import { toolTitle } from '../lib/enrich-tool-label';
 import {
-  defaultEmailLoopCap, defaultMaxCostPerRow, noProviderCanRun, reservedRows, verifyPick, type ProviderPick,
+  defaultEmailLoopCap, defaultMaxCostPerRow, dialOf, knownCallHold, noProviderCanRun, reservedRows, verifyPick,
+  type ProviderPick,
 } from '../lib/enrich-estimate';
 import { checkStepProviders, type SavedProviderNames } from '../lib/enrich-provider-names';
 import { missingInputs } from '../lib/enrich-request';
@@ -129,14 +130,16 @@ export async function buildEnrichmentConfig(
   const given = Object.keys(templates);
   const missing = missingInputs(requestToolOf(tool), new Set(given));
   if (missing) return bad(`Pick columns for ${missing}.`);
+  // A per-result tool's dial as sent (lib/enrich-estimate.ts reservedRows); a list job's `limit`: its results per row.
+  const dial = dialOf(tool, templates);
+  const listLimit = list?.limitInput ? input.list!.maxItems : null;
   const pick: ProviderPick = list
     ? {
       skip: list.route.exclude, given, order: list.route.prefer, stopAtFirst: true,
-      limit: list.limitInput ? input.list!.maxItems : null,
+      limit: listLimit ?? reservedRows(tool, dial),
     }
     : { skip: input.skipProviders, given, order: input.providerOrder, stopAtFirst: input.stopAtFirst,
-      // A per-result tool's dial as sent (lib/enrich-estimate.ts reservedRows).
-      limit: reservedRows(tool, templates[tool.price.reserve?.input ?? '']) };
+      limit: reservedRows(tool, dial) };
   if (noProviderCanRun(tool, pick)) {
     return bad('No provider can run with these inputs and switches. Map more inputs or switch providers on.');
   }
@@ -161,6 +164,12 @@ export async function buildEnrichmentConfig(
         ? defaultEmailLoopCap(defaultMaxCostPerRow(tool, pick),
           defaultMaxCostPerRow(verify, verifyPick(input.skipProviders)))
         : defaultMaxCostPerRow(tool, pick));
+  }
+  // A max per row under what one call holds is turned down at treg on every row: refused here, in plain words.
+  const hold = input.maxCostPerRowUsd === null ? null : knownCallHold(tool, dial, listLimit);
+  if (cap !== null && hold !== null && cap + 1e-9 < hold) {
+    return bad(`The max per row ($${cap}) is under what one call holds at treg ($${hold}), so every row would be `
+      + 'turned down. Raise it, or leave it empty for the default.');
   }
   const sized = cap === null ? null : input.spendLimitUsd ?? round6(Math.max(rowsUpperBound, 1) * cap);
   // Under a setup's ceiling: no more than what is left of it (services/setup-ceiling.ts).

@@ -141,7 +141,7 @@ export const SetupStep: React.FC<Props> = (p) => {
               defaultSpendLimit={quotedLimit({ draft: { ...draft, spendLimitUsd: null }, estimate: est, unpriced: billed,
                 reuse: m.reuse })} billedBy={billed ? m.ownKeyProvider : null}
               hasWebhook={!!m.data.setup?.hasWebhook} dailyLimitUsd={est?.dailyLimit.limitUsd ?? null}
-              reuseDays={m.reuseDays} />
+              reuseDays={m.reuseDays} single={m.tool?.kind === 'single'} />
           </AccordionSection>
 
           <EstimateBox estimate={est} loading={m.estimate.loading} error={m.estimate.error} rows={m.rows}

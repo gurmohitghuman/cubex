@@ -11,9 +11,11 @@ import type { ProviderPick } from './enrich-estimate';
 // (null: a new sheet), for "May add up to N rows".
 export interface EstimateList { provider: string | null; maxItems: number; destSheetId: string | null }
 
+// fixed: the inputs sent as a value, by name (the rest of given are columns), so a per-result tool's dial is priced
+// at the results it asks for, as a run prices it (lib/enrich-estimate.ts reservedRows).
 export interface EstimateInput extends Required<Omit<ProviderPick, 'limit'>> {
   toolId: string; rows: number; preset: 'verified_email' | null; maxCostPerRowUsd: number | null; limit: number | null;
-  list: EstimateList | null;
+  list: EstimateList | null; fixed: Record<string, string>;
 }
 
 function parseList(v: unknown): EstimateList | null | undefined {
@@ -37,6 +39,21 @@ function names(v: unknown): string[] | null {
   if (!Array.isArray(v) || v.length > ENRICH_ESTIMATE_MAX_LIST) return null;
   return v.every(s => typeof s === 'string' && NAME_RE.test(s)) ? v as string[] : null;
 }
+
+// The inputs sent as a value: names to text, each short (a dial is a number).
+const FIXED_MAX_CHARS = 1000;
+function fixedOf(v: unknown): Record<string, string> | null {
+  if (v === undefined || v === null) return {};
+  if (typeof v !== 'object' || Array.isArray(v)) return null;
+  const entries = Object.entries(v);
+  if (entries.length > ENRICH_ESTIMATE_MAX_LIST) return null;
+  return entries.every(([k, s]) => NAME_RE.test(k) && typeof s === 'string' && s.length <= FIXED_MAX_CHARS)
+    ? Object.fromEntries(entries) : null;
+}
+
+// The inputs of a run's choices sent as a value (the rest are columns), for its estimate.
+export const fixedInputs = (inputs: Record<string, { column: string } | { value: string }>): Record<string, string> =>
+  Object.fromEntries(Object.entries(inputs).flatMap(([name, b]) => ('value' in b ? [[name, b.value]] : [])));
 
 export function parseEstimateInput(body: unknown): { ok: EstimateInput } | { error: string } {
   const b = (body && typeof body === 'object' ? body : {}) as Record<string, unknown>;
@@ -64,10 +81,12 @@ export function parseEstimateInput(body: unknown): { ok: EstimateInput } | { err
   if (list === undefined) {
     return { error: `list needs a provider name and 1 to ${ENRICH_LIST_MAX_ITEMS} results per row.` };
   }
+  const fixed = fixedOf(b.fixed);
+  if (!fixed) return { error: `fixed must map input names to text of at most ${FIXED_MAX_CHARS} characters.` };
   return {
     ok: {
       toolId: b.toolId, rows, given, skip, order, stopAtFirst: b.stopAtFirst === true, maxCostPerRowUsd: cap, limit,
-      preset: b.preset === 'verified_email' ? 'verified_email' : null, list,
+      preset: b.preset === 'verified_email' ? 'verified_email' : null, list, fixed,
     },
   };
 }
