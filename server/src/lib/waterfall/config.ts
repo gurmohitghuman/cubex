@@ -69,6 +69,9 @@ export interface BuiltAi {
   capUsd: number;                  // one call's ceiling (input + max output tokens + web fees)
   lowUsd: number;                  // one call, typical
   highUsd: number;
+  // The max_tokens each call sends, as capUsd priced it. Absent on runs started before it was kept, which
+  // priced 1,000 (WATERFALL_AI_LEGACY_MAX_TOKENS): a resume of one sends that, so its holds stay true.
+  maxTokens?: number;
 }
 export interface BuiltHttp { kind: 'http'; retries: number | null }
 export interface BuiltFormula { kind: 'formula'; compiled: CompiledFormula }   // {{input_key}} refs
