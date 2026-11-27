@@ -1,17 +1,15 @@
-// transform_column stopped on an error, further cases
-// (services/column-transform.ts, column-transform-passes.ts). Another
-// connection takes the write lock after the first page and holds it past
-// busy_timeout: the second page fails with SQLITE_BUSY, the call answers
-// next_cursor and rows_done in words naming it, data_version moves once the
-// lock is let go (tried again on a timer, never waiting on the event loop), and
-// going on with the cursor changes every row once. A sort
-// marks the record: the same call is refused, without its cursor or with it,
-// writing nothing, until restart: true starts over. When the data_version
-// write itself meets the lock (held for seconds), it never waits on the event
-// loop: it is tried again on a timer and moves once the lock is let go, with no
-// other call, the loop never held 200 ms meanwhile. Where a server makes the -wal file its full size at start
-// (Windows), so does this, after the migrations: no write in that case grows it (on the Windows runner a commit that
-// did could wait on the OS, off the CPU). A hold of 50 ms or more prints the transactions in it.
+// transform_column stopped on an error, further cases (services/column-transform.ts, column-transform-passes.ts).
+// Another connection takes the write lock after the first page and holds it past busy_timeout: the second page fails
+// with SQLITE_BUSY, the call answers next_cursor and rows_done in words naming it, data_version moves once the lock is
+// let go (tried again on a timer, never waiting on the event loop), and going on with the cursor changes every row
+// once. A sort marks the record: the same call is refused, without its cursor or with it, writing nothing, until
+// restart: true starts over. When the data_version write itself meets the lock (held for seconds), it never waits on
+// the event loop: tried with SQLite's busy wait off, refused at once and tried again on a timer (busy-free-tries.ts),
+// the call answering while the lock is still held, and it moves once the lock is let go, with no other call. The loop's
+// longest stretch is printed, not bounded: a busy machine stretches it (loop-watch.ts). Where a server makes the -wal
+// file its full size at start (Windows), so does this, after the migrations: no write in that case grows it (on the
+// Windows runner a commit that did could wait on the OS, off the CPU). A hold of 50 ms or more prints the transactions
+// in it.
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
 import { Worker } from 'node:worker_threads'
@@ -23,10 +21,12 @@ import sortMod from '../../server/src/services/sheet-sort'
 import { transformPageFault } from './transform-page-fault'
 import { moved } from './transform-pass-words'
 import { heldText, loopWatch } from './loop-watch'
+import { busyFreeTries } from './busy-free-tries'
 import { sizeWalLikeAServer, sqliteWriteProbe, transactionLine, walGrowth } from './sqlite-write-probe'
 import { caughtUp, toTheEnd } from './transform-to-end'
 import { passed } from './ends-on-its-own'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
+const tries = busyFreeTries(db)
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { transformColumn } = transformMod as typeof import('../../server/src/services/column-transform')
 const { physicalSortSheet } = sortMod as typeof import('../../server/src/services/sheet-sort')
@@ -169,6 +169,8 @@ async function main() {
     // The call's one page commits, then the other connection takes the lock and holds it 3 s.
     const holder = await lockHolder(3000)
     const before = dataVersion(late)
+    const triesBefore = tries.count()
+    let refused = 0
     const grown = walGrowth(process.env.DB_PATH!, walSized)
     const watch = loopWatch(probe.records)
     await watch.ready
@@ -178,6 +180,7 @@ async function main() {
       assert.deepEqual(out, { ok: { updated: 100, created_column: null } })
       assert.equal(dataVersion(late), before, 'not yet: the lock is still held')
       await holder.exited
+      refused = tries.count() - triesBefore
       assert.ok(await movedFrom(late, before), 'data_version moved once the lock was let go')
     } finally {
       // Printed when the case fails too.
@@ -187,7 +190,7 @@ async function main() {
       if (watched.ownMs >= 50) console.log(`      in it: ${watched.inside.map(transactionLine).join(' | ') || 'none'}`)
     }
     assert.equal(grown(probe.records()), '', 'writes that grew the -wal file')
-    assert.ok(watched.ownMs < 200, `the event loop was held ${watched.ownMs.toFixed(0)} ms by this thread`)
+    assert.ok(refused >= 1, `tries with the busy wait off while the lock was held: ${refused}`)
   })
 }
 

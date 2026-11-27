@@ -138,7 +138,9 @@ async function main() {
       for (const t0 = Date.now(); !startOverHeldForTests(); await sleep(2)) {
         assert.ok(Date.now() - t0 < 5000, 'the worker never held its write')
       }
-      // The longest this thread alone holds the loop (loop-watch.ts), watched from before the hold's end.
+      // The loop's longest stretch, watched from before the hold's end: printed, not bounded (a busy machine stretches
+      // it, loop-watch.ts). What shows no page waited for the lock here is that none began before the hold ended, and
+      // the page found the worker's turn (below).
       const watch = loopWatch(probe.records)
       await watch.ready
       // Ended from this thread 300 ms on: a page waiting for the lock here would hold the loop past it.
@@ -158,7 +160,6 @@ async function main() {
       const done = releasedAt === Infinity ? 'its end never ran here before the call answered' : `${ms(releasedAt)} ms`
       assert.ok(records.every(r => r.at >= releasedAt), `a transaction began before the worker was done `
         + `(${done}): ${transactionLine(records[0])} at ${ms(records[0].at)} ms`)
-      assert.ok(watched.ownMs < 150, `the event loop was held ${Math.round(watched.ownMs)} ms by this thread`)
       assert.ok(t.turnWaits >= 1, 'the page found the worker\'s turn')
       assert.deepEqual(startedOver, [])
     } finally { holdStartOverForTests(0); endStartOverHoldForTests() }

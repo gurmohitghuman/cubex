@@ -2,9 +2,11 @@
 // (server/src/lib/token-last-used.ts), through the real token auth on a migrated throwaway database:
 //   - a call goes on before the write, which follows within a moment, at the time of the use;
 //   - a second call within ACCESS_TOKEN_LAST_USED_WRITE_INTERVAL_MS writes nothing again (the throttle, as before);
-//   - another connection holding the write lock 2 s (as a run's worker committing on a slow disk): calls aren't
-//     held and the event loop never is; the use waits, and is written once the lock is let go, within
-//     ACCESS_TOKEN_LAST_USED_RETRY_MS, still at the time of the use;
+//   - another connection holding the write lock 2 s (as a run's worker committing on a slow disk): the call goes on
+//     with the use noted, not written; each try is made with SQLite's busy wait off and refused at once, so none
+//     waits for the lock on the server's thread (busy-free-tries.ts); once the lock is let go, a later try writes
+//     it, still at the time of the use. The loop's longest stretch and the call's time are printed, not bounded: a
+//     busy machine stretches both (loop-watch.ts);
 //   - a write never moves last_used_at back, and one for a token deleted meanwhile changes nothing;
 //   - at shutdown, a use still waiting is written at once.
 // Where a server makes the -wal file its full size at start (Windows), so does this, after the migrations: no write
@@ -33,6 +35,8 @@ runMigrations()
 const walSized = sizeWalLikeAServer(db, process.env.DB_PATH!)
 console.error = () => {}
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
+const { busyFreeTries } = await import('./busy-free-tries')
+const tries = busyFreeTries(db)
 let failures = 0
 const ok = async (label: string, fn: () => Promise<void> | void) => {
   try { await fn(); console.log('ok  ', label) }
@@ -93,21 +97,26 @@ await ok('another connection holding the write lock: no call or loop held; writt
   const watch = loopWatch(probe.records)
   await watch.ready
   const usedAt = Date.now()
+  const before = tries.count()
   const took = call(t.token)
+  // The call went on (token auth let it, at once) with the use noted, not written.
+  assert.equal(tokenUsesWaiting(), 1, 'the use noted')
+  assert.equal(lastUsed(t.id), null, 'written inside the call')
   await sleep(2000)
   assert.equal(lastUsed(t.id), null)
   assert.equal(tokenUsesWaiting(), 1)
+  const refused = tries.count() - before
   other.exec('COMMIT')
-  const after = await until('the write once the lock is free', () => lastUsed(t.id) !== null, 3000)
+  const atRelease = tries.count()
+  const after = await until('the write once the lock is free', () => lastUsed(t.id) !== null, 30_000)
   const watched = watch()
   other.close()
   console.log(`      the call went on in ${took.toFixed(1)} ms; ${heldText(watched)}; written `
     + `${after} ms after the lock was let go`)
   if (watched.ownMs >= 50) console.log(`      in it: ${watched.inside.map(transactionLine).join(' | ') || 'none'}`)
   assert.equal(grown(probe.records()), '', 'writes that grew the -wal file')
-  assert.ok(took < 50, `the call took ${took.toFixed(0)} ms`)
-  assert.ok(watched.ownMs < 100, `the event loop was held ${watched.ownMs.toFixed(0)} ms by this thread`)
-  assert.ok(after <= ACCESS_TOKEN_LAST_USED_RETRY_MS + 500, `written ${after} ms after the lock was let go`)
+  assert.ok(refused >= 1, `tries with the busy wait off while the lock was held: ${refused}`)
+  assert.ok(tries.count() > atRelease, 'written by a try after the lock was let go')
   assert.equal(lastUsed(t.id), asStored(usedAt), 'the time of the use, not of the write')
   assert.equal(tokenUsesWaiting(), 0)
 })

@@ -4,13 +4,17 @@
 // with a hard 2 s deadline (never on the API thread), and the times are printed. Through the host, the worker
 // answers each cell as it works it out: a page that runs out of time keeps the cells finished, the next extract
 // starts a new worker with the whole time again, and one that stalls on its first cell answers none. Meanwhile the
-// event loop keeps answering. The calls through transform_column: transform-regex-pages.test.ts.
+// event loop keeps answering: this thread never waits for the worker (sync-waits.ts), and its CPU time in any one
+// stretch stays under 100 ms (loop-watch.ts cpuMs), so the pattern isn't run here; the loop's longest stretch is
+// printed, not bounded, as a busy machine stretches it. The calls through transform_column:
+// transform-regex-pages.test.ts.
 import assert from 'node:assert/strict'
 import { Worker } from 'node:worker_threads'
 import opsMod from '../../server/src/lib/transform-ops'
 import hostMod from '../../server/src/lib/transform-regex-host'
 import constMod from '../../server/src/lib/api-v1-constants'
 import { watchWhile } from './loop-watch'
+import { countSyncWaits } from './sync-waits'
 import { passed } from './ends-on-its-own'
 const { applyCellOp, validateRegexPattern } = opsMod as typeof import('../../server/src/lib/transform-ops')
 const { regexPages } = hostMod as typeof import('../../server/src/lib/transform-regex-host')
@@ -53,14 +57,20 @@ function timed(pattern: string, cell: string): Promise<number | null> {
   })
 }
 
-// The longest this thread alone held the event loop while `fn` ran (loop-watch.ts; no transaction is recorded here,
-// so nothing is let off for the disk, only time waiting for a CPU on Linux), and fn's answer and time.
-async function watched<T>(fn: () => Promise<T>): Promise<{ out: T; lag: number; ms: number }> {
-  const { out, ms, watched: w } = await watchWhile(() => [], fn)
-  return { out, ms, lag: w.ownMs }
+// While `fn` ran: the longest this thread alone held the event loop (printed), the most CPU it spent in one stretch,
+// and how many times it waited on another thread (loop-watch.ts, sync-waits.ts); fn's answer and time.
+async function watched<T>(fn: () => Promise<T>): Promise<{ out: T; lag: number; cpu: number; waits: number;
+  ms: number }> {
+  const { out: { out, ms, watched: w }, waits } = await countSyncWaits(() => watchWhile(() => [], fn))
+  return { out, ms, lag: w.ownMs, cpu: w.cpuMs, waits }
 }
 
 async function main() {
+  await check('the count of this thread\'s waits sees one', async () => {
+    const seen = await countSyncWaits(async () => { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1) })
+    assert.equal(seen.waits, 1)
+  })
+
   await check('each shape passes the guard; timed alone with a 2 s deadline, the stalling ones never finish',
     async () => {
     for (const [pattern, cell, stalls] of SHAPES) {
@@ -77,12 +87,13 @@ async function main() {
       const pages = regexPages(pattern)
       try {
         await pages.extract(['b'])
-        const { out, ms, lag } = await watched(() => pages.extract([cell, 'b']))
+        const { out, ms, lag, cpu, waits } = await watched(() => pages.extract([cell, 'b']))
         console.log(`     ${pattern.slice(0, 40).padEnd(40)} no cell after ${ms.toFixed(0)} ms, the event loop `
-          + `waited at most ${lag.toFixed(1)} ms`)
+          + `waited at most ${lag.toFixed(1)} ms (on the CPU at most ${cpu.toFixed(1)} ms in one stretch)`)
         assert.deepEqual(out, [], pattern)
         assert.ok(ms >= TRANSFORM_REGEX_PAGE_MS - 50 && ms < 6000, `${pattern}: answered after ${ms} ms`)
-        assert.ok(lag < 100, `${pattern}: the event loop waited ${lag} ms`)
+        assert.equal(waits, 0, `${pattern}: this thread waited on another`)
+        assert.ok(cpu < 100, `${pattern}: this thread was on the CPU ${cpu.toFixed(0)} ms in one stretch`)
       } finally { pages.close() }
     }
   })
