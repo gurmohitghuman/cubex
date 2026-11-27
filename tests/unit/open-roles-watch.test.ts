@@ -142,10 +142,7 @@ await ok('an auto-run run: watched as it starts (services/autorun-start.ts), its
   await kit.idle(sid)
   assert.equal(count(), OLD, 'not before the run is over')
   over(auto)
-  // Its one company is looked up again through the count's follow queue; the whole count isn't.
-  await until('the batch\'s company counted', () => kit.cells(sid, OPEN_ROLES.count)[2] === '0')
-  await until('its end looked at', () => !openRolesWatching(auto))
-  assert.equal(count(), OLD, 'the whole count looked up for one company')
+  await lookedAgain()
   const off = await saveAutorunSettings(uid, sid, { column: OPEN_ROLES.status, enabled: false, where: null,
     dailyCapUsd: null, dailyRowCap: null }, { hasSecretsScope: false })
   assert.ok('ok' in off, JSON.stringify(off))

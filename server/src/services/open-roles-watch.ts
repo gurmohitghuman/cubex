@@ -1,12 +1,12 @@
-// What follows any run of an Open roles column, however it started (the dialog, an agent, the column's menu,
-// auto-run: lib/run-start-listeners.ts), as a lookup doesn't follow the sheet it looks in: once the run's roles are in
+// What follows any run of an Open roles column, however it started (the dialog, an agent, the column's menu, auto-run:
+// lib/run-start-listeners.ts), as a lookup doesn't follow the sheet it looks in: once the run's roles are in
 // (hiring-check-watch.ts searchState), the count is first checked (services/open-roles-lookups.ts ensureLookups, which
 // here only moves a count still on the website column, a v0.8.48 sheet, to the domain column, looking it up whole),
-// then brought up to date only when the run added roles: a run on chosen rows (auto-run's batches, a rerun of some
-// rows) has just its companies looked up again, through the count's own follow queue; a run on every row has the
-// count looked up whole as soon as the sheet is free. A pause does it too (what was found so far), and the watch goes
-// on: a resume ends in another look. At boot the runs left going are watched again, and a conversion a restart cut
-// short is finished (finishOpenRolesConversions). Sheets in the trash are skipped.
+// then looked up whole as soon as the sheet is free, only when the run added roles (a company's count can change on
+// every row holding its domain, not only the rows the run took; a run that added none changes no count). A pause does
+// it too (what was found so far), and the watch goes on: a resume ends in another look. At boot the runs left going are
+// watched again, and a conversion a restart cut short is finished (finishOpenRolesConversions). Sheets in the trash are
+// skipped.
 import { db } from '../lib/db';
 import { getSheetColumns } from '../lib/sql-helpers';
 import { HIRING_CHECK_POLL_MS, OPEN_ROLES_LOOKUPS_LATER_MS } from '../lib/constants';
@@ -16,8 +16,6 @@ import { openRolesOf, type OpenRolesOptions } from '../lib/hiring/open-roles-inp
 import { inputTemplates, isEnrichmentConfig, type EnrichRunConfig } from '../lib/enrich-run-config';
 import { onEnrichmentRunStarted } from '../lib/run-start-listeners';
 import { lookupInputOf, startLookupColumn } from './lookup-column';
-import { markAutorunInputs } from '../lib/autorun-mark';
-import { kickDerivedFollow } from './derived-follow';
 import { searchState } from './hiring-check-watch';
 import { ensureLookups } from './open-roles-lookups';
 import type { LookupColumnRow } from '../lib/lookup-columns';
@@ -65,7 +63,7 @@ export function lookAgainWhenDone(userId: string, sheetId: string, rolesSheetId:
         // A move cut short leaves the count on the website column against cleaned roles: not looked up so (the next
         // run's end, or boot, finishes the move).
         if (fixed.left) console.error(`Open roles: ${fixed.left}`);
-        else if (fixed.fresh || state.added <= addedSeen || await bringUpToDate(userId, sheetId, rolesSheetId, runId)) {
+        else if (fixed.fresh || state.added <= addedSeen || await bringUpToDate(userId, sheetId, rolesSheetId)) {
           addedSeen = state.added;
         }
       }
@@ -79,28 +77,9 @@ export function lookAgainWhenDone(userId: string, sheetId: string, rolesSheetId:
   later();
 }
 
-// The rows a run took when it took chosen ones (auto-run's batch, a rerun of some rows), else null (every row).
-const runTargets = (runId: string): number[] | null => {
-  const raw = db.prepare('SELECT target_rows FROM http_runs WHERE id = ?').pluck().get(runId) as string | null;
-  try {
-    const v: unknown = raw ? JSON.parse(raw) : null;
-    return Array.isArray(v) && v.every(n => Number.isInteger(n)) ? v as number[] : null;
-  } catch { return null; }
-};
-
-// The counts brought up to date after a run that added roles: its chosen rows through each count's follow queue
-// (they read their source column, so marking it on those rows queues them), or the whole count. Whether it worked.
-async function bringUpToDate(userId: string, sheetId: string, rolesSheetId: string, runId: string): Promise<boolean> {
+// The counts looked up whole again after a run that added roles. Whether every one started.
+async function bringUpToDate(userId: string, sheetId: string, rolesSheetId: string): Promise<boolean> {
   const recs = lookupsOf(userId, sheetId, rolesSheetId);
-  const targets = runTargets(runId);
-  if (targets) {
-    for (const rec of recs) markAutorunInputs(sheetId, userId, [rec.source_column], { indexes: targets });
-    const entries = db.prepare(`SELECT id FROM autorun_columns WHERE sheet_id = ? AND user_id = ? AND kind = 'lookup'
-      AND status_column IN (SELECT value FROM json_each(?))`).pluck()
-      .all(sheetId, userId, JSON.stringify(recs.map(r => r.column_name))) as string[];
-    for (const id of entries) kickDerivedFollow(id);
-    return true;
-  }
   let ok = true;
   for (const rec of recs) {
     const held = await sheetFreeWithin(sheetId, OPEN_ROLES_LOOKUPS_LATER_MS);

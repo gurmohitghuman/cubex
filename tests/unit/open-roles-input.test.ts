@@ -11,7 +11,7 @@ import assert from 'node:assert/strict'
 import { tregKit } from './token-replay-treg-kit'
 const kit = await tregKit('open-roles-input')
 const { db, uid, ok, done, sheet } = kit
-const { parseOpenRoles, openRolesInput, OPEN_ROLE_COLUMNS } =
+const { parseOpenRoles, openRolesInput, openRolesCopies, OPEN_ROLE_COLUMNS } =
   await import('../../server/src/lib/hiring/open-roles-input')
 const { openRoles } = await import('../../server/src/services/open-roles')
 const { buildRequest } = await import('../../server/src/lib/enrich-request')
@@ -20,7 +20,7 @@ const { copyValues } = await import('../../server/src/lib/enrich-list')
 const { parseListInput } = await import('../../server/src/lib/enrich-list-input')
 const { buildEnrichmentConfig } = await import('../../server/src/services/enrich-run-build')
 const { dayIn } = await import('../../server/src/lib/ai-visibility/check')
-const { ROLE_COLUMNS: R } = await import('../../server/src/lib/hiring/names')
+const { HIRING_DIRECT_TOOL_ID, ROLE_COLUMNS: R } = await import('../../server/src/lib/hiring/names')
 
 const today = () => dayIn(new Date().toISOString().replace('T', ' ').slice(0, 19), 'America/Toronto')
 const cleans = (sid: string) => db.prepare(`SELECT column_name, source_column, cleaner FROM clean_columns
@@ -136,6 +136,23 @@ await ok('under the run\'s domain cleaning a website cell becomes its domain; on
   assert.deepEqual(JSON.parse(kept.body!).company_domains, ['https://www.Northwind-Labs.io/'])
   const left = plain('')
   assert.ok(left.ok && JSON.parse(left.body!).company_domains === undefined, JSON.stringify(left))
+})
+
+await ok('a setup saved on v0.8.48 (recalled, or a run resumed) copies as now: Domain cleaned, First seen the day; a '
+  + 'hiring check\'s copies and other list jobs\' as they were', () => {
+  const old = [{ id: 'c1', from: 'Website', to: R.domain },
+    { id: 'c2', from: '', to: R.firstSeen, value: '2026-11-20' }]
+  assert.deepEqual(openRolesCopies(HIRING_DIRECT_TOOL_ID, true, old),
+    [{ id: 'c1', from: 'Website', to: R.domain, clean: 'domain' }, { id: 'c2', from: '', to: R.firstSeen, day: null }])
+  type List = Parameters<typeof copyValues>[0]
+  const upgraded = { copy: openRolesCopies(HIRING_DIRECT_TOOL_ID, true, old) } as unknown as List
+  const values = copyValues(upgraded, { Website: 'https://www.Acme.com/jobs' })
+  assert.equal(values.c1, 'acme.com')
+  assert.match(values.c2, /^\d{4}-\d{2}-\d{2}$/, 'the day the role is added')
+  const check = [{ id: 'c1', from: 'Role', to: R.search }, { id: 'c2', from: '', to: R.firstSeen, value: 'Nov 20' }]
+  assert.deepEqual(openRolesCopies(HIRING_DIRECT_TOOL_ID, true, check), check, 'a hiring check copies none into Domain')
+  assert.deepEqual(openRolesCopies(HIRING_DIRECT_TOOL_ID, false, old), old, 'roles not kept')
+  assert.deepEqual(openRolesCopies('other.tool', true, old), old, 'another tool')
 })
 
 done()

@@ -114,9 +114,9 @@ export async function lookupsAfterStart(userId: string, sheetId: string, o: Open
   }
   if (!now.left) return now;
   void ensureLookups(userId, sheetId, o, rolesSheetId, OPEN_ROLES_LOOKUPS_LATER_MS).then(later => {
-    if (later.left) console.error(`Open roles: ${later.left} The run's end tries again.`);
+    if (later.left) console.error(`Open roles: ${later.left} The next Open roles start adds it.`);
   }, (error: Error) => {
-    console.error(`Open roles: the lookups weren't added (${error.message}); the run's end tries again.`);
+    console.error(`Open roles: the lookups weren't added (${error.message}); the next Open roles start adds them.`);
   });
   return now;
 }

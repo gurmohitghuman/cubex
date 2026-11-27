@@ -21,6 +21,7 @@ import { verifiedEmailRow } from './enrich-verified-email';
 import { recoverPaidAnswer } from './enrich-recover';
 import { recordCall } from './enrich-ledger';
 import { findReusable, reuseSince } from './enrich-reuse';
+import { openRolesCopies } from '../lib/hiring/open-roles-input';
 import { writeEnrichmentResult } from './enrich-row-write';
 import type { HTTPRunRow } from './http-runner-status';
 import type { RowStamp } from '../lib/run-inputs/stamp';
@@ -168,6 +169,10 @@ export async function processEnrichmentRow(
     mapping: config.responseMapping, costMicro: result.costMicro, request, reuseKey, reused: !!result.reused,
     stamp: row.stamp,
     ...(list && result.items && (result.items.length || result.answered)
-      ? { list: { items: result.items, copy: copyValues(list, row.data), rowId: row.rowId } } : {}),
+      // A run saved on v0.8.48 (resumed since) copies as an Open roles run does now (lib/hiring/open-roles-input.ts).
+      ? { list: { items: result.items, rowId: row.rowId,
+        copy: copyValues({ ...list, copy: openRolesCopies(config.enrichment.toolId, list.keep, list.copy) },
+          row.data) } }
+      : {}),
   });
 }
