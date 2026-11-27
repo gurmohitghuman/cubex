@@ -1,0 +1,105 @@
+name: Update now
+
+# Settings' "Update now" for real (plans/settings-update-now.md's must-pass), on Linux, macOS and Windows runners.
+# tests/install/update-now.sh (update-now.ps1 on Windows) installs this commit from its checkout with the installer,
+# labels it the release before the latest and sets it to follow releases. Then, through the button's own request
+# with a session: an update to a build that doesn't start must put the version before back with the data as it was,
+# and an update to a newer build of the commit must come through with the password and a sheet made before. An API
+# token is refused. The release check answers from a local stand-in. Nothing is pushed or tagged.
+# On pull requests and pushes to main that touch the updater, the installers or this check; or by hand.
+
+on:
+  pull_request:
+    paths:
+      - install.sh
+      - install.ps1
+      - 'bin/**'
+      - server/src/lib/self-update.ts
+      - server/src/routes/settings-version.ts
+      - 'tests/install/**'
+      - .github/workflows/update-now.yml
+  push:
+    branches: [main]
+    paths:
+      - install.sh
+      - install.ps1
+      - 'bin/**'
+      - server/src/lib/self-update.ts
+      - server/src/routes/settings-version.ts
+      - 'tests/install/**'
+      - .github/workflows/update-now.yml
+  workflow_dispatch:
+
+concurrency:
+  group: update-now-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  unix:
+    name: Update now (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x64
+            os: ubuntu-latest
+          - name: macOS arm64
+            os: macos-latest
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    # The install's folders are set in each step from RUNNER_TEMP: the runner context can't be read in a job's env.
+    env:
+      TEST_PORT: '3002'
+    steps:
+      # The whole history: the check clones this checkout for its build that doesn't start.
+      - uses: actions/checkout@v5
+        with:
+          path: src
+          fetch-depth: 0
+      # Its own limit, so the step after still shows what happened if it hangs.
+      - name: An update that rolls back, then the real one
+        timeout-minutes: 30
+        run: |
+          export CUBEX_HOME="$RUNNER_TEMP/cubex/home" CUBEX_BIN_DIR="$RUNNER_TEMP/cubex/bin"
+          bash src/tests/install/update-now.sh src
+      # The files themselves: cubex logs follows the log and never ends.
+      - name: What the updates said, and Cubex's log
+        if: always()
+        run: |
+          home="$RUNNER_TEMP/cubex/home"
+          for f in update-status.json update.log; do echo "--- $f"; cat "$home/$f" 2>/dev/null || true; done
+          echo '--- logs/cubex.log'; tail -n 80 "$home/logs/cubex.log" 2>/dev/null || true
+
+  windows:
+    name: Update now (Windows x64)
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      TEST_PORT: '3002'
+      # A runner's window is elevated; a background-process install from one is allowed here, as install-windows.yml
+      # allows it.
+      CUBEX_ALLOW_ELEVATED: '1'
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          path: src
+          fetch-depth: 0
+      - name: An update that rolls back, then the real one
+        timeout-minutes: 30
+        run: |
+          $env:CUBEX_HOME = Join-Path $env:RUNNER_TEMP 'cubex'
+          .\src\tests\install\update-now.ps1 src
+      - name: What the updates said, and Cubex's log
+        if: always()
+        run: |
+          $home_ = Join-Path $env:RUNNER_TEMP 'cubex'
+          foreach ($f in 'update-status.json', 'update.log') {
+            "--- $f"; Get-Content (Join-Path $home_ $f) -ErrorAction SilentlyContinue
+          }
+          '--- logs\cubex.log'; Get-Content (Join-Path $home_ 'logs\cubex.log') -Tail 80 -ErrorAction SilentlyContinue

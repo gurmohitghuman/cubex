@@ -13,7 +13,9 @@ import { Receiver } from './helpers-receiver'
 // same; an install pinned with --ref is told how to get updates again instead of cubex update. The same release:
 // no dot. Turned off: only the running version, nothing asked. Offline: only the running version, no
 // error on the card; "Check now" says it couldn't reach GitHub. Not recorded (Docker): no dot. MCP's
-// serverInfo carries the running version.
+// serverInfo carries the running version. Update now (an install the installer made): asked first, then the page
+// follows a stand-in `cubex update` to the new version and reloads on it; one that fails says so with its last
+// lines, and the version before stays. An access token can't start one.
 
 const PATH = '/repos/gurmohitghuman/cubex/releases/latest'
 const HOME = process.env.CUBEX_TEST_HOME || ''
@@ -65,8 +67,8 @@ test('a newer release: the line, the dots, and REST and MCP agree; the same rele
   await expect(page.getByTestId('version-running')).toHaveText('Running: v0.8.9 e2e0001')
   await card.getByTestId('version-check-now').click()
   await expect(page.getByTestId('version-latest')).toContainText('Latest release: v0.8.10, Nov 12, 2026.')
-  await expect(page.getByTestId('version-update'))
-    .toHaveText('v0.8.10 is out (you have v0.8.9). Run cubex update to get it.')
+  await expect(page.getByTestId('version-update')).toHaveText('v0.8.10 is out (you have v0.8.9).')
+  await expect(card.getByTestId('version-update-now')).toHaveText('Update to v0.8.10')
   await expect(card.getByRole('link', { name: 'Release notes' }))
     .toHaveAttribute('href', 'https://github.com/gurmohitghuman/cubex/releases/tag/v0.8.10')
   await expect(page.getByTestId('account-update-dot')).toBeVisible()
@@ -178,4 +180,52 @@ test('offline: only the running version and no error on the card; Check now says
   const rest = await (await v1.get('/api/v1/version')).json()
   expect(rest).toMatchObject({ version: 'v0.8.9', update_check: true, latest_release: null, update_available: null })
   await rx.start()
+})
+
+// A stand-in for the installer's `cubex update` (bin/cubex-update-run.sh runs it outside the server): after a
+// moment it writes the new version, or fails as an update that rolled back does.
+function standIn(code: number): void {
+  const bin = path.join(HOME, 'app', 'bin')
+  fs.mkdirSync(bin, { recursive: true })
+  fs.copyFileSync(path.resolve('bin', 'cubex-update-run.sh'), path.join(bin, 'cubex-update-run.sh'))
+  const done = code === 0 ? `printf 'v0.8.10 e2e0002\\n' > '${VERSION_FILE}'`
+    : "echo \"The new version didn't start, so the previous one is back.\""
+  fs.writeFileSync(path.join(bin, 'cubex'), `#!/bin/sh\necho 'Downloading v0.8.10'\nsleep 2\n${done}\nexit ${code}\n`)
+  fs.chmodSync(path.join(bin, 'cubex'), 0o755)
+  for (const f of ['update.lock', 'update-status.json', 'update.log']) fs.rmSync(path.join(HOME, f), { force: true })
+}
+
+test('Update now: asked first, then the page follows the update and reloads on the new version', async ({ page }) => {
+  test.skip(process.platform === 'win32', 'the stand-in is a shell script')
+  rx.on(PATH, release('v0.8.10'))
+  standIn(0)
+  await openAccount(page)
+  await page.getByTestId('version-check-now').click()
+  await page.getByTestId('version-update-now').click()
+  await expect(page.getByRole('heading', { name: 'Update to v0.8.10?' })).toBeVisible()
+  await page.getByRole('button', { name: 'Update now' }).click()
+  await expect(page.getByTestId('version-updating')).toContainText('Updating to v0.8.10')
+  await expect(page.getByTestId('version-running')).toHaveText('Running: v0.8.10 e2e0002', { timeout: 30_000 })
+  await expect(page.getByTestId('version-updated')).toHaveText('Updated from v0.8.9 to v0.8.10.')
+  await expect(page.getByTestId('version-update-now')).toHaveCount(0)
+  fs.writeFileSync(VERSION_FILE, 'v0.8.9 e2e0001\n')
+})
+
+test('Update now that fails: the version before stays, with what the update said', async ({ page }) => {
+  test.skip(process.platform === 'win32', 'the stand-in is a shell script')
+  rx.on(PATH, release('v0.8.10'))
+  standIn(2)
+  await openAccount(page)
+  await page.getByTestId('version-check-now').click()
+  await page.getByTestId('version-update-now').click()
+  await page.getByRole('button', { name: 'Update now' }).click()
+  const failed = page.getByTestId('version-update-failed')
+  await expect(failed).toContainText("The update to v0.8.10 didn't finish. v0.8.9 is still running",
+    { timeout: 30_000 })
+  await failed.getByText('What the update said').click()
+  await expect(failed).toContainText("The new version didn't start, so the previous one is back.")
+  await expect(page.getByTestId('version-running')).toHaveText('Running: v0.8.9 e2e0001')
+  await expect(page.getByTestId('version-update-now')).toBeVisible()
+  // Only a signed-in person starts one: an access token has no session here.
+  expect((await v1.post('/api/settings/version/update')).status()).toBe(401)
 })

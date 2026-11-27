@@ -67,6 +67,12 @@ export function pinnedFrom(text: string | null): string | null {
 const read = (file: string) => { try { return fs.readFileSync(file, 'utf8'); } catch { return null; } };
 let cached: { build: Omit<Running, 'pinned'>; installed: boolean } | null = null;
 
+// The install folder the installer made (.cubex-home beside an app with a .cubex-version), or null: a Docker
+// build or a source checkout (lib/self-update.ts).
+export function installFolder(): string | null {
+  return builtApp().installed ? HOME : null;
+}
+
 // The running build, without the pin (MCP's serverInfo, on every request).
 export function runningBuild(): Omit<Running, 'pinned'> {
   return builtApp().build;
