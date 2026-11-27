@@ -88,8 +88,10 @@ jobs:
           E2E_SPEC: tests/e2e
         run: node scripts/e2e-harness.mjs --no-build --shard=${{ matrix.shard }}/4
 
+      # Also when a test passed only on a retry (its failed try's trace is kept: retain-on-failure) or the part was
+      # cancelled at its time limit: a flaky test leaves a trace to fix it from (WORKFLOW.md 7).
       - name: Keep what a failure left
-        if: ${{ failure() }}
+        if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
           name: e2e-part-${{ matrix.shard }}

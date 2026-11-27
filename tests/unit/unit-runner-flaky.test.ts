@@ -30,8 +30,8 @@ fs.writeFileSync(path.join(repo, 'tests', 'unit', 'c-passes.test.ts'), "console.
 
 const runner = path.join(repo, 'scripts', 'unit-tests.mjs')
 const runEnv: NodeJS.ProcessEnv = { ...process.env, NODE_PATH: path.resolve('node_modules'), MARKS: marks }
-delete runEnv.UNIT_SHARD
-delete runEnv.GITHUB_ACTIONS
+// The outer run's settings stay out: a share, GitHub's warnings, retries turned off or another time limit.
+for (const k of ['UNIT_SHARD', 'GITHUB_ACTIONS', 'UNIT_FILE_RETRIES', 'UNIT_FILE_TIMEOUT_S']) delete runEnv[k]
 const run = (env: Record<string, string>, ...names: string[]) => {
   for (const f of fs.readdirSync(marks)) fs.rmSync(path.join(marks, f))
   const r = spawnSync(process.execPath, [runner, ...names], {
