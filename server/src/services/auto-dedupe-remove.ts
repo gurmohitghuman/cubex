@@ -9,10 +9,16 @@
 // it: a run writes its results by row position, so removing a row it holds
 // would leave results that a later sort binds to another row (the reason the
 // grid's delete waits for runs). A check that can't remove such a row waits.
+//
+// It takes rows within a budget of bytes written (lib/constants-dedupe.ts): a
+// row already in the sheet is written twice (into the trash, and zeroed out of
+// the rows), a row this transaction added once. A check past it goes on in
+// another transaction.
 import { db } from '../lib/db';
 import { BLANK_CHARS, LIST_MARK, RUNNING_MARK } from '../lib/run-markers';
 import { autorunRowsRemoved } from '../lib/autorun-mark';
 import { removeRows, sealBatch } from '../lib/trash/move';
+import { rowBytes } from '../lib/slice-bytes';
 import { insertTrashItem, sheetFacts, todaysBatch, trashKeeps } from '../lib/trash/store';
 import type { AutoDedupe } from '../lib/auto-dedupe/store';
 import { bumpDataVersion, sheetHasActiveRun } from './data-plane-shared';
@@ -22,6 +28,10 @@ import { countOf } from '../lib/change-log';
 import { CUBEX, runAs } from '../lib/actor';
 
 export interface RemovedRow { id: string; index: number }
+
+// bytes: what the rows it takes may write; oneAtLeast: a row past that still goes when it would be the first (a
+// background slice, which must get on), or never (a write's own transaction: the background round takes it).
+export interface RemovalBudget { bytes: number; oneAtLeast: boolean }
 
 // A cell of the row holds a run's placeholder (⏳) or a list job's "adding" (➕).
 function holdsRunWork(rid: number): boolean {
@@ -40,11 +50,12 @@ export class AutoDedupeRemoval {
   private seqAfter = 0;
   private runActive: boolean | undefined;
   private olderGone = false;
+  private written = 0;
 
   // fresh: rows this transaction added. sheetFree: no other job holds the sheet.
   // bump: open tabs reload after it (the checks' slices leave that to their end).
   constructor(readonly s: AutoDedupe, private readonly fresh: ReadonlySet<number>,
-    private readonly sheetFree: boolean, private readonly bump = true) {}
+    private readonly sheetFree: boolean, private readonly budget: RemovalBudget, private readonly bump = true) {}
 
   // Rows decided so far (to go, or gone).
   get count(): number { return this.pending.size + this.removed.length; }
@@ -56,8 +67,20 @@ export class AutoDedupeRemoval {
     return !this.runActive || !holdsRunWork(rid);
   }
 
-  remove(rids: readonly number[]): void {
-    for (const rid of rids) this.pending.add(rid);
+  // Takes the first of `rids` (rows it may remove, in order) that fit the budget: how many.
+  take(rids: readonly number[]): number {
+    if (rids.length === 0) return 0;
+    const sizes = rowBytes(rids, JSON.stringify(rids));
+    let n = 0;
+    for (; n < rids.length; n++) {
+      if (this.pending.has(rids[n])) continue;
+      const cost = sizes[n] * (this.fresh.has(rids[n]) ? 1 : 2);
+      const first = this.budget.oneAtLeast && this.count === 0;
+      if (this.written + cost > this.budget.bytes && !first) break;
+      this.written += cost;
+      this.pending.add(rids[n]);
+    }
+    return n;
   }
 
   private flush(): void {
