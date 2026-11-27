@@ -1,17 +1,18 @@
 // A formula's follow after a big write (services/derived-follow.ts): 25,000 rows with random ids and a 300-character
-// cell, 3 formula columns reading them, every source cell written again and queued as an undo of a run's column
-// does, then the three following at once, tick after tick, as their kicks would. Measured with each checkpoint on the
-// worker held 300 ms (bulk-wal-kit.ts): no follow transaction spends 100 ms on the CPU, this thread's time in it and
-// the formula worker's for the rows it worked out there (this thread waits for that worker inside the transaction,
-// off the CPU, and each slice's work is bounded by its own clock, derived-write.ts); its wall-clock time is printed,
-// not bounded, as a busy machine stretches it. Waits off the CPU that a slice's code makes are checked as events
-// instead: this thread waits on another (Atomics.wait) only for the formula's answer; where writers wait for a
-// running checkpoint (Windows and Linux), none begins inside one (bulk-wal-kit.ts); where a server makes the -wal
-// file its full size at start (Windows), so does this, and no follow write grows it (such a commit can wait on the
-// OS). A queued slice writes about DERIVED_QUEUED_SLICE_FRAMES pages (sized by what the last one wrote,
-// derived-write.ts queuedRowsAfter), never half as many again; no two slices of the three are written in one turn of
-// the event loop (lib/slice-turn.ts), so this thread never holds it 100 ms on the CPU in one stretch (loop-watch.ts);
-// and every cell follows.
+// cell, 3 formula columns reading them, every source cell written again and queued as an undo of a run's column does,
+// then the three following at once, tick after tick, as their kicks would. Measured with each checkpoint on the worker
+// held 300 ms (bulk-wal-kit.ts): no follow transaction spends 100 ms on the CPU, this thread's time in it and the
+// formula worker's for the rows it worked out there (this thread waits for that worker inside the transaction, off the
+// CPU, and each slice's work is bounded by its own clock, derived-write.ts); its wall-clock time is printed, not
+// bounded, as a busy machine stretches it. Waits off the CPU that a slice's code makes are checked as events instead:
+// this thread waits on another (Atomics.wait) only for the formula's answer, and no such wait runs out its time (the
+// worker's wake lost; a worker pausing off the CPU for less than the cap isn't bounded); where writers wait for a
+// running checkpoint (Windows and Linux), none begins inside one (bulk-wal-kit.ts); where a server makes the -wal file
+// its full size at start (Windows), so does this, and no follow write grows it (such a commit can wait on the OS). A
+// queued slice writes about DERIVED_QUEUED_SLICE_FRAMES pages (sized by what the last one wrote, derived-write.ts
+// queuedRowsAfter), never half as many again; no two slices of the three are written in one turn of the event loop
+// (lib/slice-turn.ts), so this thread never holds it 100 ms on the CPU in one stretch (loop-watch.ts); and every cell
+// follows.
 import assert from 'node:assert/strict'
 import { performance } from 'node:perf_hooks'
 import { undoKit } from './run-undo-kit'
@@ -50,7 +51,7 @@ const queued = db.prepare('SELECT COUNT(*) FROM autorun_pending WHERE autorun_id
 // what it asked (run: a slice's rows worked out, inside its transaction; open: the formula made ready, as a tick
 // starts), when it began, how long it took, and the CPU time other threads spent while it ran: the worker's (whatever
 // else ran in those few ms counts too: the safe side).
-const requests: Array<{ op: string; at: number; ms: number; workerCpuMs: number }> = []
+const requests: Array<{ op: string; at: number; ms: number; workerCpuMs: number; rows: number }> = []
 const cpuOf = (u: NodeJS.CpuUsage) => (u.user + u.system) / 1000
 let inRequest = false
 const request = formulaHost.request.bind(formulaHost)
@@ -60,16 +61,22 @@ formulaHost.request = (...a: Parameters<typeof request>) => {
   try { return request(...a) } finally {
     inRequest = false
     const workerCpuMs = Math.max(0, cpuOf(process.cpuUsage(all)) - cpuOf(process.threadCpuUsage(own)))
-    requests.push({ op: a[0].op, at, ms: performance.now() - at, workerCpuMs })
+    requests.push({ op: a[0].op, at, ms: performance.now() - at, workerCpuMs,
+      rows: a[0].op === 'run' ? a[0].rows.length : 0 })
   }
 }
 // This thread's synchronous waits on another thread (Atomics.wait) outside a formula request: a follow waits only for
-// the worker's answer; another wait would hold the thread off the CPU, which its CPU time doesn't show.
+// the worker's answer; another wait would hold the thread off the CPU, which its CPU time doesn't show. Inside one, a
+// wait that runs out its time (timed-out) is the worker's wake lost (the host then sees the answer only at its cap,
+// 220 ms later, both threads idle): none should.
 let otherWaits = 0
+let timedOutWaits = 0
 const atomicsWait = Atomics.wait
 Atomics.wait = ((...args: Parameters<typeof Atomics.wait>) => {
   if (!inRequest) otherWaits++
-  return atomicsWait(...args)
+  const out = atomicsWait(...args)
+  if (inRequest && out === 'timed-out') timedOutWaits++
+  return out
 }) as typeof Atomics.wait
 // A transaction's CPU time: this thread's, and the formula worker's for the requests begun in it.
 const inside = (r: TransactionRecord) => requests.filter(c => c.at >= r.at && c.at < r.at + r.ms)
@@ -94,6 +101,7 @@ await ok('3 formulas following 25,000 rows written again: no follow transaction 
   for (const e of entries) assert.equal(queued.get(e.id), N, `every row queued for ${e.status_column}`)
   requests.length = 0
   otherWaits = 0
+  timedOutWaits = 0
 
   const grown = walGrowth(process.env.DB_PATH!, walSized)
   const m = await measure('3 formulas following 25,000 rows', async () => {
@@ -120,13 +128,17 @@ await ok('3 formulas following 25,000 rows written again: no follow transaction 
   for (const [column, [, want]] of Object.entries(FORMULAS)) {
     assert.deepEqual(cells(sid, column), names.map((n, i) => want(n, P(i))), `every ${column} cell follows`)
   }
-  // The worker's time counts only where its requests are seen inside a follow transaction: every slice's is.
+  // The worker's time counts only where its requests are seen inside a follow transaction: every slice's is, and
+  // they worked out every cell that followed (none seen would bound nothing: the request patched above unused).
   assert.deepEqual(runs.filter(x => !m.records.some(r => inside(r).includes(x))), [],
     'slices\' formula requests made outside a follow transaction')
+  const asked = runs.reduce((s, x) => s + x.rows, 0)
+  assert.ok(asked >= N * Object.keys(FORMULAS).length, `the formula requests seen asked for ${asked} rows`)
   const most = cpuIn(busiest[0])
   assert.ok(most < FOLLOW_TRANSACTION_CPU_MS, `a follow transaction was ${most.toFixed(0)} ms on the CPU `
     + `(${transactionLine(busiest[0])}; most frames ${m.w.mostTransactionFrames})`)
   assert.equal(otherWaits, 0, 'waits of this thread on another, outside a formula request')
+  assert.equal(timedOutWaits, 0, 'waits for the formula worker that ran out their time (its wake lost)')
   assert.equal(grown(m.records), '', 'follow writes that grew the -wal file')
   assert.ok(m.w.mostTransactionFrames <= SLICE_FRAMES_MAX, `a follow slice wrote ${m.w.mostTransactionFrames} frames`)
   assert.ok(m.loopMs < FOLLOW_LOOP_MS, `this thread held the event loop ${m.loopMs.toFixed(0)} ms on the CPU`)
