@@ -5,16 +5,28 @@
 // an idle worker thread runs a 5 ms timer and nothing else (no I/O, no database): it runs late only when the process
 // itself couldn't run (the runner's VM paused, or had no CPU for it). A stretch of the loop, less the time the idle
 // thread ran late inside it, is what this thread held alone: a transaction busy on the CPU or waiting on the disk
-// counts in full, the idle thread running on meanwhile. A test's loop bound applies to that (`ownMs`), so a stretch is
-// let off only when the idle thread ran late for nearly all of it (at least the stretch less the bound). That lateness
-// is printed with the longest stretch either way (heldText). The idle thread ends when the watch is read and never
-// keeps the process running; a watch read before the thread had started (`ready`) lets off nothing from before then.
+// counts in full, the idle thread running on meanwhile (`ownMs`), so a stretch is let off only when the idle thread
+// ran late for nearly all of it (at least the stretch less the bound). That lateness is printed with the longest
+// stretch either way (heldText). The idle thread ends when the watch is read and never keeps the process running; a
+// watch read before the thread had started (`ready`) lets off nothing from before then.
 // On Linux the kernel says where this thread waited (loop-watch-waits.ts): a stretch is also let off its time
 // waiting for a CPU, and its plain commits' time in a disk wait point. Elsewhere a disk thread runs beside it
 // (loop-watch-disk.ts): a stretch is also let off the time a plain commit in it waited off the CPU while the disk
 // thread's own writes were stuck too (a slow disk, not the code). The sampler reads this thread's CPU time each tick,
 // so each stretch has its own. Every stretch let off is printed with its CPU time and where what was let off came
 // from; GC pauses are printed, never let off.
+// What a test bounds depends on what it proves. One about how much work the code does at a time (a bulk job's slices,
+// a clear, a transform, a summary) bounds `cpuMs`: the most CPU time this thread spent in one stretch, GC's included,
+// or `cpuWith` where the code also waits off the CPU on purpose (the formula engine). A busy machine or a slow runner
+// stretches the wall clock more than that: run-clear-big, transform-formula-follow and hiring-summarize-big went over
+// their bounds by 7 to 102 ms under load (two full unit runs on one server, a busy Mac, a Windows runner) and passed
+// alone. CPU time still rises some under load (a shared core, a lower clock), so the margins stay. What holds such a
+// job off the CPU is checked as an event where there is one: a transaction begun while a checkpoint ran
+// (bulk-wal-kit.ts checkpointOverlaps), one that ran SQLite's own checkpoint, started the WAL over or grew the -wal
+// file (sqlite-write-probe.ts). Other waits off the CPU (a lock's busy handler, a disk wait outside a plain commit)
+// that cpuMs doesn't see stay a test's own: one that proves this thread doesn't wait (for a lock, a checkpoint or
+// another thread) bounds `ownMs`, as a wait takes no CPU time. On Windows a thread's CPU time moves in clock ticks of
+// about 15.6 ms.
 import path from 'node:path'
 import { performance, PerformanceObserver } from 'node:perf_hooks'
 import { Worker } from 'node:worker_threads'
@@ -82,6 +94,15 @@ export interface LoopWatched {
   ownMs: number
   ownStretch: { at: number; ms: number }
   inside: TransactionRecord[]
+  // The most CPU time this thread spent in one stretch (a work test's bound, above), that stretch, and the
+  // transactions inside it.
+  cpuMs: number
+  cpuStretch: { at: number; ms: number }
+  cpuInside: TransactionRecord[]
+  // The most this thread spent in one stretch on the CPU and in `spans` (performance.now() times): waits off the CPU
+  // the code under test owns, such as the formula engine's (lib/formula/host.ts blocks in Atomics.wait), which
+  // `cpuMs` leaves out. That stretch, and how long it was.
+  cpuWith: (spans: Span[]) => { ms: number; at: number; stretchMs: number }
   own: LetOff & { gcMs: number }
   // All that was let off: how much, over how many stretches, and from where. Each stretch let off LISTED_MS or more.
   letOffTotal: { ms: number; stretches: number; from: Array<[string, number]> }
@@ -173,6 +194,14 @@ export function loopWatch(records: () => TransactionRecord[], opts: WatchOptions
     })
     const none = { at: 0, ms: 0, cpuMs: 0, rqMs: 0 }
     const own = watched.reduce((a, b) => (b.ms > a.ms ? b : a), { s: none, off: offFor(none), ms: 0 })
+    const cpu = stretches.reduce((a, b) => (b.cpuMs > a.cpuMs ? b : a), none)
+    const cpuWith = (spans: Span[]) => {
+      const m = merged(spans)
+      return stretches.reduce((a, s) => {
+        const ms = s.cpuMs + covered(m, s.at, s.at + s.ms)
+        return ms > a.ms ? { ms, at: s.at, stretchMs: s.ms } : a
+      }, { ms: 0, at: 0, stretchMs: 0 })
+    }
     const gcMs = covered(merged(gc), own.s.at, own.s.at + own.s.ms)
     const total = new Map<string, number>()
     const offs = watched.filter(x => x.off.letOffMs >= 0.5).map(x => x.off)
@@ -189,6 +218,7 @@ export function loopWatch(records: () => TransactionRecord[], opts: WatchOptions
     }
     return { longest: { at: longest.at, ms: longest.ms }, idleMs: lateIn(longest), ownMs: own.ms,
       ownStretch: { at: own.s.at, ms: own.s.ms }, inside: inStretch(own.s), own: { ...own.off, gcMs },
+      cpuMs: cpu.cpuMs, cpuStretch: { at: cpu.at, ms: cpu.ms }, cpuInside: inStretch(cpu), cpuWith,
       letOffTotal, letOffs: offs.filter(o => o.letOffMs >= LISTED_MS), diskFile: disk?.file ?? '', ended }
   }
   return Object.assign(stop, { ready, stallDisk: disk?.stall ?? (() => {}) })
@@ -207,10 +237,11 @@ const totalText = (w: LoopWatched) => (w.letOffTotal.stretches === 0 ? 'none'
   + `${w.letOffTotal.from.map(([what, ms]) => `${what} ${n0(ms)} ms`).join(', ')}); each ${LISTED_MS} ms or more: `
   + `${w.letOffs.map(letOffText).join(', ') || 'none'}`)
 // `loop held at most 208 ms (the idle thread late 195 ms in it), by this thread alone at most 13 ms (CPU 12 ms, GC
-// 0 ms); let off: none` (or totalText).
+// 0 ms), on the CPU at most 12 ms in one stretch (of 13 ms); let off: none` (or totalText).
 export const heldText = (w: LoopWatched) => `loop held at most ${n0(w.longest.ms)} ms (the idle thread late `
   + `${n0(w.idleMs)} ms in it), by this thread alone at most ${n0(w.ownMs)} ms (CPU ${n0(w.own.cpuMs)} ms, GC `
-  + `${n0(w.own.gcMs)} ms); let off: ${totalText(w)}`
+  + `${n0(w.own.gcMs)} ms), on the CPU at most ${n0(w.cpuMs)} ms in one stretch (of ${n0(w.cpuStretch.ms)} ms); `
+  + `let off: ${totalText(w)}`
 
 // `fn` run under a watch: its answer, how long it took, and the watch, read once fn ended or threw (so its threads
 // end and the disk thread's file is deleted either way). The watch is printed when a stretch was let off, or this

@@ -3,8 +3,8 @@
 // does, then the three following at once, tick after tick, as their kicks would. Measured with each checkpoint on the
 // worker held 300 ms (bulk-wal-kit.ts): the longest follow transaction stays under 100 ms; a queued slice writes about
 // DERIVED_QUEUED_SLICE_FRAMES pages (sized by what the last one wrote, derived-write.ts queuedRowsAfter), never half
-// as many again; no two slices of the three are written in one turn of the event loop (lib/slice-turn.ts), so it is
-// never held 100 ms; and every cell follows.
+// as many again; no two slices of the three are written in one turn of the event loop (lib/slice-turn.ts), so this
+// thread never holds it 100 ms on the CPU in one stretch (loop-watch.ts); and every cell follows.
 import assert from 'node:assert/strict'
 import { performance } from 'node:perf_hooks'
 import { undoKit } from './run-undo-kit'
@@ -92,7 +92,7 @@ await ok('3 formulas following 25,000 rows written again: no follow transaction 
   assert.ok(m.w.longestTransactionMs < FOLLOW_TRANSACTION_MS,
     `a follow transaction held ${m.w.longestTransactionMs.toFixed(0)} ms (most frames ${m.w.mostTransactionFrames})`)
   assert.ok(m.w.mostTransactionFrames <= SLICE_FRAMES_MAX, `a follow slice wrote ${m.w.mostTransactionFrames} frames`)
-  assert.ok(m.loopMs < FOLLOW_LOOP_MS, `the event loop was held ${m.loopMs.toFixed(0)} ms`)
+  assert.ok(m.loopMs < FOLLOW_LOOP_MS, `this thread held the event loop ${m.loopMs.toFixed(0)} ms on the CPU`)
 })
 
 await ok('a queued slice sized by the pages the last one wrote, never past DERIVED_QUEUED_SLICE_ROWS', async () => {
