@@ -12,7 +12,7 @@ import { buildMultiOutputInstruction, parseMultiOutput } from '../lib/ai-multi-o
 import { buildWebTools, searchReplayFor, toolCallBudget } from '../lib/ai-web-tools';
 import { classifyAiError, isOutOfCredits } from '../lib/ai-error-classify';
 import { redactSecrets } from '../lib/redact';
-import { aiMaxTokens, WATERFALL_AI_TEMPERATURE } from '../lib/constants';
+import { WATERFALL_AI_LEGACY_MAX_TOKENS, WATERFALL_AI_TEMPERATURE } from '../lib/constants';
 import { normalizeResult, RESULT_INFO } from '../lib/waterfall/result-type';
 import { traceDetail, traceValue } from '../lib/waterfall/trace';
 import type { AiChoices, BuiltAi, WaterfallBlock } from '../lib/waterfall/config';
@@ -75,7 +75,8 @@ async function sendOnce(a: AiStepArgs, messages: ReturnType<typeof aiMessages>):
       const deadline = aiCallDeadline(undefined);
       try {
         return await withConnectRetry(() => sendModelCall(a.client, {
-          model: a.built.model, messages, temperature: WATERFALL_AI_TEMPERATURE, maxTokens: aiMaxTokens(null),
+          model: a.built.model, messages, temperature: WATERFALL_AI_TEMPERATURE,
+          maxTokens: a.built.maxTokens ?? WATERFALL_AI_LEGACY_MAX_TOKENS,
           tools, searchReplay: search ? searchReplayFor(search) : null, maxToolCalls: toolCallBudget(search, false),
         }, deadline.signal), a.signal, a.stopped);
       } catch (error) {
