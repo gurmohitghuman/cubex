@@ -24,7 +24,7 @@ export const HIRING_COUNT_MAX_SEARCHES = 20;
 export const HIRING_COUNT_TIMEOUT_MS = 5_000;
 // A check waits for its search's run and that run's rows: how often it looks.
 export const HIRING_CHECK_POLL_MS = 2_000;
-// Open roles on a person's sheet (services/open-roles.ts) adds its two lookups once its run's start has set up the
+// Open roles on a person's sheet (services/open-roles.ts) adds its lookup once its run's start has set up the
 // sheet's rows: the answer waits that long at most (a few thousand rows take well under a second), then they are
 // added in the background as soon as the sheet is free, within the second wait (else at the next run).
 export const OPEN_ROLES_LOOKUPS_WAIT_MS = 15_000;

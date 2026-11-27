@@ -216,8 +216,8 @@ export const fillRoutes = (): RouteDoc[] => [
     method: 'post', path: '/sheets/{id}/open-roles', operationId: 'openRoles', tag: 'hiring', scope: 'run',
     summary: 'Find the open roles at the companies on this sheet: each into an Open roles sheet, counted per company.',
     description: 'An estimate unless estimate_only is false: the most it can cost (high_usd) and a free count of '
-      + 'matching roles. The first run adds the Open roles sheet beside this one and two columns here that count and '
-      + 'list each company\'s roles; a later run adds only roles not seen before. A run never spends more than its '
+      + 'matching roles. The first run adds the Open roles sheet beside this one and a column here counting each '
+      + 'company\'s roles; a later run adds only roles not seen before. A run never spends more than its '
       + 'estimate (409 with the new estimate when it would).',
     body: z.object({
       website_column: z.string().describe("The column holding each company's website."),

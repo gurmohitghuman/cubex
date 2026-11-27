@@ -30,7 +30,9 @@ const estimateOnlyOf = (v: unknown): boolean | null =>
 
 export async function agentOpenRoles(userId: string, tokenId: string, sheetId: unknown, body: unknown):
   Promise<{ ok: Json; sheetId?: string } | AgentOpenRolesFail> {
-  if (typeof sheetId !== 'string' || !UUID_PATTERN.test(sheetId)) return { fail: 'not_found', message: 'Sheet not found' };
+  if (typeof sheetId !== 'string' || !UUID_PATTERN.test(sheetId)) {
+    return { fail: 'not_found', message: 'Sheet not found' };
+  }
   const b = isObj(body) ? body : {};
   const o = parseOpenRoles({ websiteColumn: b.website_column, roles: b.roles, country: b.country, place: b.place,
     postedWithinDays: b.posted_within_days, perCompany: b.per_company }, 'snake');
@@ -67,8 +69,8 @@ export async function agentOpenRoles(userId: string, tokenId: string, sheetId: u
       run_id: s.runId, column: s.column, roles_sheet_id: s.rolesSheetId, roles_sheet_name: s.rolesSheetName,
       lookup_columns: s.lookups, ...(s.lookupsLeft ? { lookups_left: s.lookupsLeft } : {}),
       next: `The search is an enrichment run on "${s.column}": follow it with get_run (action status, run_type `
-        + `enrichment). Each role goes into "${s.rolesSheetName}"; the lookup columns count and list each `
-        + 'company\'s roles. Run it again later to add only roles not seen before.',
+        + `enrichment). Each role goes into "${s.rolesSheetName}"; the lookup column counts each company's roles `
+        + 'once the run is done. Run it again later to add only roles not seen before.',
     },
   };
 }

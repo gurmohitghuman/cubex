@@ -8,7 +8,7 @@
 // - the estimate is free (only the free count is called, over the companies with a website) and makes nothing;
 // - a start over the estimate's most is refused with the new estimate, nothing made; an agent's refusal makes
 //   nothing either;
-// - the start makes the Open roles sheet beside the sheet, the search column and the two lookups, and runs with the
+// - the start makes the Open roles sheet beside the sheet, the search column and the lookup, and runs with the
 //   estimate's most as its spend limit; a second start reuses all three, with the new day as First seen; a run still
 //   going is refused;
 // - names the person already uses are left alone (a number after ours); a hiring table's sheets are refused.
@@ -161,20 +161,19 @@ await ok('a start over the most it was sent is refused with the new estimate, an
 })
 
 let rolesSheet = ''
-await ok('the start: the Open roles sheet beside, the search column, the two lookups, and the run with the estimate\'s '
+await ok('the start: the Open roles sheet beside, the search column, the lookup, and the run with the estimate\'s '
   + 'most as its spend limit and the day as First seen', async () => {
   const s = await ask({ estimateOnly: false, maxCostUsd: high })
   assert.ok('ok' in s && 'started' in s.ok, JSON.stringify(s))
   const st = s.ok.started
   rolesSheet = st.rolesSheetId
   assert.deepEqual([st.column, st.rolesSheetName, st.lookups, st.lookupsLeft],
-    [OPEN_ROLES.status, OPEN_ROLES.sheet, [OPEN_ROLES.count, OPEN_ROLES.titles], null])
+    [OPEN_ROLES.status, OPEN_ROLES.sheet, [OPEN_ROLES.count], null])
   assert.deepEqual(rolesSheets(), ['Open roles'])
   assert.deepEqual(columnsOf(rolesSheet), OPEN_ROLE_COLUMNS)
-  assert.deepEqual(columnsOf(sid), ['Name', 'Website', OPEN_ROLES.status, OPEN_ROLES.count, OPEN_ROLES.titles])
+  assert.deepEqual(columnsOf(sid), ['Name', 'Website', OPEN_ROLES.status, OPEN_ROLES.count])
   assert.deepEqual(lookups(sid), [
     { column_name: OPEN_ROLES.count, returns: 'count', match_column: R.domain, source_column: 'Website' },
-    { column_name: OPEN_ROLES.titles, returns: 'list', match_column: R.domain, source_column: 'Website' },
   ])
   const c = newestConfig(sid)
   assert.equal(runsOn(sid), 1)
@@ -197,7 +196,7 @@ await ok('a run still going is refused; once it is over, a second start reuses t
   assert.ok('ok' in s && 'started' in s.ok, JSON.stringify(s))
   assert.deepEqual([s.ok.started.rolesSheetId, s.ok.started.column], [rolesSheet, OPEN_ROLES.status])
   assert.deepEqual(rolesSheets(), ['Open roles'])
-  assert.equal(lookups(sid).length, 2)
+  assert.equal(lookups(sid).length, 1)
   const c = newestConfig(sid)
   assert.deepEqual(c.enrichment.list.copy.filter((x: { to: string }) => x.to === R.firstSeen)
     .map((x: { value: string }) => x.value), [today()])
@@ -223,7 +222,7 @@ await ok('names the person already uses are left alone; a hiring table\'s sheets
   const s = await openRoles(uid, own, { ...o, estimateOnly: false, maxCostUsd: e.ok.estimate.highUsd, timeZone: null })
   assert.ok('ok' in s && 'started' in s.ok, JSON.stringify(s))
   assert.deepEqual([s.ok.started.column, s.ok.started.lookups],
-    [`${OPEN_ROLES.status} 2`, [`${OPEN_ROLES.count} 2`, OPEN_ROLES.titles]])
+    [`${OPEN_ROLES.status} 2`, [`${OPEN_ROLES.count} 2`]])
   assert.deepEqual(rolesSheets(), ['Open roles', 'Open roles 2'], 'a free name in the table')
   const missing = await openRoles(uid, sid, { ...o, websiteColumn: 'Site', estimateOnly: true, maxCostUsd: null,
     timeZone: null })

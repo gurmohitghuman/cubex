@@ -4,7 +4,7 @@
 // (company_domains); the roles asked as its titles; the country, place and how recent as fixed values. A row whose
 // website cleans to nothing isn't searched (lib/enrich-request.ts): with no company, the index would answer roles at
 // any company. Each role found becomes a row in the Open roles sheet, kept (a role found again is not added again),
-// with the company row's own website cell copied into its Domain, so the two lookups on the company sheet match it
+// with the company row's own website cell copied into its Domain, so the lookup on the company sheet matches it
 // exactly, whatever form the cells are in; and First seen the run's day, set by each start.
 import { stripControlChars } from '../csv-safety';
 import { digitsAsNumber } from '../digits-text';
