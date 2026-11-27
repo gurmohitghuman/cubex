@@ -13,6 +13,7 @@ import { MAX_COLUMNS_PER_SHEET } from '../lib/constants';
 import { appendColumnsToOrder, getSheetColumns, verifySheetOwnership } from '../lib/sql-helpers';
 import type { EnrichRunInput } from '../lib/enrich-run-input';
 import { sheetBusyWith, busyMessage } from '../lib/sheet-busy';
+import { enrichmentRunStarted } from '../lib/run-start-listeners';
 import { asRunStart } from './run-seed';
 import { rowFilterSql } from './enrich-rows-filter';
 import { seedEnrichmentThenEnqueue } from './enrich-seed-run';
@@ -117,6 +118,7 @@ export async function startEnrichmentRun(
       kind: 'enrichment', column: statusColumn, runId, rows: upperBound, again: input.continueColumn,
       runIf: input.runIf,
     });
+    enrichmentRunStarted(userId, sheetId, runId, config);
     return {
       ok: {
         runId, statusColumn, outputColumns: outputNames, destSheetId, rowsInScope: upperBound,

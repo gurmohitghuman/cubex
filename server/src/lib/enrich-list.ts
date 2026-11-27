@@ -9,14 +9,24 @@ import { cellText } from './enrich-cells';
 import { ENRICH_LIST_MAX_FIELDS } from './constants';
 import { LIST_MARK, holdsRunMarker } from './enrich-seed';
 import { cellOf } from './row-cell';
+import { cleanDomain as rootDomain } from './clean/domain';
+import { dayIn } from './ai-visibility/check';
+import { nowDate } from './clock';
 
 export { LIST_MARK };
 
 // A result's field (a path inside one result) and the destination column it fills.
 export interface ListField { path: string; columnName: string }
 // A source column copied into every row a source row adds, or (value set,
-// from '') the same text written into each of them.
-export interface ListCopy { id: string; from: string; to: string; value?: string }
+// from '') the same text written into each of them. Set by Cubex only (lib/enrich-list-input.ts takes them back
+// only as the app sends a setup it recalled), and kept by a rerun:
+// clean 'domain', the source cell as the clean column's domain cleaner gives
+// it (lib/clean/domain.ts), so a lookup on such a column matches it exactly;
+// day (from ''), the day the row is added in that IANA time zone (null: UTC),
+// whoever started the run (services/open-roles.ts First seen).
+export interface ListCopy {
+  id: string; from: string; to: string; value?: string; clean?: 'domain'; day?: string | null;
+}
 
 export interface EnrichListConfig {
   destSheetId: string;
@@ -130,8 +140,12 @@ export function copyValues(list: EnrichListConfig, data: Record<string, string>)
   const out: Record<string, string> = {};
   for (const c of list.copy) {
     if (c.value !== undefined) { out[c.id] = c.value; continue; }
+    if (c.day !== undefined) {
+      out[c.id] = dayIn(nowDate().toISOString().replace('T', ' ').slice(0, 19), c.day);
+      continue;
+    }
     const v = cellOf(data, c.from);
-    out[c.id] = holdsRunMarker(v) ? '' : v;
+    out[c.id] = holdsRunMarker(v) ? '' : c.clean === 'domain' ? rootDomain(v) : v;
   }
   return out;
 }

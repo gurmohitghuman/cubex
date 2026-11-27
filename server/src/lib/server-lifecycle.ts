@@ -26,6 +26,7 @@ import { startWebhookAutoDeleteLoop } from '../services/webhook-auto-delete-swee
 import { startReleaseCheckLoop } from '../services/release-check';
 import { resumeAiVisibilityChecks } from '../services/ai-visibility-check';
 import { resumeHiringChecks } from '../services/hiring-check-watch';
+import { finishOpenRolesConversions, resumeOpenRolesWatches } from '../services/open-roles-watch';
 import { closeWalCheckpointer } from './wal-checkpointer';
 import { stopWalWatch } from './wal-watch';
 import { closeWalTurnReader } from './wal-turn';
@@ -92,6 +93,10 @@ export const startBackground = (recovered?: RecoveredRuns) => {
       resumeAiVisibilityChecks();
       // A hiring check a restart cut short waits for its search again, then sums up (services/hiring-check.ts).
       resumeHiringChecks();
+      // An Open roles run a restart cut short gets its count looked up again once it ends, and a count a restart left
+      // on the website column moves to its domain column (open-roles-watch.ts).
+      resumeOpenRolesWatches();
+      finishOpenRolesConversions();
       // Resume any runs reset on boot (resetOrphanedRuns flipped them to
       // 'pending') — only AFTER the queue is up to accept jobs. Best-effort:
       // a failure rolls the individual run to 'failed' inside resumeRecoveredRuns.

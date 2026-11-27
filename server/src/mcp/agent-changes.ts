@@ -50,6 +50,13 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
           + 'holds is refused when the count is known, as treg would turn down every row. Columns made before keep '
           + 'their most.',
       },
+      {
+        change: 'server',
+        summary: 'hiring_signals open_roles counts by domain: the first run adds a "<website column> (domain)" clean '
+          + 'column to your sheet, and each role\'s Domain is that cleaned domain.',
+        details: 'A sheet searched on v0.8.48 has its roles\' Domain rewritten so, once. First seen is the day each '
+          + 'role was found, and the count is looked up again after any run of the column that added roles.',
+      },
     ],
   },
   {

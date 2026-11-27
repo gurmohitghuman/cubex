@@ -32,7 +32,7 @@ router.post('/:sheetId', async (req: AuthRequest, res) => {
     const b = isObj(req.body) ? req.body : {};
     const o = parseOpenRoles(b);
     if (typeof o === 'string') return res.status(400).json({ error: o });
-    // The asker's time zone, for the run's day (UTC when it isn't one).
+    // The asker's time zone, for the day each role is found (UTC when it isn't one).
     const timeZone = timeZoneOf(b.timeZone);
     const estimateOnly = b.estimateOnly === true;
     let maxCostUsd: number | null = null;

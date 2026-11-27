@@ -2,6 +2,7 @@
 // start transaction, where the rows go and which columns they fill; inside
 // it, the new sheet and columns, the run's destination, and the fields given
 // to the column's earlier test runs whose results still wait for them.
+import { openRolesCopies } from '../lib/hiring/open-roles-input';
 import { db } from '../lib/db';
 import { listOf, type EnrichRunConfig } from '../lib/enrich-run-config';
 import type { EnrichRunInput } from '../lib/enrich-run-input';
@@ -33,7 +34,9 @@ export function planListStart(
   if (!input.list.fields?.length && input.rows.test === null) {
     return bad('Pick the fields to keep first: run on a few rows, then pick them from the results.');
   }
-  const plan = planListDest(userId, sheetId, input.list, columns);
+  // An Open roles setup recalled from v0.8.48 copies as it does now (lib/hiring/open-roles-input.ts).
+  const copy = openRolesCopies(config.enrichment.toolId, input.list.keep, input.list.copy);
+  const plan = planListDest(userId, sheetId, { ...input.list, copy }, columns);
   return 'fail' in plan ? plan : { ok: plan.ok };
 }
 

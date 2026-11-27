@@ -12,6 +12,7 @@
 // Paused auto-runs count (a resume can come any time). Checked when auto-run is
 // turned on, when a run started by hand points an auto-run column somewhere
 // new (enrich-run-prepare.ts), and on every auto-run tick (autorun-loop.ts).
+import { openRolesCopies } from '../lib/hiring/open-roles-input';
 import { db } from '../lib/db';
 import { listOf, type EnrichRunConfig } from '../lib/enrich-run-config';
 import type { HTTPAPIConfig } from '../lib/http-request-template';
@@ -119,7 +120,9 @@ export function autorunListDest(
   if (!list.fields?.length) return { pause: { reason: 'setup', message: NO_FIELDS } };
   // The newest run's own sheet (never a new one): gone, it says so. Busy
   // (rows being added there, a sort): the next tick tries again.
-  const plan = planListDest(e.user_id, e.sheet_id, input, columns);
+  // An Open roles setup recalled from v0.8.48 copies as it does now (lib/hiring/open-roles-input.ts).
+  const copy = openRolesCopies(config.enrichment.toolId, input.keep, input.copy);
+  const plan = planListDest(e.user_id, e.sheet_id, { ...input, copy }, columns);
   if ('fail' in plan && plan.fail === 'conflict') return { retry: true };
   if ('fail' in plan) return { pause: { reason: 'setup', message: plan.message } };
   if (!plan.ok.sheetId) return { pause: { reason: 'setup', message: NO_DEST } };

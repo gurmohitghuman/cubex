@@ -9,6 +9,7 @@ import { validateMappingPath } from './jsonpath-extract';
 import { stripControlChars } from './csv-safety';
 import { holdsRunMarker } from './enrich-seed';
 import type { ListField } from './enrich-list';
+import { timeZoneOf } from './ai-visibility/check';
 
 export interface ListInput {
   // An existing sheet of the table, or a new one made by the start.
@@ -28,7 +29,9 @@ export interface ListInput {
   // (null: where the catalog says).
   itemsPath?: string | null;
 }
-export interface ListCopyInput { from: string; to: string; value?: string }
+// clean and day: Cubex's own copies (lib/enrich-list.ts ListCopy), taken back as they were when the app sends a
+// column's setup again (an edit in the drawer keeps them).
+export interface ListCopyInput { from: string; to: string; value?: string; clean?: 'domain'; day?: string | null }
 
 const PROVIDER_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
 const MAX_NAME = 200;
@@ -69,6 +72,14 @@ function parseCopy(v: unknown): ListInput['copy'] | string {
   if (!Array.isArray(v) || v.length > ENRICH_LIST_MAX_COPY) return `Copy at most ${ENRICH_LIST_MAX_COPY} columns.`;
   const out: ListInput['copy'] = [];
   for (const c of v) {
+    // The day a row is added, in a time zone (null: UTC).
+    if (isObj(c) && c.day !== undefined && (c.from === undefined || c.from === '')) {
+      const to = name(c.to);
+      const day = c.day === null ? null : timeZoneOf(c.day);
+      if (!to || (c.day !== null && !day)) return 'A copied day needs a column name (to) and an IANA time zone.';
+      out.push({ from: '', to, day });
+      continue;
+    }
     if (isObj(c) && c.value !== undefined && c.value !== null) {
       const to = name(c.to);
       const value = fixedValue(c.value);
@@ -83,7 +94,10 @@ function parseCopy(v: unknown): ListInput['copy'] | string {
     const to = isObj(c) ? name(c.to ?? c.from) : null;
     if (!from || !to) return 'Each copied column needs a name.';
     if (out.some(x => x.from === from)) return `"${from}" is copied twice.`;
-    out.push({ from, to });
+    if (isObj(c) && c.clean !== undefined && c.clean !== 'domain') {
+      return 'A copied column can only be cleaned to its domain.';
+    }
+    out.push({ from, to, ...(isObj(c) && c.clean === 'domain' ? { clean: 'domain' as const } : {}) });
   }
   return out;
 }

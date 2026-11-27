@@ -9,10 +9,12 @@ import { openColumnType } from './helpers-ui'
 // Open roles at the companies on a sheet (services/open-roles.ts) against the mock's job index
 // (tests/mock-treg/jobs.mjs, whose "SDR" roles fall two at each of Northwind, Bluefin and Copperleaf): from the
 // enrichment drawer, the website column picked for the person, the cost first (a free count, no paid call), then the
-// run: each role into an Open roles sheet beside the sheet, its Domain the company's own website cell, and a column
+// run: each role into an Open roles sheet beside the sheet, its Domain the company's website as a domain, and a column
 // counting each company's roles once the run is done. Opened again, the dialog has what it was run with, and a run adds
-// only the new role. Agents: hiring_signals open_roles and POST /api/v1/sheets/:id/open-roles, the estimate by default,
-// a run held to its most (409 with the estimate now), the run scope needed.
+// only the new role. A website written another way keeps its count, and a run from the column's own menu brings the
+// count up to date and stamps its roles with their day. Agents: hiring_signals open_roles and POST
+// /api/v1/sheets/:id/open-roles, the estimate by default, a run held to its most (409 with the estimate now), the run
+// scope needed.
 
 const drawer = (page: Page) => page.getByTestId('enrich-drawer')
 const dialog = (page: Page) => page.getByTestId('open-roles-dialog')
@@ -70,9 +72,9 @@ test('the drawer: the cost first, then each role into Open roles, counted per co
 
   await finished(api, sheetId, newestRun(sheetId))
   const roles = await rowsOf(api, rolesSheetOf(tableId))
-  expect(roles.map(r => r.Domain).sort()).toEqual(['bluefin-data.io', 'bluefin-data.io',
-    'copperleaf-systems.io/careers', 'copperleaf-systems.io/careers', 'https://www.northwind-labs.io/',
-    'https://www.northwind-labs.io/'])
+  // Each role's Domain is its company's website as a domain, whatever form the cell has.
+  expect(roles.map(r => r.Domain).sort()).toEqual(['bluefin-data.io', 'bluefin-data.io', 'copperleaf-systems.io',
+    'copperleaf-systems.io', 'northwind-labs.io', 'northwind-labs.io'])
   expect(roles.every(r => r.Title.includes('SDR') && r.Link.startsWith('https://jobs.') && r['First seen'])).toBe(true)
   await counts(api, sheetId, { Northwind: '2', Bluefin: '2', Copperleaf: '2' })
   // The sheet shows the new column (its header cut short to fit) and the Open roles tab.
@@ -91,8 +93,28 @@ test('the drawer: the cost first, then each role into Open roles, counted per co
   await finished(api, sheetId, newestRun(sheetId))
   const again = await rowsOf(api, rolesSheetOf(tableId))
   expect(again).toHaveLength(7)
-  expect(again.filter(r => r.Link.includes('/sdr-new-')).map(r => r.Domain)).toEqual(['https://www.northwind-labs.io/'])
+  expect(again.filter(r => r.Link.includes('/sdr-new-')).map(r => r.Domain)).toEqual(['northwind-labs.io'])
   await counts(api, sheetId, { Northwind: '3', Bluefin: '2', Copperleaf: '2' })
+
+  // Copperleaf's website written another way, then a run from the column's own menu (not the dialog) finding a role
+  // there and one at Bluefin: its count takes its roles from before and the new one together, and the menu's run
+  // brings the count up to date and stamps its roles with the day they're found.
+  const copperleaf = (await rowsOf(api, sheetId)).findIndex(r => r.Company === 'Copperleaf')
+  const rewrite = { rowIndex: copperleaf, columnName: 'Website', value: 'https://www.Copperleaf-Systems.io' }
+  expect((await api.put(`/api/sheets/${sheetId}/data`, { data: { updates: [rewrite] } })).ok()).toBeTruthy()
+  await until(async () => (await rowsOf(api, sheetId))[copperleaf]['Website (domain)'],
+    v => v === 'copperleaf-systems.io', 'the domain column follows the website')
+  await mockTreg.set({ jobsNew: { SDR: 5 } })
+  const rerun = await api.post(`/api/enrich/sheets/${sheetId}/reruns`, { data: { column: 'Open roles found',
+    mode: 'all', status: 'any', estimateOnly: false, callAgain: true } })
+  expect(rerun.ok(), await rerun.text()).toBeTruthy()
+  await finished(api, sheetId, (await rerun.json()).runId)
+  const later = await rowsOf(api, rolesSheetOf(tableId))
+  expect(later).toHaveLength(9)
+  const found = later.filter(r => /\/sdr-new-[34]$/.test(r.Link))
+  expect(found.map(r => r.Domain).sort()).toEqual(['bluefin-data.io', 'copperleaf-systems.io'])
+  expect(found.every(r => /^\d{4}-\d{2}-\d{2}$/.test(r['First seen']))).toBe(true)
+  await counts(api, sheetId, { Northwind: '3', Bluefin: '3', Copperleaf: '3' })
 })
 
 test('agents: the estimate by default, the run held to its most, the run scope needed', async () => {
