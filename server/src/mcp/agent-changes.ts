@@ -39,6 +39,20 @@ export const CHANGES_RECORDED_AFTER = 'v0.8.12';
 // Newest first.
 export const AGENT_CHANGES: ReleaseChanges[] = [
   {
+    version: 'v0.8.48',
+    changes: [
+      {
+        change: 'server',
+        summary: 'Auto-dedupe takes rows with big cells out of a sheet a few at a time: what a call\'s own '
+          + 'transaction has no room for is checked in the background within seconds, counted in '
+          + 'auto_dedupe.checking_later.',
+        details: 'A transfer_rows near its cap leaves less room, a move\'s rows counting twice. Auto-run waits for '
+          + 'those checks, so a row about to go isn\'t paid for; read the rows again after a few seconds to see what '
+          + 'stayed.',
+      },
+    ],
+  },
+  {
     version: 'v0.8.47',
     changes: [
       {
@@ -360,15 +374,6 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
         details: 'A move writes each row three times in one transaction, so 32 MB of rows passed the database\'s '
           + 'room. The refusal says how much the call picked: move fewer rows, or copy a single row past the cap, '
           + 'then change_rows with action "delete".',
-      },
-      {
-        change: 'server',
-        summary: 'Auto-dedupe takes rows with big cells out of a sheet a few at a time: what a call\'s own '
-          + 'transaction has no room for is checked in the background within seconds, counted in '
-          + 'auto_dedupe.checking_later.',
-        details: 'A transfer_rows near its cap leaves less room, a move\'s rows counting twice. Auto-run waits for '
-          + 'those checks, so a row about to go isn\'t paid for; read the rows again after a few seconds to see what '
-          + 'stayed.',
       },
       {
         change: 'changed',
