@@ -6,7 +6,7 @@
 import { APIConnectionError, APIConnectionTimeoutError, APIError } from 'openai';
 import { callDeadline, deadlineWords, type CallDeadline } from '../lib/call-deadline';
 import { AI_CALL_DEADLINE_MS, AI_RESET_MAYBE_BILLED_MS } from '../lib/constants';
-import { aiAccountSide, aiProviderSide, DROPPED, type RowOutcome } from '../lib/run-breaker';
+import { aiProviderSide, DROPPED, type RowOutcome } from '../lib/run-breaker';
 import { isStorageFailure } from '../lib/storage-failure';
 import { FailedCallError, type ModelCall } from './ai-model-call';
 import { connectionCauseCode, markLateReset } from './openrouter-retry';
@@ -38,8 +38,9 @@ export function throwIfStorage(error: unknown): void {
 export const hasSpendLimit = (run: { spend_limit_usd?: number | null }): boolean =>
   typeof run.spend_limit_usd === 'number';
 
-export const failedRow = (message: string, maybeBilled = false): RowOutcome => ({
-  kind: 'failed', message, provider: aiProviderSide(message), ...(aiAccountSide(message) ? { account: true } : {}),
+// account: the call's error was on the account's side (lib/run-breaker.ts aiAccountError).
+export const failedRow = (message: string, maybeBilled = false, account = false): RowOutcome => ({
+  kind: 'failed', message, provider: aiProviderSide(message), ...(account ? { account: true } : {}),
   ...(maybeBilled ? { maybeBilled } : {}),
 });
 

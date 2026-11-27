@@ -195,19 +195,24 @@ export async function processHTTPRun(
       for (;;) {
         if (shouldStop(runId, myGeneration)) { controller.abort(); break; }
         if (out.size >= batchSize) { await wait(); continue; }
-        if (waits.waiting) {
-          await waits.sit(beatNow, () => end !== null || shouldStop(runId, myGeneration));
-          continue;
-        }
         const next = await rows.next({ signal: controller.signal, tick: beatNow });
         if ('done' in next) break;
         if ('park' in next || end) { rowsLeft = true; break; }
         if ('stopped' in next) continue;
+        // A short outage: the run sits out its wait before this row (lib/run-brake-waits.ts), so none starts
+        // meanwhile and a run with no rows left never waits.
+        if (waits.waiting) {
+          await waits.sit(beatNow, () => end !== null || shouldStop(runId, myGeneration));
+          if (shouldStop(runId, myGeneration)) { controller.abort(); break; }
+          if (end) { rowsLeft = true; break; }
+        }
+        const epoch = waits.epoch;
         const done: Promise<void> = processHTTPRow(
           runId, next.row, run, config, controller.signal, myGeneration, sheetColumns(), next.ring,
         )
           .then(outcome => {
-            breaker.record(outcome);
+            // A row sent before the latest wait began failed into that wait: it doesn't count toward the next one.
+            if (epoch === waits.epoch) breaker.record(outcome);
             const tripped = breaker.tripped;
             if (tripped && !end && (tripped.account || !waits.begin(breaker))) {
               end = { reason: 'provider_errors', message: brakeMessage(tripped, !!run.autorun_id, waits.waited) };

@@ -11,9 +11,13 @@ const words = (ms: number): string => (ms < 60_000 ? `${+(ms / 1000).toFixed(1)}
 export class BrakeWaits {
   private used: number[] = [];
   private until = 0;
+  // Which wait a row started under: a row sent before the latest wait began (one still out when the brake
+  // tripped) fails into a wait already being sat out, so its outcome mustn't trip the brake again.
+  get epoch(): number { return this.used.length; }
   constructor(private readonly most = RUN_BREAKER_WAITS, private readonly baseMs = RUN_BREAKER_WAIT_MS) {}
 
-  // Starts the next wait and counts the run's failures afresh: false when none is left.
+  // Starts the next wait and counts the run's failures afresh: false when none is left. The loop sits it out
+  // before it starts its next row (after pulling it, so a run with no rows left never waits).
   begin(breaker: RunBreaker): boolean {
     if (this.used.length >= this.most) return false;
     const n = this.used.length + 1;

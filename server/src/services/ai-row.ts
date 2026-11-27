@@ -15,7 +15,7 @@ import { shouldStop, type AIRunRow, type SheetRow } from './ai-runner-status';
 import { recordDroppedCall, STOP_SENTINEL, writeSuccess, writeFailure } from './ai-row-writers';
 import { withConnectRetry, errorCauseCode } from './openrouter-retry';
 import { sendModelCall, rowUsage, billedUsage, type ModelCall } from './ai-model-call';
-import { DONE, DROPPED, type RowOutcome } from '../lib/run-breaker';
+import { aiAccountError, DONE, DROPPED, type RowOutcome } from '../lib/run-breaker';
 import {
   aiCallDeadline, AI_TIMEOUT_MESSAGE, callMayBeBilled, droppedRow, failedRow, hasSpendLimit, stoppedCall,
   throwIfStorage, timedTries, webEngineRow,
@@ -163,7 +163,8 @@ export async function processRow(
     // A ring's rows are logged once for the run (services/run-input-gate.ts), not row by row.
     if (!row.refused) console.error(`Row ${row.rowIndex} processing error:`, errorMessage);
     writeFailure(ctx, errorMessage, billedUsage(call, error));
-    return failedRow(errorMessage, callMayBeBilled(error, { sent, call, lateReset: lateReset() }));
+    return failedRow(errorMessage, callMayBeBilled(error, { sent, call, lateReset: lateReset() }),
+      aiAccountError(error, errorMessage));
   } finally {
     deadline.done();
   }

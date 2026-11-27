@@ -15,7 +15,7 @@ import { shouldStopHttpRun, writeRowColumns } from './run-row-write';
 import type { HTTPRunRow } from './http-runner-status';
 import { httpResultCellValues } from '../lib/http-cell-values';
 import type { RunRow } from '../lib/run-rows';
-import { DONE, DROPPED, httpAccountSide, httpProviderSide, type RowOutcome } from '../lib/run-breaker';
+import { DONE, DROPPED, fixedTarget, httpAccountSide, httpProviderSide, type RowOutcome } from '../lib/run-breaker';
 import { isStorageFailure } from '../lib/storage-failure';
 
 const shouldStop = shouldStopHttpRun;
@@ -152,7 +152,7 @@ export async function processHTTPRow(
     const failure = tryFailureOf(error);
     return {
       kind: 'failed', message: errorMessage, provider: httpProviderSide(failure),
-      ...(httpAccountSide(failure) ? { account: true } : {}),
+      ...(httpAccountSide(failure, fixedTarget(config.requestConfig)) ? { account: true } : {}),
     };
   }
 }

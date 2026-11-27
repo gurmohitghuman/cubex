@@ -71,11 +71,23 @@ export function brakeMessage(t: Tripped, autorun: boolean, waited = ''): string 
 const PROVIDER_SIDE: ReadonlySet<AiErrorClass> = new Set(['retryable', 'configuration', 'concurrency']);
 export const aiProviderSide = (message: string): boolean => PROVIDER_SIDE.has(classifyAiError(message));
 
-// An AI row's error on the account's side: a refused key, no credits, a model that's gone (ai-error-classify.ts).
-export const aiAccountSide = (message: string): boolean => classifyAiError(message) === 'configuration';
-// An HTTP API row's refused key: 401, or 407 (the proxy's). A 403 can be about one record, so it counts in a row.
-export const httpAccountSide = (failure: TryFailure): boolean =>
-  failure.kind === 'status' && (failure.status === 401 || failure.status === 407);
+// An AI row's error on the account's side, by the status OpenRouter answered (never by the words, which can quote a
+// row's own text or a page's): 401, a key it refuses; 402, no credits (not its in-flight budget, which frees up).
+export function aiAccountError(error: unknown, message: string): boolean {
+  const s = (error as { status?: unknown } | null)?.status;
+  return s === 401 || (s === 402 && classifyAiError(message) !== 'concurrency');
+}
+// An HTTP API row's refused key: 401, or 407 (the proxy's), when the request's host and headers are the same for
+// every row (fixed): a host or a header filled from the row can be refused for that row alone. A 403 can be about one
+// record, so it counts in a row.
+export const httpAccountSide = (failure: TryFailure, fixed: boolean): boolean =>
+  fixed && failure.kind === 'status' && (failure.status === 401 || failure.status === 407);
+// Whether a request's host and headers are the same for every row (no {{column}} in them).
+export function fixedTarget(c: { url: string; headers?: Record<string, string> }): boolean {
+  const rest = c.url.trim().replace(/^[a-z][a-z0-9+.-]*:\/\//i, '');
+  const host = rest.split(/[/?#]/, 1)[0];
+  return !host.includes('{{') && !Object.values(c.headers ?? {}).some(v => v.includes('{{'));
+}
 
 // An HTTP API row's last try: no answer, a rejected key, too many requests, a server error.
 export function httpProviderSide(failure: TryFailure): boolean {

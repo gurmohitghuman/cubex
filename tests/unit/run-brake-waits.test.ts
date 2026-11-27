@@ -50,7 +50,7 @@ const { encrypt } = await import('../../server/src/lib/crypto')
 const { processAIRun } = await import('../../server/src/services/ai-runner')
 const { PLACEHOLDER } = await import('../../server/src/lib/placeholder-cells')
 const { BrakeWaits } = await import('../../server/src/lib/run-brake-waits')
-const { RunBreaker, httpAccountSide, aiAccountSide } = await import('../../server/src/lib/run-breaker')
+const { RunBreaker, httpAccountSide, aiAccountError, fixedTarget } = await import('../../server/src/lib/run-breaker')
 runMigrations()
 console.warn = () => {}
 console.error = () => {}
@@ -60,7 +60,7 @@ db.prepare('INSERT INTO users (id,password_hash) VALUES (?,?)').run(uid, 'x')
 db.prepare('INSERT INTO tables (id,user_id,name) VALUES (?,?,?)').run(tid, uid, 'T')
 db.prepare('INSERT INTO settings (id, user_id, openrouter_api_key_encrypted) VALUES (?,?,?)')
   .run(uuid(), uid, encrypt('sk-or-test'))
-const runOf = (n: number) => {
+const runOf = (n: number, concurrency = 1) => {
   const sid = uuid(), runId = uuid()
   db.prepare('INSERT INTO sheets (id,table_id,user_id,name,column_order) VALUES (?,?,?,?,?)')
     .run(sid, tid, uid, `S-${sid.slice(0, 6)}`, JSON.stringify(['name', OUT]))
@@ -69,7 +69,7 @@ const runOf = (n: number) => {
       .run(uuid(), sid, uid, i, JSON.stringify({ name: `N${i}`, [OUT]: PLACEHOLDER }))
   }
   db.prepare(`INSERT INTO ai_runs (id, sheet_id, user_id, column_name, prompt, model, concurrency, status, total_rows)
-    VALUES (?,?,?,?,'Say hi to /name','test/model',1,'pending',?)`).run(runId, sid, uid, OUT, n)
+    VALUES (?,?,?,?,'Say hi to /name','test/model',?,'pending',?)`).run(runId, sid, uid, OUT, concurrency, n)
   return { sid, runId }
 }
 const cells = (sid: string) => db.prepare(`SELECT json_extract(data, ?) FROM rows WHERE sheet_id = ?
@@ -105,6 +105,33 @@ const runRow = (id: string) => db.prepare('SELECT status, pause_reason, error_me
   console.log('ok   an outage that goes on: two waits, then the pause says it waited')
 }
 
+// Rows out together when the brake trips fail into its wait and don't count toward the next: 4 at a time, every row
+// failing, still sits out both waits (0.3 s and 1.2 s) before it pauses.
+{
+  failLeft = 1_000; calls = 0
+  const { sid, runId } = runOf(20, 4)
+  const t = Date.now()
+  await processAIRun(runId, 0)
+  const r = runRow(runId)
+  assert.ok(Date.now() - t >= 1_500, `waited ${Date.now() - t} ms`)
+  assert.equal(r.status, 'paused')
+  assert.match(r.error_message ?? '', /even after waiting 0\.3 s and 1\.2 s/)
+  assert.ok(cells(sid).filter(v => v === PLACEHOLDER).length > 0, `${calls} calls: rows left waiting`)
+  console.log('ok   rows out together fail into the wait: a burst still sits out every wait')
+}
+
+// No rows left when the brake trips: the run ends without waiting.
+{
+  failLeft = 1_000; calls = 0
+  const { sid, runId } = runOf(2, 2)
+  const t = Date.now()
+  await processAIRun(runId, 0)
+  assert.ok(Date.now() - t < 280, `took ${Date.now() - t} ms`)
+  assert.equal(runRow(runId).status, 'completed')
+  assert.equal(cells(sid).filter(v => v.startsWith('❌')).length, 2)
+  console.log('ok   with no rows left a run never waits')
+}
+
 // A refused key: the first row's failure pauses the run, with no wait.
 {
   failLeft = 0; key = true; calls = 0
@@ -134,13 +161,23 @@ const runRow = (id: string) => db.prepare('SELECT status, pause_reason, error_me
   console.log('ok   a stop ends a wait; no more waits than allowed')
 }
 
-// Which failures are the account's: a refused key, no credits, a model that's gone; HTTP 401 and 407, not 403.
-assert.ok(aiAccountSide('401 No auth credentials found') && aiAccountSide('402 Insufficient credits'))
-assert.ok(!aiAccountSide('500 Internal server error') && !aiAccountSide('429 Rate limit exceeded'))
+// Which failures are the account's, by the status answered, never by the words (a row's text or a page can say 403):
+// OpenRouter's 401 and 402 (not its in-flight budget); an HTTP API's 401 and 407 when host and headers are fixed.
+assert.ok(aiAccountError({ status: 401 }, '401 No auth credentials found'))
+assert.ok(aiAccountError({ status: 402 }, '402 Insufficient credits'))
+const inFlight = '402 Too many requests in flight (in_flight_budget_exhausted)'
+assert.ok(!aiAccountError({ status: 402 }, inFlight), 'its in-flight budget frees up')
+assert.ok(!aiAccountError({ status: 403 }, '403 Your input was flagged'), 'a refusal about this row')
+assert.ok(!aiAccountError(new Error('its reply began: "403 Forbidden"'), 'its reply began: "403 Forbidden"'))
+assert.ok(!aiAccountError({ status: 500 }, '500 Internal server error'))
 const status = (n: number) => ({ kind: 'status', status: n }) as never
-assert.ok(httpAccountSide(status(401)) && httpAccountSide(status(407)))
-assert.ok(!httpAccountSide(status(403)) && !httpAccountSide({ kind: 'network' } as never))
-console.log('ok   the account\'s side: refused keys, no credits, gone models; HTTP 401 and 407')
+assert.ok(httpAccountSide(status(401), true) && httpAccountSide(status(407), true))
+assert.ok(!httpAccountSide(status(401), false), 'a host or header from the row: about that row')
+assert.ok(!httpAccountSide(status(403), true) && !httpAccountSide({ kind: 'network' } as never, true))
+assert.ok(fixedTarget({ url: 'https://api.example.com/v1/people/{{id}}?q={{name}}', headers: { 'X-Key': '/my_key' } }))
+assert.ok(!fixedTarget({ url: 'https://{{website}}/about' }) && !fixedTarget({ url: '{{url}}' }))
+assert.ok(!fixedTarget({ url: 'https://api.example.com', headers: { Authorization: 'Bearer {{token}}' } }))
+console.log('ok   the account\'s side: by status; HTTP 401 and 407 only on a fixed host and headers')
 
 server.close()
 console.log('run-brake-waits: all assertions passed')
