@@ -22,7 +22,7 @@ test('get_run_results: run/write imply read, so those tokens may diagnose', asyn
   const runOnly = await makeAccessToken(api, ['run'], 'run-results-noread')
   const client = await mcpClient(runOnly, 'e2e-run-results-scope')
   const res = parseResult(await client.callTool({
-    name: 'get_run_results', arguments: { run_type: 'ai', run_id: ABSENT_RUN },
+    name: 'get_run', arguments: { action: 'results', run_type: 'ai', run_id: ABSENT_RUN },
   }))
   expect(res.error).toContain('not found')
   expect(res.error).not.toContain('scope')

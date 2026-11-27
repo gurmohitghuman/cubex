@@ -9,6 +9,7 @@ import { once } from 'node:events'
 import type { AddressInfo } from 'node:net'
 import express from 'express'
 import { v4 as uuid } from 'uuid'
+import { passed } from './ends-on-its-own'
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 process.env.HTTP_MAX_CONCURRENCY = '150'
@@ -73,7 +74,7 @@ async function main() {
     { status: 400, json: { error: AI_WORDS } }, 'REST: the same words')
   // Past the bound check: the run is unknown (MCP adds the next step, mcp/next-steps.ts).
   assert.equal(await answer({ run_type: 'http', run_id: noRun, action: 'rerun', concurrency: 120 }),
-    `HTTP run not found. No run has the run_id "${noRun}". list_runs lists a sheet's runs, newest first.`,
+    `HTTP run not found. No run has the run_id "${noRun}". get_run (action list) lists a sheet's runs, newest first.`,
     'MCP: an HTTP API rerun takes 120')
   assert.deepEqual(await rest(`/http-runs/${noRun}/rerun`, { concurrency: 120 }),
     { status: 404, json: { error: 'HTTP run not found' } }, 'REST: so does it')
@@ -85,5 +86,5 @@ async function main() {
 }
 
 main()
-  .then(() => { console.log('All http-run-concurrency-high assertions passed.'); process.exit(0) })
+  .then(() => { console.log('All http-run-concurrency-high assertions passed.'); passed() })
   .catch(e => { console.log('FAIL', e); process.exit(1) })

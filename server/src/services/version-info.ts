@@ -1,4 +1,4 @@
-// What Settings → Account → Version, GET /v1/version and get_version answer: the running version
+// What Settings → Account → Version, GET /v1/version and get_account (action version) answer: the running version
 // (lib/cubex-version.ts), the latest release the check last found (services/release-check.ts) and
 // whether it is newer. update_available is null when that can't be told: the running build isn't a
 // release (a branch, a local source, or a Docker build that doesn't record it), or no answer is kept.

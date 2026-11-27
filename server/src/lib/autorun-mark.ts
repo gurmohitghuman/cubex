@@ -221,7 +221,9 @@ export async function autorunKeepUnswept(
       if (positions[mid] > e.w) hi = mid; else lo = mid + 1;
     }
     if (lo >= rowids.length) continue;
-    await eachRowIdSlice(Float64Array.from(rowids.slice(lo)).sort(), ids => keepByRowid(e, sheetId, userId, ids));
+    // Queue rows only: the rows themselves aren't written, so their size doesn't count.
+    await eachRowIdSlice(Float64Array.from(rowids.slice(lo)).sort(), ids => keepByRowid(e, sheetId, userId, ids),
+      { bytes: false });
   }
 }
 

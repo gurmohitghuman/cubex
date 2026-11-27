@@ -1,5 +1,5 @@
 // Saved API keys by name and where each is used, for agents (MCP
-// list_saved_keys and GET /api/v1/saved-keys, 'read' scope). Never a value, a
+// get_account (action saved_keys) and GET /api/v1/saved-keys, 'read' scope). Never a value, a
 // masked value, its length or its hash: the value column isn't even read.
 // Where: a live sheet's HTTP API, enrichment or waterfall column whose setup
 // (its newest run, the one reruns, auto-run and get_sheet use) names the key
@@ -50,7 +50,7 @@ function columnUses(userId: string, names: string[]): Map<string, SavedKeyUse[]>
   const reads = savedKeyMatcher(names);
   const sheets = db.prepare(`SELECT s.id, s.name, s.column_order, t.id AS table_id, t.name AS table_name
     FROM sheets s JOIN tables t ON t.id = s.table_id AND t.user_id = s.user_id
-    WHERE s.user_id = ? AND s.trash_id IS NULL AND t.trash_id IS NULL
+    WHERE s.user_id = ? AND s.trash_id IS NULL AND s.test_of IS NULL AND t.trash_id IS NULL AND t.hidden = 0
     ORDER BY t.created_at, t.id, s.position, s.id`).all(userId) as SheetRow[];
   const newest = db.prepare(`SELECT config FROM http_runs WHERE sheet_id = ? AND user_id = ?
     AND master_column_name = ? ORDER BY created_at DESC, rowid DESC LIMIT 1`).pluck();

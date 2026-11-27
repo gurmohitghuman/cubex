@@ -9,7 +9,7 @@
 // sheet, the catalog or the webhook are read (replayFirst).
 import { db } from '../lib/db';
 import { TREG_TOOL_ID_PATTERN } from '../lib/constants';
-import { MAX_SELECTED_ROWS, parseEnrichRunInput } from '../lib/enrich-run-input';
+import { MAX_SELECTED_ROWS, parseEnrichRunInput, type EnrichRunInput } from '../lib/enrich-run-input';
 import { agentRunBody, flagOf, unknownArgument, type AgentRunArgs } from '../lib/enrich-agent-input';
 import { snakeProviderField } from '../lib/enrich-provider-names';
 import { runRequestHash, sentArgsHash, writeRunLedger } from '../lib/run-idempotency';
@@ -23,17 +23,19 @@ import { dailyLimitOf } from './enrich-agent-shared';
 import { appendAutorunNotice, autorunColumnJson, type AutorunNotice } from './enrich-agent-autorun';
 import { runIfReply } from './run-rule';
 import {
-  bad, busyRefusal, ledgerReplay, preamble, replayFirst, startsRun, startWindow, type TokenCaller,
+  bad, busyRefusal, ledgerReplay, preamble, replayFirst, startsRun, startWindow, type Fail, type TokenCaller,
   type TokenRunResult,
 } from './run-start-token';
+import type { EnrichTool } from '../lib/enrich-tool';
 import { attachRunWebhook, webhookIdProblem } from './run-hooks-attach';
 import { spendPart } from './token-spend';
 import type { ServiceAnswer } from '../mcp/tool-outputs';
 import { runChanged } from '../mcp/changed';
+import { saveEnrichmentOverToken, saveOnlyOf } from './setup-save-token';
 
 export interface TokenEnrichArgs extends AgentRunArgs {
   sheet_id: unknown; target_row_ids?: unknown; estimate_only?: unknown; idempotency_key?: unknown;
-  auto_run?: unknown; webhook_id?: unknown;
+  auto_run?: unknown; webhook_id?: unknown; save_only?: unknown;
 }
 
 type AutoRun = { enabled: boolean; dailyCapUsd: number | null } | null;
@@ -56,6 +58,25 @@ const generationOf = (sheetId: string, userId: string): number | null => (db.pre
 
 type EnrichRunAnswer = ServiceAnswer<'run_enrichment'>;
 
+// The arguments as the start reads them: the drawer's request (lib/enrich-agent-input.ts), parsed with its strict
+// rules (an enrichment call prices its items with these too: enrich-call-estimate.ts).
+export function agentEnrichInput(
+  a: AgentRunArgs, tool: EnrichTool, rowIndexes: number[] | null, generation: number | null,
+): { ok: EnrichRunInput } | Fail {
+  const body = agentRunBody(a, tool, rowIndexes, rowIndexes ? generation : null);
+  if ('error' in body && typeof body.error === 'string') return bad(body.error);
+  const parsed = parseEnrichRunInput(body);
+  if ('error' in parsed) {
+    const error = parsed.error.replace(/^runIf/, 'run_if').replace(/^rateLimitRetries/, 'rate_limit_retries');
+    return bad(snakeProviderField(error));
+  }
+  return parsed;
+}
+
+// A refusal in the agents' words: provider fields as they name them.
+export const agentWords = <F extends { fail: string; message: string }>(f: F): F =>
+  (f.fail === 'bad_request' ? { ...f, message: snakeProviderField(f.message) } : f);
+
 export async function tokenStartEnrichmentRun(
   c: TokenCaller, a: TokenEnrichArgs,
 ): Promise<TokenRunResult<EnrichRunAnswer>> {
@@ -64,8 +85,11 @@ export async function tokenStartEnrichmentRun(
   if (Array.isArray(a.target_row_ids) && a.target_row_ids.length > MAX_SELECTED_ROWS) {
     return bad(`target_row_ids takes at most ${MAX_SELECTED_ROWS.toLocaleString('en-US')} rows a run.`);
   }
+  // Read first: with save_only no key replays a run (services/setup-save-token.ts).
+  const save = saveOnlyOf(a as unknown as Record<string, unknown>);
+  if (typeof save === 'object') return bad(save.error);
   const sent = () => (startsRun(a.estimate_only) ? sentArgsHash('enrichment_run', a) : null);
-  const first = replayFirst<EnrichRunAnswer>(c, a.idempotency_key, sent);
+  const first = save ? null : replayFirst<EnrichRunAnswer>(c, a.idempotency_key, sent);
   if (first) return first;
   const busy = busyRefusal(a);
   if (busy) return busy;
@@ -76,32 +100,26 @@ export async function tokenStartEnrichmentRun(
   if ('fail' in pre) return pre;
   const sheetId = a.sheet_id as string;
   if (typeof a.tool_id !== 'string' || !TREG_TOOL_ID_PATTERN.test(a.tool_id)) {
-    return bad('tool_id must be a tool id from search_enrichments (GET /api/v1/enrichments).');
+    return bad('tool_id must be a tool id from find_enrichments (GET /api/v1/enrichments).');
   }
   const found = await getTool(a.tool_id);
   if (!('ok' in found)) {
     const upstream = found.fail === 'unreachable' || found.fail === 'upstream';
     return { fail: upstream ? 'upstream' : 'bad_request', message: found.message };
   }
-  const body = agentRunBody(a, found.ok, pre.targetRowIndexes ?? null, pre.targetRowIndexes ? generation : null);
-  if ('error' in body && typeof body.error === 'string') return bad(body.error);
-  const parsed = parseEnrichRunInput(body);
-  if ('error' in parsed) {
-    const error = parsed.error.replace(/^runIf/, 'run_if').replace(/^rateLimitRetries/, 'rate_limit_retries');
-    return bad(snakeProviderField(error));
-  }
+  const parsed = agentEnrichInput(a, found.ok, pre.targetRowIndexes ?? null, generation);
+  if ('fail' in parsed) return parsed;
   const autoRun = autoRunOf(a.auto_run);
   if (typeof autoRun === 'string') return bad(autoRun);
   const hookProblem = webhookIdProblem(c.userId, a.webhook_id);
   if (hookProblem) return bad(hookProblem);
 
   if (parseBooleanOption(a.estimate_only) === true) {
-    const est = await agentEnrichEstimate(c.userId, sheetId, parsed.ok);
-    if ('fail' in est) {
-      return est.fail === 'bad_request' ? { ...est, message: snakeProviderField(est.message) } : est;
-    }
+    const est = await agentEnrichEstimate(c.userId, { sheetId }, parsed.ok);
+    if ('fail' in est) return agentWords(est);
     return { ok: est.ok, started: false };
   }
+  if (save) return saveEnrichmentOverToken(c, sheetId, { ...parsed.ok, saveOnly: true });
   // runIf and rateLimitRetries only when set, so a retry that spans the release still replays.
   const { rowGeneration: _gen, rows, runIf, rateLimitRetries, ...others } = parsed.ok;
   const rest = {
@@ -120,9 +138,7 @@ export async function tokenStartEnrichmentRun(
   const limited = startWindow(c);
   if (limited) return limited;
   const out = await startEnrichmentRun(c.userId, sheetId, parsed.ok);
-  if ('fail' in out) {
-    return out.fail === 'bad_request' ? { ...out, message: snakeProviderField(out.message) } : out;
-  }
+  if ('fail' in out) return agentWords(out);
   const hook = typeof a.webhook_id === 'string' ? a.webhook_id : null;
   if (hook) attachRunWebhook('http_runs', out.ok.runId, c.userId, hook);
   const run = db.prepare('SELECT config FROM http_runs WHERE id = ? AND user_id = ?').pluck()

@@ -116,7 +116,7 @@ test('multi-output: live round-trip writes typed columns', async () => {
   let status: any = null
   for (let i = 0; i < 100; i++) {
     status = parseResult(await client.callTool({
-      name: 'get_run_status', arguments: { run_type: 'ai', run_id: runId },
+      name: 'get_run', arguments: { action: 'status', run_type: 'ai', run_id: runId },
     }))
     if (['completed', 'failed', 'cancelled'].includes(status?.status)) break
     await new Promise(r => setTimeout(r, 1000))

@@ -91,8 +91,8 @@ export function reorderSheets(
 
   let bad = false;
   db.transaction(() => {
-    const current = (db.prepare('SELECT id FROM sheets WHERE table_id = ? AND user_id = ? AND trash_id IS NULL')
-      .all(tableId, userId) as Array<{ id: string }>).map(r => r.id);
+    const current = (db.prepare(`SELECT id FROM sheets WHERE table_id = ? AND user_id = ? AND trash_id IS NULL
+      AND test_of IS NULL`).all(tableId, userId) as Array<{ id: string }>).map(r => r.id);
     const a = [...current].sort();
     const b = [...orderedSheetIds].sort();
     if (a.length !== b.length || a.some((id, i) => id !== b[i])) { bad = true; return; }

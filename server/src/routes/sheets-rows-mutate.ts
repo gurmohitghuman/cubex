@@ -7,6 +7,7 @@ import { nextRowIndex } from '../lib/sheet-busy';
 import { autorunRowsRemoved } from '../lib/autorun-mark';
 import { sheetRunBlock } from '../services/autorun-block';
 import { deleteRowsToTrash } from '../services/trash-rows';
+import { deleteRowsInSlices, fitsOneDelete } from '../services/trash-rows-sliced';
 import { getTrashDays } from '../lib/trash/store';
 import { orderedUuid } from '../lib/ordered-id';
 import { rowsChanged } from '../lib/rows-changed';
@@ -84,7 +85,7 @@ router.post('/:id/rows', (req: AuthRequest, res) => {
 // on a full sheet (max 50k rows) requires 5 calls — still 200× fewer HTTP
 // requests than the per-row delete path.
 const MAX_BULK_DELETE_ROWS = 10000;
-router.post('/:id/rows/bulk-delete', (req: AuthRequest, res) => {
+router.post('/:id/rows/bulk-delete', async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
     const { rowIndices } = req.body as { rowIndices?: unknown };
@@ -124,8 +125,9 @@ router.post('/:id/rows/bulk-delete', (req: AuthRequest, res) => {
     // credits. Sheet-wide (any run, any column): a deleted row affects every
     // column's results, not just the run's target column.
     // An auto-run run gets its own words and the sheet yields (services/autorun-block.ts).
-    const block = sheetRunBlock(id, req.userId!,
+    const runBlock = () => sheetRunBlock(id, req.userId!,
       'Cannot delete rows while a run is active on this sheet. Stop or finish the run first.');
+    const block = runBlock();
     if (block) return res.status(409).json({ error: block.message, blockingRun: block.run });
 
     // Same row_generation fence as PUT /:id/data (migration 021): deleting by
@@ -153,18 +155,34 @@ router.post('/:id/rows/bulk-delete', (req: AuthRequest, res) => {
     // selection sent in several calls names the first call's batch (trashId)
     // and lands in it. Their AI/HTTP results go: they are stored by position,
     // and a later sort would bind them to another row (purgeResultsForRows).
-    const continueId = (req.body as { trashId?: unknown }).trashId;
+    const body = req.body as { trashId?: unknown };
+    const continueId = typeof body.trashId === 'number' ? body.trashId : undefined;
     let deletedCount = 0;
     let trashId: number | null = null;
-    db.transaction(() => {
-      const removed = deleteRowsToTrash(id, req.userId!, 'grid', { indexes: unique },
-        typeof continueId === 'number' ? continueId : undefined);
-      deletedCount = removed.count;
-      trashId = removed.trashId;
-      // Appends reuse the positions of deleted last rows: auto-run's fence follows.
-      autorunRowsRemoved(id, req.userId!);
-      touchSheet(id, req.userId!);
-    }).immediate();
+    if (fitsOneDelete(id, req.userId!, { indexes: unique })) {
+      db.transaction(() => {
+        const removed = deleteRowsToTrash(id, req.userId!, 'grid', { indexes: unique }, continueId);
+        deletedCount = removed.count;
+        trashId = removed.trashId;
+        // Appends reuse the positions of deleted last rows: auto-run's fence follows.
+        autorunRowsRemoved(id, req.userId!);
+        touchSheet(id, req.userId!);
+      }).immediate();
+    } else {
+      // Rows too big for one transaction go in slices, the sheet held (services/trash-rows-sliced.ts).
+      const out = await deleteRowsInSlices(id, req.userId!, { indexes: unique }, {
+        how: 'grid', continueId,
+        check: () => {
+          const now = runBlock();
+          return now ? { error: now.message, blockingRun: now.run } : null;
+        },
+        after: () => touchSheet(id, req.userId!),
+      });
+      if ('busy' in out) return res.status(409).json({ error: out.busy, busy: true });
+      if ('refused' in out) return res.status(409).json(out.refused);
+      deletedCount = out.ok.count;
+      trashId = out.ok.trashId;
+    }
 
     res.json({
       message: `${deletedCount} row${deletedCount === 1 ? '' : 's'} deleted`, deletedCount,

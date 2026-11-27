@@ -1,6 +1,8 @@
 // The records of setups being used on sheets (setup_runs, migration 028):
 // creating one, reading and writing its steps, and the view the app, /api/v1
-// and MCP show. The runner (setup-runner.ts) moves them along.
+// and MCP show. The runner (setup-runner.ts) moves them along. A column run
+// (services/column-run.ts) is a record with no setup: its plan's `columns`
+// lists the sheet's run columns it runs, in place of the setup's steps.
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../lib/db';
 import { actorTokenId } from '../lib/actor';
@@ -8,6 +10,9 @@ import { mainColumn, type SetupSpec, type StepKind } from '../lib/setups/spec';
 import type { StepMode } from '../lib/setups/again';
 import type { ApplyChoices } from '../lib/setups/apply-plan';
 import type { SetupCeiling } from './setup-ceiling';
+import type { RunKind } from './run-controls-column';
+import type { ColumnRunMode } from './column-run-input';
+import type { WhereItem } from '../lib/row-filter/where';
 
 export type StepState = 'waiting' | 'starting' | 'running' | 'done' | 'failed' | 'cancelled';
 export interface StepRecord {
@@ -36,8 +41,15 @@ export interface SetupRunRow {
 // on the sheet (to carry on) can start from them. ceiling: apply_setup's
 // max_cost_usd with each step's estimated high end (setup-ceiling.ts).
 export interface SetupRunChoices extends ApplyChoices { models?: Record<string, string> }
+// A column run's steps: each a run column of the sheet (its main column, every
+// column its run writes, the derived columns it reads earlier steps through),
+// run with its own newest setup on the rows `mode` picks; among the record's
+// target_row_ids, or the rows `where` matches as each step starts.
+export interface ColumnRunStep { column: string; kind: RunKind; writes: string[]; between: string[] }
+export interface ColumnRunSpec { steps: ColumnRunStep[]; mode: ColumnRunMode; where: WhereItem[] | null }
 export interface SetupRunPlan {
   spec: SetupSpec; layers: number[]; modes?: StepMode[]; choices?: SetupRunChoices; ceiling?: SetupCeiling;
+  columns?: ColumnRunSpec;
 }
 
 export interface SetupRunView {
@@ -48,9 +60,11 @@ export interface SetupRunView {
   choices: SetupRunChoices | null;
   webhook_id: string | null;
   max_cost_usd?: number;  // the ceiling it was applied with (setup-ceiling.ts)
+  // A column run: which rows it takes (row_ids: how many were chosen; where: as sent).
+  column_run?: { mode: ColumnRunMode; row_ids: number | null; where: WhereItem[] | null };
   steps: Array<{
-    column: string; kind: StepKind; layer: number; mode: StepMode; state: StepState; run_id: string | null;
-    note: string | null;
+    column: string; kind: StepKind | 'waterfall'; layer: number; mode: StepMode; state: StepState;
+    run_id: string | null; note: string | null;
   }>;
 }
 
@@ -58,8 +72,13 @@ export const loadSetupRun = (id: string): SetupRunRow | undefined =>
   db.prepare('SELECT * FROM setup_runs WHERE id = ?').get(id) as SetupRunRow | undefined;
 
 export const planOf = (r: SetupRunRow): SetupRunPlan => JSON.parse(r.plan);
+// How many steps a record has, and step i's main column: a setup's steps, or a column run's columns.
+export const stepCount = (p: SetupRunPlan): number => (p.columns ? p.columns.steps.length : p.spec.steps.length);
+export const stepMain = (p: SetupRunPlan, i: number): string =>
+  (p.columns ? p.columns.steps[i].column : mainColumn(p.spec.steps[i]));
+// A column run carries each of its columns on.
 export const modesOf = (p: SetupRunPlan): StepMode[] =>
-  p.spec.steps.map((_, i) => p.modes?.[i] ?? 'new');
+  Array.from({ length: stepCount(p) }, (_, i) => (p.columns ? 'again' : p.modes?.[i] ?? 'new'));
 export const stepsOf = (r: SetupRunRow): StepRecord[] => JSON.parse(r.steps);
 
 export function saveSteps(id: string, steps: StepRecord[]): void {
@@ -74,20 +93,23 @@ export function setStatus(id: string, status: SetupRunStatus, message: string | 
     .run(status, message, id).changes > 0;
 }
 
+// setupId null: a column run (no setup to count a use of).
 export function insertSetupRun(p: {
-  userId: string; sheetId: string; setupId: string; setupName: string; plan: SetupRunPlan;
+  userId: string; sheetId: string; setupId: string | null; setupName: string; plan: SetupRunPlan;
   targetRowIds: string[] | null; allowSecrets: boolean; autoRun: boolean; webhookId?: string | null;
 }): string {
   const id = uuidv4();
-  const steps: StepRecord[] = p.plan.spec.steps.map(() => ({ state: 'waiting' }));
+  const steps: StepRecord[] = Array.from({ length: stepCount(p.plan) }, () => ({ state: 'waiting' }));
   db.transaction(() => {
     db.prepare(`INSERT INTO setup_runs (id, user_id, sheet_id, setup_id, setup_name, plan, steps, target_row_ids,
       allow_secrets, auto_run, webhook_id, access_token_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(
       id, p.userId, p.sheetId, p.setupId, p.setupName, JSON.stringify(p.plan), JSON.stringify(steps),
       p.targetRowIds ? JSON.stringify(p.targetRowIds) : null, p.allowSecrets ? 1 : 0, p.autoRun ? 1 : 0,
       p.webhookId ?? null, actorTokenId());
-    db.prepare(`UPDATE setups SET use_count = use_count + 1, last_used_at = datetime('now')
-      WHERE id = ? AND user_id = ?`).run(p.setupId, p.userId);
+    if (p.setupId) {
+      db.prepare(`UPDATE setups SET use_count = use_count + 1, last_used_at = datetime('now')
+        WHERE id = ? AND user_id = ?`).run(p.setupId, p.userId);
+    }
   }).immediate();
   return id;
 }
@@ -95,16 +117,19 @@ export function insertSetupRun(p: {
 export function setupRunView(r: SetupRunRow): SetupRunView {
   const plan = planOf(r), steps = stepsOf(r), modes = modesOf(plan);
   const layers = plan.layers.length ? Math.max(...plan.layers) + 1 : 0;
+  const chosen = r.target_row_ids ? (JSON.parse(r.target_row_ids) as string[]).length : null;
+  const cols = plan.columns;
   return {
     id: r.id, setup_id: r.setup_id, setup_name: r.setup_name, sheet_id: r.sheet_id, status: r.status,
     layer: Math.min(r.layer + 1, layers), layers,
-    test_rows: r.target_row_ids ? (JSON.parse(r.target_row_ids) as string[]).length : null,
+    test_rows: cols ? null : chosen,
     error_message: r.error_message, created_at: r.created_at, updated_at: r.updated_at,
     choices: plan.choices ?? null, webhook_id: r.webhook_id ?? null,
     ...(plan.ceiling ? { max_cost_usd: plan.ceiling.maxCostUsd } : {}),
-    steps: plan.spec.steps.map((s, i) => ({
-      column: mainColumn(s), kind: s.kind, layer: plan.layers[i] + 1, mode: modes[i], state: steps[i].state,
-      run_id: steps[i].runId ?? null, note: steps[i].note ?? null,
+    ...(cols ? { column_run: { mode: cols.mode, row_ids: chosen, where: cols.where } } : {}),
+    steps: Array.from({ length: stepCount(plan) }, (_, i) => ({
+      column: stepMain(plan, i), kind: cols ? cols.steps[i].kind : plan.spec.steps[i].kind, layer: plan.layers[i] + 1,
+      mode: modes[i], state: steps[i].state, run_id: steps[i].runId ?? null, note: steps[i].note ?? null,
     })),
   };
 }

@@ -3,9 +3,18 @@ import { McpServer } from '@modelcontextprotocol/server';
 import { deleteSetup, getSetup, listSetups, specSummary } from '../services/setup-library';
 import { planSetup, saveSetup } from '../services/setup-save';
 import { SHEET_ID, McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean } from './tool-helpers';
+import { GUIDE_POINTER } from './guides/guide';
+import { actionFieldsProblem } from './action-fields';
 
 // Setups: a saved copy of a chain of filled columns, to use again on another
-// sheet (services/setup-*.ts). list_setups, save_setup, delete_setup.
+// sheet (services/setup-*.ts). list_setups, and manage_setup (save_setup and delete_setup before v0.8.47).
+const ACTIONS = ['save', 'delete'] as const;
+type Field = 'sheet_id' | 'name' | 'description' | 'columns' | 'include_upstream' | 'preview' | 'setup_id';
+const TAKES = {
+  save: { needs: ['sheet_id', 'columns'], may: ['name', 'description', 'include_upstream', 'preview'] },
+  delete: { needs: ['setup_id'] },
+} as const satisfies Record<typeof ACTIONS[number], { needs?: readonly Field[]; may?: readonly Field[] }>;
+
 export function registerSetupTools(server: McpServer, ctx: McpAuthCtx): void {
   registerTool(server, 'list_setups', {
     description:
@@ -26,44 +35,41 @@ export function registerSetupTools(server: McpServer, ctx: McpAuthCtx): void {
     return setup ? ok(setup) : err('Setup not found');
   });
 
-  registerTool(server, 'save_setup', {
+  registerTool(server, 'manage_setup', {
     description:
-      'Save filled columns of a sheet as a named setup, to build the same columns on another sheet later. Name '
-      + 'any column a step made (an AI column\'s "(Output)", an HTTP API or enrichment status column or one of '
-      + 'its output columns, a clean or formula column). include_upstream (default true) adds every filled '
-      + 'column they read, down the chain, so the setup holds the whole flow. Each step is saved as its column '
-      + 'is set up now: prompt, model, web search, output columns, request, JSONPaths, enrichment choices, '
-      + 'formula, cleaner, "Only run if" and auto-run. Saved keys are kept by name, never their value. A column '
-      + 'that adds rows to another sheet can\'t be saved. preview: true returns what the setup would hold (its '
-      + 'steps in order, inputs and keys) and saves nothing. Saving changes nothing in the sheet.',
+      'Save a setup, or delete one. A setup is a named copy of a chain of filled columns. save: Save filled columns '
+      + 'of a sheet as a named setup, to build the same columns on another sheet later. Name any column a step made '
+      + '(an AI column\'s "(Output)", an HTTP API or enrichment status column or one of its output columns, a clean '
+      + 'or formula column). include_upstream (default true) adds every filled column they read, down the chain, so '
+      + 'the setup holds the whole flow. Saving changes nothing in the sheet. delete: PERMANENT, it can\'t be '
+      + 'undone; sheets the setup was used on keep their columns and values (a setup is a copy, never a link). '
+      + GUIDE_POINTER,
     inputSchema: z.object({
-      sheet_id: z.string().describe(SHEET_ID),
-      name: z.string().optional().describe('The setup\'s name; required unless preview is true'),
-      description: z.string().optional().describe('What it does, in a sentence'),
-      columns: z.array(z.string()).min(1).describe('The filled columns to save, by name'),
-      include_upstream: lenientBoolean().optional().describe('Default true: add the filled columns they read'),
-      preview: lenientBoolean().optional().describe('true: show what would be saved, save nothing'),
+      action: z.enum(ACTIONS).describe('save or delete'),
+      sheet_id: z.string().optional().describe(`save: ${SHEET_ID}`),
+      name: z.string().optional().describe('save: the setup\'s name; required unless preview is true'),
+      description: z.string().optional().describe('save: what it does, in a sentence'),
+      columns: z.array(z.string()).min(1).optional().describe('save: the filled columns to save, by name'),
+      include_upstream: lenientBoolean().optional().describe('save: default true, add the filled columns they read'),
+      preview: lenientBoolean().optional().describe('save: true shows what would be saved, saving nothing'),
+      setup_id: z.string().optional().describe('delete: the setup (list_setups)'),
     }).strict(),
-  }, async ({ sheet_id, name, description, columns, include_upstream, preview }) => {
-    const denied = missingScope(ctx, preview ? 'read' : 'write');
+  }, async ({ action, ...a }) => {
+    const denied = missingScope(ctx, action === 'save' && a.preview ? 'read' : 'write');
     if (denied) return denied;
+    const problem = actionFieldsProblem<typeof ACTIONS[number], Field>(action, a, TAKES);
+    if (problem) return err(problem);
+    if (action === 'delete') {
+      const out = deleteSetup(ctx.userId, a.setup_id!);
+      return 'ok' in out ? ok(out.ok) : err(out.message);
+    }
+    const { sheet_id, name, description, columns, include_upstream, preview } = a;
     if (preview) {
-      const plan = planSetup(ctx.userId, sheet_id, columns, include_upstream !== false);
+      const plan = planSetup(ctx.userId, sheet_id!, columns!, include_upstream !== false);
       return 'ok' in plan ? ok({ ...specSummary(plan.ok), spec: plan.ok }) : err(plan.message);
     }
-    const out = saveSetup(ctx.userId, sheet_id, { name, description, columns, includeUpstream: include_upstream });
-    return 'ok' in out ? ok(out.ok) : err(out.message);
-  });
-
-  registerTool(server, 'delete_setup', {
-    description:
-      'Delete a saved setup. PERMANENT: it can\'t be undone. Sheets the setup was used on keep their columns and '
-      + 'values: a setup is a copy, never a link.',
-    inputSchema: z.object({ setup_id: z.string().describe('The setup (list_setups)') }).strict(),
-  }, async ({ setup_id }) => {
-    const denied = missingScope(ctx, 'write');
-    if (denied) return denied;
-    const out = deleteSetup(ctx.userId, setup_id);
+    const out = saveSetup(ctx.userId, sheet_id!, { name, description, columns: columns!,
+      includeUpstream: include_upstream });
     return 'ok' in out ? ok(out.ok) : err(out.message);
   });
 }

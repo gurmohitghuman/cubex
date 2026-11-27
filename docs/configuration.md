@@ -12,7 +12,7 @@ A setting in milliseconds (its name ends in `_MS`) is at most `2147483647` (abou
 | `HOST` | `127.0.0.1` | Who can open Cubex. `127.0.0.1`: only this computer. `0.0.0.0`: any device that can reach it. |
 | `DB_PATH` | `~/.cubex/data/cubex.db` | The database. Its directory also holds `jobs.db` and the generated secrets. |
 | `INITIAL_PASSWORD` | (none) | Creates the account with this password on first boot, so a public install can't be claimed by whoever finds it first. Ignored once the account exists. |
-| `PUBLIC_URL` | (none) | The address webhook senders and agents' file links use, if it differs from the one you browse on. |
+| `PUBLIC_URL` | (none) | The address webhook senders and agents' file links use, if it differs from the one you browse on. Also set it to the address you open Cubex on when a proxy over plain HTTP doesn't pass the `Host` header, or the app refuses your changes. |
 | `MAX_ROWS_PER_SHEET` | `1000000` | Rows per sheet. |
 | `MAX_COLUMNS_PER_SHEET` | `200` | Columns per sheet. |
 | `MAX_CSV_UPLOAD_MB` | `500` | Largest CSV you can import. |
@@ -56,7 +56,7 @@ Back up the whole directory together. **If `.encryption-key` is lost, saved keys
 
 Your data stays in one SQLite file on your machine. The server only calls out to:
 
-- **OpenRouter**, for AI columns, including its price list for web search engines and which models fetch web pages on their own (for an AI run's estimate), and to read what your key can still spend (Settings, `get_balances`, and an AI run's estimate and preview). An AI run with web fetch limits (tokens per page, pages per row) reads pages through Exa, by way of OpenRouter: if an admin of your OpenRouter workspace limited the web fetch engines on its Server Tools page, allow Exa there, or such a run pauses (`pause_reason: "web_engine"`).
+- **OpenRouter**, for AI columns, including its price list for web search engines and which models fetch web pages on their own (for an AI run's estimate), and to read what your key can still spend (Settings, `get_account` (action `balances`), and an AI run's estimate and preview). An AI run with web fetch limits (tokens per page, pages per row) reads pages through Exa, by way of OpenRouter: if an admin of your OpenRouter workspace limited the web fetch engines on its Server Tools page, allow Exa there, or such a run pauses (`pause_reason: "web_engine"`).
 - **The APIs you put in HTTP columns.**
 - **Your run webhook URLs**, when a run finishes (Settings, Run webhooks): the run's id, kind, sheet, status and time, nothing from your rows.
 - **[treg.to](https://treg.to)**, for enrichments: its catalog of jobs when you open **Enrichment**, and your rows' values only once you've saved a treg key and run an enrichment.

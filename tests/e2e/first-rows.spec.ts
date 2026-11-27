@@ -30,7 +30,8 @@ test('Run First Rows reruns only the top rows: app, REST, MCP and the column men
   const http = await call(client, 'run_http_enrichment', { sheet_id: sheetId,
     url: 'https://jsonplaceholder.typicode.com/posts/1?v={{val}}', master_column_name: 'Lookup',
     response_mapping: [{ json_path: '$.id', column_name: 'Post id' }] })
-  await expect.poll(async () => (await call(client, 'get_run_status', { run_type: 'http', run_id: http.run_id }))
+  await expect.poll(async () => (await call(client, 'get_run', {
+    action: 'status', run_type: 'http', run_id: http.run_id }))
     .status, { timeout: 30_000 }).toBe('completed')
   const bad = await api.post('/api/http/rerun', { data: { sheetId, masterColumnName: 'Lookup', firstRows: 0 } })
   expect(bad.status()).toBe(400)
@@ -55,7 +56,8 @@ test('Run First Rows reruns only the top rows: app, REST, MCP and the column men
   try {
     const ai = await call(client, 'run_ai_column', { sheet_id: sheetId, column_name: 'Fit',
       prompt: 'Is /val a fit?', model: 'deepseek/deepseek-v4-flash' })
-    await expect.poll(async () => (await call(client, 'get_run_status', { run_type: 'ai', run_id: ai.run_id }))
+    await expect.poll(async () => (await call(client, 'get_run', {
+      action: 'status', run_type: 'ai', run_id: ai.run_id }))
       .status, { timeout: 30_000 }).toMatch(/completed|failed/)
     const rest = await v1.post(`/api/v1/ai-runs/${ai.run_id}/rerun`, { data: { first_rows: 1 } })
     expect(rest.status(), await rest.text()).toBe(202)

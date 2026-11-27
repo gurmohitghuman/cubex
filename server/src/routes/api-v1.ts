@@ -36,13 +36,18 @@ import cleanV1 from './api-v1-clean';
 import formulaV1 from './api-v1-formula';
 import lookupV1 from './api-v1-lookup';
 import setupsV1 from './api-v1-setups';
+import setupCallsV1 from './api-v1-setup-calls';
+import { runScheduleRoutes } from './run-schedules-routes';
 import viewsV1 from './api-v1-views';
 import setupVersionsV1 from './api-v1-setup-versions';
+import sheetTestV1 from './api-v1-sheet-test';
 import usageV1 from './api-v1-usage';
 import trashV1 from './api-v1-trash';
 import savedKeysV1 from './api-v1-saved-keys';
 import aiVisibilityV1 from './api-v1-ai-visibility';
 import hiringV1 from './api-v1-hiring';
+import openRolesV1 from './api-v1-open-roles';
+import socialV1 from './api-v1-social';
 import { refuseChangesWhileBusy } from '../lib/sheet-busy';
 import { V1_SHEET_BUSY_ALLOWED } from './api-v1-shared';
 import { runWebhookRoutes } from './run-webhooks-routes';
@@ -80,6 +85,8 @@ router.use('/sheets/:id', refuseChangesWhileBusy(V1_SHEET_BUSY_ALLOWED));
 router.use(tablesV1);
 router.use(aiVisibilityV1);
 router.use(hiringV1);
+router.use(openRolesV1);
+router.use(socialV1);
 router.use(tableSheetsV1);
 router.use(sheetsV1);
 router.use(sheetOpsV1);
@@ -94,9 +101,13 @@ router.use(formulaV1);
 router.use(lookupV1);
 // Setups: a saved chain of filled columns, used again on other sheets (services/setup-*.ts).
 router.use(setupsV1);
+router.use(setupCallsV1);
+router.use(runScheduleRoutes('/run-schedules', requireScope));
 router.use(viewsV1);
 // Setup versions: a sheet's column setup kept by name, compared and restored (services/setup-version-*.ts).
 router.use(setupVersionsV1);
+// Tests of column changes on sample rows: a hidden copy, applied or discarded (services/sheet-test-*.ts).
+router.use(sheetTestV1);
 router.use(importV1);
 // Enrichment (Phase 2): AI/HTTP run starts, status/results reads, control.
 router.use(runsV1);
@@ -141,8 +152,10 @@ router.get('/me', requireScope('read'), (req: TokenAuthRequest, res) => {
 });
 
 // GET /api/v1/version: the running version, the latest release the daily check found and whether it
-// is newer (services/version-info.ts; get_version and Settings read the same). Reads only what is kept:
-// it never asks GitHub. ?since=<release> adds what changed for agents after it, as get_version's since.
+// is newer (services/version-info.ts; get_account (action version) and Settings read the same). Reads only what is
+// kept:
+// it never asks GitHub. ?since=<release> adds what changed for agents after it, as get_account (action version)'s
+// since.
 router.get('/version', requireScope('read'), (req: TokenAuthRequest, res) => {
   try {
     const info = versionInfo(req.userId!);

@@ -1,4 +1,4 @@
-import { useEffect, type MutableRefObject } from 'react'
+import { useEffect, useRef, type MutableRefObject } from 'react'
 import type { NavigateFunction } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { Sheet, SheetData, Table, tablesAPI } from '@/utils/api'
@@ -12,6 +12,7 @@ interface Args {
   activeSheet: Sheet | null
   setActiveSheet: (s: Sheet | null) => void
   setSheetData: (d: SheetData | null) => void
+  isLoading: boolean
   setIsLoading: (v: boolean) => void
   setLoadedRowsCount: (n: number) => void
   currentSheetIdRef: MutableRefObject<string | null>
@@ -20,12 +21,15 @@ interface Args {
   loadSheetData: (sheetId: string) => Promise<void> | void
 }
 
+// The sheets a URL can open: the tabs, and the copies where column changes are being tried (never tabs).
+export const sheetsOf = (table: Table): Sheet[] => [...(table.sheets ?? []), ...(table.test_sheets ?? [])]
+
 // Which table and sheet the page shows: the table load per tableId, the first
 // sheet (or the URL's) once it loads, the URL's sheet on back/forward, and the
 // active sheet's data load whenever it changes.
 export function useTableRouting(a: Args): void {
   const {
-    tableId, urlSheetId, navigate, table, setTable, activeSheet, setActiveSheet, setSheetData, setIsLoading,
+    tableId, urlSheetId, navigate, table, setTable, activeSheet, setActiveSheet, setSheetData, isLoading, setIsLoading,
     setLoadedRowsCount, currentSheetIdRef, selectSheet, clearSelection, loadSheetData,
   } = a
   // Table load — runs once per tableId. NOTE: this effect re-fires when the user
@@ -45,13 +49,22 @@ export function useTableRouting(a: Args): void {
       .catch(() => { toast.error('Failed to load table'); navigate('/dashboard') })
   }, [tableId, navigate])
 
+  // The home's Recent tab: the table opened, noted once per table once its first rows are on screen, so the note
+  // never competes with loading them. Nothing waits for it, and a failure only leaves Recent as it was.
+  const noted = useRef<string | null>(null)
+  useEffect(() => {
+    if (!tableId || isLoading || table?.id !== tableId || noted.current === tableId) return
+    noted.current = tableId
+    tablesAPI.opened(tableId).catch(() => {})
+  }, [tableId, isLoading, table?.id])
+
   // Auto-pick a sheet of a freshly-loaded table: the URL's sheet if present + valid,
   // else the first sheet. Only when nothing is active yet (no loop; back/forward on an
   // already-active table is handled by the [urlSheetId] sync effect below).
   useEffect(() => {
     if (!table?.sheets) return
     if (table.sheets.length > 0 && !activeSheet) {
-      const fromUrl = urlSheetId ? table.sheets.find(s => s.id === urlSheetId) : undefined
+      const fromUrl = urlSheetId ? sheetsOf(table).find(s => s.id === urlSheetId) : undefined
       setActiveSheet(fromUrl ?? table.sheets[0])
     }
     // A table with no sheets never picks an activeSheet, so the activeSheet
@@ -73,7 +86,7 @@ export function useTableRouting(a: Args): void {
   useEffect(() => {
     if (!urlSheetId || !table?.sheets || !activeSheet) return
     if (urlSheetId === activeSheet.id) return
-    const target = table.sheets.find(s => s.id === urlSheetId)
+    const target = sheetsOf(table).find(s => s.id === urlSheetId)
     if (target) void selectSheet(target)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [urlSheetId])

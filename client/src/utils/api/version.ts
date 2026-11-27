@@ -1,7 +1,7 @@
 import { api } from './client'
 
 // Settings → Account → Version (server routes/settings-version.ts, services/version-info.ts). Field
-// names match GET /api/v1/version and MCP get_version.
+// names match GET /api/v1/version and MCP get_account (action version).
 export interface VersionInfo {
   version: string | null       // the running release ("v0.8.12"); null: a branch, a local source, not recorded
   build: string | null         // the build as the installer recorded it; null: not recorded (Docker)

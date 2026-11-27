@@ -11,11 +11,11 @@ const setupFields = {
 const setup = obj(setupFields);
 // No setup_id: setups. With one: that setup and its spec.
 export const listSetups = obj({
-  setups: opt(z.array(setup)), ...setup.partial().shape, spec: opt(info('The setup as save_setup takes it')),
+  setups: opt(z.array(setup)), ...setup.partial().shape, spec: opt(info('The setup as manage_setup saves it')),
 });
 export const saveSetup = obj({
   ...setup.partial().shape, inputs: setupFields.inputs, keys: setupFields.keys, steps: setupFields.steps,
-  spec: info('The setup as save_setup takes it'),
+  spec: info('The setup as manage_setup saves it'),
 });
 export const deleteSetup = obj({ deleted: str });
 
@@ -28,15 +28,43 @@ const setupRun = obj({
     column: str, kind: str, layer: num, mode: str, state: str, run_id: nul(str), note: nul(str),
   })),
   max_cost_usd: opt(num),
+  column_run: opt(info('A column run (run_columns): mode, how many row_ids, where')),
 });
-// estimate_only (its default): estimate, inputs, makes and carries_on. Started: setup_run.
+// A setup called on items without a sheet (apply_setup with items, mcp/setup-items.ts): results once it has
+// finished.
+const setupCall = obj({
+  id: str, setup_id: nul(str).describe('null when the setup was deleted'), setup_name: str, status: str, items: num,
+  layer: num, layers: num, error_message: nul(str), created_at: str, updated_at: str,
+  keep_until: nul(str), webhook_id: nul(str),
+  max_cost_usd: opt(num),
+  steps: z.array(obj({ column: str, kind: str, layer: num, state: str, run_id: nul(str), note: nul(str) })),
+  results: opt(z.array(obj({ item: num, status: str, error: nul(str), outputs: info('Column: value, or null') }))),
+  next_from: opt(nul(num)),
+});
+// estimate_only (its default): estimate, inputs (a sheet's), makes, carries_on (a sheet's) and items (items').
+// Started: setup_run on a sheet, setup_call with items.
 export const applySetup = obj({
-  setup_run: opt(setupRun), estimate: opt(info('What it would cost, by column')),
+  setup_run: opt(setupRun), setup_call: opt(info('The call, as get_run\'s setup answers it')),
+  estimate: opt(info('What it would cost, by column')),
   inputs: opt(info('Input -> the column it reads')), makes: opt(strs).describe('The columns it would make'),
-  carries_on: opt(strs).describe('The columns it carries on'), changed,
+  carries_on: opt(strs).describe('The columns it carries on'), items: opt(num), changed,
 });
-// No setup_run_id: setup_runs. With one: that setup run.
-export const getSetupRun = obj({ setup_runs: opt(z.array(setupRun)), ...setupRun.partial().shape });
+// estimate_only (its default): estimate. Started: setup_run.
+export const runColumns = obj({
+  setup_run: opt(setupRun), estimate: opt(info('What it would cost, by column')), changed,
+});
+// Scheduled reruns (tools-run-schedules.ts): the schedules (list), one schedule, or what was deleted.
+export const manageRunSchedule = obj({
+  schedules: opt(z.array(info('A schedule'))), schedule: opt(info('The schedule: its settings, next_at, last firing')),
+  deleted: opt(str),
+});
+// No setup_run_id: setup_runs. With one: that setup run, or a call on items with a page of its results.
+export const getSetupRun = obj({
+  setup_runs: opt(z.array(setupRun)), ...setupRun.partial().shape, ...setupCall.partial().shape,
+  steps: opt(z.array(obj({
+    column: str, kind: str, layer: num, mode: opt(str), state: str, run_id: nul(str), note: nul(str),
+  }))),
+});
 export const controlSetupRun = obj({ ...setupRun.shape, changed });
 
 const version = obj({

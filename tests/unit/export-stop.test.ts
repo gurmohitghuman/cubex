@@ -3,7 +3,7 @@
 // Through /api/v1 and a download link, on a Unix socket (answer-stall-kit.ts): a client that stops reading while
 // rows are appended through the service and through the webhook route gets exactly the rows from the start, and
 // the sheet is free once it ends. One reading about 400 KB/s while rows are appended faster than that (it would
-// never catch up with the sheet's end) ends too. export_csv (buildSheetCsv) holds the same rows.
+// never catch up with the sheet's end) ends too. read_rows' format csv (buildSheetCsv) holds the same rows.
 import http from 'node:http'
 import { stallKit, sleep } from './answer-stall-kit'
 
@@ -150,14 +150,14 @@ for (const [label, path, headers] of surfaces) {
   { whole: out.whole, ms: out.ms, added: k, lines: out.body.split('\r\n').length })
 }
 
-// export_csv reads a page, then yields: rows appended then are not in it.
+// read_rows' format csv reads a page, then yields: rows appended then are not in it.
 {
   const n = 7000
   const s = sheet(n)
   const csv = buildSheetCsv(s.sid, uid)
   const added = appendRows(s.sid, uid, Array.from({ length: 50 }, (_, i) => ({ Email: `later${i}@x.co` })))
   const out = await csv
-  check(`export_csv: rows appended after its first page are not in it, exactly the ${n} from its start`,
+  check(`read_rows format csv: rows appended after its first page are not in it, exactly the ${n} from its start`,
     'ok' in added && count(s.sid) === n + 50 && 'ok' in out && out.ok && out.rowCount === n && exactly(out.csv, n),
     'ok' in out && out.ok ? { rowCount: out.rowCount } : out)
 }

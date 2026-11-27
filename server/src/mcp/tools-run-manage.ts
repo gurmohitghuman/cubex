@@ -1,9 +1,11 @@
-// Over 200 lines: control_run is one tool for every run kind's pause, resume, cancel and rerun.
+// Over 200 lines: control_run is one tool for every run kind's pause, resume, cancel, rerun and undo.
 // Run control: control_run, the same services as POST
 // /v1/{ai,http}-runs/:id/{pause,resume,cancel,rerun} and, for cancel_all, POST
 // /v1/sheets/:id/runs/stop. It needs 'run' (and its rerun action shares the
 // start-rate window, since a rerun spends external calls like a fresh start).
-// get_run_status lives in tools-run-status.ts.
+// Its undo (tools-run-undo.ts, undo_run before v0.8.47) needs 'write'; with setup_run_id, pause, resume and cancel
+// act on a setup run (tools-setup-runs.ts, control_setup_run before v0.8.47).
+// get_run (action status) lives in tools-run-status.ts.
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/server';
 import { HTTP_MAX_CONCURRENCY, MAX_AI_CONCURRENCY, MAX_FIRST_ROWS, MAX_ROWS_PER_SHEET } from '../lib/constants';
@@ -21,20 +23,18 @@ import { isEnrichmentRun, rerunEnrichmentRunById } from '../services/enrich-agen
 import { attachRunWebhook, webhookIdProblem } from '../services/run-hooks-attach';
 import { resumeEnrichmentRun } from '../services/enrich-run-status';
 import { isWaterfallRun, rerunWaterfallRunById, resumeWaterfallRun } from '../services/waterfall-agent-control';
-import { McpAuthCtx, ok, err, missingScope, registerTool } from './tool-helpers';
+import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean } from './tool-helpers';
 import { changedOf, type Changed, type Touch } from './changed';
 import { runSheetColumns } from '../lib/run-placeholders';
-import { capToolNote } from '../lib/token-spend';
+import { capRunToolNote } from '../lib/token-spend';
+import { GUIDE_POINTER } from './guides/guide';
+import { kindOf } from './run-kind';
+import { undoAction } from './tools-run-undo';
+import { setupRunControl } from './tools-setup-runs';
 
-// An enrichment or a waterfall is an HTTP run: run_type 'enrichment' or
-// 'waterfall' reads and controls the same run, and refuses another kind so the
-// caller isn't misled.
-export type RunTypeArg = 'ai' | 'http' | 'enrichment' | 'waterfall';
-export function kindOf(runType: RunTypeArg, runId: string, userId: string): 'ai' | 'http' | null {
-  if (runType === 'enrichment') return isEnrichmentRun(runId, userId) ? 'http' : null;
-  if (runType === 'waterfall') return isWaterfallRun(runId, userId) ? 'http' : null;
-  return runType;
-}
+// The fields of these that were given.
+const given = (fields: Record<string, unknown>): string[] => Object.keys(fields).filter(k => fields[k] !== undefined);
+const are = (names: string[]) => `${names.join(' and ')} ${names.length > 1 ? 'are' : 'is'}`;
 
 // cancel_all: every run and setup on a sheet, at once (services/sheet-runs-stop.ts).
 async function cancelAll(ctx: McpAuthCtx, sheetId: string | undefined, otherArgs: boolean) {
@@ -62,44 +62,39 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
     'control_run',
     {
       description:
-        'Pause, resume or cancel a run, rerun a finished one, or stop every run on a sheet. A cancel keeps the '
-        + 'answers the run wrote; rows it hadn\'t reached get back what they held. Check get_run_status or '
-        + 'get_run_results first, so you know how many rows you are about to pay for again. '
-        + 'RERUN starts a NEW run with the column\'s latest setup and COSTS MONEY AGAIN (one call per row) and '
-        + 'returns its run_id: poll it with get_run_status. AI, enrichment and waterfall reruns need row_ids or '
-        + 'mode: "errored" (❌ rows, the usual retry), "empty" (blank rows, e.g. the rest after a test), '
-        + '"missing" (no result: empty, ⏭️ or ❌; an AI rerun takes ⏳ rows too), "out_of_date" (results made from '
-        + 'input cells that changed '
-        + 'since), "empty_or_out_of_date", or "all" (every row). HTTP takes the same modes, default all. A '
-        + 'structured (output_columns) AI run reruns whole, its modes reading the "(Status)" column. first_rows '
-        + '(AI and HTTP) reruns only among the sheet\'s top rows, a test before a big run. An enrichment rerun '
-        + 'buys rows from treg again (answers it still holds come back cheaper or free). '
-        + 'concurrency changes rows at once on a rerun (and an HTTP or enrichment resume; the column keeps it): '
-        + 'lower it after rows failed with error_class "concurrency" or a provider\'s 429. spend_limit_usd sets a '
-        + 'rerun\'s hard limit, or raises the limit of a run that paused at it on resume. A run you resume becomes '
-        + 'this token\'s: what it spends from then on counts toward this token\'s spend cap, and so do calls '
-        + 'already out when it changes hands. '
-        + 'CANCEL_ALL with sheet_id stops every active run on the sheet (AI, HTTP, enrichment and setups being '
-        + 'used: get_sheet\'s active_runs and active_setup_runs) and returns stopped_runs, stopped_setup_runs and '
-        + 'a message. It turns no auto-run off: a column whose auto-run batch it stopped pauses, as cancelling that '
-        + 'one run does (auto_run_paused; resume it to go on), '
-        + 'and auto_run_on lists columns where new rows still start runs (set_auto_run paused true with no column '
-        + 'pauses them all). Calls already sent finish and are billed; free fills finish too (still_filling).'
-        + capToolNote(ctx.spend ?? null, true),
+        'Pause, resume or cancel a run, rerun a finished one, undo what it wrote, or stop every run on a sheet. A '
+        + 'cancel keeps the answers the run wrote; rows it hadn\'t reached get back what they held. '
+        + 'RERUN starts a NEW run with the column\'s latest setup and COSTS MONEY AGAIN (one call per row); check '
+        + 'get_run (action results) first to know how many rows you will pay for. AI, enrichment and waterfall reruns '
+        + 'need '
+        + 'row_ids or mode ("errored" is the usual retry, "empty" the rest after a test, "missing" empty, ⏭️ '
+        + 'or ❌, "out_of_date" input cells changed since); HTTP defaults to all. Poll '
+        + 'the new run_id with get_run (action status). '
+        + 'CANCEL_ALL with sheet_id stops every active run and setup run on the sheet; it turns no auto-run off. '
+        + 'Calls already sent finish and are billed. UNDO puts back what a finished run wrote: each cell it filled '
+        + 'gets what it held before, a cell changed since stays, nothing is refunded; pass run_type and run_id, or '
+        + 'sheet_id and column for that column\'s newest run, with dry_run true to see whether it can. SETUP_RUN_ID '
+        + '(apply_setup, run_columns) in place of run_type and run_id pauses, resumes or cancels a setup run.'
+        + capRunToolNote(ctx.spend ?? null) + ` ${GUIDE_POINTER}`,
       inputSchema: {
         run_type: z.enum(['ai', 'http', 'enrichment', 'waterfall']).optional()
-          .describe('Every action but cancel_all.'),
-        run_id: z.string().optional().describe('Every action but cancel_all.'),
-        action: z.enum(['pause', 'resume', 'cancel', 'rerun', 'cancel_all'])
-          .describe('What to do; cancel_all stops every run on sheet_id'),
-        sheet_id: z.string().optional().describe('cancel_all only: the sheet whose runs to stop.'),
+          .describe('With run_id: every action but cancel_all.'),
+        run_id: z.string().optional().describe('The run: every action but cancel_all.'),
+        action: z.enum(['pause', 'resume', 'cancel', 'rerun', 'undo', 'cancel_all'])
+          .describe('What to do; undo puts back what a run wrote; cancel_all stops every run on sheet_id'),
+        setup_run_id: z.string().optional()
+          .describe('pause, resume or cancel: a setup run (get_run (action setup)), in place of run_type and run_id'),
+        sheet_id: z.string().optional()
+          .describe('cancel_all: the sheet whose runs to stop; undo: with column, in place of run_type and run_id.'),
+        column: z.string().optional()
+          .describe('undo: with sheet_id, a column the run fills; its newest run that can be undone'),
+        dry_run: lenientBoolean().optional()
+          .describe('undo: true changes nothing; says whether it can be undone (can_undo, reason) or how far one got'),
         row_ids: z.array(z.string()).min(1).max(MAX_ROWS_PER_SHEET).optional()
           .describe('rerun only: stable row ids to re-process. Wins over mode.'),
         mode: z.enum(['errored', 'empty', 'missing', 'all', 'out_of_date', 'empty_or_out_of_date']).optional()
-          .describe(
-            'rerun only, every run type: errored|empty|missing|all|out_of_date|empty_or_out_of_date (REQUIRED for '
-            + 'AI, enrichment and waterfall reruns unless row_ids given; HTTP defaults to all).',
-          ),
+          .describe('rerun only: REQUIRED for AI, enrichment and waterfall reruns unless row_ids given; HTTP '
+            + 'defaults to all.'),
         concurrency: z.number(CONTROL_CONCURRENCY_ERROR).int(CONTROL_CONCURRENCY_ERROR)
           .min(1, CONTROL_CONCURRENCY_ERROR).max(CONTROL_CONCURRENCY_MAX, CONTROL_CONCURRENCY_ERROR).optional()
           .describe(`AI rerun, or HTTP API or enrichment rerun or resume: rows at once (AI 1-${MAX_AI_CONCURRENCY}, `
@@ -113,17 +108,38 @@ export function registerRunManageTools(server: McpServer, ctx: McpAuthCtx) {
       },
     },
     async ({
-      run_type: asked, run_id, action, sheet_id, row_ids, mode, concurrency, spend_limit_usd, first_rows, webhook_id,
+      run_type: asked, run_id, setup_run_id, action, sheet_id, column, dry_run, row_ids, mode, concurrency,
+      spend_limit_usd, first_rows, webhook_id,
     }) => {
+      const rerunFields = { row_ids, mode, concurrency, spend_limit_usd, first_rows, webhook_id };
+      if (action === 'undo') {
+        const extra = given({ setup_run_id, ...rerunFields });
+        if (extra.length) {
+          return err(`${are(extra)} not for undo: it takes run_type and run_id, or sheet_id and column, and dry_run.`);
+        }
+        return undoAction(ctx, { run_type: asked, run_id, sheet_id, column, dry_run });
+      }
+      const undoOnly = given({ column, dry_run });
+      if (undoOnly.length) return err(`${are(undoOnly)} for action undo only.`);
       const denied = missingScope(ctx, 'run');
       if (denied) return denied;
+      if (setup_run_id !== undefined) {
+        if (action !== 'pause' && action !== 'resume' && action !== 'cancel') {
+          return err(`setup_run_id goes with pause, resume or cancel. ${action === 'rerun'
+            ? 'To run a setup again, call apply_setup or run_columns.' : 'cancel_all takes sheet_id alone.'}`);
+        }
+        const extra = given({ run_type: asked, run_id, sheet_id, ...rerunFields });
+        if (extra.length) return err(`${are(extra)} not for a setup run: send setup_run_id and action alone.`);
+        return setupRunControl(ctx, setup_run_id, action);
+      }
       if (action === 'cancel_all') {
         const others = [asked, run_id, row_ids, mode, concurrency, spend_limit_usd, first_rows, webhook_id];
         return cancelAll(ctx, sheet_id, others.some(v => v !== undefined));
       }
-      if (sheet_id !== undefined) return err('sheet_id goes with action cancel_all only.');
+      if (sheet_id !== undefined) return err('sheet_id goes with action cancel_all, or undo with column.');
       if (!asked || !run_id) {
-        return err('Pass run_type and run_id, or action cancel_all with sheet_id to stop every run on a sheet.');
+        return err('Pass run_type and run_id, setup_run_id for a setup run, or action cancel_all with sheet_id to '
+          + 'stop every run on a sheet.');
       }
       const run_type = kindOf(asked, run_id, ctx.userId);
       if (!run_type) return err(`${asked === 'waterfall' ? 'Waterfall' : 'Enrichment'} run not found`);

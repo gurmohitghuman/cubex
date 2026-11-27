@@ -11,6 +11,7 @@ import express from 'express'
 import cookieParser from 'cookie-parser'
 import type { AddressInfo } from 'node:net'
 import timeoutsMod from '../../server/src/lib/server-timeouts'
+import { passed } from './ends-on-its-own'
 const { applyServerTimeouts } = timeoutsMod as typeof import('../../server/src/lib/server-timeouts')
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
@@ -122,6 +123,6 @@ async function main() {
 
   server.close()
   console.log(failures === 0 ? '\nlogin device cookies: all passed' : `\nlogin device cookies: ${failures} FAILED`)
-  process.exit(failures === 0 ? 0 : 1)
+  if (failures === 0) passed(); else process.exit(1)
 }
 main().catch(e => { console.error(e); process.exit(1) })

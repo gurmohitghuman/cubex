@@ -11,9 +11,14 @@ import { heldFail, type RunFail } from './run-shared';
 export type RuleCheck = { ok: CheckedRule | null } | { error: string };
 
 export function checkRunRule(sheetId: string, userId: string, text: string | null | undefined): RuleCheck {
+  return checkRuleOn(() => getSheetColumns(sheetId, userId, false), text);
+}
+
+// The same against the given columns (a setup call priced on its items, without a sheet: run-estimate-rows.ts).
+export function checkRuleOn(columns: () => string[], text: string | null | undefined): RuleCheck {
   if (text === null || text === undefined || text.trim() === '') return { ok: null };
   try {
-    return { ok: checkRule(text, getSheetColumns(sheetId, userId, false)) };
+    return { ok: checkRule(text, columns()) };
   } catch (e) {
     if (e instanceof RuleError) return { error: `"Only run if": ${e.message}` };
     throw e;
@@ -49,6 +54,7 @@ export function startRunRule(
 export const runIfReply = (rule: string) => ({
   run_if: rule,
   run_if_note: 'target_rows counts the rows before the rule. Rows that fail it get "⏭️ Condition not met" and '
-    + 'cost nothing; get_run_status counts them (condition_skipped_rows) and leaves them out of total_rows once '
+    + 'cost nothing; get_run (action status) counts them (condition_skipped_rows) and leaves them out of total_rows '
+    + 'once '
     + 'the run has started.',
 });

@@ -9,6 +9,9 @@ import { SheetGridArea } from '@/components/sheet/SheetGridArea'
 import { SheetSampleGuide } from '@/components/sample/SampleGuide'
 import { SheetAiVisibilityGuide } from '@/components/ai-visibility/AiVisibilityGuide'
 import { SheetHiringBanner } from '@/components/hiring/HiringBanner'
+import { SheetSocialBanner } from '@/components/social/SocialBanner'
+import { SheetTestBanner } from '@/components/sheet-test/SheetTestBanner'
+import { useSheetTest } from '@/hooks/sheet/useSheetTest'
 import { SheetSetupDialogs } from '@/components/setups/SheetSetupDialogs'
 import { SetupRunChip } from '@/components/setups/SetupRunChip'
 import { SheetHeader } from '@/components/sheet/SheetHeader'
@@ -48,7 +51,7 @@ import { useSheetView } from '@/hooks/sheet/useSheetView'
 import { useSheetViews } from '@/hooks/sheet/useSheetViews'
 import { useSheetSearch } from '@/hooks/sheet/useSheetSearch'
 import { SheetViewBar } from '@/components/views/SheetViewBar'
-import { activeViewOf, rowFilterOn, viewNarrows } from '@/lib/views'
+import { activeViewOf, onConditions, rowFilterOn, sheetWhere, viewNarrows } from '@/lib/views'
 import { gridAreaMode } from '@/hooks/sheet/gridAreaMode'
 import { useAutorun } from '@/hooks/sheet/useAutorun'
 import { useTableRouting } from '@/hooks/sheet/useTableRouting'
@@ -267,8 +270,12 @@ export const SheetPage: React.FC = () => {
     },
   })
 
+  const sheetTest = useSheetTest({ table, setTable, activeSheet, selectSheet: sheetOps.selectSheet, sheetData,
+    selectedRowIndices: cellOps.selectedRowIndices, reload: id => { void silentReloadRef.current(id) } })
+  // Its column changes are being tried on a copy: the sheet takes no change (rows included) until the test ends.
+  const underTest = !!activeSheet && sheetData?.data.test?.sheet_id === activeSheet.id
   useTableRouting({
-    tableId, urlSheetId, navigate, table, setTable, activeSheet, setActiveSheet, setSheetData, setIsLoading,
+    tableId, urlSheetId, navigate, table, setTable, activeSheet, setActiveSheet, setSheetData, isLoading, setIsLoading,
     setLoadedRowsCount, currentSheetIdRef, selectSheet: sheetOps.selectSheet,
     clearSelection: () => cellOps.setSelectedRowIndices([]), loadSheetData,
   })
@@ -277,6 +284,9 @@ export const SheetPage: React.FC = () => {
   useRowWindowRefill(activeSheet, isLoading, sheetData, reloadActiveSheet)
 
   const totalDisplayedRows = sheetData?.data.totalRows || 0
+  // The filter the sheet shows, for Run columns' "only rows in the current filter" (null: none on).
+  const shownFilter = sheetWhere(sheetData)
+  const filterOn = onConditions(shownFilter).length > 0
   // Loader, import empty state, or the grid — rules + rationale in gridAreaMode.
   const gridArea = gridAreaMode(isLoading, totalDisplayedRows, emptyFilter, columnFilters,
     rowFilterOn(sheetData))
@@ -303,9 +313,11 @@ export const SheetPage: React.FC = () => {
         onAddLookup={() => modals.openLookup({ mode: 'lookup-new' })}
         onOpenWebhook={() => modals.setShowWebhookDrawer(true)}
         onRemoveDuplicates={() => modals.openDedupe('now')} autoDedupeOn={!!sheetData?.data.autoDedupe}
+        onRunColumns={() => modals.setShowRunColumns(true)}
         onSaveSetup={() => modals.openSaveSetup(null)}
         onUseSetup={() => modals.setShowUseSetup(true)}
         onSetupVersions={() => { if (activeSheet) modals.openVersions(activeSheet.id) }}
+        testChanges={sheetTest.entry}
         sheetId={activeSheet?.id ?? null} sheetName={activeSheet?.name ?? ''}
         autorunChip={<><AutorunChip autorun={autorun} /><SetupRunChip sheetId={activeSheet?.id ?? null}
           dataVersion={sheetData?.sheet?.data_version} onLiveChange={setSetupLive}
@@ -322,6 +334,9 @@ export const SheetPage: React.FC = () => {
         onChanged={() => { if (activeSheet) void silentReloadRef.current(activeSheet.id) }} />
       <SheetHiringBanner sheetData={sheetData}
         onChanged={() => { if (activeSheet) void silentReloadRef.current(activeSheet.id) }} />
+      <SheetSocialBanner sheetData={sheetData}
+        onChanged={() => { if (activeSheet) void silentReloadRef.current(activeSheet.id) }} />
+      <SheetTestBanner sheetData={sheetData} activeSheetId={activeSheet?.id ?? null} controls={sheetTest} />
       <SheetGridArea
         gridArea={gridArea} activeSheet={activeSheet} sheetData={sheetData} totalDisplayedRows={totalDisplayedRows}
         emptyFilter={emptyFilter} columnFilters={columnFilters} onEmptyFilterChange={onEmptyFilterChange}
@@ -344,7 +359,7 @@ export const SheetPage: React.FC = () => {
         onCopySheet={s => { void sheetOps.copySheet(s) }}
         onSetupVersions={s => { if (s.id !== activeSheet?.id) sheetOps.selectSheet(s); modals.openVersions(s.id) }}
         onReorderSheets={sheetOps.reorderSheets}
-        onAddRows={cellOps.handleAddRows}
+        onAddRows={underTest ? undefined : cellOps.handleAddRows}
       />
       <SourcesDialog ref={sources} />
       <DescriptionDialog target={descriptions.target} initial={descriptions.initial} onClose={descriptions.close}
@@ -371,6 +386,7 @@ export const SheetPage: React.FC = () => {
       <RaiseLimitDialog runId={runControls.raiseLimit.runId} onClose={runControls.raiseLimit.close}
         onResumed={runControls.raiseLimit.resumed} queued={runControls.raiseLimit.queued} />
       <SheetSetupDialogs sheetId={activeSheet?.id} columns={columnOps.columnHeaders} modals={modals}
+        filter={filterOn ? shownFilter : null}
         sheetName={table?.sheets?.find(s => s.id === modals.versionsFor)?.name ?? ''}
         onRestored={id => { if (id === activeSheet?.id) void silentReloadRef.current(id) }} />
       <SheetWebhookOverlays
@@ -378,6 +394,7 @@ export const SheetPage: React.FC = () => {
         drawerOpen={modals.showWebhookDrawer}
         onCloseDrawer={() => modals.setShowWebhookDrawer(false)}
         autoDedupe={sheetData?.data.autoDedupe ?? null} onAutoDedupe={modals.openAutoDedupe}
+        columns={columnOps.columnHeaders} columnTypes={sheetData?.data.columnTypes ?? {}} sheets={table?.sheets ?? []}
         sheetId={activeSheet?.id ?? null}
         rowCount={totalDisplayedRows}
         onColumnsChanged={() => { if (activeSheet) void silentReloadRef.current(activeSheet.id) }}

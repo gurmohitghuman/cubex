@@ -14,6 +14,7 @@ import endMod from '../../server/src/services/column-transform-end'
 import walMod from '../../server/src/lib/wal-checkpointer'
 import turnMod from '../../server/src/lib/wal-turn'
 import { sqliteWriteProbe, transactionLine } from './sqlite-write-probe'
+import { passed } from './ends-on-its-own'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { settle } = endMod as typeof import('../../server/src/services/column-transform-end')
@@ -109,5 +110,5 @@ main()
   .finally(() => {
     if (failures) { console.log(`\n${failures} failure(s)`); process.exit(1) }
     console.log('All transform-settle-turn assertions passed.')
-    process.exit(0)
+    passed()
   })

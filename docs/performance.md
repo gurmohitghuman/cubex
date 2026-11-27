@@ -12,7 +12,7 @@ Measured on one sheet with 1,000,000 rows and 10 columns (a 160 MB CSV), on an A
 | Filter a run column to its failed rows ("Rows with errors"), at the top or 150,000 rows in | 0.6 s (0.9 s on an enrichment output, which reads its status column) | 0.02 s | 580 MB |
 | An agent counting the rows where any run failed (`has_error` over 4 run columns, 216,667 rows) | 1.2 s | 0.02 s | 570 MB |
 | An agent reading a page of those rows, at the start or 900,000 rows in | 0.01 s | 0.01 s | 560 MB |
-| Download those 216,667 rows as CSV (`create_download_link` with `where`) | 1.4 s | 0.01 s | 620 MB |
+| Download those 216,667 rows as CSV (`file_link` download with `where`) | 1.4 s | 0.01 s | 620 MB |
 | A run column's menu counts its rows: empty, out of date (10,000 whose input changed) and failed | 2.6 s | 0.01 s | 510 MB |
 | Find those 10,000 out-of-date rows for a rerun (mode `out_of_date`) | 1.5 s | 0.02 s | 510 MB |
 | An agent counting out-of-date rows (`where` with `out_of_date`) | 1.8 s | 0.01 s | 520 MB |
@@ -90,6 +90,26 @@ Measured with a script on the same laptop while other work ran, on a sheet of 1,
 | Import 100,000 rows, 10,000 of them already in the sheet, keeping the newest (3 s with auto-dedupe off) | 7.5 to 9.4 s | 0.2 to 0.3 s |
 
 Writing to a sheet without auto-dedupe costs nothing measurable. The keys take about 85 MB for a million emails. While an import's rows are checked, the sheet stays busy, so auto-run doesn't start on rows that are about to go.
+
+### Rows with big cells
+
+A row holding an API answer can be 16 to 200 KB, and SQLite writes a changed row whole, every page of it. So a big job that rewrites, moves or deletes rows takes as many a transaction as fit about 8 MB of them (half that for a move, which writes each row twice), and still up to 5,000 rows when they are small. Measured with each disk checkpoint slowed by 300 ms, on 6,000 rows of 16 KB (or 1,200 rows of 100 KB for the trash and duplicates, and 500 rows of 100 KB leaving a webhook sheet for auto-delete):
+
+| Job | Biggest transaction before | After | Longest hold before | After |
+|---|---|---|---|---|
+| Prepare a run's rows (16 KB) | 20,185 pages, 79 MB of WAL | 2,025 pages | 244 ms | 43 ms |
+| Rename a column (16 KB) | 20,097 pages | 2,014 pages | 228 ms | 35 ms |
+| Delete a column (16 KB) | 20,101 pages | 2,011 pages | 160 ms | 24 ms |
+| Delete 300 rows in the grid, or 500 with `change_rows` delete (100 KB) | 14,740 and 24,556 pages, 97 MB of WAL | 1,936 and 1,939 pages | 305 and 509 ms | 24 and 26 ms |
+| Take an import out again (16 KB) | 20,393 pages | 2,112 pages | 100 ms | 23 ms |
+| Rows into the trash, or back (100 KB) | 12,292 pages | 1,946 pages | 72 to 88 ms | 16 to 20 ms |
+| 500 rows picked from the trash, back (100 KB) | 24,592 pages, 97 MB of WAL | 1,939 pages | 444 ms | 44 ms |
+| Empty the trash (100 KB) | 29,410 pages, 116 MB of WAL | 1,946 pages | 165 ms | 14 ms |
+| Remove duplicates (100 KB) | 12,294 pages | 1,948 pages | 67 ms | 39 ms |
+| Webhook auto-delete (100 KB) | 12,295 pages | 1,962 pages | 107 ms | 49 ms |
+| Webhook auto-delete, copying first (100 KB) | 24,577 pages, 97 MB of WAL | 1,947 pages | 348 ms | 47 ms |
+
+Before, the WAL grew past its 64 MB limit; now it stays under 54 MB. Each job took the same time or less. The size check costs about 0.3 ms a slice of small rows. On a sheet of 1,000,000 rows and 10 columns it took 0.5 to 1.3 ms a slice of 5,000 rows, 0.1 to 0.3 s over the whole sheet (it reads the same pages the slice then writes). A sheet whose rows sit before and after another sheet's reads each of its own rows' sizes instead, so the check never reads the other sheet's rows.
 
 ### The trash
 

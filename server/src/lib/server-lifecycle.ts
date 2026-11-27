@@ -7,10 +7,13 @@ import { evictIdleWebhookBuckets } from './webhook-bucket';
 import { pruneWebhookKeys } from './webhook-idempotency';
 import { pruneWriteKeys } from './write-idempotency';
 import { writeTokenUsesNow } from './token-last-used';
+import { writeTableOpensNow } from './table-opened';
 import { writeRowCountsNow } from './row-counts';
 import { WEBHOOK_BUCKET_IDLE_EVICT_MS } from './constants';
 import { startAutorunLoop } from '../services/autorun-loop';
 import { startSetupLoop } from '../services/setup-sweep';
+import { startSetupCallLoop } from '../services/setup-call';
+import { startRunScheduleLoop } from '../services/run-schedule-fire';
 import { startDerivedFollow } from '../services/derived-follow';
 import { startListDrainLoop } from '../services/enrich-list-drain';
 import { startAnswerPruneLoop } from '../services/answer-prune';
@@ -19,10 +22,12 @@ import { startLookupLoop } from '../services/lookup-host';
 import { startAutoDedupeLoop } from '../services/auto-dedupe-checks';
 import { startRunHookLoop } from '../services/run-hooks-dispatch';
 import { startTrashLoop } from '../services/trash-purge';
+import { startWebhookAutoDeleteLoop } from '../services/webhook-auto-delete-sweep';
 import { startReleaseCheckLoop } from '../services/release-check';
 import { resumeAiVisibilityChecks } from '../services/ai-visibility-check';
 import { resumeHiringChecks } from '../services/hiring-check-watch';
 import { closeWalCheckpointer } from './wal-checkpointer';
+import { stopWalWatch } from './wal-watch';
 import { closeWalTurnReader } from './wal-turn';
 
 // Run any value through redactSecrets before logging, so a stack trace or
@@ -65,6 +70,8 @@ export const startBackground = (recovered?: RecoveredRuns) => {
   startRunHookLoop();
   // The trash: what was kept long enough goes for good, in slices; the change log is pruned (services/trash-purge.ts).
   startTrashLoop();
+  // Auto-delete on webhook sheets: finished rows past the newest kept leave (services/webhook-auto-delete-sweep.ts).
+  startWebhookAutoDeleteLoop();
   // The release check: the latest release on GitHub, at most once a day (services/release-check.ts).
   startReleaseCheckLoop();
   startQueue()
@@ -75,6 +82,10 @@ export const startBackground = (recovered?: RecoveredRuns) => {
       startAutorunLoop();
       // Setups being used on sheets start their next steps (services/setup-runner.ts).
       startSetupLoop();
+      // A setup call's working table goes once its results have been kept long enough (services/setup-call.ts).
+      startSetupCallLoop();
+      // Scheduled reruns: what is due fires as a column run (services/run-schedule-fire.ts).
+      startRunScheduleLoop();
       // A write to a clean, formula or lookup column's input works it out again at once (services/derived-follow.ts).
       startDerivedFollow();
       // An AI visibility check a restart cut short finishes its free part (services/ai-visibility-check.ts).
@@ -127,10 +138,13 @@ export const installShutdownHandlers = (server: Server) => {
     catch (err) { console.error('Queue shutdown failed:', err); }
     // Access token uses not yet written (lib/token-last-used.ts), now that runs no longer write.
     writeTokenUsesNow();
+    // Tables opened whose time isn't written yet (lib/table-opened.ts): the home's Recent after the restart.
+    writeTableOpensNow();
     // Row counts made since their last write to sheets.counted_rows (lib/row-counts.ts), shown after the restart.
     writeRowCountsNow();
-    // The checkpoint worker closes its connection (lib/wal-checkpointer.ts), and lib/wal-turn.ts its own.
-    try { await closeWalCheckpointer(); closeWalTurnReader(); }
+    // The WAL watch stops (lib/wal-watch.ts), the checkpoint worker closes its connection (lib/wal-checkpointer.ts),
+    // and lib/wal-turn.ts its own.
+    try { stopWalWatch(); await closeWalCheckpointer(); closeWalTurnReader(); }
     catch (err) { console.error('Closing the WAL checkpoint worker failed:', err); }
     // Refresh planner stats so the next boot inherits up-to-date metadata.
     // Best effort — never block shutdown on it.

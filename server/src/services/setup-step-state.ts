@@ -3,7 +3,6 @@
 // by a restart made, and the test rows' places now.
 import { db } from '../lib/db';
 import { getSheetColumns } from '../lib/sql-helpers';
-import { mainColumn, type SetupStep } from '../lib/setups/spec';
 import { pauseRun } from './run-lifecycle';
 import { followProgress } from './setup-step-again';
 import { stepsOf, type SetupRunRow, type StepRecord } from './setup-run-store';
@@ -50,9 +49,9 @@ export type Progress = 'working' | 'done' | 'failed' | 'cancelled' | 'gone' | 's
 // Where a started step is: 'working', or how it ended. A followed column
 // (setup-step-again.ts) is done once its auto-run caught up; 'stopped': it no
 // longer follows, so it's to be filled again.
-export function progress(r: SetupRunRow, st: StepRecord, step: SetupStep): Progress {
+export function progress(r: SetupRunRow, st: StepRecord, main: string): Progress {
   if (st.follow && (st.kind === 'clean' || st.kind === 'formula')) {
-    return followProgress(r.sheet_id, r.user_id, st.kind, mainColumn(step));
+    return followProgress(r.sheet_id, r.user_id, st.kind, main);
   }
   const s = stateOf(st);
   if (!s) return 'gone';
@@ -63,11 +62,10 @@ export function progress(r: SetupRunRow, st: StepRecord, step: SetupStep): Progr
 export const runError = (st: StepRecord): string | null => stateOf(st)?.error_message ?? null;
 
 // A step marked 'starting' when the server stopped: the run (or record) its
-// start made, if it got that far.
-export function adopt(r: SetupRunRow, step: SetupStep): StepRecord | null {
-  const main = mainColumn(step);
+// start made, if it got that far. kind: the step's (an enrichment's run is an HTTP run).
+export function adopt(r: SetupRunRow, main: string, stepKind: StepKind | 'enrichment'): StepRecord | null {
   if (!getSheetColumns(r.sheet_id, r.user_id, false).includes(main)) return null;
-  const kind = step.kind === 'enrichment' ? 'http' : step.kind;
+  const kind = stepKind === 'enrichment' ? 'http' : stepKind;
   const id = madeSince(kind, r, main);
   if (!id) return null;
   return kind === 'clean' || kind === 'formula'

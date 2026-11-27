@@ -4,7 +4,7 @@ import { mcpClient, call, callError } from './helpers-mcp'
 import { choose } from './helpers-ui'
 
 // Row filters on run state, lists and OR groups, through every surface: REST
-// rows/query and rows, MCP read_rows and export_csv, and the grid's column
+// rows/query and rows, MCP read_rows (also as CSV), and the grid's column
 // menu (Rows with errors, Run state, Is any of), with saved filters that
 // follow a column rename and go with a delete. The run is a real AI run whose
 // rows fail fast for free on a fake OpenRouter key.
@@ -35,7 +35,8 @@ test('run-state filters, lists and OR groups: REST, MCP and the grid', async ({ 
   try {
     const ai = await call(client, 'run_ai_column', { sheet_id: sheetId, column_name: 'Fit', prompt: 'Is /val a fit?',
       model: 'deepseek/deepseek-v4-flash', target_row_ids: first.rows.map((r: { id: string }) => r.id) })
-    await expect.poll(async () => (await call(client, 'get_run_status', { run_type: 'ai', run_id: ai.run_id }))
+    await expect.poll(async () => (await call(client, 'get_run', {
+      action: 'status', run_type: 'ai', run_id: ai.run_id }))
       .status, { timeout: 30_000 }).toMatch(/completed|failed/)
   } finally {
     await api.delete('/api/settings/openrouter-key')
@@ -72,7 +73,7 @@ test('run-state filters, lists and OR groups: REST, MCP and the grid', async ({ 
   expect(failed.rows[0].data['Fit (Output)'].status).toBe('error')
   expect((await call(client, 'read_rows', { sheet_id: sheetId, where: [{ operator: 'not_run' }],
     return_mode: 'count' })).count).toBe(3)
-  const csv = await call(client, 'export_csv', { sheet_id: sheetId, columns: ['val'],
+  const csv = await call(client, 'read_rows', { format: 'csv', sheet_id: sheetId, columns: ['val'],
     where: [{ column: 'Industry', operator: 'not_any_of', values: ['saas', 'retail'] }, { operator: 'has_error' }] })
   expect(csv.csv).toBe('"val"\r\n"v1"')
   const noRun = [{ column: 'Industry', operator: 'running' }]

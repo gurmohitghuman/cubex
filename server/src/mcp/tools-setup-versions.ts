@@ -1,7 +1,7 @@
 // Setup versions: a sheet's column setup kept by name, compared with the sheet
 // now and restored (services/setup-version-*.ts; REST /v1/sheets/:id/setup-versions
-// and the app's sheet menu do the same). list_setup_versions,
-// manage_setup_version (save, rename, delete), restore_setup_version.
+// and the app's sheet menu do the same). list_setup_versions, and
+// manage_setup_version (save, rename, delete, and restore: restore_setup_version before v0.8.47).
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/server';
 import { MAX_SETUP_VERSIONS_PER_SHEET } from '../lib/constants-setups';
@@ -11,6 +11,22 @@ import {
 import { restoreSetupVersion } from '../services/setup-version-restore';
 import { SHEET_ID, McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean } from './tool-helpers';
 import { changedOf } from './changed';
+import { GUIDE_POINTER } from './guides/guide';
+import { actionFieldsProblem } from './action-fields';
+
+// restore's own field (restore_setup_version's before v0.8.47), for REST's body (openapi/routes-setups.ts).
+export const RESTORE_INPUT = {
+  dry_run: lenientBoolean().optional().describe('Default true: only say what restoring would do'),
+};
+const ACTIONS = ['save', 'rename', 'delete', 'restore'] as const;
+type Field = 'version_id' | 'name' | 'description' | 'dry_run';
+const TAKES = {
+  // A save without a name is refused by the service, in words that say what a name is for.
+  save: { may: ['name', 'description'] },
+  rename: { needs: ['version_id'], may: ['name', 'description'] },
+  delete: { needs: ['version_id'] },
+  restore: { needs: ['version_id'], may: ['dry_run'] },
+} as const satisfies Record<typeof ACTIONS[number], { needs?: readonly Field[]; may?: readonly Field[] }>;
 
 const WHAT =
   'A setup version is a named copy of how a sheet\'s columns are set up, never their values: every column in '
@@ -20,12 +36,10 @@ const WHAT =
 
 export function registerSetupVersionTools(server: McpServer, ctx: McpAuthCtx): void {
   registerTool(server, 'list_setup_versions', {
-    description: WHAT + 'Without version_id: the sheet\'s versions, newest first (name, when, who saved it, how many '
-      + 'columns and filled columns; auto true for a copy a restore kept of the setup it replaced). With '
-      + 'version_id: that version against the sheet now, the same answer as restore_setup_version with dry_run: '
-      + 'each column the version names that is gone (restoring adds it back, empty), set up differently (field by '
-      + 'field, version vs now), filled another way now (restoring leaves it) or not in the version (it stays). '
-      + 'Changes nothing. Request URLs are masked, headers show by name and request bodies only as changed.',
+    // Its details, and manage_setup_version's restore, are in their guides (mcp/guides/setups.ts).
+    description: 'A setup version is a named copy of how a sheet\'s columns are set up, never their values. Without '
+      + 'version_id: the sheet\'s versions, newest first. With version_id: that version against the sheet now, '
+      + `column by column (manage_setup_version's restore, as a dry run). Changes nothing. ${GUIDE_POINTER}`,
     inputSchema: z.object({
       sheet_id: z.string().describe(SHEET_ID),
       version_id: z.string().optional().describe('One version against the sheet now; leave out for the list'),
@@ -47,65 +61,42 @@ export function registerSetupVersionTools(server: McpServer, ctx: McpAuthCtx): v
       + `ignoring case; a sheet keeps at most ${MAX_SETUP_VERSIONS_PER_SHEET}): do it before changing prompts, `
       + 'requests or formulas, so they can be put back. rename changes a version\'s name or description '
       + '(version_id). delete deletes a version (version_id): it can\'t be undone, and the sheet doesn\'t '
-      + 'change. Saving only reads the sheet. The sheet\'s History lists each save.',
+      + 'change. Saving only reads the sheet. The sheet\'s History lists each save. restore puts the sheet\'s '
+      + 'column setup back as the version has it: DEFAULT dry_run true only says what it would do, column by '
+      + 'column, and `blocked`: why it can\'t now; with dry_run false gone columns come back EMPTY, with their '
+      + 'setup. NOTHING RUNS AND NOTHING IS BILLED, and no cell changes. A restore needs the write and run scopes '
+      + `(secrets too when a request it puts back reads saved keys); its dry run needs read. ${GUIDE_POINTER}`,
     inputSchema: z.object({
       sheet_id: z.string().describe(SHEET_ID),
-      action: z.enum(['save', 'rename', 'delete']).describe('What to do'),
-      version_id: z.string().optional().describe('rename and delete: the version'),
+      action: z.enum(ACTIONS).describe('What to do'),
+      version_id: z.string().optional().describe('rename, delete and restore: the version (list_setup_versions)'),
       name: z.string().optional().describe('save: required; rename: the new name'),
-      description: z.string().optional().describe('What the version is, in a sentence'),
+      description: z.string().optional().describe('save and rename: what the version is, in a sentence'),
+      dry_run: RESTORE_INPUT.dry_run.describe('restore: default true, only say what restoring would do'),
     }).strict(),
-  }, async ({ sheet_id, action, version_id, name, description }) => {
-    const denied = missingScope(ctx, 'write');
-    if (denied) return denied;
-    if (action === 'save') {
-      if (version_id !== undefined) return err('save makes a new version: leave version_id out.');
-      const out = saveSetupVersion(sheet_id, ctx.userId, { name, description });
-      return 'ok' in out ? ok({ version: out.ok }) : err(out.message);
-    }
-    if (!version_id) return err(`${action} needs version_id (list_setup_versions lists them).`);
-    if (action === 'rename') {
-      const out = updateSetupVersion(sheet_id, ctx.userId, version_id, { name, description });
-      return 'ok' in out ? ok({ version: out.ok }) : err(out.message);
-    }
-    const out = deleteSetupVersion(sheet_id, ctx.userId, version_id);
-    return 'ok' in out ? ok({ ok: true }) : err(out.message);
-  });
-
-  registerTool(server, 'restore_setup_version', {
-    description: 'Put a sheet\'s column setup back as a setup version has it. ' + WHAT + 'DEFAULT dry_run true: '
-      + 'only says what restoring would do, column by column, and `blocked`: why it can\'t be restored now. With '
-      + 'dry_run false it first keeps the setup it replaces as a version of its own ("Before restoring: …", auto), '
-      + 'then: columns the version names that are '
-      + 'gone come back EMPTY, with their setup; columns set up differently get the version\'s setup; every '
-      + 'column\'s description and the column order follow the version; columns the version doesn\'t have stay '
-      + 'as they are; a column filled another way now (an AI column where the version had a formula, a plain '
-      + 'column where it had an AI column) is left, and its note says why; so is an AI column whose output '
-      + 'column is filled another way now, and an HTTP API column comes back without a field whose column is. '
-      + 'NOTHING RUNS AND NOTHING IS BILLED, '
-      + 'and no cell changes: cells keep what they hold. An AI, HTTP API, enrichment or waterfall column then '
-      + 'runs the restored way the next time it runs (control_run rerun with mode all, which bills every row; '
-      + 'run_ai_column with the same column; '
-      + 'auto-run on new rows); its newest run is a record that ran nothing (get_sheet shows run_status '
-      + '"restored", list_runs leaves it out). A clean, formula or lookup column keeps its cells until it is '
-      + 'worked out again (clean_column, formula_column or lookup_column on its own column, free). Auto-run '
-      + 'goes on or off as the version has it, starting from the rows there now (rows already there never run '
-      + 'because of a restore; one already on goes on from where it was); one paused by hand stays paused. '
-      + 'Refused while a run or a setup is going on the sheet, or a clean, formula or lookup column is still '
-      + 'filling. Needs the write and run scopes (secrets too when a request it puts back reads saved keys); a '
-      + 'dry run needs read. The sheet\'s History lists each restore.',
-    inputSchema: z.object({
-      sheet_id: z.string().describe(SHEET_ID),
-      version_id: z.string().describe('The version (list_setup_versions)'),
-      dry_run: lenientBoolean().optional().describe('Default true: only say what restoring would do'),
-    }).strict(),
-  }, async ({ sheet_id, version_id, dry_run }) => {
-    const denied = dry_run === false ? missingScope(ctx, 'write') ?? missingScope(ctx, 'run')
+  }, async ({ sheet_id, action, ...a }) => {
+    const denied = action !== 'restore' ? missingScope(ctx, 'write')
+      : a.dry_run === false ? missingScope(ctx, 'write') ?? missingScope(ctx, 'run')
       : missingScope(ctx, 'read');
     if (denied) return denied;
-    const dryRun = dry_run !== false;
-    const out = await restoreSetupVersion(sheet_id, ctx.userId, version_id,
-      { dryRun, hasSecretsScope: ctx.scopes.has('secrets'), reveal: false });
+    const problem = actionFieldsProblem<typeof ACTIONS[number], Field>(action, a, TAKES);
+    if (problem) return err(problem.replace('needs version_id.', 'needs version_id (list_setup_versions lists '
+      + 'them).'));
+    const { version_id, name, description } = a;
+    if (action === 'save') {
+      const out = saveSetupVersion(sheet_id, ctx.userId, { name, description });
+      return 'ok' in out ? ok({ version: out.ok, changed: [] }) : err(out.message);
+    }
+    if (action === 'rename') {
+      const out = updateSetupVersion(sheet_id, ctx.userId, version_id!, { name, description });
+      return 'ok' in out ? ok({ version: out.ok, changed: [] }) : err(out.message);
+    }
+    if (action === 'delete') {
+      const out = deleteSetupVersion(sheet_id, ctx.userId, version_id!);
+      return 'ok' in out ? ok({ ok: true, changed: [] }) : err(out.message);
+    }
+    const out = await restoreSetupVersion(sheet_id, ctx.userId, version_id!,
+      { dryRun: a.dry_run !== false, hasSecretsScope: ctx.scopes.has('secrets'), reveal: false });
     if (!('ok' in out)) return err(out.message);
     // The columns it adds back or sets up again; a clean, formula or lookup column fills again on its own.
     const set = out.ok.columns.filter(c => c.action === 'add_back' || c.action === 'restore');

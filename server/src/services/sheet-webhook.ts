@@ -21,6 +21,10 @@ import {
   type WebhookSourceFull,
 } from '../lib/webhook-service';
 import { addWebhookMapping } from './webhook-mapping-add';
+import {
+  autoDeleteView, removeAutoDelete, setAutoDelete, type AutoDeleteInput, type AutoDeleteView,
+} from './webhook-auto-delete';
+import { isTestCopy } from './sheet-test-store';
 
 export type SheetWebhookFail = { fail: 'bad_request' | 'not_found' | 'conflict'; message: string; busy?: true };
 export type SheetWebhookOutcome<T> = { ok: T } | SheetWebhookFail;
@@ -54,6 +58,8 @@ export interface SheetWebhookView {
   created_at: string;
   rotated_at: string | null;
   fields: SheetWebhookField[];
+  // Auto-delete (services/webhook-auto-delete.ts): null while off.
+  auto_delete: AutoDeleteView | null;
 }
 
 // The API's and MCP's view of a source. base: where the caller reached Cubex (lib/file-links.ts linkBase),
@@ -79,6 +85,7 @@ export function sheetWebhookView(src: WebhookSourceFull, base: string | null): S
       id: m.id, json_path: m.jsonPath, column: m.columnName, as: m.valueMode === 'json' ? 'json' : 'text',
       created_at: m.createdAt,
     })),
+    auto_delete: autoDeleteView(src.id),
   };
 }
 
@@ -104,6 +111,10 @@ export function createSheetWebhook(
 ): SheetWebhookOutcome<WebhookSourceFull> {
   if (!verifySheetOwnership(sheetId, userId)) return SHEET_NOT_FOUND;
   if (getSourceForSheet(sheetId, userId)) return { fail: 'conflict', message: 'This sheet already has a webhook.' };
+  // A test's copy takes no rows from outside: the sheet it tests keeps its webhook's events meanwhile.
+  if (isTestCopy(sheetId)) {
+    return { fail: 'conflict', message: 'A test copy can\'t have a webhook. Apply or discard the test first.' };
+  }
   // The routers refuse a busy sheet too, but MCP's create with a table or sheet, and Express between its
   // routers, can reach here after a sort or an import started: adding the column waits for it.
   const busy = sheetBusyWith(sheetId);
@@ -175,6 +186,24 @@ export function deleteSheetWebhook(userId: string, sheetId: string): SheetWebhoo
   dropWebhookBucket(found.ok.id); // free the per-source rate-limit bucket
   logSheetChange(sheetId, userId, 'webhook', 'Deleted the webhook');
   return { ok: true };
+}
+
+// Turns auto-delete on, or changes it (services/webhook-auto-delete.ts): what the input leaves out stays.
+export function setSheetWebhookAutoDelete(
+  userId: string, sheetId: string, input: AutoDeleteInput,
+): SheetWebhookOutcome<WebhookSourceFull> {
+  const found = sourceOf(userId, sheetId);
+  if ('fail' in found) return found;
+  const out = setAutoDelete(found.ok, input);
+  return 'fail' in out ? out : { ok: found.ok };
+}
+
+// Turns auto-delete off; rows already gone stay gone.
+export function removeSheetWebhookAutoDelete(userId: string, sheetId: string): SheetWebhookOutcome<WebhookSourceFull> {
+  const found = sourceOf(userId, sheetId);
+  if ('fail' in found) return found;
+  removeAutoDelete(found.ok);
+  return { ok: found.ok };
 }
 
 // A new field: each event's value at jsonPath goes into a new column (services/webhook-mapping-add.ts).

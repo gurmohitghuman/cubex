@@ -76,7 +76,8 @@ async function openProviders(page: Page, list: RegExp, provider: string) {
 async function runAll(page: Page, sheetId: string) {
   await expect(drawer(page).getByTestId('waterfall-estimate')).toContainText('a row on average', { timeout: 15_000 })
   const sent = page.waitForRequest(r => r.method() === 'POST' && r.url().endsWith(`/sheets/${sheetId}/runs`))
-  await drawer(page).getByRole('button', { name: 'Run', exact: true }).click()
+  // The drawer edits a waterfall here: its run button reads "Save and run".
+  await drawer(page).getByRole('button', { name: 'Save and run', exact: true }).click()
   await page.getByRole('button', { name: 'Run', exact: true }).last().click()
   await expect(drawer(page).getByTestId('waterfall-run'))
     .toHaveAttribute('data-status', 'completed', { timeout: 30_000 })

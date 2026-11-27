@@ -5,11 +5,31 @@ import { writeFormula } from '../services/formula-ai';
 import { agentFormulaColumn } from '../services/formula-agent';
 import { SHEET_ID, McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean } from './tool-helpers';
 import { fillChanged } from './changed';
+import { GUIDE_POINTER } from './guides/guide';
 import { capToolNote } from '../lib/token-spend';
 
-// formula_column: a column worked out for free from each row by a JavaScript
-// formula, run in Cubex's sandbox (services/formula-agent.ts); write_formula:
-// one from plain words, written by the sheet's AI model (services/formula-ai.ts).
+// formula_column: a column worked out for free from each row by a JavaScript formula, run in Cubex's sandbox
+// (services/formula-agent.ts); with from_words (write_formula before v0.8.47) one is written from plain words by
+// the sheet's AI model instead (services/formula-ai.ts), and nothing is saved. Each part's fields are exported for
+// REST's bodies (openapi/routes-fill.ts), which stay what the two tools took.
+export const FORMULA_INPUT = {
+  sheet_id: z.string().describe(SHEET_ID),
+  column: z.string().optional().describe('The formula column to write; created if it does not exist. '
+    + 'Required unless preview is true'),
+  formula: z.string().max(FORMULA_MAX_CHARS).describe('One JavaScript expression reading cells as {{Column}}'),
+  description: z.string().max(FORMULA_WORDS_MAX_CHARS).optional()
+    .describe('What the formula does, in plain words, kept with the column'),
+  auto_run: lenientBoolean().optional()
+    .describe('Default true for a new column: new rows, and rows where a column it reads changes, are worked '
+      + 'out again on their own'),
+  preview: lenientBoolean().optional().describe('true: show the first rows with inputs and results; write nothing'),
+};
+export const WRITE_FORMULA_INPUT = {
+  sheet_id: z.string().describe(SHEET_ID),
+  words: z.string().max(FORMULA_WORDS_MAX_CHARS).describe('What the column should hold, in plain words'),
+  model: z.string().optional().describe('OpenRouter model id; default: the sheet\'s, then the account\'s'),
+};
+
 export function registerFormulaTool(server: McpServer, ctx: McpAuthCtx): void {
   registerTool(server, 'formula_column', {
     description:
@@ -20,54 +40,42 @@ export function registerFormulaTool(server: McpServer, ctx: McpAuthCtx): void {
       + 'API response, choosing an item of a list by a condition, joining or splitting text, math. The formula is ONE '
       + 'JavaScript expression reading cells as {{Column name}}, e.g. '
       + '{{Response}}?.emails?.find(e => e.type == "work")?.value or `${{{First}}} ${{{Last}}}` or '
-      + 'Number({{Price}}) * 1.2. Cells are text: use Number() for math. A cell holding JSON (text starting '
-      + 'with { or [, like a whole HTTP response written by run_http_enrichment mapping "$") arrives parsed, so '
-      + 'find/filter/map work on it; this is how to pick an item by a condition, which JSONPath mappings refuse. '
-      + 'Status cells ("⏳ Processing...", "❌ ...", "⏭️ ...") read as empty. Use optional chaining (?.) and '
-      + 'return "" when data is missing. _ is Lodash. There is no network or file access. The result is written '
-      + 'as text (objects and lists as JSON; null, undefined and NaN as an empty cell). A row the formula '
-      + 'cannot work out shows "❌ <the error>" and counts in error_rows (first_error names the first). '
+      + 'Number({{Price}}) * 1.2. Cells are text: use Number() for math. JSON cells arrive parsed. Use '
+      + 'optional chaining (?.) and return "" when data is missing. '
       + 'Writes into column, always a new column: naming a formula column already there replaces its formula and '
       + 'works every row out again, hand edits included; any other existing column is refused. Check a formula '
-      + 'with preview:true first. write_formula writes one from plain words. Waits for the fill up to 10 '
-      + 'seconds and returns filled_rows and error_rows; a bigger sheet returns status "filling".',
+      + 'with preview:true first. FROM_WORDS in place of formula ("the work email from Response") has the sheet\'s '
+      + 'AI model write one, in ONE small call that costs money; nothing is saved: pass the formula it answers here '
+      + 'again. Waits for the fill up to 10 '
+      + `seconds and returns filled_rows and error_rows; a bigger sheet returns status "filling".`
+      + capToolNote(ctx.spend ?? null, false) + ` ${GUIDE_POINTER}`,
     inputSchema: z.object({
-      sheet_id: z.string().describe(SHEET_ID),
-      column: z.string().optional().describe('The formula column to write; created if it does not exist. '
-        + 'Required unless preview is true'),
-      formula: z.string().max(FORMULA_MAX_CHARS).describe('One JavaScript expression reading cells as {{Column}}'),
-      description: z.string().max(FORMULA_WORDS_MAX_CHARS).optional()
-        .describe('What the formula does, in plain words, kept with the column'),
-      auto_run: lenientBoolean().optional()
-        .describe('Default true for a new column: new rows, and rows where a column it reads changes, are worked '
-          + 'out again on their own'),
-      preview: lenientBoolean().optional().describe('true: show the first rows with inputs and results; write nothing'),
+      ...FORMULA_INPUT,
+      formula: FORMULA_INPUT.formula.optional()
+        .describe('One JavaScript expression reading cells as {{Column}}; required unless from_words'),
+      from_words: WRITE_FORMULA_INPUT.words.optional()
+        .describe('In place of formula: what the column should hold, in plain words; an AI call writes the formula'),
+      model: WRITE_FORMULA_INPUT.model.describe('from_words: OpenRouter model id; default: the sheet\'s, then the '
+        + 'account\'s'),
     }).strict(),
-  }, async ({ sheet_id, ...a }) => {
+  }, async ({ sheet_id, from_words, model, ...a }) => {
+    if (from_words !== undefined) {
+      const extra = Object.keys(a).filter(k => a[k as keyof typeof a] !== undefined);
+      if (extra.length) {
+        return err(`${extra.join(' and ')} ${extra.length > 1 ? 'are' : 'is'} not for from_words: it takes sheet_id, `
+          + 'from_words and model, and saves nothing. Pass the formula it answers as formula.');
+      }
+      const denied = missingScope(ctx, 'run');
+      if (denied) return denied;
+      const out = await writeFormula(ctx.userId, sheet_id, from_words, model ?? null);
+      return 'ok' in out ? ok({ ...out.ok, changed: [] }) : err(out.message);
+    }
+    if (model !== undefined) return err('model goes with from_words only: a formula column makes no AI calls.');
     const denied = missingScope(ctx, 'write');
     if (denied) return denied;
-    const out = await agentFormulaColumn(ctx.userId, sheet_id, a);
+    const { formula } = a;
+    if (formula === undefined) return err('Pass formula, or from_words to have one written from plain words.');
+    const out = await agentFormulaColumn(ctx.userId, sheet_id, { ...a, formula });
     return 'ok' in out ? ok({ ...out.ok, changed: fillChanged(ctx.userId, sheet_id, out.ok) }) : err(out.message);
-  });
-
-  registerTool(server, 'write_formula', {
-    description:
-      'Write a formula for formula_column from plain words ("the work email from Response", "first and last '
-      + 'name joined"), using ONE small call to the sheet\'s default AI model (or model). The model sees the '
-      + 'column names and what the first rows hold (the shape of JSON cells), and the formula is checked on the '
-      + 'first rows before it is returned. Returns the formula, the model used, what the call cost, and a '
-      + 'preview (samples with their inputs and results). Nothing is saved: pass formula to formula_column. You '
-      + 'can also write the formula yourself. A request that needs judgment or outside data is refused: use '
-      + 'run_ai_column or an enrichment for that.' + capToolNote(ctx.spend ?? null, false),
-    inputSchema: z.object({
-      sheet_id: z.string().describe(SHEET_ID),
-      words: z.string().max(FORMULA_WORDS_MAX_CHARS).describe('What the column should hold, in plain words'),
-      model: z.string().optional().describe('OpenRouter model id; default: the sheet\'s, then the account\'s'),
-    }).strict(),
-  }, async ({ sheet_id, words, model }) => {
-    const denied = missingScope(ctx, 'run');
-    if (denied) return denied;
-    const out = await writeFormula(ctx.userId, sheet_id, words, model ?? null);
-    return 'ok' in out ? ok(out.ok) : err(out.message);
   });
 }

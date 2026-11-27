@@ -14,6 +14,7 @@ import { runActive, useEnrichRun } from './enrich-modal/useEnrichRun'
 import { useOpenRequest, type EnrichOpenRequest } from './enrich-modal/useOpenRequest'
 import { drawerSubtitle, drawerTitle } from './enrich-modal/drawer-copy'
 import { saveDraftAutorun } from './enrich-modal/autorun-save'
+import toast from 'react-hot-toast'
 
 interface Props {
   isOpen: boolean
@@ -105,6 +106,17 @@ export const EnrichmentDrawer: React.FC<Props> = (p) => {
       if (saved) { update({ autoRunWas: autoRun }); p.onRunChanged() }
     })
   }
+  // Save (an edit's): the setup and its auto-run choice become the column's; nothing runs (a paused auto-run
+  // stays paused).
+  const onSaved = (statusColumn: string) => {
+    void saveDraftAutorun(sheetId, statusColumn, draft, 'The setup was saved', true).then(saved => {
+      if (saved) p.onRunChanged()
+    })
+    toast.success('Setup saved. Nothing ran.')
+    p.onRunChanged()
+    reset()
+    onClose()
+  }
   const shared = {
     sheetId, draft, update, columns, selectedCount: selectedRows.length, selectedRows, rowGeneration: p.rowGeneration,
     hasKey, active: isOpen, filledColumns, onStarted,
@@ -123,9 +135,11 @@ export const EnrichmentDrawer: React.FC<Props> = (p) => {
           <LoadingSpinner size="sm" message="Loading the enrichment…" className="py-8" />
         ) : step === 'find' ? (
           <FindStep query={draft.query} setQuery={query => update({ query })} hasKey={hasKey} active={isOpen}
-            onPick={card => update(d => pickTool(d, card))} />
+            onPick={card => update(d => pickTool(d, card))} sheetId={sheetId} columns={columns}
+            onRunStarted={runId => { p.onRunStarted(runId); onClose() }} />
         ) : step === 'setup' ? (
-          <SetupStep {...shared} runBlock={runBlock} onChangeTool={() => update({ step: 'find' })} onCancel={onClose} />
+          <SetupStep {...shared} runBlock={runBlock} onChangeTool={() => update({ step: 'find' })} onCancel={onClose}
+            onSaved={onSaved} />
         ) : step === 'test' ? (
           <TestStep {...shared} run={run} onBack={() => update({ step: 'setup' })} />
         ) : (

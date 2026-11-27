@@ -39,7 +39,7 @@ function sheet(userId: string, args: Args, message: string): string | null {
   return ` No sheet has the ${key} ${shown(given)}.`
     + (close.length ? ` Close matches: ${list(close.map(s =>
       `${shown(s.name)} (sheet_id ${shown(s.id)}, table ${shown(s.table)})`))}.` : '')
-    + listedBy(message, 'list_tables lists every table and sheet with their ids.');
+    + listedBy(message, 'get_workspace with all_tables lists every table and sheet with their ids.');
 }
 
 function table(userId: string, args: Args, message: string): string | null {
@@ -50,7 +50,7 @@ function table(userId: string, args: Args, message: string): string | null {
   const close = closeMatches(given, liveTables(userId), t => [t.name, t.id]);
   return ` No table has the table_id ${shown(given)}.`
     + (close.length ? ` Close matches: ${list(close.map(t => `${shown(t.name)} (table_id ${shown(t.id)})`))}.` : '')
-    + listedBy(message, 'list_tables lists every table with its id.');
+    + listedBy(message, 'get_workspace with all_tables lists every table with its id.');
 }
 
 // The column names a message quotes ("Emial", /Emial) or lists after "Unknown column(s):".
@@ -95,7 +95,7 @@ function destinationColumn(userId: string, args: Args, message: string): string 
 const RUN_WORDS: Record<RunKind, string> = {
   ai: 'an AI run', http: 'an HTTP API run', enrichment: 'an enrichment run', waterfall: 'a waterfall run',
 };
-// The run_type a get_run_status or control_run call takes for a run of this kind: http finds all three.
+// The run_type a get_run (action status) or control_run call takes for a run of this kind: http finds all three.
 const fits = (asked: unknown, kind: RunKind) => asked === kind || (asked === 'http' && kind !== 'ai');
 
 function run(userId: string, args: Args, message: string): string | null {
@@ -110,7 +110,7 @@ function run(userId: string, args: Args, message: string): string | null {
   return ` No run has the run_id ${shown(given)}.`
     + (close.length ? ` Close matches: ${list(close.map(r => `${shown(r.id)} (${RUN_WORDS[r.kind]}`
       + `${r.column ? ` filling ${shown(r.column)}` : ''}${r.sheet ? ` on ${shown(r.sheet)}` : ''})`))}.` : '')
-    + listedBy(message, 'list_runs lists a sheet\'s runs, newest first.');
+    + listedBy(message, 'get_run (action list) lists a sheet\'s runs, newest first.');
 }
 
 // apply_setup's names key a column the setup doesn't make: the close ones it makes, or that it is one the
@@ -159,7 +159,8 @@ const CASES: Array<[RegExp, (userId: string, args: Args, message: string) => str
   [/^This setup makes no column named/, setupColumn],
   [/^Unknown destination column: /, destinationColumn],
   [/^(?!This setup makes)(?=.*column)(?=.*(not found|isn't a column|no column named|unknown column))/is, column],
-  [/^Setup run not found/, (_u, _a, m) => listedBy(m, 'get_setup_run with sheet_id lists the setup runs on a sheet.')],
+  [/^Setup run not found/,
+    (_u, _a, m) => listedBy(m, 'get_run (action setup) with sheet_id lists the setup runs on a sheet.')],
   [/^Run webhook not found/, (_u, _a, m) => listedBy(m, 'list_run_webhooks lists the webhooks with their ids.')],
   [/^Setup version not found/, (_u, _a, m) => listedBy(m, 'list_setup_versions lists a sheet\'s versions.')],
   [/^View not found/, (_u, _a, m) => listedBy(m, 'get_sheet lists the sheet\'s views.')],

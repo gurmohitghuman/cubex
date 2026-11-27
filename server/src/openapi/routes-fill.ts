@@ -1,3 +1,4 @@
+// Over 200 lines: one route list per area of the REST document, and this area has the most routes.
 // /api/v1 routes: clean, formula and lookup columns, enrichments, waterfalls,
 // AI visibility and hiring tables (api-v1-clean.ts, api-v1-formula.ts, api-v1-lookup.ts,
 // api-v1-enrich.ts, api-v1-waterfall.ts, api-v1-ai-visibility.ts, api-v1-hiring.ts).
@@ -8,7 +9,9 @@ import {
 import { ENGINES } from '../lib/ai-visibility/engines';
 import { op, type RouteDoc } from './route-doc';
 import { hiringFilterFields } from './hiring-fields';
-import { toolBody } from './tool-schemas';
+import { actionBody, toolBody } from './tool-schemas';
+import { FORMULA_INPUT, WRITE_FORMULA_INPUT } from '../mcp/tools-formula';
+import { ADD_COLUMN_INPUT, ADD_ROWS_INPUT } from '../mcp/tools-enrich-manage';
 import {
   ENRICH_LIST_MAX_ITEMS, HIRING_DEFAULT_PER_SEARCH, HIRING_DEFAULT_POSTED_DAYS, HIRING_MAX_POSTED_DAYS,
   HIRING_MAX_ROLES, OPENROUTER_BALANCE_CACHE_MS,
@@ -37,13 +40,13 @@ export const fillRoutes = (): RouteDoc[] => [
   op({
     method: 'post', path: '/sheets/{id}/formula-columns', operationId: 'formulaColumn', tag: 'filled',
     scope: 'write', summary: 'Fill a column for free with a JavaScript formula worked out from each row.',
-    body: toolBody('formula_column', { omit: ['sheet_id'], strict: true }), responses: filled,
+    body: actionBody('formula_column', FORMULA_INPUT, { omit: ['sheet_id'], strict: true }), responses: filled,
   }),
   op({
     method: 'post', path: '/sheets/{id}/formula-columns/write', operationId: 'writeFormula', tag: 'filled',
     scope: 'run', summary: 'Have the AI model write a formula from plain words. Nothing is saved.',
     description: "One small call to the sheet's model, which costs money.",
-    body: toolBody('write_formula', { omit: ['sheet_id'] }),
+    body: actionBody('formula_column', WRITE_FORMULA_INPUT, { omit: ['sheet_id'] }),
   }),
   op({
     method: 'post', path: '/sheets/{id}/lookup-columns', operationId: 'lookupColumn', tag: 'filled',
@@ -53,7 +56,8 @@ export const fillRoutes = (): RouteDoc[] => [
   op({
     method: 'get', path: '/balances', operationId: 'getBalances', tag: 'enrich', scope: 'read',
     summary: 'The treg balance, the daily enrichment limit, and what OpenRouter reports for the saved key.',
-    description: "As MCP's get_balances. openrouter.checked_at is when Cubex read OpenRouter's numbers (a read is "
+    description: "As MCP's get_account with action balances. openrouter.checked_at is when Cubex read OpenRouter's "
+      + 'numbers (a read is '
       + `reused for ${OPENROUTER_BALANCE_CACHE_MS / 1000} seconds); they can lag behind runs that just finished, `
       + 'while access_token.spent_usd is live.',
   }),
@@ -72,12 +76,17 @@ export const fillRoutes = (): RouteDoc[] => [
     method: 'post', path: '/sheets/{id}/enrichment-runs', operationId: 'startEnrichmentRun', tag: 'enrich',
     scope: 'run', summary: 'Run a treg enrichment once per row. Each row is a paid call: estimate first.',
     headers: idempotency,
-    body: toolBody('run_enrichment', { omit: ['sheet_id'], strict: true }), responses: started,
+    body: toolBody('run_enrichment', {
+      omit: ['sheet_id', 'items', 'fields', 'max_cost_usd', 'allow_unpriced'], strict: true,
+      extend: {
+        column_name: z.string().max(200).describe('The status column (new, or an existing one with add_to_column)'),
+      },
+    }), responses: started,
   }),
   op({
     method: 'post', path: '/sheets/{id}/enrichment-fields', operationId: 'addEnrichmentField', tag: 'enrich',
     scope: 'write', summary: "Add a column from an enrichment's stored answers. It fills in the background.",
-    body: toolBody('add_enrichment_field', { omit: ['sheet_id'], strict: true }),
+    body: actionBody('stored_answers', ADD_COLUMN_INPUT, { omit: ['sheet_id'], strict: true }),
     responses: { 202: 'The column is filling.' },
   }),
   op({
@@ -88,7 +97,7 @@ export const fillRoutes = (): RouteDoc[] => [
   op({
     method: 'post', path: '/sheets/{id}/enrichment-list-fields', operationId: 'addListRows', tag: 'enrich',
     scope: 'write', summary: "Add a list job's waiting results as rows, with the fields picked.",
-    body: toolBody('add_list_rows', { omit: ['sheet_id'], strict: true }),
+    body: actionBody('stored_answers', ADD_ROWS_INPUT, { omit: ['sheet_id'], strict: true }),
   }),
   op({
     method: 'put', path: '/sheets/{id}/enrichment-auto-run', operationId: 'setAutoRun', tag: 'enrich',
@@ -201,6 +210,40 @@ export const fillRoutes = (): RouteDoc[] => [
     body: z.object({
       estimate_only: z.boolean().optional().describe('false checks for real. Default true: the cost and the count.'),
       time_zone: z.string().optional().describe("The user's IANA time zone, for the check's day. Default UTC."),
+    }),
+  }),
+  op({
+    method: 'post', path: '/hiring/{id}/buyers', operationId: 'findHiringBuyers', tag: 'hiring', scope: 'run',
+    summary: 'Find the person each company on Companies would buy through, by job title, with a verified email.',
+    description: 'An estimate unless estimate_only is false, which changes nothing; the run needs max_cost_usd, the '
+      + 'estimate\'s high_usd, and takes the companies whose Buyer is empty. The first run adds the Buyer columns to '
+      + 'Companies (the write scope too). A company with no one holding the titles costs nothing.',
+    body: z.object({
+      buyer_titles: z.array(z.string()).optional()
+        .describe('Job titles to look for (at most 6). Default: the titles in use, or ones from the roles.'),
+      estimate_only: z.boolean().optional().describe('false finds them for real. Default true: the cost.'),
+      max_cost_usd: z.number().optional().describe('With estimate_only false: the estimate\'s high_usd.'),
+    }),
+  }),
+  op({
+    method: 'post', path: '/sheets/{id}/open-roles', operationId: 'openRoles', tag: 'hiring', scope: 'run',
+    summary: 'Find the open roles at the companies on this sheet: each into an Open roles sheet, counted per company.',
+    description: 'An estimate unless estimate_only is false: the most it can cost (high_usd) and a free count of '
+      + 'matching roles. The first run adds the Open roles sheet beside this one and a column here counting each '
+      + 'company\'s roles; a later run adds only roles not seen before. A run never spends more than its '
+      + 'estimate (409 with the new estimate when it would).',
+    body: z.object({
+      website_column: z.string().describe("The column holding each company's website."),
+      roles: z.array(z.string()).describe(`The role titles to look for. At most ${HIRING_MAX_ROLES}.`),
+      country: z.string().length(2).optional().describe('The country of the roles, such as US. Left out: any.'),
+      place: z.string().optional().describe('A city or region, such as Texas.'),
+      posted_within_days: z.number().int().min(1).max(HIRING_MAX_POSTED_DAYS).nullable().optional()
+        .describe(`Only roles posted in the last N days. Default ${HIRING_DEFAULT_POSTED_DAYS}; null: any time.`),
+      per_company: z.number().int().min(1).max(ENRICH_LIST_MAX_ITEMS).optional()
+        .describe('Roles a company adds at most. Default 10.'),
+      estimate_only: z.boolean().optional().describe('false runs it. Default true: the cost and the count.'),
+      max_cost_usd: z.number().optional().describe("With estimate_only false: the estimate's high_usd."),
+      time_zone: z.string().optional().describe("The user's IANA time zone, for First seen. Default UTC."),
     }),
   }),
 ];

@@ -58,8 +58,8 @@ function otherSide(
   userId: string, sheetId: string, input: LookupColumnInput,
 ): { otherSheetId: string; otherName: string; columns: string[] } | RunFail {
   if (typeof input.otherSheetId !== 'string' || !input.otherSheetId) return bad('Pick the sheet to look in.');
-  const other = db.prepare('SELECT id, name FROM sheets WHERE id = ? AND user_id = ? AND trash_id IS NULL')
-    .get(input.otherSheetId, userId) as { id: string; name: string } | undefined;
+  const other = db.prepare(`SELECT id, name FROM sheets WHERE id = ? AND user_id = ? AND trash_id IS NULL
+    AND test_of IS NULL`).get(input.otherSheetId, userId) as { id: string; name: string } | undefined;
   if (!other) return { fail: 'not_found', message: "The sheet to look in wasn't found." };
   if (other.id === sheetId) return bad('Pick another sheet: a lookup reads a different sheet than its own.');
   return { otherSheetId: other.id, otherName: other.name, columns: getSheetColumns(other.id, userId, false) };

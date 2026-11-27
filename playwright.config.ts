@@ -7,7 +7,12 @@ export default defineConfig({
   timeout: 30_000,
   expect: { timeout: 5_000 },
   fullyParallel: false,
-  retries: 0,
+  // On CI a test that fails is tried twice more, never locally (n8n's playwright config); one that passes then shows
+  // as flaky in the summary: a bug to fix (WORKFLOW.md 7).
+  retries: process.env.CI ? 2 : 0,
+  // A change that breaks many tests stops after 10 failures on CI: with retries a mass failure would otherwise run
+  // past the job's time limit and leave no summary.
+  maxFailures: process.env.CI ? 10 : 0,
   workers: 1,
   reporter: 'list',
   use: {

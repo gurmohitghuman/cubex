@@ -12,6 +12,7 @@ import constMod from '../../server/src/lib/api-v1-constants'
 import sortMod from '../../server/src/services/sheet-sort'
 import { moved, notOpen } from './transform-pass-words'
 import { toTheEnd } from './transform-to-end'
+import { passed } from './ends-on-its-own'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { transformColumn } = transformMod as typeof import('../../server/src/services/column-transform')
@@ -115,5 +116,5 @@ main()
   .finally(() => {
     if (failures) { console.log(`\n${failures} failure(s)`); process.exit(1) }
     console.log('All transform-pass-zero assertions passed.')
-    process.exit(0)
+    passed()
   })

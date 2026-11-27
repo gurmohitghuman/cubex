@@ -1,4 +1,5 @@
-// Each sheet's row count, for the home (GET /api/tables) and for GET /v1/tables and list_tables, without counting
+// Each sheet's row count, for the home (GET /api/tables) and for GET /v1/tables and get_workspace (all_tables), without
+// counting
 // rows on a request: COUNT(*) over 10 sheets of 1M rows held the server's thread 1.2 to 1.4 s on every home load.
 // - A count is kept in memory with the sheet's marker when it was made: its data_version, row_generation and how
 //   often its rows were added to or removed on this server (lib/rows-changed.ts). Every row insert and delete moves
@@ -14,7 +15,7 @@
 //   nothing in memory holds, so each sheet shows that count as updating, and is counted again when asked for.
 import { db } from './db';
 import { rowsChangedOf } from './rows-changed';
-import { busyEpoch, onSheetFree, sheetBusyWith } from './sheet-busy';
+import { busyEpoch, onSheetFree, rowsMovingOn } from './sheet-busy';
 import { writeWhenFree } from './write-when-free';
 import { ROW_COUNT_SLICE_ROWS, ROW_COUNT_TRIES, ROW_COUNT_WRITE_RETRY_MS } from './constants-row-counts';
 
@@ -70,13 +71,13 @@ async function countRows(sheetId: string, userId: string): Promise<number> {
 // 'busy': a heavy operation runs on the sheet, or ran during the count and still does; it is counted once free.
 async function count(q: Queued): Promise<'counted' | 'busy'> {
   for (let tries = 1; ;) {
-    if (sheetBusyWith(q.sheetId) !== null) return 'busy';
+    if (rowsMovingOn(q.sheetId) !== null) return 'busy';
     const epoch = busyEpoch(q.sheetId);
     const marker = markerNow(q.sheetId, q.userId);
     if (marker === null) { known.delete(q.sheetId); return 'counted'; }
     const rows = await countRows(q.sheetId, q.userId);
     // One came and went during the count: the sheet is free now, so it is counted again at once.
-    if (sheetBusyWith(q.sheetId) !== null || busyEpoch(q.sheetId) !== epoch) continue;
+    if (rowsMovingOn(q.sheetId) !== null || busyEpoch(q.sheetId) !== epoch) continue;
     if (markerNow(q.sheetId, q.userId) !== marker && tries < ROW_COUNT_TRIES) { tries++; continue; }
     // With its marker from before: one that moved meanwhile leaves the sheet to be counted again when asked.
     known.set(q.sheetId, { rows, marker });

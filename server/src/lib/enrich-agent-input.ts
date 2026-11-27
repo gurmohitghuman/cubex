@@ -1,6 +1,6 @@
 // An agent's run_enrichment arguments (MCP and /api/v1, snake_case) as the
 // drawer's run request (pure), so lib/enrich-run-input.ts parses both with
-// the same strict rules. Outputs are named by the fields get_enrichment lists
+// the same strict rules. Outputs are named by the fields find_enrichments (action get) lists
 // and looked up in the tool's catalog entry here; the run start checks them
 // against treg's catalog again.
 import type { EnrichTool } from './enrich-tool';
@@ -162,7 +162,7 @@ export function agentRunBody(
   if (list && list.fields === null && f.test !== true) {
     return {
       error: 'A job that adds rows needs the fields to keep, and they come from real results: run it with '
-        + 'test: true first, then read the fields (get_list_fields) and pick them (add_list_rows).',
+        + 'test: true first, then read the fields (get_list_fields) and pick them (stored_answers, action add_rows).',
     };
   }
   if (a.email !== undefined && preset !== 'verified_email') return { error: 'email needs preset verified_email.' };

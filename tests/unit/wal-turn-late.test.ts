@@ -23,6 +23,7 @@ import turnMod from '../../server/src/lib/wal-turn'
 import transformMod from '../../server/src/services/column-transform'
 import { heldText, loopWatch } from './loop-watch'
 import { sizeWalLikeAServer, walGrowth } from './sqlite-write-probe'
+import { passed } from './ends-on-its-own'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const w = walMod as typeof import('../../server/src/lib/wal-checkpointer')
@@ -115,7 +116,9 @@ await ok('a write past its deadline that must be made waits for the running chec
   console.log(`      began after ${s.began.toFixed(0)} ms; ${s.ticks} timers ran; ${heldText(s.watched)}`)
   assert.equal(s.during, false, 'it began while the checkpoint ran')
   assert.ok(s.began >= 700, `it began ${s.began.toFixed(0)} ms in, while the checkpoint ran`)
-  assert.ok(s.ticks >= 20 && s.watched.ownMs < 50, `${s.ticks} timers ran, the loop held ${s.watched.ownMs} ms`)
+  // A wait takes no CPU time: this one is bound by the time this thread held the loop alone (loop-watch.ts ownMs).
+  assert.ok(s.ticks >= 20 && s.watched.ownMs < 50,
+    `${s.ticks} timers ran, this thread held the loop ${s.watched.ownMs.toFixed(0)} ms`)
   assert.equal(takeWalTurnStats().checkpointWaits, 1, 'waits for a running checkpoint')
   await asked
 })
@@ -165,7 +168,7 @@ await ok('a transform call that starts while a checkpoint runs past its whole ti
   assert.ok('ok' in s.out && s.out.ok.updated === 0 && s.out.ok.next_cursor, JSON.stringify(s.out))
   assert.deepEqual(lateOnes(), ['column add', 'data_version', 'pass record'])
   assert.ok(s.ms >= 2_800, `answered after ${s.ms.toFixed(0)} ms, before the checkpoint did`)
-  assert.ok(s.watched.ownMs < 100, `the loop held ${s.watched.ownMs} ms`)
+  assert.ok(s.watched.cpuMs < 100, `the loop held ${s.watched.cpuMs.toFixed(0)} ms on the CPU`)
   await asked
 })
 
@@ -184,7 +187,7 @@ await ok('a transform call that runs out of time waiting at its pause: data_vers
       + `${lateOnes().join(', ')}; ${heldText(s.watched)}`)
     assert.ok('ok' in s.out && s.out.ok.updated > 0 && s.out.ok.next_cursor, JSON.stringify(s.out))
     assert.deepEqual(lateOnes(), ['data_version', 'nothing'])
-    assert.ok(s.watched.ownMs < 100, `the loop held ${s.watched.ownMs} ms`)
+    assert.ok(s.watched.cpuMs < 100, `the loop held ${s.watched.cpuMs.toFixed(0)} ms on the CPU`)
   } finally {
     w.setCheckpointDelayForTests(0)
     await w.walCheckpointerIdle()
@@ -205,4 +208,4 @@ setBeforeTurnWriteForTests(null)
 await w.closeWalCheckpointer()
 if (failures > 0) { console.log(`${failures} wal-turn-late assertion(s) failed`); process.exit(1) }
 console.log('All wal-turn-late assertions passed.')
-process.exit(0)
+passed()

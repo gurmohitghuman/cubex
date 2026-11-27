@@ -29,7 +29,8 @@ export function createSheetTxn(
     // Insert right of afterSheetId (Google's insert-right-of-active); omitted -> append.
     // Then normalize all positions to 0..n-1 (gap-free, race-safe).
     const siblings = db.prepare(
-      'SELECT id FROM sheets WHERE table_id = ? AND user_id = ? AND trash_id IS NULL ORDER BY position ASC',
+      `SELECT id FROM sheets WHERE table_id = ? AND user_id = ? AND trash_id IS NULL AND test_of IS NULL
+        ORDER BY position ASC`,
     ).all(tableId, userId) as Array<{ id: string }>;
     let insertAt = siblings.length;
     if (afterSheetId) {
@@ -63,7 +64,8 @@ export function verifySheetInTable(sheetId: string, tableId: string, userId: str
 }
 
 // Only live sheets and tables: one in the trash (trash_id set, migration 036)
-// is passed over by every read here, as by verifySheetOwnership.
+// is passed over by every read here, as by verifySheetOwnership. A test's
+// hidden copy (test_of set, migration 070) is in no list and holds no name.
 // Client-facing sheet/table column lists. sort_state is always NULL now (sort is
 // a one-time physical reorder, nothing writes it); it stays in the payload so
 // responses keep their shape. NEVER `SELECT *` for a row that goes
@@ -83,15 +85,53 @@ const SHEET_CLIENT_COLUMNS =
    sort_state, empty_filter, column_filters, row_filter, active_view_id,
    default_ai_model, default_ai_concurrency, row_generation, data_version,
    ${ADDING_ROWS_SQL} AS adding_rows`;
-const TABLE_CLIENT_COLUMNS = `id, name, created_at, updated_at`;
+const TABLE_CLIENT_COLUMNS = `id, name, created_at, updated_at, starred, last_opened_at`;
+
+// A table as the app and the API show it (no user_id). starred: stored 0 or 1 (migration 064), shown as true or
+// false; last_opened_at: when the user last opened it in the app, null until then.
+export interface TableClientRow {
+  id: string; name: string; created_at: string; updated_at: string; starred: boolean; last_opened_at: string | null;
+}
+type StoredTableRow = Omit<TableClientRow, 'starred'> & { starred: number };
+const tableForClient = (r: StoredTableRow): TableClientRow => ({ ...r, starred: r.starred === 1 });
+
+// The user's tables, newest first, for the home (routes/tables.ts), GET /v1/tables and list_tables: never one in
+// the trash or a setup call's hidden working table.
+export function listTablesForClient(userId: string): TableClientRow[] {
+  const rows = db.prepare(
+    `SELECT ${TABLE_CLIENT_COLUMNS} FROM tables WHERE user_id = ? AND trash_id IS NULL AND hidden = 0
+     ORDER BY created_at DESC`,
+  ).all(userId) as StoredTableRow[];
+  return rows.map(tableForClient);
+}
+
+// When each table's live sheets last changed (every write to a sheet touches its updated_at), for the home's Updated:
+// a table's own updated_at moves only on a rename or a restore. A test copy's changes aren't the table's.
+export function sheetsLastChanged(userId: string): Map<string, string> {
+  const rows = db.prepare(`SELECT table_id, MAX(updated_at) AS at FROM sheets
+    WHERE user_id = ? AND trash_id IS NULL AND test_of IS NULL GROUP BY table_id`).all(userId) as Array<{
+    table_id: string; at: string }>;
+  return new Map(rows.map(r => [r.table_id, r.at]));
+}
+// The later of two of SQLite's datetime('now') times (one fixed-width format, so text order is time order).
+export const laterOf = (a: string, b?: string): string => (b && b > a ? b : a);
 
 // A table's sheets as the app and the API list them (SHEET_CLIENT_COLUMNS).
 export type SheetListRow = { id: string; table_id: string; name: string; position: number; [k: string]: unknown };
 export function listSheets(tableId: string, userId: string): SheetListRow[] {
   return db.prepare(
     `SELECT ${SHEET_CLIENT_COLUMNS} FROM sheets WHERE table_id = ? AND user_id = ? AND trash_id IS NULL
-     ORDER BY position ASC`,
+       AND test_of IS NULL ORDER BY position ASC`,
   ).all(tableId, userId) as SheetListRow[];
+}
+
+// The table's test copies (migration 070), in the same shape plus the sheet each tests: the app opens one by its
+// id (/table/:t/:copy) while its sheet's tab stays highlighted. Never in the tab list.
+export function listTestSheets(tableId: string, userId: string): Array<SheetListRow & { test_of: string }> {
+  return db.prepare(
+    `SELECT ${SHEET_CLIENT_COLUMNS}, test_of FROM sheets WHERE table_id = ? AND user_id = ? AND trash_id IS NULL
+       AND test_of IS NOT NULL ORDER BY position ASC`,
+  ).all(tableId, userId) as Array<SheetListRow & { test_of: string }>;
 }
 
 // One sheet in the client-facing shape, for create/rename responses that echo the
@@ -105,10 +145,11 @@ export function getSheetForClient(sheetId: string, userId: string): unknown {
 
 // One table in the client-facing shape (no user_id), for create/rename/get
 // responses. Scoped by userId. Callers add `sheets` / `row_count` as needed.
-export function getTableForClient(tableId: string, userId: string): unknown {
-  return db.prepare(
+export function getTableForClient(tableId: string, userId: string): TableClientRow | undefined {
+  const row = db.prepare(
     `SELECT ${TABLE_CLIENT_COLUMNS} FROM tables WHERE id = ? AND user_id = ? AND trash_id IS NULL`,
-  ).get(tableId, userId);
+  ).get(tableId, userId) as StoredTableRow | undefined;
+  return row && tableForClient(row);
 }
 
 // True if another sheet in the table already uses this name (case-insensitive).
@@ -118,12 +159,13 @@ export function sheetNameTaken(
 ): boolean {
   if (excludeId) {
     return !!db.prepare(
-      `SELECT 1 FROM sheets WHERE table_id = ? AND user_id = ? AND trash_id IS NULL AND LOWER(name) = LOWER(?)
-        AND id != ? LIMIT 1`,
+      `SELECT 1 FROM sheets WHERE table_id = ? AND user_id = ? AND trash_id IS NULL AND test_of IS NULL
+        AND LOWER(name) = LOWER(?) AND id != ? LIMIT 1`,
     ).get(tableId, userId, name, excludeId);
   }
   return !!db.prepare(
-    'SELECT 1 FROM sheets WHERE table_id = ? AND user_id = ? AND trash_id IS NULL AND LOWER(name) = LOWER(?) LIMIT 1',
+    `SELECT 1 FROM sheets WHERE table_id = ? AND user_id = ? AND trash_id IS NULL AND test_of IS NULL
+      AND LOWER(name) = LOWER(?) LIMIT 1`,
   ).get(tableId, userId, name);
 }
 
@@ -131,7 +173,8 @@ export function sheetNameTaken(
 // reuse the gap rather than monotonically climbing to Sheet14).
 export function lowestUnusedSheetName(tableId: string, userId: string): string {
   const names = new Set(
-    (db.prepare('SELECT name FROM sheets WHERE table_id = ? AND user_id = ? AND trash_id IS NULL')
+    (db.prepare(`SELECT name FROM sheets WHERE table_id = ? AND user_id = ? AND trash_id IS NULL
+      AND test_of IS NULL`)
       .all(tableId, userId) as Array<{ name: string }>).map(r => r.name.toLowerCase()),
   );
   for (let n = 1; ; n++) {

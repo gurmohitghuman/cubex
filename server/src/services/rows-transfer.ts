@@ -2,7 +2,7 @@
 import { db } from '../lib/db';
 import { MAX_ROWS_PER_SHEET } from '../lib/constants';
 import {
-  TRANSFER_MAX_ROWS, TRANSFER_MAX_STORED_BYTES, TRANSFER_MAX_WRITER_MS,
+  TRANSFER_MAX_MOVE_BYTES, TRANSFER_MAX_ROWS, TRANSFER_MAX_STORED_BYTES, TRANSFER_MAX_WRITER_MS,
 } from '../lib/api-v1-constants';
 import { countRows, getSheetColumns } from '../lib/sql-helpers';
 import { bumpDataVersion, IDEMPOTENCY_CONFLICT_MESSAGE, sheetHasActiveRun } from './data-plane-shared';
@@ -42,6 +42,19 @@ export type TransferOutcome =
 
 class TransferBudgetError extends Error {}
 
+const mb = (bytes: number) => `${Math.round(bytes / 1024 / 1024)} MB`;
+// Past a call's rows or bytes (a move's are half a copy's: it writes each row about three times in its one
+// transaction).
+// How many rows and bytes the call picked, so the next call can be sized; one row past a move's cap can't be moved
+// in fewer, but it can be copied (twice the cap) and then deleted from the source.
+const budgetMessage = (move: boolean, rows: number, bytes: number) => `Transfer exceeds the row or stored-data `
+  + `budget: at most ${TRANSFER_MAX_ROWS.toLocaleString('en-US')} rows a call, holding at most `
+  + `${mb(TRANSFER_MAX_MOVE_BYTES)} for a move or ${mb(TRANSFER_MAX_STORED_BYTES)} for a copy. This call picked `
+  + `${rows.toLocaleString('en-US')} ${rows === 1 ? 'row' : 'rows'} holding ${mb(bytes)}. `
+  + (move && rows === 1 && bytes <= TRANSFER_MAX_STORED_BYTES
+    ? 'Copy that row instead, then delete it from the source with change_rows (action delete).'
+    : 'Transfer fewer rows a call.');
+
 function executeTransfer(
   userId: string, request: TransferRequest, hashes: string[], surface: Surface,
 ): TransferOutcome {
@@ -50,7 +63,9 @@ function executeTransfer(
   if (replay) return 'conflict' in replay
     ? { fail: 'conflict', error: IDEMPOTENCY_CONFLICT_MESSAGE }
     : { ok: replay.replay, replayed: true, changed: replay.changed };
-  const owns = db.prepare('SELECT id FROM sheets WHERE id = ? AND user_id = ? AND trash_id IS NULL');
+  // A test's hidden copy takes and gives no rows: they are linked to its sheet's (services/sheet-test-rows.ts).
+  const owns = db.prepare(`SELECT id FROM sheets WHERE id = ? AND user_id = ? AND trash_id IS NULL
+    AND test_of IS NULL`);
   if (!owns.get(request.sourceSheetId, userId) || !owns.get(request.destinationSheetId, userId)) {
     return { fail: 'not_found', error: 'Source or destination sheet not found.' };
   }
@@ -84,8 +99,9 @@ function executeTransfer(
   // The passes below read only the rows this one found (one transaction: they can't change).
   const found: ScanSelection = { rowids: preflight.rowids };
   if (preflight.missingIds.length) return { fail: 'not_found', error: 'One or more selected rows were not found.' };
-  if (preflight.matched > TRANSFER_MAX_ROWS || preflight.bytes > TRANSFER_MAX_STORED_BYTES) {
-    return { fail: 'budget', error: 'Transfer exceeds the row or stored-data budget.' };
+  const byteCap = request.operation === 'move' ? TRANSFER_MAX_MOVE_BYTES : TRANSFER_MAX_STORED_BYTES;
+  if (preflight.matched > TRANSFER_MAX_ROWS || preflight.bytes > byteCap) {
+    return { fail: 'budget', error: budgetMessage(request.operation === 'move', preflight.matched, preflight.bytes) };
   }
   const result: TransferResult = {
     matched: preflight.matched,
@@ -161,8 +177,11 @@ function executeTransfer(
   applyTransferColumnOrder(request.destinationSheetId, userId, plan.finalOrder);
   // Into a sheet still as created, the new list leaves out its starter "Column 1": gone for good, with its pass.
   forgetUnlistedTransformPasses(request.destinationSheetId, userId);
-  // Auto-dedupe in the destination: a row it already has isn't added again (or replaces it).
-  const settled = settleRows(request.destinationSheetId, userId, rids, 'arrived');
+  // Auto-dedupe in the destination: a row it already has isn't added again (or replaces it). The rows it takes out
+  // are written in this same transaction, so they get what is left of a copy's cap, a move's rows counting twice
+  // (TRANSFER_MAX_MOVE_BYTES); checks past it are made by the background round (auto_dedupe.checking_later).
+  const room = TRANSFER_MAX_STORED_BYTES - preflight.bytes * (request.operation === 'move' ? 2 : 1);
+  const settled = settleRows(request.destinationSheetId, userId, rids, 'arrived', Math.max(0, room));
   const auto = autoDedupeAnswer(userId, settled, added, surface);
   if (auto) result.auto_dedupe = auto;
   // Moved rows leave the source: auto-run's fence there follows. The copies are

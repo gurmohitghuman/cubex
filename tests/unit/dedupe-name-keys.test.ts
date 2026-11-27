@@ -25,6 +25,7 @@ import settingMod from '../../server/src/services/auto-dedupe-setting'
 import indexMod from '../../server/src/services/auto-dedupe-index'
 import rowsMod from '../../server/src/services/rows-write'
 import checksMod from '../../server/src/services/auto-dedupe-checks'
+import { passed } from './ends-on-its-own'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { keyPart, rowKey } = dedupeKeyMod as typeof import('../../server/src/lib/dedupe/key')
@@ -157,4 +158,4 @@ await ok('a new row whose old key differed is caught; a placeholder row is kept'
 
 if (failures) { console.error(`\n${failures} check(s) failed`); process.exit(1) }
 console.log('\nall dedupe-name-keys checks passed')
-process.exit(0)
+passed()

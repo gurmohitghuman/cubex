@@ -121,7 +121,7 @@ await ok('MCP list_saved_keys takes the 250-character next_after as after', asyn
   try {
     type Res = { content: Array<{ text: string }>; isError?: boolean }
     const call = async (args: Record<string, unknown>) => {
-      const res = await client.callTool({ name: 'list_saved_keys', arguments: args }) as Res
+      const res = await client.callTool({ name: 'get_account', arguments: { action: 'saved_keys', ...args } }) as Res
       assert.ok(!res.isError, res.content[0]?.text)
       return JSON.parse(res.content[0].text) as Page
     }

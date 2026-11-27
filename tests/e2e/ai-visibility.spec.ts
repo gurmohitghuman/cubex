@@ -66,11 +66,12 @@ test('make, estimate, ask: the answers, where you stand, the sites they cite', a
   for (const s of asked.started) await waitRun(api, s.runId, ['completed'])
   await waitAdded(v.questionsSheetId)
 
-  // Each formula column fills on its own as the answers come: wait for all of them.
+  // Each formula column fills on its own as the answers come: wait for all of them, and for Named by to count all
+  // four engines (it follows every answer column, so it can read "2 of 3" until it has worked out the fourth).
   const formulas = ['Named by', 'Named first',
     ...['ChatGPT', 'Gemini', 'AI Mode', 'Perplexity'].map(e => `You in ${e}`)]
-  const rows = await until(() => rowsOf(api, v.questionsSheetId), r => r.every(x => formulas.every(c => x[c])),
-    'formulas')
+  const rows = await until(() => rowsOf(api, v.questionsSheetId),
+    r => r.every(x => formulas.every(c => x[c]) && / of 4$/.test(String(x['Named by']))), 'formulas')
   const first = rows.find(r => r.Question === INPUT.questions[0])!
   expect(first['ChatGPT answer']).toContain('Northdesk is the usual pick')
   expect([first['You in ChatGPT'], first['You in Gemini'], first['You in AI Mode'], first['You in Perplexity']])
@@ -109,7 +110,7 @@ test('MCP: ai_visibility asks for the estimate unless told otherwise', async () 
   // get_sheet says the engine column is set up and has never run.
   const sheet = await call(client, 'get_sheet', { sheet_id: made.questions_sheet_id, column_details: true })
   expect(sheet.column_details.find((d: { name: string }) => d.name === 'ChatGPT').fill.run_status).toBe('set_up')
-  // By the Questions sheet's id too (what list_tables shows).
+  // By the Questions sheet's id too (what get_workspace with all_tables shows).
   const est = await call(client, 'ai_visibility', { action: 'ask', id: made.questions_sheet_id })
   expect(est).toMatchObject({ estimate_only: true, questions: 1 })
   expect((await rowsOf(api, made.questions_sheet_id))[0].ChatGPT ?? '').toBe('')

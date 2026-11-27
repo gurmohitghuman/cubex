@@ -49,16 +49,20 @@ import { resumeSorts } from './services/sheet-sort';
 import { resumeDuplicateRemovals } from './services/dedupe-remove';
 import { resumeImports } from './lib/import-undo';
 import { resumeTrashRestores } from './services/trash-restore';
+import { sealLeftDeletes } from './services/trash-rows-sliced';
 import { resumeRunUndos } from './services/run-undo';
 import { resumeFieldJobs } from './services/answer-field-fill';
 import { resumeDerivedFills } from './services/derived-fill';
 import { DERIVED_KINDS } from './services/derived-kinds';
 import { resumeRunRewrites } from './services/run-config-rewrite';
 import { resumeSheetCopies } from './services/sheet-copy-job';
+import { resumeSheetTests } from './services/sheet-test-end';
 import authRoutes from './routes/auth';
 import tablesRoutes from './routes/tables';
 import aiVisibilityRoutes from './routes/ai-visibility';
 import hiringRoutes from './routes/hiring';
+import openRolesRoutes from './routes/open-roles';
+import socialRoutes from './routes/social';
 import tableSheetsRoutes from './routes/tables-sheets';
 import sheetsRoutes from './routes/sheets';
 import aiRoutes from './routes/ai';
@@ -82,6 +86,7 @@ import { prepareUploadDir } from './lib/uploads';
 import { db } from './lib/db';
 import { DB_PATH } from './lib/db-path';
 import { sizeWalFile } from './lib/wal-file';
+import { startWalWatch } from './lib/wal-watch';
 
 // Run database migrations on boot before anything else.
 runMigrations();
@@ -90,6 +95,9 @@ adoptLegacyRunInputs();
 // On Windows the -wal file is made its full size now, before any other thread or process opens the database and
 // before the server serves, so no commit has to grow it (lib/wal-file.ts).
 sizeWalFile(db, DB_PATH);
+// The checkpoint worker copies the WAL back from now on, for this connection and those the threads and processes
+// started below open (lib/wal-watch.ts): before any of them starts, and before the jobs resumed below.
+startWalWatch();
 
 // Load (or, on first boot, generate) the encryption key now: a malformed
 // APP_ENCRYPTION_KEY fails here instead of on the first saved API key, and the
@@ -188,6 +196,8 @@ app.use('/api/autorun', autorunRoutes);
 app.use('/api/setups', setupsRoutes);
 app.use('/api/ai-visibility', aiVisibilityRoutes);
 app.use('/api/hiring', hiringRoutes);
+app.use('/api/open-roles', openRolesRoutes);
+app.use('/api/social-research', socialRoutes);
 app.use('/api/setup-runs', setupRunsRoutes);
 app.use('/api/trash', trashRoutes);
 app.use('/api/settings', settingsRoutes);
@@ -244,10 +254,14 @@ createAccountFromEnv().then((result) => {
   // 004, 010's column fills, 024's clean and 025's formula column fills, 026's
   // duplicate removals, 036's restores from the trash, 041's run undos, 047's
   // sheet copies). Each marks its sheet busy synchronously, before the first request.
+  // A row delete cut short keeps what went, its trash batch sealed (services/trash-rows-sliced.ts).
+  // A sheet being tested on a copy is read-only again; a test that was ending finishes (migration 070).
+  resumeSheetTests();
   resumeSorts();
   resumeDuplicateRemovals();
   resumeImports();
   resumeSheetCopies();
+  sealLeftDeletes();
   resumeTrashRestores();
   resumeRunUndos();
   resumeRunRewrites();

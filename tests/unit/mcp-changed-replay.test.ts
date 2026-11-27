@@ -1,10 +1,10 @@
 // A keyed write's replay, and rows counted with auto-dedupe on (server/src/mcp/changed.ts). A keyed write keeps
 // its changed with its key, in its transaction: a replay answers it as the first call did, with the versions the
-// sheet had then, though the sheet changed since. Here for append_rows, update_cells in both forms and
+// sheet had then, though the sheet changed since. Here for append_rows, change_rows' update in both forms and
 // transfer_rows; the run starts' replay tests (token-replay-first-*.test.ts) hold it for theirs. A key first used
 // over REST replays over MCP with the changed the REST call kept, and an entry kept before keys held one answers
 // []. With auto-dedupe on, rows and row_ids follow what the sheet now holds, with keep oldest and keep newest:
-// append_rows, transfer_rows, update_cells and import_csv. Rows arriving where an auto-run is on: more_coming.
+// append_rows, transfer_rows, change_rows' update and import_csv. Rows arriving where an auto-run is on: more_coming.
 import './strict-output'
 import assert from 'node:assert/strict'
 import dbMod from '../../server/src/lib/db'
@@ -40,13 +40,13 @@ const named = (a: Answer) => a.changed.map(i => [i.sheet_id, i.rows, i.row_ids])
 async function sheetWith(name: string, emails: string[]): Promise<string> {
   const t = await call('manage_table', { action: 'create', name })
   const sheet = (t.sheets as Array<{ id: string }>)[0].id
-  for (const column of ['Email', 'Name']) await call('add_column', { sheet_id: sheet, name: column })
+  for (const column of ['Email', 'Name']) await call('manage_column', { action: 'add', sheet_id: sheet, name: column })
   if (emails.length) await call('append_rows', { sheet_id: sheet, rows: emails.map(Email => ({ Email })) })
   return sheet
 }
 const moveOn = (sheet: string) => call('append_rows', { sheet_id: sheet, rows: [{ Email: 'later@x.com' }] })
 async function dedupe(sheet: string, keep: string) {
-  await call('set_auto_dedupe', { sheet_id: sheet, column: 'Email', keep })
+  await call('remove_duplicates', { sheet_id: sheet, keep_doing: { column: 'Email', keep } })
   assert.equal(await maintainAutoDedupeSheet(sheet, u, Date.now() + 10_000), 'ready')
 }
 
@@ -63,14 +63,15 @@ async function replaysFirst(name: string, args: Record<string, unknown>, sheet: 
 }
 
 async function main() {
-  await check('append_rows, update_cells (both forms), transfer_rows: a replay answers the first changed', async () => {
+  await check('append_rows, change_rows update (both forms), transfer_rows: a replay answers the first', async () => {
     const s = await sheetWith('Replays', [])
     const a = await replaysFirst('append_rows',
       { sheet_id: s, rows: [{ Email: 'a@x.com' }, { Email: 'b@x.com' }], idempotency_key: 'r-ap' }, s)
     const ids = idsOf(a)
     assert.deepEqual(named(a), [[s, 2, ids]])
-    await replaysFirst('update_cells', { row_id: ids[0], data: { Name: 'Ann' }, idempotency_key: 'r-up' }, s)
-    await replaysFirst('update_cells', { sheet_id: s, idempotency_key: 'r-bt',
+    await replaysFirst('change_rows', {
+      action: 'update', row_id: ids[0], data: { Name: 'Ann' }, idempotency_key: 'r-up' }, s)
+    await replaysFirst('change_rows', { action: 'update', sheet_id: s, idempotency_key: 'r-bt',
       updates: [{ row_id: ids[0], data: { Name: 'A' } }, { row_id: ids[1], data: { Name: 'B' } }] }, s)
     const d = await sheetWith('Replays to', [])
     await replaysFirst('transfer_rows', { source_sheet_id: s, destination_sheet_id: d, operation: 'copy',
@@ -130,11 +131,11 @@ async function main() {
     })
   }
 
-  await check('update_cells names the rows auto-dedupe replaced with its edit, after its own', async () => {
+  await check('change_rows update names the rows auto-dedupe replaced with its edit, after its own', async () => {
     const s = await sheetWith('Edits', ['a@x.com', 'b@x.com'])
     const [a, b] = [idOf(s, 'a@x.com'), idOf(s, 'b@x.com')]
     await dedupe(s, 'newest')
-    const one = await call('update_cells', { row_id: b, data: { Email: 'a@x.com' } })
+    const one = await call('change_rows', { action: 'update', row_id: b, data: { Email: 'a@x.com' } })
     const d = one.auto_dedupe as Dedupe
     assert.deepEqual(d.replaced, [a], JSON.stringify(one))
     assert.deepEqual(named(one), [[s, 2, [b, a]]])

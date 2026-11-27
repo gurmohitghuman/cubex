@@ -1,4 +1,4 @@
-// The money behind the account's keys, in one read (get_balances, GET
+// The money behind the account's keys, in one read (get_account (action balances), GET
 // /v1/balances): the treg balance and the enrichment daily limit, what
 // OpenRouter reports for the saved key, and the asking access token's spend
 // cap with what is left (services/token-spend.ts). Each part answers on its own: one

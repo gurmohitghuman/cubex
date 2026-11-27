@@ -7,6 +7,7 @@ import { LoadingSpinner } from '../LoadingSpinner'
 import { ToolCard } from './ToolCard'
 import { useToolSearch } from './useToolSearch'
 import { HiringDialog } from '../hiring/HiringDialog'
+import { OpenRolesDialog } from '../hiring/OpenRolesDialog'
 
 interface Props {
   query: string
@@ -14,6 +15,10 @@ interface Props {
   hasKey: boolean | undefined
   active: boolean
   onPick: (card: EnrichToolCard) => void
+  // The sheet the drawer is on: its open roles search, and following a run it starts.
+  sheetId: string
+  columns: string[]
+  onRunStarted: (runId: string) => void
 }
 
 const Group: React.FC<{ title: string; tools: EnrichToolCard[]; onPick: Props['onPick'] }> = ({ title, tools, onPick }) =>
@@ -45,9 +50,33 @@ const HiringEntry: React.FC = () => {
   )
 }
 
+// Below it: the same signal at the companies on this sheet (its own dialog). A run it starts is followed as any.
+const OpenRolesEntry: React.FC<Pick<Props, 'sheetId' | 'columns' | 'onRunStarted'>> = ({ sheetId, columns,
+  onRunStarted }) => {
+  const [open, setOpen] = useState(false)
+  return (
+    <section>
+      <button type="button" onClick={() => setOpen(true)} data-testid="open-roles-popular"
+        disabled={columns.length === 0}
+        className={'w-full text-left border border-gray-200 p-3 flex items-start gap-3 hover:bg-gray-50 '
+          + 'disabled:opacity-50'}>
+        <Briefcase className="h-4 w-4 mt-0.5 text-gray-900" />
+        <span>
+          <span className="block text-sm font-medium text-gray-900">Open roles at these companies</span>
+          <span className="block text-xs text-gray-500">Which companies on this sheet are hiring for the roles you
+            name, from their websites. Each role goes into an Open roles sheet.</span>
+        </span>
+      </button>
+      {open && <OpenRolesDialog sheetId={sheetId} columns={columns} onClose={() => setOpen(false)}
+        onStarted={s => onRunStarted(s.runId)} />}
+    </section>
+  )
+}
+
 // Step 1: pick what to find. No query lists the Popular jobs; typing searches
 // treg's catalog, waterfalls first (they try providers for you).
-export const FindStep: React.FC<Props> = ({ query, setQuery, hasKey, active, onPick }) => {
+export const FindStep: React.FC<Props> = ({ query, setQuery, hasKey, active, onPick, sheetId, columns,
+  onRunStarted }) => {
   const search = useToolSearch(query, active)
   const shown = search.tools ?? []
   const forQuery = search.shownFor
@@ -99,6 +128,7 @@ export const FindStep: React.FC<Props> = ({ query, setQuery, hasKey, active, onP
             : <p className="text-sm text-gray-600">
               No Popular jobs to show right now. Search for what you want to find.</p>}
           <HiringEntry />
+          <OpenRolesEntry sheetId={sheetId} columns={columns} onRunStarted={onRunStarted} />
         </div>
       ) : shown.length === 0 ? (
         <p className="text-sm text-gray-600">

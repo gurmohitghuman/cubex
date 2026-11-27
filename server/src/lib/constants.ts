@@ -14,6 +14,8 @@ export * from './constants-curl';
 // HTTP column retries and the response code column; "run finished" webhooks.
 export * from './constants-http-retry';
 export * from './constants-run-hooks';
+// Auto-delete on a webhook sheet.
+export * from './constants-webhook-auto-delete';
 // Usage history, same split.
 export * from './constants-usage';
 // Waterfall columns, same split.
@@ -97,6 +99,10 @@ export const MIN_API_KEY_VALUE_LENGTH = 10;
 // server keeps answering. Raise it via env if you need more.
 export const MAX_COLUMNS_PER_SHEET = envInt('MAX_COLUMNS_PER_SHEET', 200);
 export const MAX_ROWS_PER_SHEET = envInt('MAX_ROWS_PER_SHEET', 1_000_000);
+// Trying column changes on sample rows (services/sheet-test*.ts): a test starts with this many rows from the top
+// (or the rows chosen), takes this many more at a time, and holds at most SHEET_TEST_MAX_ROWS.
+export const SHEET_TEST_ROWS = 10;
+export const SHEET_TEST_MAX_ROWS = 50;
 
 // lib/column-repair.ts reads a sheet's rows in slices of this many between
 // requests (about 25 ms each), so its full-sheet key scan never blocks one.
@@ -105,6 +111,17 @@ export const COLUMN_REPAIR_SLICE_ROWS = 20_000;
 // delete, run placeholders): each slice stays well under 100 ms, so the server
 // answers other requests between slices (lib/slices.ts).
 export const HEAVY_SLICE_ROWS = 5_000;
+// Within that, a slice that rewrites, moves or deletes whole rows ends at this many bytes of them (lib/slice-bytes.ts,
+// octet_length read from each row's header): SQLite writes a changed row's whole record again, every page of its
+// cells, and zeroes what it frees (secure_delete). 5,000 rows holding a 16 KB answer each wrote about 20,000 frames
+// (80 MB of WAL, past journal_size_limit) in one commit and held the server 160 to 244 ms. A move writes each row
+// twice (into the trash and out of the rows), so it counts half. Rows under about 1.6 KB still go 5,000 a slice.
+export const HEAVY_SLICE_BYTES = 8_000_000;
+// The row walk (lib/row-order.ts) sums a slice's rowid span for that only while the span holds at most this many
+// rowids for each of the slice's rows: the sum reads every row in it, other sheets' too. A sheet whose rows sit before
+// and after another's (or a run's scattered targets) reads its own rows' sizes instead: summed, a walk over a
+// 2,000-row sheet around a 1,000,000-row one held the server 160 ms in one slice.
+export const SLICE_SPAN_ROWIDS_PER_ROW = 2;
 // A slice of a CSV import, a clean, formula or lookup column's fill or follow, or a column added from an answer also
 // stops once it has taken this long (one row at least; lib/slice-clock.ts), and a run start's seed takes as many rows
 // as fit it while such columns read the run's (lib/placeholder-cells.ts). Sized by rows alone, a slice of 5,000
@@ -242,6 +259,10 @@ export const WEBHOOK_RAW_KEEP_BYTES = 10 * 1024 * 1024; // ~10 MB
 // still works for the recent window; a metadata row is ~a few hundred bytes, so
 // 5000 rows ≈ a couple MB/source worst case.
 export const WEBHOOK_DELIVERY_KEEP_COUNT = 5000;
+// Deliveries kept for a sheet while it is tested on a copy (lib/webhook-hold.ts), added when the test ends: at most
+// this many, or this many bytes of payloads; past either, a delivery is refused (409) so the sender tries it again.
+export const WEBHOOK_HELD_MAX_COUNT = 10_000;
+export const WEBHOOK_HELD_MAX_BYTES = 100 * 1024 * 1024;
 // :token URL-segment format (base64url of 32 random bytes -> 43 chars). A cheap
 // regex pre-check rejects malformed tokens with a generic 404 before any DB work.
 export const WEBHOOK_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
@@ -275,6 +296,8 @@ export const ACCESS_TOKEN_LAST_USED_WRITE_INTERVAL_MS = 60 * 1000;
 // A last-used write refused because another connection held the write lock is tried again this much later
 // (lib/token-last-used.ts), until it is written.
 export const ACCESS_TOKEN_LAST_USED_RETRY_MS = 1_000;
+// A table's last open (lib/table-opened.ts) refused the write lock is tried again this much later, until written.
+export const TABLE_OPENED_RETRY_MS = 1_000;
 // A token's spend cap (services/token-spend.ts): set in Settings, at most this many dollars.
 export const MAX_TOKEN_SPEND_CAP_USD = 1_000_000;
 // /api/v1 body/rate/paging/batch caps live in api-v1-constants.ts.
@@ -296,6 +319,21 @@ export const BUILD_ID_RECHECK_MS = 5000;
 export const SAMPLE_STEP_WAIT_MS = 20_000;
 export const SAMPLE_STEP_POLL_MS = 20;
 
+// Social research tables (lib/social/, services/social-*.ts). Guards, not quotas.
+export const SOCIAL_MAX_SEARCHES = 10;
+export const SOCIAL_MAX_SEARCH_CHARS = 100;
+// Posts kept per search per platform (a search answers its first page: about 20 to 30).
+export const SOCIAL_POSTS_PER_SEARCH = 30;
+export const SOCIAL_MAX_POSTS_PER_SEARCH = 50;
+export const SOCIAL_MAX_DAYS = 365;
+// Find posts starts each platform's search on one Searches sheet: each start holds it while it sets up its rows
+// (a few rows: milliseconds), so the next waits for it, at most this long.
+export const SOCIAL_START_WAIT_MS = envMs('SOCIAL_START_WAIT_MS', 15_000);
 // How many of a run column's input lists (lib/run-inputs/sets.ts) the out-of-date check reads, newest first. A row
 // made from an older list never reads out of date, as a row no run stamped (docs/mcp.md says 16).
 export const RUN_INPUT_SETS_READ = 16;
+// "Creator's usual views" (lib/social/usual.ts): the creator's recent posts asked for (one call's page), the fewest
+// with views it takes to say what their usual is, and how many times their usual makes a post stand out.
+export const SOCIAL_RECENT_POSTS = 30;
+export const SOCIAL_USUAL_MIN_POSTS = 3;
+export const SOCIAL_STANDS_OUT_TIMES = 3;

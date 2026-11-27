@@ -1,0 +1,165 @@
+{
+ "endpoint": {
+  "id": "anyapi.instagram.media_transcript",
+  "provider": "anyapi",
+  "provider_display": "AnyAPI",
+  "name": "Instagram Media Transcript",
+  "summary": "Get the spoken-audio transcript text for an Instagram post or reel by URL.",
+  "method": "POST",
+  "path": "/v1/run/instagram.media_transcript",
+  "scope": "",
+  "tier": "extended",
+  "kind": "data",
+  "domain": "media",
+  "call_template": "treg call anyapi.instagram.media_transcript",
+  "cost": {
+   "type": "per_call",
+   "value": 0.002,
+   "currency": "USD",
+   "unit": "call",
+   "reported_charge": {
+    "path": "costUsd",
+    "unit": "usd"
+   },
+   "source": "observed",
+   "source_url": "https://api.getanyapi.com/v1/apis/instagram.media_transcript",
+   "checked": "2026-09-11",
+   "confidence": "verified",
+   "note": "2 sources serve this, cheapest first; a failed attempt retries on the next, up to $0.036 at the dearest. The charge follows the answer's `costUsd`, not the listed price. Send X-Treg-Route-Max-Cost to refuse any source dearer than your ceiling. A not-found or empty answer is billed too, at its own `costUsd`.",
+   "usd": 0.002
+  },
+  "async": null,
+  "platform_eligible": true,
+  "platform_blocked": null,
+  "miss": null,
+  "status": null,
+  "status_note": null,
+  "superseded_by": null,
+  "verified": "2026-09-19",
+  "added": "2026-09-19",
+  "docs_url": "https://getanyapi.com/api/instagram/media-transcript",
+  "has_example": true,
+  "input": {
+   "body": {
+    "url": {
+     "type": "string",
+     "required": true,
+     "note": "Instagram post or reel URL.",
+     "example": "https://www.example.com/sample"
+    }
+   },
+   "bodyType": "json",
+   "queryArrayEncoding": "comma",
+   "queryParams": {
+    "fields": {
+     "type": "string",
+     "required": false,
+     "note": "Comma-separated keys (dotted paths descend) to keep on each result item. Trims the response, not the charge."
+    },
+    "max_items": {
+     "type": "integer",
+     "required": false,
+     "min": 0,
+     "note": "Caps the result rows returned; `_truncated` says how many were withheld. Not the charge."
+    },
+    "summary": {
+     "type": "boolean",
+     "required": false,
+     "note": "`true` returns only an outline: keys, item counts, per-field sizes."
+    },
+    "jq": {
+     "type": "string",
+     "required": false,
+     "note": "jq expression over the result envelope; its output replaces `output`. A failed expression returns the full result with `jqError`."
+    }
+   }
+  },
+  "capability": "",
+  "capability_description": "",
+  "platform": "instagram",
+  "platform_label": "Instagram",
+  "observed": {
+   "samples": 32739,
+   "decided": 28916,
+   "ok_rate": 0.9985,
+   "p50_ms": 6508,
+   "p95_ms": 10932,
+   "last_ok_days": 0,
+   "hit_rate": null,
+   "hit_samples": 0
+  },
+  "wallet": {
+   "payable": true,
+   "protocols": [
+    "mpp"
+   ],
+   "minimum_payment_micro": 10000,
+   "fee_bps": 0,
+   "note": "pay per call with a wallet, no account. A payment is at least $0.01; the call is charged only its real price, and the rest stays as this wallet's credit for its next calls (credit is not paid back as money)."
+  },
+  "reviews": {
+   "teams": 10,
+   "samples": [
+    {
+     "usefulness": "useful",
+     "reason": "Le transcript permet d\u2019identifier les \u00e9tapes et l\u2019angle narratif du Reel.",
+     "client": "cli",
+     "month": "2026-11"
+    },
+    {
+     "usefulness": "useful",
+     "reason": "Clean full transcript of a 55 s English reel; jq kept it compact.",
+     "client": "mcp",
+     "month": "2026-11"
+    },
+    {
+     "usefulness": "useful",
+     "reason": "Clean full French transcript of a ~60s reel, enough to map hook and structure.",
+     "client": "mcp",
+     "month": "2026-11"
+    }
+   ],
+   "share": {
+    "useful": 0.88,
+    "partly": 0.03,
+    "not_useful": 0.09
+   }
+  }
+ },
+ "provider": {
+  "service": "anyapi",
+  "display_name": "AnyAPI",
+  "limits": "no published per-key request-rate limit on /v1/run - AnyAPI does not advertise a quota it does not enforce. Spend is bounded instead by the wallet balance, the key's own spend cap, and the per-request `max_cost_usd` ceiling the caller sets. The unauthenticated /agent/signup trial route is limited to 3 per IP per hour.",
+  "pricing_url": "https://getanyapi.com/catalog",
+  "docs": "https://getanyapi.com/docs"
+ },
+ "siblings": [],
+ "call_template": "treg call anyapi.instagram.media_transcript",
+ "example_response": {
+  "output": {
+   "found": true,
+   "data": {
+    "transcripts": [
+     {
+      "id": "31000",
+      "shortcode": "SAMPLE0",
+      "durationSeconds": 30,
+      "text": "Slow mornings start the night before."
+     }
+    ]
+   }
+  },
+  "provider": "anyapi",
+  "costUsd": 0.001,
+  "items": 1,
+  "replayed": false,
+  "source": {
+   "id": "sample",
+   "name": "Sample",
+   "kind": "api",
+   "artworkKey": "sample"
+  },
+  "resultId": "sample-result"
+ },
+ "hints": []
+}

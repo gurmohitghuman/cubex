@@ -66,7 +66,8 @@ async function main() {
     for (const name of Object.keys(WITHOUT_CHANGED)) {
       assert.equal(tools[name]?.annotations?.readOnlyHint, false, `${name} in WITHOUT_CHANGED is a write tool`)
     }
-    assert.ok(writers >= 40, `${writers} write tools`)
+    // Fewer MCP tools' plan leaves 34 write tools: a floor under it, so an empty or cut list still fails.
+    assert.ok(writers >= 30, `${writers} write tools`)
   })
 
   db.prepare('INSERT INTO users (id,password_hash) VALUES (?,?)').run('other', 'x')
@@ -99,12 +100,12 @@ async function main() {
     assert.deepEqual(made.changed.map(i => [i.sheet_id, i.sheet, i.columns, i.rows]), [[sheet, 'Sheet1', [], 0]])
   })
 
-  await check('add_column names the column, and the versions are the sheet\'s after it', async () => {
-    const a = await call('add_column', { sheet_id: sheet, name: 'Email' })
+  await check('manage_column add names the column, and the versions are the sheet\'s after it', async () => {
+    const a = await call('manage_column', { action: 'add', sheet_id: sheet, name: 'Email' })
     assert.deepEqual(a.changed.map(i => [i.columns, i.rows]), [[['Email'], 0]])
     assert.deepEqual({ data_version: a.changed[0].data_version, row_generation: a.changed[0].row_generation },
       versions(sheet))
-    for (const name of ['Name', 'Title']) await call('add_column', { sheet_id: sheet, name })
+    for (const name of ['Name', 'Title']) await call('manage_column', { action: 'add', sheet_id: sheet, name })
   })
 
   let rowIds: string[] = []
@@ -120,12 +121,12 @@ async function main() {
     assert.deepEqual(again.changed, a.changed)
   })
 
-  await check('update_cells names the columns and rows it wrote, in both forms', async () => {
-    const many = await call('update_cells', { sheet_id: sheet, updates: [
+  await check('change_rows update names the columns and rows it wrote, in both forms', async () => {
+    const many = await call('change_rows', { action: 'update', sheet_id: sheet, updates: [
       { row_id: rowIds[0], data: { Name: 'Anna' } }, { row_id: rowIds[1], data: { Title: 'CEO' } }] })
     assert.deepEqual(many.changed.map(i => [i.sheet_id, i.columns, i.rows, i.row_ids]),
       [[sheet, ['Name', 'Title'], 2, rowIds.slice(0, 2)]])
-    const one = await call('update_cells', { row_id: rowIds[1], data: { Name: 'Bo' } })
+    const one = await call('change_rows', { action: 'update', row_id: rowIds[1], data: { Name: 'Bo' } })
     assert.deepEqual(one.changed.map(i => [i.sheet_id, i.columns, i.rows, i.row_ids]),
       [[sheet, ['Name'], 1, [rowIds[1]]]])
   })
@@ -154,8 +155,8 @@ async function main() {
     assert.equal(a.changed[0].more_coming, a.status === 'filling' ? true : undefined)
   })
 
-  await check('rename_column names the column by its new name; a sheet rename answers []', async () => {
-    const a = await call('rename_column', { sheet_id: sheet, column: 'Title', new_name: 'Role' })
+  await check('manage_column rename names the column by its new name; a sheet rename answers []', async () => {
+    const a = await call('manage_column', { action: 'rename', sheet_id: sheet, column: 'Title', new_name: 'Role' })
     assert.deepEqual(a.changed.map(i => i.columns), [['Role']])
     const r = await call('manage_sheet', { action: 'rename', table_id: made.id, sheet_id: sheet, name: 'Leads' })
     assert.deepEqual(r.changed, [])
@@ -177,8 +178,8 @@ async function main() {
     assert.deepEqual(again.changed, a.changed, 'a replay: the first call\'s')
   })
 
-  await check('delete_rows names its rows; restore_from_trash brings them back with changed', async () => {
-    const d = await call('delete_rows', { sheet_id: sheet, row_ids: [rowIds[0]] })
+  await check('change_rows delete names its rows; restore_from_trash brings them back with changed', async () => {
+    const d = await call('change_rows', { action: 'delete', sheet_id: sheet, row_ids: [rowIds[0]] })
     assert.deepEqual(d.changed.map(i => [i.rows, i.row_ids]), [[1, [rowIds[0]]]])
     const back = await call('restore_from_trash', { trash_ids: [(d.trash as { trash_id: number }).trash_id] })
     assert.deepEqual(back.changed.map(i => [i.sheet_id, i.rows]), [[sheet, 1]])
@@ -191,8 +192,8 @@ async function main() {
     assert.equal(a.changed[0].row_generation, versions(dest).row_generation)
   })
 
-  await check('set_auto_dedupe names its key column', async () => {
-    const a = await call('set_auto_dedupe', { sheet_id: dest, column: 'Company' })
+  await check('remove_duplicates\' keep_doing names its key column', async () => {
+    const a = await call('remove_duplicates', { sheet_id: dest, keep_doing: { column: 'Company' } })
     assert.deepEqual(a.changed.map(i => [i.sheet_id, i.columns, i.rows]), [[dest, ['Company'], 0]])
   })
 

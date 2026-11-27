@@ -63,7 +63,7 @@ async function refused(name: string, a: Record<string, unknown>): Promise<string
 
 async function waitDone(runId: string) {
   for (let i = 0; i < 60; i++) {
-    const s = await call(mcp, 'get_run_status', { run_type: 'waterfall', run_id: runId, wait_seconds: 2 })
+    const s = await call(mcp, 'get_run', { action: 'status', run_type: 'waterfall', run_id: runId, wait_seconds: 2 })
     if (['completed', 'failed', 'cancelled'].includes(s.status)) return s
   }
   throw new Error(`run ${runId} didn't finish`)
@@ -90,8 +90,8 @@ test('MCP: an estimate by default, strict arguments, then a run read back step b
     .toEqual([['treg finder', 1], ['Hunter', 0], ['Own API', 1]])
   expect(s.waterfall.spent.treg_usd).toBeGreaterThanOrEqual(0)
 
-  const res = await call(mcp, 'get_run_results',
-    { run_type: 'waterfall', run_id: started.run_id, status_filter: 'all' })
+  const res = await call(mcp, 'get_run',
+    { action: 'results', run_type: 'waterfall', run_id: started.run_id, status_filter: 'all' })
   const byRow = Object.fromEntries(res.results.map((r: { row_index: number }) => [r.row_index, r]))
   expect(byRow[0].answered_by).toBe('treg finder')
   expect(byRow[1].answered_by).toBe('Own API')

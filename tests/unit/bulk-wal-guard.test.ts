@@ -27,9 +27,12 @@ const CHECKPOINTS: Entry[] = [
     why: 'on the lookup worker\'s thread; its fallback on the API thread goes through the checkpointer' },
 ]
 const AUTO: Entry[] = [
-  { file: 'server/src/lib/db.ts', count: 1, why: 'the connection\'s setting, DB_AUTO_CHECKPOINT_FRAMES' },
+  { file: 'server/src/lib/db.ts', count: 2,
+    why: 'the connection\'s setting, DB_AUTO_CHECKPOINT_FRAMES, or the room once the server\'s WAL watch runs' },
   { file: 'server/src/lib/slices.ts', count: 2, why: 'withoutAutoCheckpoint: off for one commit, then back' },
-  { file: 'server/src/lib/bulk-slices.ts', count: 1, why: 'holdAutoCheckpoint: raised while bulk writers run' },
+  { file: 'server/src/lib/wal-watch.ts', count: 3,
+    why: 'the watch: the room while the worker checkpoints, DB_AUTO_CHECKPOINT_FRAMES without it or once stopped '
+      + '(at the stop, or when the last bulk writer running at the stop ends)' },
 ]
 const NO_AUTO: Entry[] = [
   { file: 'server/src/lib/bulk-slices.ts', count: 2, why: 'the bulk writers\' slices, on either thread' },
@@ -72,7 +75,8 @@ const YIELDS: Entry[] = [
   { file: 'server/src/services/enrich-spend.ts', count: 1, why: READS },
   { file: 'server/src/services/hiring-roles-read.ts', count: 2,
     why: `${READS}, and its loops over the companies kept (Companies' writes: bulk writer)` },
-  { file: 'server/src/services/rerun-targets.ts', count: 1, why: READS },
+  { file: 'server/src/services/rerun-targets.ts', count: 2,
+    why: `${READS}: every row, or the chosen ones a page at a time` },
   { file: 'server/src/services/run-condition-rows.ts', count: 1, why: READS },
   { file: 'server/src/services/sheet-sort.ts', count: 1, why: `${READS} (its writes: sort-plan, sort-results)` },
   { file: 'server/src/services/trash-actions.ts', count: 1, why: READS },

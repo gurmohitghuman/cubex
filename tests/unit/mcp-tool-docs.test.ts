@@ -14,8 +14,9 @@ interface Tool {
 const { check, done, crash, modern, legacy } = mcpHttpKit('mcp-tool-docs')
 const HINTS = ['readOnlyHint', 'idempotentHint', 'openWorldHint'] as const
 // Well over the size after output schemas were added and the descriptions trimmed (about 234K characters);
-// raised from 260K when hiring_signals took its six More options lists (the list was then 259.9K):
-// a guard against a description or schema growing out of hand, not a target.
+// raised from 260K when hiring_signals took its six More options lists (the list was then 259.9K). The longest
+// descriptions then moved their details to get_tool_guide (269.5K down to 235.9K): a guard against a
+// description or schema growing out of hand, not a target.
 const MAX_LIST_CHARS = 270_000
 
 const said = (v: unknown) => typeof v === 'string' && v.trim().length > 0
@@ -80,7 +81,7 @@ async function main() {
   console.log(`tools/list: ${modernList.tools.length} tools, ${modernList.chars} characters`)
 
   await check('every tool has a title, hints, a description, described inputs and an open outputSchema', () => {
-    assert.ok(modernList.tools.length >= 60, `only ${modernList.tools.length} tools listed`)
+    assert.ok(modernList.tools.length >= 45, `only ${modernList.tools.length} tools listed`)
     assert.deepEqual(problems(modernList.tools), [])
   })
 
@@ -105,7 +106,7 @@ async function main() {
     assert.match(say('formula_column'),
       /^To clean names, companies, emails or phones, or to take the domain out of an email or a URL, use clean_column/)
     assert.match(say('clean_column'), /root domain out of an email or a URL/)
-    assert.match(say('get_run_status'), /answers when the status changes/)
+    assert.match(say('get_run'), /answers when the status changes/)
   })
 
   done()

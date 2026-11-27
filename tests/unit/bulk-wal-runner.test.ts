@@ -1,14 +1,14 @@
 // Over 200 lines: one fixture (20,000 rows rewritten) and the runner's edges, read top to bottom.
-// The background bulk writers' runner itself (lib/bulk-slices.ts), on a job that rewrites rows with random ids
-// slice after slice: its WAL copied back on the worker (no checkpoint, no SQLite checkpoint inside a commit and
-// no WAL start-over on the API connection, the loop never held 200 ms, the WAL bounded); SQLite's own
-// checkpoint on the API connection held at the job's room while runners go and back after, whatever ends them (a
-// step that throws, a job stopped part way, two at once), a second release or a setting found changed logged and
-// set right; with no worker (its file can't load) checkpoints on this thread as before, SQLite's own back on,
-// logged once; a worker stopped mid-job started again; a reader holding the frames doesn't stop the job; past a
-// deadline the slices are still written; big slices bring the pause forward, so the WAL stays within its share of
-// journal_size_limit; a reader holding the last frames as a job ends doesn't leave them to the next commit. A writer
-// outside the runner all through a job: bulk-wal-outside.test.ts.
+// The background bulk writers' runner itself (lib/bulk-slices.ts), on a job that rewrites rows with random ids slice
+// after slice: its WAL copied back on the worker (no checkpoint, no SQLite checkpoint inside a commit and no WAL
+// start-over on the API connection, the loop never held 200 ms, the WAL bounded); SQLite's own checkpoint on the API
+// connection at the job's room (the job starts the WAL watch), the watch quiet while runners go and asking again after,
+// whatever ends them (a step that throws, a job stopped part way, two at once), a second end or a setting found changed
+// logged and set right; with no worker (its file can't load) checkpoints on this thread as before, SQLite's own back at
+// DB_AUTO_CHECKPOINT_FRAMES, logged once; a worker stopped mid-job started again; a reader holding the frames doesn't
+// stop the job; past a deadline the slices are still written; big slices bring the pause forward, so the WAL stays
+// within its share of journal_size_limit; a reader holding the last frames as a job ends doesn't leave them to the next
+// commit. A writer outside the runner all through a job: bulk-wal-outside.test.ts.
 import assert from 'node:assert/strict'
 import Database from 'better-sqlite3'
 import { v4 as uuid } from 'uuid'
@@ -17,15 +17,17 @@ import migMod from '../../server/src/db/migrate'
 import constMod from '../../server/src/lib/constants'
 import walMod from '../../server/src/lib/wal-checkpointer'
 import bulkMod from '../../server/src/lib/bulk-slices'
+import watchMod from '../../server/src/lib/wal-watch'
 import { bulkWalKit, SLOW_CHECKPOINT_MS } from './bulk-wal-kit'
+import { passed } from './ends-on-its-own'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { DB_AUTO_CHECKPOINT_FRAMES, WAL_BULK_ROOM_SHARE } = constMod as typeof import('../../server/src/lib/constants')
 const { checkpointInBackground, closeWalCheckpointer, setCheckpointDelayForTests, setCheckpointWorkerFileForTests,
   stopCheckpointWorkerForTests, takeWalCheckpointerStats, walCheckpointerIdle } =
   walMod as typeof import('../../server/src/lib/wal-checkpointer')
-const { asBulkWriter, autoCheckpointHolders, holdAutoCheckpoint, runInCheckpointedSlices } =
-  bulkMod as typeof import('../../server/src/lib/bulk-slices')
+const { asBulkWriter, runInCheckpointedSlices } = bulkMod as typeof import('../../server/src/lib/bulk-slices')
+const { bulkWriterRunning, bulkWritersRunning, watchWal } = watchMod as typeof import('../../server/src/lib/wal-watch')
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 runMigrations()
@@ -71,9 +73,12 @@ const rewrite = (v: string, after: (k: number) => boolean | void = () => true, s
 }
 const count = (v: string) => db.prepare(`SELECT count(*) FROM rows WHERE sheet_id = ?
   AND json_extract(data, '$.N') = ?`).pluck().get(sid, v) as number
-const back = () => {
-  assert.equal(auto(), DB_AUTO_CHECKPOINT_FRAMES, 'SQLite\'s own checkpoint is back on')
-  assert.equal(autoCheckpointHolders(), 0)
+// No runner counted, and SQLite's own checkpoint as the watch sets it (its next look, made here): the room, or
+// DB_AUTO_CHECKPOINT_FRAMES once checkpoints run on this thread.
+const back = (onWorker = true) => {
+  watchWal()
+  assert.equal(auto(), onWorker ? roomFor(sizeLimit) : DB_AUTO_CHECKPOINT_FRAMES, 'SQLite\'s own checkpoint')
+  assert.equal(bulkWritersRunning(), 0)
 }
 
 // The setting read every 2 ms, so between slices (a slice itself commits with it at 0).
@@ -88,14 +93,14 @@ await ok('a job: its WAL copied back on the worker, waiting at the pause; SQLite
     assert.ok(seen.length > 0 && seen.every(v => v === roomFor(sizeLimit)), `seen ${[...new Set(seen)]}`)
   })
 
-await ok('a step that throws: the error comes out, SQLite\'s own checkpoint is back on', async () => {
+await ok('a step that throws: the error comes out, the runner no longer counted', async () => {
   await assert.rejects(runInCheckpointedSlices(rewrite('b', k => { if (k === 3) throw new Error('step 3') })),
     /step 3/)
   back()
   assert.equal(count('b'), 2 * SLICE, 'the slice that threw is rolled back')
 })
 
-await ok('a job stopped part way (its step answers false, or its work ends between slices): back on', async () => {
+await ok('a job stopped part way (its step answers false, or its work ends between slices): not counted', async () => {
   await runInCheckpointedSlices(rewrite('c', k => k < 4))
   back()
   assert.equal(count('c'), 4 * SLICE)
@@ -108,15 +113,15 @@ await ok('a job stopped part way (its step answers false, or its work ends betwe
   back()
 })
 
-await ok('two at once: held until both end, then back', async () => {
+await ok('two at once: counted until both end', async () => {
   let release!: () => void
   const held = new Promise<void>(r => { release = r })
   const first = asBulkWriter(async w => { await w.slice(rewrite('e')); await held })
   try {
     await new Promise(r => setTimeout(r, 20))
     await runInCheckpointedSlices(rewrite('f', k => k < 2))
-    assert.equal(auto(), roomFor(sizeLimit), 'still held: the first is going')
-    assert.equal(autoCheckpointHolders(), 1)
+    assert.equal(auto(), roomFor(sizeLimit))
+    assert.equal(bulkWritersRunning(), 1, 'the first is going')
   } finally {
     release()
     await first
@@ -124,20 +129,20 @@ await ok('two at once: held until both end, then back', async () => {
   back()
 })
 
-await ok('let go of twice, or found changed with no runner: logged, and set right', async () => {
+await ok('ended twice, or SQLite\'s own found changed: logged, and set right', async () => {
   logged.length = 0
-  const release = holdAutoCheckpoint()
-  release()
-  release()
+  const ended = bulkWriterRunning()
+  ended()
+  ended()
   back()
   assert.equal(logged.filter(l => /twice/.test(l)).length, 1, logged.join('\n'))
   db.pragma('wal_autocheckpoint = 0')
   await runInCheckpointedSlices(rewrite('g', k => k < 2))
   back()
-  assert.equal(logged.filter(l => /with no bulk writer running/.test(l)).length, 1, logged.join('\n'))
+  assert.equal(logged.filter(l => /with the WAL watch running/.test(l)).length, 1, logged.join('\n'))
 })
 
-await ok('no worker (its file can\'t load): checkpoints on this thread, SQLite\'s own back on, logged once',
+await ok('no worker (its file can\'t load): checkpoints on this thread, SQLite\'s own back at 2,000, logged once',
   async () => {
   await closeWalCheckpointer()
   setCheckpointWorkerFileForTests('/nonexistent/wal-checkpoint-worker.js')
@@ -146,7 +151,7 @@ await ok('no worker (its file can\'t load): checkpoints on this thread, SQLite\'
   try {
     await runInCheckpointedSlices(rewrite('h'))
     assert.equal(count('h'), ROWS)
-    back()
+    back(false)
     const k = takeWalCheckpointerStats()
     assert.ok(k.onThisThread > 0, JSON.stringify(k))
     assert.equal(logged.filter(l => /checkpoint worker/.test(l)).length, 1, logged.join('\n'))
@@ -228,4 +233,4 @@ await ok('a reader holding the last frames as the job ends: tried again, the WAL
 await closeWalCheckpointer()
 if (failures > 0) { console.error(`${failures} bulk-wal-runner assertion(s) failed`); process.exit(1) }
 console.log('All bulk-wal-runner assertions passed.')
-process.exit(0)
+passed()

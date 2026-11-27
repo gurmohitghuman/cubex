@@ -104,25 +104,25 @@ test('clean_column auto-run follows the source; a hand edit stays until the sour
   await call(client, 'clean_column', { sheet_id: sheetId, source_column: 'Name', cleaner: 'person_name' })
   const ids = (await rowsOf(client, sheetId)).map(r => r.id)
 
-  await call(client, 'update_cells', { row_id: ids[1], data: { Name: 'DOE, JANE Q.' } })
+  await call(client, 'change_rows', { action: 'update', row_id: ids[1], data: { Name: 'DOE, JANE Q.' } })
   await waitForCell(client, sheetId, 1, 'Name (clean)', 'Jane Q. Doe')
 
   await call(client, 'append_rows', { sheet_id: sheetId, rows: [{ Name: 'mr. bob jones jr' }] })
   await waitForCell(client, sheetId, 3, 'Name (clean)', 'Bob Jones')
 
   // A hand fix of the clean cell stays while its source is untouched...
-  await call(client, 'update_cells', { row_id: ids[0], data: { 'Name (clean)': 'Johnny Smith' } })
-  await call(client, 'update_cells', { row_id: ids[2], data: { Email: 'x@y.com' } })
+  await call(client, 'change_rows', { action: 'update', row_id: ids[0], data: { 'Name (clean)': 'Johnny Smith' } })
+  await call(client, 'change_rows', { action: 'update', row_id: ids[2], data: { Email: 'x@y.com' } })
   await new Promise(r => setTimeout(r, 1_500))
   expect((await rowsOf(client, sheetId))[0].data['Name (clean)']).toBe('Johnny Smith')
   // ...and gives way once the source changes.
-  await call(client, 'update_cells', { row_id: ids[0], data: { Name: 'SMITH, JOHN A.' } })
+  await call(client, 'change_rows', { action: 'update', row_id: ids[0], data: { Name: 'SMITH, JOHN A.' } })
   await waitForCell(client, sheetId, 0, 'Name (clean)', 'John A. Smith')
 
   // Off: the source changes, the clean column doesn't.
   const off = await call(client, 'set_auto_run', { sheet_id: sheetId, column: 'Name (clean)', enabled: false })
   expect(off.auto_run.find((a: any) => a.column === 'Name (clean)')).toMatchObject({ kind: 'clean', enabled: false })
-  await call(client, 'update_cells', { row_id: ids[2], data: { Name: 'ZED ZULU' } })
+  await call(client, 'change_rows', { action: 'update', row_id: ids[2], data: { Name: 'ZED ZULU' } })
   await new Promise(r => setTimeout(r, 1_500))
   expect((await rowsOf(client, sheetId))[2].data['Name (clean)']).toBe('Mary O\'Brien')
   // On again: every row is cleaned again first.
@@ -139,22 +139,23 @@ test('clean columns follow renames and deletes', async () => {
   const sheetId = await seedPeople(api)
   const client = await mcpClient(await makeAccessToken(api, ['read', 'write'], 'e2e clean rename'), 'e2e-rename')
   await call(client, 'clean_column', { sheet_id: sheetId, source_column: 'Website', cleaner: 'domain' })
-  await call(client, 'rename_column', { sheet_id: sheetId, column: 'Website', new_name: 'Site' })
-  await call(client, 'rename_column', { sheet_id: sheetId, column: 'Website (domain)', new_name: 'Domain' })
+  await call(client, 'manage_column', { action: 'rename', sheet_id: sheetId, column: 'Website', new_name: 'Site' })
+  await call(client, 'manage_column', {
+    action: 'rename', sheet_id: sheetId, column: 'Website (domain)', new_name: 'Domain' })
   let clean = (await call(client, 'get_sheet', { sheet_id: sheetId })).clean_columns
   expect(clean).toEqual([expect.objectContaining({ column: 'Domain', source_column: 'Site' })])
 
   // The renamed pair still follows.
   const id = (await rowsOf(client, sheetId))[2].id
-  await call(client, 'update_cells', { row_id: id, data: { Site: 'https://shop.example.com.au/x' } })
+  await call(client, 'change_rows', { action: 'update', row_id: id, data: { Site: 'https://shop.example.com.au/x' } })
   await waitForCell(client, sheetId, 2, 'Domain', 'example.com.au')
 
   // Deleting the source keeps the values; deleting the clean column forgets it.
-  await call(client, 'delete_column', { sheet_id: sheetId, column: 'Site' })
+  await call(client, 'manage_column', { action: 'delete', sheet_id: sheetId, column: 'Site' })
   expect((await rowsOf(client, sheetId))[0].data['Domain']).toBe('acme.com')
   const view = await (await api.get(`/api/sheets/${sheetId}?limit=10&offset=0`)).json()
   expect(view.data.autorun.columns['Domain']).toMatchObject({ kind: 'clean', pausedReason: 'missing_input' })
-  await call(client, 'delete_column', { sheet_id: sheetId, column: 'Domain' })
+  await call(client, 'manage_column', { action: 'delete', sheet_id: sheetId, column: 'Domain' })
   clean = (await call(client, 'get_sheet', { sheet_id: sheetId })).clean_columns
   expect(clean).toEqual([])
   await client.close()
@@ -274,7 +275,8 @@ test('clean_column options survive a setup saved and used on another sheet', asy
     name_input: 'first_name', column: 'Given' })
   await call(client, 'clean_column', { sheet_id: a.sheetId, source_column: 'Company', cleaner: 'company_name',
     the_company: 'keep', column: 'Firm' })
-  const setup = await call(client, 'save_setup', { sheet_id: a.sheetId, name: 'Names', columns: ['Given', 'Firm'] })
+  const setup = await call(client, 'manage_setup', { action: 'save', sheet_id: a.sheetId, name: 'Names',
+    columns: ['Given', 'Firm'] })
 
   const b = await sheetWith(api, a.tableId, [
     { First: 'Mr John', Company: 'THE CHRISTMAN COMPANY, INC.' }, { First: 'MARY ANN', Company: 'Acme Inc' },

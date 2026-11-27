@@ -89,7 +89,7 @@ test('a newer release: the line, the dots, and REST and MCP agree; the same rele
   })
   const client = await mcpClient(token)
   try {
-    expect(await call(client, 'get_version', {})).toEqual(rest)
+    expect(await call(client, 'get_account', { action: 'version' })).toEqual(rest)
     expect(client.getServerVersion()).toEqual({ name: 'cubex', version: 'v0.8.9' })
   } finally { await client.close() }
 

@@ -10,7 +10,7 @@
 // without its cursor answers `unfinished`; restart: true starts over, and a
 // cursor goes on only while it is the one its open pass last answered
 // (column-transform-passes.ts). A new target column is only added to
-// column_order: rows it wrote nothing in read it as empty, as with add_column.
+// column_order: rows it wrote nothing in read it as empty, as with manage_column's add.
 // Bumps data_version, never row_generation (what a row_index means is
 // unchanged; bumping it would 409 in-flight autosaves).
 import { db } from '../lib/db';

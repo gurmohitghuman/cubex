@@ -7,6 +7,7 @@
 import assert from 'node:assert/strict'
 import { v4 as uuid } from 'uuid'
 import { endsWithin, PRICED, startStandIn, world } from './ai-spend-kit'
+import { passed } from './ends-on-its-own'
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 
@@ -142,7 +143,7 @@ await ok("a setup's estimate finds runs by the prompt its start stores", async (
   const started = await startSetupStep(uid, A, step, { rowIndexes: null, allowSecrets: false })
   assert.ok('ok' in started, JSON.stringify(started))
   await ranRun({ ok: { runId: (started.ok as { runId: string }).runId } }, A, 55)
-  const est = await aiEstimate(uid, sheetOf(3), step, ['name'], ['Up'], null)
+  const est = await aiEstimate(uid, { sheetId: sheetOf(3) }, step, ['name'], ['Up'], null)
   assert.ok('ok' in est, JSON.stringify(est))
   assert.equal(est.ok.assumptions.history_from, 'prompt')
   assert.deepEqual(est.ok.assumptions.output_tokens, { low: 55, high: 55 })
@@ -151,4 +152,4 @@ await ok("a setup's estimate finds runs by the prompt its start stores", async (
 stand.close()
 w.done()
 console.log('ai-run-costs-prompt-key: ok')
-process.exit(0)
+passed()

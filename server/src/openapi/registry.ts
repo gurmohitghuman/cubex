@@ -10,13 +10,14 @@ import { runControlRoutes } from './routes-run-control';
 import { setupRoutes } from './routes-setups';
 import { hookRoutes } from './routes-hooks';
 import { trashRoutes } from './routes-trash';
+import { socialRoutes } from './routes-social';
 
 let routes: RouteDoc[] | null = null;
 
 export function apiV1Routes(): RouteDoc[] {
   routes ??= [
     ...tableRoutes(), ...rowRoutes(), ...fillRoutes(), ...runRoutes(), ...runControlRoutes(),
-    ...setupRoutes(), ...hookRoutes(), ...trashRoutes(),
+    ...setupRoutes(), ...hookRoutes(), ...trashRoutes(), ...socialRoutes(),
   ];
   return routes;
 }

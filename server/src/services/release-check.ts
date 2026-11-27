@@ -1,5 +1,5 @@
 // The release check: asks GitHub's releases API for Cubex's latest release at most once a day and
-// keeps the answer (lib/release-store.ts), so Settings, GET /v1/version and get_version can say
+// keeps the answer (lib/release-store.ts), so Settings, GET /v1/version and get_account (action version) can say
 // whether a newer release is out. Nothing else is sent: one GET with a fixed User-Agent, no cookies,
 // nothing about this install. The first automatic look comes a minute after the server starts, and a
 // timer looks again every hour whether a day has passed, so neither a start nor a page waits on it.

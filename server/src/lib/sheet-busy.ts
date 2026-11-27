@@ -1,7 +1,9 @@
+// Over 200 lines: one lock and its guards (heavy operations, long reads, a test copy's read-only hold) read together.
 import type { Request, Response, NextFunction } from 'express';
 import { db } from './db';
 import { verifySheetOwnership } from './sql-helpers';
 import { HEAVY_JOB_RETRY_MAX_MS, HEAVY_JOB_RETRY_MS } from './constants';
+import { CLOSING, copyClosing, sheetUnderTest, TESTING } from './sheet-test-hold';
 
 // One heavy operation per sheet at a time: sort, CSV import, column rename or
 // delete, and starting a run (its placeholders go into every target row). They work in slices
@@ -36,6 +38,23 @@ export function onSheetFree(sheetId: string, then: () => void): void {
   freeWaiters.set(sheetId, [...(freeWaiters.get(sheetId) ?? []), then]);
 }
 
+// Waits until the sheet is free, at most `ms`: null once it is, else what still holds it (a service that starts a
+// run and then changes the sheet waits out the start's placeholders so: services/social-find.ts, open-roles.ts). A
+// test copy holds it with no heavy operation to wait for (onSheetFree would answer on the next turn, round and round),
+// so that is looked at again every HEAVY_JOB_RETRY_MS.
+export async function sheetFreeWithin(sheetId: string, ms: number): Promise<string | null> {
+  const until = Date.now() + ms;
+  for (let held = sheetBusyWith(sheetId); held; held = sheetBusyWith(sheetId)) {
+    const left = until - Date.now();
+    if (left <= 0) return held;
+    await new Promise<void>(resolve => {
+      const t = setTimeout(resolve, busy.has(sheetId) ? left : Math.min(left, HEAVY_JOB_RETRY_MS));
+      if (busy.has(sheetId)) onSheetFree(sheetId, () => { clearTimeout(t); resolve(); });
+    });
+  }
+  return null;
+}
+
 function release(sheetId: string, entry: BusyEntry): void {
   if (busy.get(sheetId) !== entry) return;
   busy.delete(sheetId);
@@ -44,32 +63,45 @@ function release(sheetId: string, entry: BusyEntry): void {
   for (const then of waiting) setImmediate(then);
 }
 
-// What the sheet is busy doing ("sorting", "importing"…), or null.
+// What the sheet is busy doing ("sorting", "importing"…), or null. A sheet being tested on a copy
+// (lib/sheet-test-hold.ts) is busy TESTING for every change, and a copy whose test has ended CLOSING.
 export function sheetBusyWith(sheetId: string): string | null {
+  return busy.get(sheetId)?.what ?? (sheetUnderTest(sheetId) ? TESTING : copyClosing(sheetId) ? CLOSING : null);
+}
+
+// The heavy operation moving or rewriting the sheet's rows now, or null: for readers that only need the rows to
+// hold still (sliced reads, counts, lookups from other sheets). A test moves none.
+export function rowsMovingOn(sheetId: string): string | null {
   return busy.get(sheetId)?.what ?? null;
 }
 
 const BUSY_PREFIX = 'This sheet is busy ';
 export function busyMessage(what: string): string {
-  return `${BUSY_PREFIX}${what}. Try again when that finishes.`;
+  return what === TESTING ? `${BUSY_PREFIX}${what} (a test copy): apply or discard the test first.`
+    : `${BUSY_PREFIX}${what}. Try again when that finishes.`;
 }
 // A refusal that only means "not now": the sheet was busy (setups retry it).
 export const isBusyMessage = (message: string): boolean => message.startsWith(BUSY_PREFIX);
 
 // Whether a heavy operation would be refused right now: one is running, or a
 // long read (an export, a duplicate check) holds the sheet.
-export const sheetHeld = (sheetId: string): boolean => busy.has(sheetId) || readers.has(sheetId);
+export const sheetHeld = (sheetId: string): boolean =>
+  busy.has(sheetId) || readers.has(sheetId) || sheetUnderTest(sheetId);
 
 // Runs `work` as the sheet's one heavy operation, or returns { busy } at once
-// when another is already running or an export is reading the sheet.
-// `reserve(n)` keeps appends at or above n.
+// when another is already running, an export is reading the sheet or it is
+// being tested on a copy (pastTest: the test's own apply, or a job a restart
+// finishes). `reserve(n)` keeps appends at or above n.
 export async function withSheetBusy<T>(
   sheetId: string,
   what: string,
   work: (reserve: (floor: number) => void) => Promise<T>,
+  opts: { pastTest?: boolean } = {},
 ): Promise<T | { busy: string }> {
   const current = busy.get(sheetId);
   if (current) return { busy: busyMessage(current.what) };
+  if (!opts.pastTest && sheetUnderTest(sheetId)) return { busy: busyMessage(TESTING) };
+  if (!opts.pastTest && copyClosing(sheetId)) return { busy: busyMessage(CLOSING) };
   const reading = readers.get(sheetId);
   if (reading) return { busy: busyMessage(reading.what) };
   const entry: BusyEntry = { what, appendFloor: 0 };
@@ -142,10 +174,11 @@ async function keepFinishing(sheetId: string, entry: BusyEntry, finish: () => Pr
 }
 
 // At boot: run `work` as the sheet's heavy operation as soon as it is free (a
-// sheet holds at most one journaled job, but this never drops one if not).
+// sheet holds at most one journaled job, but this never drops one if not). A
+// test doesn't hold it up: the job began before the test could start.
 export async function whenSheetFree(sheetId: string, what: string, work: (reserve: (floor: number) => void) => Promise<void>): Promise<void> {
   for (;;) {
-    const outcome = await withSheetBusy(sheetId, what, work);
+    const outcome = await withSheetBusy(sheetId, what, work, { pastTest: true });
     if (!outcome || !('busy' in outcome)) return;
     await new Promise(resolve => setTimeout(resolve, HEAVY_JOB_RETRY_MS));
   }
@@ -169,19 +202,35 @@ export async function withSheetRead<T>(
 // while the sheet is busy, any change to it gets a 409 with the reason. Reads,
 // and the POSTs listed in `allowed` (appending rows lands above the reserved
 // range; a row query only reads), go through. An entry can be a pattern for a
-// path with an id in it, or a test of the request (a keyed call that checks
-// for busy itself).
+// path with an id in it (both for a POST), or a test of the whole request, any
+// method (a keyed call that checks for busy itself, a webhook's own controls).
+// A sheet being tested, or a copy whose test ended, takes no appended row either.
 export type BusyAllowed = string | RegExp | ((req: Request) => boolean);
+const APPEND_PATH = '/rows'; // POST adds rows, in the app's routes and /api/v1's
 export function refuseChangesWhileBusy(allowed: BusyAllowed[]) {
   return (req: Request, res: Response, next: NextFunction): void => {
     if (req.method === 'GET' || req.method === 'HEAD') return next();
     const what = sheetBusyWith(req.params.id);
-    const listed = allowed.some(a => (typeof a === 'string' ? a === req.path
-      : a instanceof RegExp ? a.test(req.path) : a(req)));
-    if (!what || (req.method === 'POST' && listed)) return next();
+    const listed = allowed.some(a => (typeof a === 'function' ? a(req)
+      : req.method === 'POST' && (typeof a === 'string' ? a === req.path : a.test(req.path))));
+    const appendWhileTested = req.path === APPEND_PATH && (what === TESTING || what === CLOSING);
+    if (!what || (listed && !appendWhileTested)) return next();
     res.status(409).json({ error: busyMessage(what), busy: true });
   };
 }
+
+// A sheet's webhook's own controls (services/sheet-webhook.ts): turning it on or off, a new URL, a token made or
+// removed, auto-delete set or turned off, the webhook deleted. They change only its record, never rows or columns,
+// so they go through while the sheet is busy: a sort or an import must not keep its owner from cutting off a leaked
+// URL while events still add rows (auto-delete's sweep itself waits while the sheet is busy). Setting one up and
+// adding or removing a field change its columns, so they wait. The path is the sheet routers' own (/webhook…).
+const AUTO_DELETE_PATH = '/webhook/auto-delete';
+export const webhookControl = (req: Request): boolean =>
+  (req.method === 'PATCH' && req.path === '/webhook')
+  || (req.method === 'POST' && (req.path === '/webhook/rotate' || req.path === '/webhook/token'))
+  || (req.method === 'PUT' && req.path === AUTO_DELETE_PATH)
+  || (req.method === 'DELETE' && (req.path === '/webhook' || req.path === '/webhook/token'
+    || req.path === AUTO_DELETE_PATH));
 
 // Where an appended row goes: one past the last row, and never inside a range
 // a running operation has reserved. Call inside the transaction that inserts.

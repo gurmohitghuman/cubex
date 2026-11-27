@@ -14,8 +14,11 @@ import { agentSearchTools, agentGetTool } from '../services/enrich-agent-tools';
 import { tokenStartEnrichmentRun, type TokenEnrichArgs } from '../services/enrich-token-run';
 import { DAILY_LIMIT_NOTE } from '../services/enrich-agent-shared';
 import { runIfSchema } from './run-if-schema';
+import { saveOnlySchema } from './save-only-schema';
 import { McpAuthCtx, SHEET_ID, ok, err, missingScope, registerTool, lenientBoolean } from './tool-helpers';
-import { capToolNote } from '../lib/token-spend';
+import { capRunToolNote } from '../lib/token-spend';
+import { GUIDE_POINTER } from './guides/guide';
+import { ENRICH_ITEMS, ITEMS_FIELDS, misplacedArgument, runEnrichmentOnItems } from './enrich-items';
 
 const input = z.union([
   z.string(), z.object({ column: z.string().describe('A column name') }).strict(),
@@ -23,87 +26,75 @@ const input = z.union([
 ]);
 const money = () => z.number().positive();
 
+// Its details are in its guide (mcp/guides/enrich.ts).
 export const RUN_ENRICHMENT_DESCRIPTION =
-  'Run a treg.to enrichment once per row: work emails (verified), phones, person or company data, or lists '
-  + '(people at a company, similar companies) whose results become rows in another sheet. For one lookup use '
-  + 'this; to try several sources in turn (treg tools, AI, HTTP) in one column use waterfall_column. First find '
-  + 'the tool with search_enrichments and read its inputs, outputs and providers with get_enrichment. '
+  'Run a treg.to enrichment once per row: work emails, phones, person or company data, or lists whose results '
+  + 'become rows in another sheet. For several sources in one column use waterfall_column. Find the tool with '
+  + 'find_enrichments with action search, then read it with action get. '
   + 'COSTS MONEY: each row is a paid treg call on the user\'s treg balance (providers on the team\'s own keys '
-  + 'bill the team). Call estimate_only:true first and tell the user the range; it creates nothing. A row whose '
-  + 'exact lookup (same tool, inputs and provider choices) found something in this account within the days set '
-  + 'in Settings (30 by default, 0 turns it off) reuses that answer at $0; the estimate counts those rows (reuse) '
-  + 'and prices the rest. max_cost_per_row_usd caps each row and spend_limit_usd the run (it pauses there). '
-  + `${DAILY_LIMIT_NOTE} `
-  + 'Speed: concurrency is the lever (a waterfall row can take seconds). A row whose providers all answered 429 '
-  + `waits and asks again for free (rate_limit_retries, 0-${ENRICH_PROVIDER_RATE_RETRIES_MAX}, default `
-  + `${ENRICH_PROVIDER_RATE_RETRIES}; a verified_email row's finds and checks share the count), then fails; `
-  + 'lower concurrency for a provider that keeps answering 429 '
-  + '(ContactOut\'s free email check on treg\'s own key takes about 20 calls '
-  + 'a minute for all of treg). Each running row holds max_cost_per_row_usd against the daily and run '
-  + 'limits, so those also cap how many run at once. '
-  + 'Waterfall tools ask providers in turn until one finds it. preset verified_email (the email finder only) '
-  + 'checks each address and finds again with other providers until one passes email.accept. '
-  + 'LIST JOBS (get_enrichment adds_rows:true) need list. The fields to keep come from real results: run with '
-  + 'test:true, poll get_run_status until it completes (enrichment.list.waiting_for_fields counts them), read '
-  + 'them with get_list_fields, pick them with add_list_rows (adds those rows), then control_run rerun mode '
-  + '"empty" runs the rest. Or pass list.fields when you know them. destination_auto_run lists what the new rows '
-  + 'set off in the destination; chained_auto_run lists this sheet\'s auto-runs that read what the run writes '
-  + '(they fill those rows after it; HTTP ones send real requests). '
-  + 'Returns run_id at once: poll get_run_status (run_type "enrichment"); cells show "⏳ Processing..." meanwhile '
-  + 'and then Cubex\'s status words (get_run_status lists them).';
+  + 'bill the team). Call estimate_only:true first and tell the user the range; it creates nothing. '
+  + 'max_cost_per_row_usd caps '
+  + `each row and spend_limit_usd the run (it pauses there). ${DAILY_LIMIT_NOTE} `
+  + 'LIST JOBS (adds_rows:true in find_enrichments) need list: run with test:true, wait for get_run (action status) to '
+  + 'say '
+  + 'completed, read the fields with get_list_fields, pick them with stored_answers (action add_rows), then '
+  + 'control_run rerun mode "empty"; or pass list.fields. destination_auto_run lists the auto-runs the new rows '
+  + 'set off there, and '
+  + 'chained_auto_run this sheet\'s auto-runs that read what the run writes (HTTP ones send real requests). '
+  + 'Returns run_id at once: poll get_run (action status, run_type "enrichment"). '
+  + 'ITEMS: with items instead of sheet_id it runs on items without a sheet, for a script or another app, and '
+  + 'estimate_only DEFAULTS TO TRUE; refused before it starts, never halfway, when it could pass max_cost_usd, '
+  + 'the daily limit, the treg balance or the token\'s cap. get_run (action results, status_filter all) gives each '
+  + 'item, '
+  + 'row_index being its place in items.';
 
 export function registerEnrichTools(server: McpServer, ctx: McpAuthCtx) {
-  registerTool(server, 'search_enrichments', {
+  // search (search_enrichments before) and get (get_enrichment before): treg.to's catalog, free.
+  registerTool(server, 'find_enrichments', {
     description:
-      'Search treg.to\'s catalog of enrichment tools (work email, phone, person or company data, people or '
-      + 'companies lists, web search). No query: the popular jobs. Each tool has tool_id, kind (waterfall: treg asks '
-      + 'many providers in turn; single: one provider), its price, and adds_rows (its results become rows in '
-      + 'another sheet). needs_own_key: treg can\'t serve it on its own key, the team needs its own provider key at '
-      + 'treg. Next: get_enrichment for its inputs and outputs, then run_enrichment (or a waterfall_column step).',
+      'treg.to\'s enrichment tools (work email, phone, person or company data, people or companies lists, web '
+      + 'search), free. search: tools matching query (none: the popular jobs), each with tool_id, kind (waterfall: '
+      + 'treg asks many providers in turn; single: one provider), its price, and adds_rows (its results become rows '
+      + 'in another sheet); needs_own_key: the team needs its own provider key at treg. get: one tool by tool_id, '
+      + 'ready for run_enrichment: its inputs, its outputs, its price and for a waterfall each provider. Next: '
+      + `run_enrichment with estimate_only: true, or a waterfall_column step. ${GUIDE_POINTER}`,
     inputSchema: {
-      query: z.string().max(200).optional().describe('What to find, e.g. "work email" or "company size"'),
+      action: z.enum(['search', 'get']).describe('search the catalog, or get one tool'),
+      query: z.string().max(200).optional().describe('search: what to find, e.g. "work email" or "company size"'),
+      tool_id: z.string().max(200).optional().describe('get: the tool (search lists them)'),
     },
-  }, async ({ query }) => {
+  }, async ({ action, query, tool_id }) => {
     const denied = missingScope(ctx, 'read');
     if (denied) return denied;
-    const out = await agentSearchTools(query ?? '');
-    return 'ok' in out ? ok(out.ok) : err(out.message);
-  });
-
-  registerTool(server, 'get_enrichment', {
-    description:
-      'One enrichment tool, ready for run_enrichment: its inputs (name, type, required; identity_sets lists the '
-      + 'inputs that are enough together; filter inputs narrow a search), its outputs (field names for '
-      + 'run_enrichment outputs; for a tool that adds rows, only the fields outside its results, which fill the '
-      + 'asking row; the results\' own fields come from real results), its price, '
-      + 'and for a waterfall each provider (price, hit rate, the inputs it accepts, and with a treg key saved, '
-      + 'access as treg\'s plan says: your_key (the team\'s own key), your_connection_metered, free, treg (treg\'s '
-      + 'key), or null when the plan doesn\'t say). The email finder also offers the verified_email preset. '
-      + 'Free. Next: run_enrichment with estimate_only:true.',
-    inputSchema: { tool_id: z.string().max(200).describe('The tool (search_enrichments lists them)') },
-  }, async ({ tool_id }) => {
-    const denied = missingScope(ctx, 'read');
-    if (denied) return denied;
+    if (action === 'search') {
+      if (tool_id !== undefined) return err('tool_id is for get: search takes query.');
+      const out = await agentSearchTools(query ?? '');
+      return 'ok' in out ? ok(out.ok) : err(out.message);
+    }
+    if (query !== undefined) return err('query is for search: get takes tool_id.');
+    if (!tool_id) return err('get needs tool_id.');
     const out = await agentGetTool(ctx.userId, tool_id);
     return 'ok' in out ? ok(out.ok) : err(out.message);
   });
 
   registerTool(server, 'run_enrichment', {
-    description: RUN_ENRICHMENT_DESCRIPTION + capToolNote(ctx.spend ?? null, true),
+    description: RUN_ENRICHMENT_DESCRIPTION + capRunToolNote(ctx.spend ?? null) + ` ${GUIDE_POINTER}`,
     // Strict: an argument it doesn't know (estimateOnly, test_rows) is refused,
     // never dropped, so a misspelled estimate can't start a paid run.
     inputSchema: z.object({
-      sheet_id: z.string().describe(SHEET_ID),
-      tool_id: z.string().max(200).describe('The tool (search_enrichments lists them)'),
-      column_name: z.string().max(200).describe('The status column (new, or an existing one with add_to_column)'),
+      sheet_id: z.string().optional().describe(`${SHEET_ID}; or items instead`),
+      items: ENRICH_ITEMS.optional(),
+      tool_id: z.string().max(200).describe('The tool (find_enrichments search lists them)'),
+      column_name: z.string().max(200).optional()
+        .describe('The status column (new, or an existing one with add_to_column); needed with sheet_id'),
       preset: z.enum(['verified_email']).optional()
         .describe('verified_email (the email finder only): check each address, find again until one passes'),
       add_to_column: lenientBoolean().optional().describe('Add to an enrichment column a run already made'),
       inputs: z.record(z.string(), input).optional()
-        .describe('Tool input -> a column name, {"column": name} or {"value": fixed}, e.g. {"domain": "Website", '
-          + '"country": {"value": "US"}}. treg works best with every identity input you have.'),
+        .describe('Tool input -> a column name, {"column": name} or {"value": fixed}. treg works best with every '
+          + 'identity input you have.'),
       outputs: z.array(z.object({
-        field: z.string().describe('A field from get_enrichment output_fields'),
+        field: z.string().describe('A field of find_enrichments get\'s output_fields'),
         column_name: z.string().describe('The new column it fills'),
       }).strict()).optional()
         .describe('The fields that become new columns. Optional for list jobs: there they fill the asking row '
@@ -145,6 +136,7 @@ export function registerEnrichTools(server: McpServer, ctx: McpAuthCtx) {
         value: z.string().optional().describe('What it compares with (not for empty, not_empty)'),
       }).strict()).max(20).optional().describe('Older form of run_if: only rows matching all of these'),
       run_if: runIfSchema,
+      save_only: saveOnlySchema('run_enrichment'),
       list: z.object({
         destination_sheet_id: z.string().optional().describe('A sheet in the same table to add the rows to'),
         new_sheet_name: z.string().max(200).optional().describe('Or a new sheet to make for them'),
@@ -162,8 +154,8 @@ export function registerEnrichTools(server: McpServer, ctx: McpAuthCtx) {
         }).strict()).optional().describe('Columns each added row gets: [{from, to}] or [{to, value}]'),
         dedupe_path: z.string().optional().describe('Skip a result whose value here was added before'),
         items_path: z.string().max(500).optional()
-          .describe('A single tool only: add the rows from another list of its answer, one get_enrichment '
-            + 'lists in other_lists (often shown empty in its example)'),
+          .describe('A single tool only: add the rows from another list of its answer '
+            + '(find_enrichments get\'s other_lists)'),
       }).strict().optional().describe('List jobs only: where the results go as rows'),
       auto_run: z.object({
         enabled: lenientBoolean().describe('true keeps the column filling'),
@@ -171,16 +163,22 @@ export function registerEnrichTools(server: McpServer, ctx: McpAuthCtx) {
       }).strict().optional()
         .describe('Keep filling new rows (and rows whose inputs get filled) after this run, once a row; rows '
           + 'already in the sheet are not touched'),
-      estimate_only: lenientBoolean().optional().describe('Price it and create nothing (default false)'),
+      estimate_only: lenientBoolean().optional()
+        .describe('Price it and create nothing (default false on a sheet, true with items)'),
       idempotency_key: z.string().min(1).max(200).optional()
         .describe('A retry with the same key and arguments returns the first run_id'),
       webhook_id: z.string().optional()
-        .describe('A run webhook (list_run_webhooks) to notify when the run finishes; poll get_run_status anyway'),
+        .describe('A run webhook (list_run_webhooks) to notify when the run finishes; poll get_run (action status) '
+          + 'anyway'),
+      ...ITEMS_FIELDS,
     }).strict(),
-  }, async (args: TokenEnrichArgs) => {
+  }, async args => {
     const denied = missingScope(ctx, 'run');
     if (denied) return denied;
-    const r = await tokenStartEnrichmentRun(ctx, args);
+    const misplaced = misplacedArgument(args);
+    if (misplaced) return err(misplaced);
+    if (args.items) return runEnrichmentOnItems(ctx, { ...args, items: args.items });
+    const r = await tokenStartEnrichmentRun(ctx, args as TokenEnrichArgs);
     if ('fail' in r) return err(r.message);
     return ok({ ...r.ok, changed: r.changed ?? [] });
   });

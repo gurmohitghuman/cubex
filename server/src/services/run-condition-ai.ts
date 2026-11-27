@@ -70,8 +70,9 @@ export function ruleModel(
   return { model, source: sheet ? 'sheet' : 'account' };
 }
 
-// ruleModel for a call about to ask the model (write_run_condition, write_formula): refused before anything is
-// sent when there is none, or when it is a ":batch" variant, which OpenRouter runs only through its batch API.
+// ruleModel for a call about to ask the model (write_run_condition, formula_column's from_words): refused before
+// anything is sent when there is none, or when it is a ":batch" variant, which OpenRouter runs only through its
+// batch API.
 export function writerModel(
   userId: string, sheetId: string, explicit?: string | null,
 ): { ok: NonNullable<ReturnType<typeof ruleModel>> } | { fail: 'no_model' | 'bad_request'; message: string } {

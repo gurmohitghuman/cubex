@@ -6,9 +6,9 @@ import { seedLeads } from './helpers-dedupe'
 
 // Auto-dedupe through every way a row arrives that isn't the grid: a webhook
 // delivery whose key is already there isn't kept (the delivery says so); REST
-// append_rows, update_cells and a CSV import say which rows went, keep oldest
+// append_rows, change_rows' update and a CSV import say which rows went, keep oldest
 // and keep newest; the rows go to one trash batch a day that the trash lists by
-// how; MCP set_auto_dedupe and get_sheet; turning it off.
+// how; MCP remove_duplicates' keep_doing and get_sheet; turning it off.
 
 const v1Sheet = async (v1: APIRequestContext, sheetId: string) =>
   (await (await v1.get(`/api/v1/sheets/${sheetId}`)).json()) as { auto_dedupe: any; row_count: number }
@@ -30,6 +30,10 @@ test('auto-dedupe: a webhook delivery whose key is already there is not kept', a
   const on = await api.put(`/api/sheets/${sheetId}/auto-dedupe`, { data: { column: 'Email', match: 'email' } })
   expect(on.status()).toBe(200)
   expect((await on.json()).autoDedupe).toMatchObject({ column: 'Email', match: 'email', keep: 'oldest' })
+  // The keys are built in the background, later on a fresh server (its worker starts first). A delivery before
+  // then is kept and checked once they are (auto-dedupe.test.ts); this case is the one refused as it arrives.
+  await expect.poll(async () => (await (await api.get(`/api/sheets/${sheetId}/auto-dedupe`)).json()).autoDedupe?.state,
+    { timeout: 20_000 }).toBe('on')
 
   const anon = await pwRequest.newContext()
   const send = (email: string) => anon.post(url.startsWith('/') ? `${BASE}${url}` : url,
@@ -114,16 +118,17 @@ test('auto-dedupe over REST: append, update, import, keep newest, the trash, off
   expect(kept.auto_dedupe).toBeUndefined()
 })
 
-test('auto-dedupe over MCP: set_auto_dedupe, get_sheet, append_rows, list_trash', async () => {
+test('auto-dedupe over MCP: remove_duplicates keep_doing, get_sheet, append_rows, list_trash', async () => {
   const api = await authedApi()
   const { sheetId } = await seedLeads(api)
   const client = await mcpClient(await makeAccessToken(api, ['read', 'write'], 'e2e auto-dedupe mcp'), 'e2e-ad')
-  const tool = (await client.listTools()).tools.find(t => t.name === 'set_auto_dedupe')
+  const tool = (await client.listTools()).tools.find(t => t.name === 'remove_duplicates')
   expect(tool?.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: true })
 
-  expect(await callError(client, 'set_auto_dedupe', { sheet_id: sheetId, off: true, keep: 'oldest' }))
-    .toContain('off: true takes no other field')
-  const on = await call(client, 'set_auto_dedupe', { sheet_id: sheetId, column: 'Website', match: 'domain' })
+  expect(await callError(client, 'remove_duplicates', { sheet_id: sheetId, keep_doing: false, keep: 'first' }))
+    .toContain('keep is not for keep_doing')
+  const on = await call(client, 'remove_duplicates',
+    { sheet_id: sheetId, keep_doing: { column: 'Website', match: 'domain' } })
   expect(on.auto_dedupe).toMatchObject({ column: 'Website', match: 'domain', keep: 'oldest' })
   await expect.poll(async () => (await call(client, 'get_sheet', { sheet_id: sheetId })).auto_dedupe?.state,
     { timeout: 20_000 }).toBe('on')
@@ -141,5 +146,5 @@ test('auto-dedupe over MCP: set_auto_dedupe, get_sheet, append_rows, list_trash'
   expect(back.rows).toBe(1)
   // A restored row stays, even though beta.io is there twice now.
   expect((await call(client, 'get_sheet', { sheet_id: sheetId })).row_count).toBe(11)
-  expect((await call(client, 'set_auto_dedupe', { sheet_id: sheetId, off: true })).auto_dedupe).toBeNull()
+  expect((await call(client, 'remove_duplicates', { sheet_id: sheetId, keep_doing: false })).auto_dedupe).toBeNull()
 })

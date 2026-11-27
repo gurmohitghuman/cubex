@@ -1,6 +1,6 @@
 // transfer_rows and transform_column are there on a server started with no
 // setting: MCP tools/list holds both, last, in the fixed order (after
-// manage_view), transform_column saying a moved pass that had done no rows
+// manage_view), transform_column's guide saying a moved pass that had done no rows
 // still takes a call without cursor; the REST transfer route answers through the real /api/v1
 // router and a real access token, and copies the row; the OpenAPI document
 // lists the route.
@@ -16,6 +16,7 @@ import migMod from '../../server/src/db/migrate'
 import tokenMod from '../../server/src/lib/access-token'
 import mcpMod from '../../server/src/mcp/build-server'
 import v1Mod from '../../server/src/routes/api-v1'
+import { passed } from './ends-on-its-own'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { generateAccessToken } = tokenMod as typeof import('../../server/src/lib/access-token')
@@ -55,7 +56,9 @@ async function main() {
     const tools = (await client.listTools()).tools
     const names = tools.map(t => t.name)
     assert.deepEqual(names.slice(-3), ['manage_view', 'transfer_rows', 'transform_column'])
-    assert.match(tools.at(-1)!.description ?? '', /refused until restart: true, unless it had done no rows\./)
+    const guide = await client.callTool({ name: 'get_tool_guide', arguments: { tool: 'transform_column' } })
+    assert.match((guide.structuredContent as { guide: string }).guide,
+      /refused until restart: true, unless it had done no rows\./)
     assert.equal(new Set(names).size, names.length, 'no tool is listed twice')
     await client.close()
   })
@@ -93,5 +96,5 @@ main()
   .finally(() => {
     if (failures) { console.log(`\n${failures} failure(s)`); process.exit(1) }
     console.log('All transfer-tools-default assertions passed.')
-    process.exit(0)
+    passed()
   })

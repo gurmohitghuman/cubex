@@ -1,100 +1,99 @@
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/server';
-import { DEDUPE_KEEPS, DEDUPE_MATCHES } from '../lib/dedupe/key';
+import { DEDUPE_KEEPS, DEDUPE_MATCHES, type DedupeMatch } from '../lib/dedupe/key';
 import { agentRemoveDuplicates, dedupeDryRun } from '../services/dedupe-agent';
-import { AUTO_DEDUPE_KEEPS } from '../lib/auto-dedupe/key';
+import { AUTO_DEDUPE_KEEPS, type AutoDedupeKeep } from '../lib/auto-dedupe/key';
 import { setAutoDedupe, turnOffAutoDedupe } from '../services/auto-dedupe-setting';
 import { SHEET_ID, McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean } from './tool-helpers';
 import { changedOf } from './changed';
+import { GUIDE_POINTER } from './guides/guide';
 
-// remove_duplicates: find duplicate rows, and remove them on an explicit
-// dry_run: false (services/dedupe-agent.ts). set_auto_dedupe: keep one row per
-// key as rows arrive (services/auto-dedupe-setting.ts).
+// remove_duplicates: find duplicate rows, and remove them on an explicit dry_run: false
+// (services/dedupe-agent.ts); with keep_doing (set_auto_dedupe before v0.8.47), keep one row per key as rows
+// arrive instead (services/auto-dedupe-setting.ts). Each part's fields are exported for REST's bodies
+// (openapi/routes-rows.ts), which stay what the two tools took.
+const phoneCountry = z.string().length(2).optional().describe('match phone only: how bare digits are read');
+export const REMOVE_DUPLICATES_INPUT = {
+  sheet_id: z.string().describe(SHEET_ID),
+  columns: z.array(z.union([
+    z.string(),
+    z.object({
+      column: z.string().describe('A column name'),
+      match: z.enum(DEDUPE_MATCHES).optional().describe('How the column matches; default text'),
+      phone_country: phoneCountry,
+    }).strict(),
+  ])).min(1).describe('The columns rows must all match on: names, or { column, match }'),
+  keep: z.enum(DEDUPE_KEEPS).optional().describe('Which row of each group stays; default first'),
+  dry_run: lenientBoolean().optional().describe('Default true: report only. false removes the rows'),
+};
+export const AUTO_DEDUPE_INPUT = {
+  column: z.string().optional().describe('The key column (required to turn it on)'),
+  match: z.enum(DEDUPE_MATCHES).optional().describe('How the key matches; default text'),
+  phone_country: phoneCountry,
+  keep: z.enum(AUTO_DEDUPE_KEEPS).optional().describe('Which row of a key stays; default oldest'),
+};
+
 export function registerDedupeTool(server: McpServer, ctx: McpAuthCtx): void {
   registerTool(server, 'remove_duplicates', {
     description:
       'Find duplicate rows in a sheet and remove them, for FREE (no AI, no credits). Rows are duplicates when '
-      + 'every listed column matches, ignoring upper/lower case and extra spaces. Each column can match as: text '
-      + '(default), email, domain ("https://www.acme.com/x", "jo@acme.com" and "acme.com" all match; a free '
-      + 'email address such as Gmail never matches by domain, and a page on a shared site such as '
-      + 'facebook.com/acme matches only the same page), phone (any format, an extension kept apart; '
-      + 'phone_country, default US, says how bare digits are read), company (ignores Inc, LLC, Corp and other '
-      + 'legal endings) or person_name ("Smith, John" matches "John Smith"; Jr and Sr kept apart). One row of '
-      + 'each group stays: '
+      + 'every listed column matches, ignoring upper/lower case and extra spaces. Each column can match as text '
+      + '(default), email, domain, phone, company or person_name. One row of each group stays: '
       + 'keep first (default, the highest row), last, or most_complete (fills the most cells; the highest of a '
-      + 'tie). A row with any listed column empty, unreadable as its match, or holding a run status such as '
-      + '"⏭️ Not found" is never removed. Works on the whole sheet (filters do not apply). dry_run DEFAULTS TO '
+      + 'tie). Works on the whole sheet (filters do not apply). dry_run DEFAULTS TO '
       + 'TRUE: it changes nothing and returns how many rows would go, with sample groups (row ids and the key '
       + 'cells) and the largest group, so you can check what "duplicate" meant. Then call again with dry_run: '
       + 'false to remove. Removed rows go to the trash as one batch, kept for the days set in Settings (30 by '
       + 'default; 0 deletes at once): the answer gives its trash_id, and restore_from_trash puts them back. '
-      + 'Their AI and HTTP results go. Refused while a run is active on the sheet. Prefer it over read_rows plus '
-      + 'delete_rows.',
+      + 'KEEP_DOING in place of columns keeps ONE row per key as rows arrive from now on (auto-dedupe): { column, '
+      + 'match, keep: oldest (default: the new row is not kept) or newest (it replaces the older ones) }; rows '
+      + 'already there stay, and false turns it off. '
+      + 'Refused while a run is active on the sheet. Prefer it over read_rows plus '
+      + `change_rows delete. ${GUIDE_POINTER}`,
     inputSchema: z.object({
-      sheet_id: z.string().describe(SHEET_ID),
-      columns: z.array(z.union([
-        z.string(),
-        z.object({
-          column: z.string().describe('A column name'),
-          match: z.enum(DEDUPE_MATCHES).optional().describe('How the column matches; default text'),
-          phone_country: z.string().length(2).optional().describe('match phone only: how bare digits are read'),
-        }).strict(),
-      ])).min(1).describe('The columns rows must all match on: names, or { column, match }'),
-      keep: z.enum(DEDUPE_KEEPS).optional().describe('Which row of each group stays; default first'),
-      dry_run: lenientBoolean().optional().describe('Default true: report only. false removes the rows'),
+      ...REMOVE_DUPLICATES_INPUT,
+      columns: REMOVE_DUPLICATES_INPUT.columns.optional()
+        .describe('The columns rows must all match on: names, or { column, match }; required unless keep_doing'),
+      keep_doing: z.union([z.object(AUTO_DEDUPE_INPUT).strict(), lenientBoolean()]).optional()
+        .describe('In place of columns: { column, match, keep } keeps one row per key as rows arrive (fields left '
+          + 'out keep what the setting has); false turns it off'),
     }).strict(),
-  }, async ({ sheet_id, ...a }) => {
+  }, async ({ sheet_id, keep_doing, ...a }) => {
+    if (keep_doing !== undefined) return keepDoing(ctx, sheet_id, keep_doing, a);
     const denied = missingScope(ctx, dedupeDryRun(a.dry_run) === false ? 'write' : 'read');
     if (denied) return denied;
-    const out = await agentRemoveDuplicates(ctx.userId, sheet_id, a, 'mcp');
+    const { columns } = a;
+    if (!columns) return err('Pass columns to find duplicates now, or keep_doing to keep one row per key as rows '
+      + 'arrive.');
+    const out = await agentRemoveDuplicates(ctx.userId, sheet_id, { ...a, columns }, 'mcp');
     if (!('ok' in out)) return err(out.message);
     const removed = 'rows_removed' in out.ok ? out.ok.rows_removed : 0;
     return ok({ ...out.ok, changed: removed ? changedOf(ctx.userId, [{ sheetId: sheet_id, rows: removed }]) : [] });
   });
+}
 
-  registerTool(server, 'set_auto_dedupe', {
-    description:
-      'Keep ONE row per key in a sheet as rows arrive, for FREE (no AI, no credits): auto-dedupe. Pick one key '
-      + 'column, read the same ways as remove_duplicates (match: text by default, or email, domain, phone, '
-      + 'company, person_name). From then on, a row that arrives (a webhook delivery, append_rows, import_csv, '
-      + 'transfer_rows, list rows from an enrichment) or whose key someone types in (update_cells, the app) is '
-      + 'checked against the rows already there; when another row has the same key, one stays: keep oldest '
-      + '(default: the row that was there first stays, the new one is not kept) or newest (the new row replaces '
-      + 'the older ones, enriched cells included). Blank keys, run statuses and cells over 200 characters never '
-      + 'match. Removed rows go to the trash: list_trash with how auto_dedupe and the sheet_id lists them (one '
-      + 'batch a day), and restore_from_trash puts them back (a restore isn\'t checked; a later row with the '
-      + 'same key is, against them too). Rows '
-      + 'already in the sheet stay as they are when it is turned on: get_sheet\'s auto_dedupe.shared_rows says how '
-      + 'many share a key with an older row (counted when its keys are built, null until then), and '
-      + 'remove_duplicates cleans those up once. The key column must be '
-      + 'one rows arrive with: not an AI, HTTP, enrichment, waterfall, clean, formula or lookup column (they fill '
-      + 'later). To match a cleaned value, pick the raw column with a match, such as a website column as domain. '
-      + 'Values runs write are kept in the index but never remove a row. The answers of append_rows, update_cells, '
-      + 'import_csv and transfer_rows say which rows were not kept or were replaced. A big sheet\'s keys take a '
-      + 'moment to build (state building); rows arriving meanwhile are checked once they are. Call again to change '
-      + 'it (fields left out stay), or off: true to turn it off. Refused while a run is active on the sheet.',
-    inputSchema: z.object({
-      sheet_id: z.string().describe(SHEET_ID),
-      column: z.string().optional().describe('The key column (required to turn it on)'),
-      match: z.enum(DEDUPE_MATCHES).optional().describe('How the key matches; default text'),
-      phone_country: z.string().length(2).optional().describe('match phone only: how bare digits are read'),
-      keep: z.enum(AUTO_DEDUPE_KEEPS).optional().describe('Which row of a key stays; default oldest'),
-      off: lenientBoolean().optional().describe('true turns auto-dedupe off'),
-    }).strict(),
-  }, async ({ sheet_id, off, ...a }) => {
-    const denied = missingScope(ctx, 'write');
-    if (denied) return denied;
-    if (off === true) {
-      if (Object.keys(a).length > 0) return err('off: true takes no other field. Nothing was changed.');
-      const out = turnOffAutoDedupe(ctx.userId, sheet_id);
-      return 'ok' in out ? ok({ auto_dedupe: null, changed: changedOf(ctx.userId, [{ sheetId: sheet_id }]) })
-        : err(out.message);
-    }
-    const out = setAutoDedupe(ctx.userId, sheet_id, a);
-    if (!('ok' in out)) return err(out.message);
-    // Rows already there stay; rows that arrived while its keys build are checked once they are.
-    const { column, state, waiting_rows } = out.ok;
-    return ok({ auto_dedupe: out.ok, changed: changedOf(ctx.userId, [{ sheetId: sheet_id, columns: [column],
-      moreComing: state === 'building' && waiting_rows > 0 }]) });
-  });
+// Auto-dedupe: { column, match, phone_country, keep } turns it on or changes it, false turns it off.
+type AutoDedupe = { column?: string; match?: DedupeMatch; phone_country?: string; keep?: AutoDedupeKeep };
+function keepDoing(ctx: McpAuthCtx, sheetId: string, setting: AutoDedupe | boolean, others: Record<string, unknown>) {
+  const extra = Object.keys(others).filter(k => others[k] !== undefined);
+  if (extra.length) {
+    return err(`${extra.join(' and ')} ${extra.length > 1 ? 'are' : 'is'} not for keep_doing: it sets auto-dedupe `
+      + 'from now on, and rows already there stay. Call once with columns to remove those. Nothing was changed.');
+  }
+  const denied = missingScope(ctx, 'write');
+  if (denied) return denied;
+  if (setting === true) {
+    return err('keep_doing takes the key: { column, match, keep }, or false to turn it off. Nothing was changed.');
+  }
+  if (setting === false) {
+    const out = turnOffAutoDedupe(ctx.userId, sheetId);
+    return 'ok' in out ? ok({ auto_dedupe: null, changed: changedOf(ctx.userId, [{ sheetId }]) })
+      : err(out.message);
+  }
+  const out = setAutoDedupe(ctx.userId, sheetId, setting);
+  if (!('ok' in out)) return err(out.message);
+  // Rows already there stay; rows that arrived while its keys build are checked once they are.
+  const { column, state, waiting_rows } = out.ok;
+  return ok({ auto_dedupe: out.ok, changed: changedOf(ctx.userId, [{ sheetId, columns: [column],
+    moreComing: state === 'building' && waiting_rows > 0 }]) });
 }

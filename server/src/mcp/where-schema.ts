@@ -1,10 +1,12 @@
-// The `where` every row-selecting tool takes (read_rows, export_csv,
-// create_download_link, transfer_rows, transform_column, manage_view) and read_rows'
-// include_status. The language is described once, on read_rows' where; the other
-// tools take the same schema and point there, so tools/list carries it once
-// (lib/row-filter/where.ts; services/row-filter.ts checks it against the sheet).
+// The `where` every row-selecting tool takes (read_rows, as rows or as CSV,
+// file_link, transfer_rows, transform_column, manage_view) and read_rows'
+// include_status. read_rows' where names every operator and group, and its guide
+// (mcp/guides) describes them in full; the other tools take the same schema and
+// point there, so tools/list carries it once (lib/row-filter/where.ts;
+// services/row-filter.ts checks it against the sheet). The REST document keeps
+// the whole text (whereSchema).
 import { z } from 'zod';
-import { FILTER_OPS } from '../lib/row-filter/ops';
+import { DATE_OPS, FILTER_OPS, LIST_OPS, NUMBER_OPS, STATE_OPS, TEXT_OPS } from '../lib/row-filter/ops';
 import { MAX_FILTER_LIST_VALUES, MAX_WHERE_CONDITIONS, MAX_WHERE_DEPTH } from '../lib/constants-filters';
 
 export const WHERE_LANGUAGE = 'Rows must pass every item. An item is a condition {column, operator, value} or a '
@@ -51,6 +53,12 @@ const orGroup = z.object({ or: items }).strict();
 const andGroup = z.object({ and: items }).strict();
 const where = z.array(z.union([condition, orGroup, andGroup])).min(1).max(MAX_WHERE_CONDITIONS);
 export const whereSchema = where.describe(WHERE_LANGUAGE);
+// read_rows' where in tools/list: every operator and group by name; WHERE_LANGUAGE is in its guide (mcp/guides).
+export const WHERE_BRIEF = 'Rows must pass every item: a condition {column, operator, value} or a group '
+  + `{"or":[items]} / {"and":[items]}, up to ${MAX_WHERE_DEPTH} deep. Operators: ${TEXT_OPS.join(', ')} (text, `
+  + `ignoring case); ${LIST_OPS.join(', ')} ("values":[...]); ${NUMBER_OPS.join(', ')}; ${DATE_OPS.join(', ')}; `
+  + `run state, with no value and column optional: ${STATE_OPS.join(', ')}.`;
+export const whereBrief = where.describe(WHERE_BRIEF);
 // The same where for another tool: what it selects there, then a pointer to read_rows' description.
 export const whereLike = (lead: string) => where.describe(`${lead} ${WHERE_POINTER}`);
 // manage_view's: null clears the view's filters (the description sits on the nullable, where clients read it).
@@ -64,7 +72,12 @@ export const INCLUDE_STATUS_HELP = 'true: each AI, HTTP API and enrichment colum
   + 'with mode out_of_date refreshes it), condition_not_met, running or not_run. Other columns are unchanged. '
   + 'Default false.';
 
+export const INCLUDE_STATUS_BRIEF = 'true: run columns\' cells come back as {status, value, error}, status being '
+  + 'done, no_result, error, out_of_date, condition_not_met, running or not_run. Default false.';
+
 export const VIEW_HELP = 'A saved view of the sheet, by name or id (get_sheet lists views): its filters are '
   + 'added to `where`, and when it hides columns its visible columns are the columns unless you pass columns. '
   + '"active" reads the view the app shows. Reads through a view answer view_version: with a cursor, echo it '
   + 'as expected_view_version (and, when the view filters, expected_data_version and expected_row_generation).';
+export const VIEW_BRIEF = 'A saved view, by name or id (get_sheet lists views; "active" is the one the app shows): its '
+  + 'filters and hidden columns apply.';

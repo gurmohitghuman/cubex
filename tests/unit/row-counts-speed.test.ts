@@ -1,12 +1,14 @@
 // The home's list on 4 sheets of 120,000 rows, none counted yet (as after a restart) and then all known
 // (services/table-row-counts.ts, lib/row-counts.ts): its request reads no row and answers within
-// HOME_REQUEST_MAX_MS; the counts it starts hold the event loop under LOOP_MAX_MS at a time (slices of
-// ROW_COUNT_SLICE_ROWS rows); and once they are made, the request answers them without counting again.
+// HOME_REQUEST_MAX_MS; the counts it starts hold the event loop under LOOP_MAX_MS on the CPU in any stretch (slices
+// of ROW_COUNT_SLICE_ROWS rows; loop-watch.ts); and once they are made, the request answers them without counting
+// again.
 // GET /api/tables counted every sheet on the request before: 1.2 to 1.4 s on 10 sheets of 1M rows.
 // Where a server makes the -wal file its full size at start (Windows), so does this, after the migrations, so the
 // counts' writes to sheets.counted_rows don't grow it while the loop is watched.
 import assert from 'node:assert/strict'
 import { v4 as uuid } from 'uuid'
+import { passed } from './ends-on-its-own'
 
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 const { db } = await import('../../server/src/lib/db')
@@ -71,7 +73,7 @@ try {
   assert.deepEqual({ rows: known.rows, updating: known.updating }, { rows: SHEETS * ROWS, updating: false })
   assert.ok(first.ms < HOME_REQUEST_MAX_MS, `the request took ${first.ms.toFixed(0)} ms, none counted`)
   assert.ok(known.ms < HOME_REQUEST_MAX_MS, `the request took ${known.ms.toFixed(0)} ms, all known`)
-  assert.ok(watched.ownMs < LOOP_MAX_MS, `the event loop was held ${watched.ownMs.toFixed(0)} ms by the counts`)
+  assert.ok(watched.cpuMs < LOOP_MAX_MS, `the counts held the event loop ${watched.cpuMs.toFixed(0)} ms on the CPU`)
   console.log('ok   the home reads no row; its counts never hold the loop long')
 } catch (e) {
   failures++
@@ -80,4 +82,4 @@ try {
 await closeWalCheckpointer()
 if (failures) { console.log(`${failures} failed`); process.exit(1) }
 console.log('all passed')
-process.exit(0)
+passed()

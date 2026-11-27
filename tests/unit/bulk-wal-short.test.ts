@@ -11,7 +11,8 @@ import { undoKit } from './run-undo-kit'
 const { db, uid, ok, done, idle, sheet, cells } = undoKit('bulk-wal-short')
 const { seedThenEnqueue } = await import('../../server/src/services/run-seed')
 const { withSheetBusy } = await import('../../server/src/lib/sheet-busy')
-const { asBulkWriter, autoCheckpointHolders } = await import('../../server/src/lib/bulk-slices')
+const { asBulkWriter } = await import('../../server/src/lib/bulk-slices')
+const { bulkWritersRunning } = await import('../../server/src/lib/wal-watch')
 const { DB_AUTO_CHECKPOINT_FRAMES } = await import('../../server/src/lib/constants')
 const { PLACEHOLDER } = await import('../../server/src/lib/placeholder-cells')
 const { checkpointInBackground, closeWalCheckpointer, setCheckpointDelayForTests, takeWalCheckpointerStats,
@@ -46,7 +47,7 @@ await ok('a run started on 10 rows: queued at once, no checkpoint asked of the w
   console.log(`      queued after ${queuedMs.toFixed(0)} ms`)
   assert.ok(queuedMs >= 0 && queuedMs < 1_000, `queued after ${queuedMs.toFixed(0)} ms`)
   assert.equal(takeWalCheckpointerStats().checkpoints, 0, 'checkpoints on the worker')
-  assert.equal(autoCheckpointHolders(), 0)
+  assert.equal(bulkWritersRunning(), 0)
   assert.deepEqual(cells(sid, 'Answer'), Array(10).fill(PLACEHOLDER))
   // Its frames stay in the WAL for SQLite's own checkpoint, as with no runner.
   const w = walState()!

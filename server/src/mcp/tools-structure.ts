@@ -5,7 +5,7 @@
 // provision tables/sheets, not just work inside existing ones.
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/server';
-import { createTable, renameTable, deleteTable } from '../services/table-crud';
+import { createTable, renameTable, deleteTable, setTableStarred } from '../services/table-crud';
 import { createSheet, renameSheet, deleteSheet, reorderSheets } from '../services/sheet-crud';
 import { copySheetValues, sheetCopyWindow } from '../services/sheet-copy';
 import { tooManyMessage } from '../lib/rate-window';
@@ -14,9 +14,13 @@ import { trashAnswer } from '../services/trash-answer';
 import { createSampleTable } from '../services/sample-table';
 import { sampleAnswer } from '../services/sample-answer';
 import { McpAuthCtx, ok, err, missingScope, registerTool, lenientBoolean, mcpLinkBase } from './tool-helpers';
+import { runTestAction, TEST_ACTIONS, TEST_WORDS, type TestAction } from './tools-sheet-test';
+import { runSortAction, SORT_ACTIONS, SORT_FIELDS, SORT_WORDS, type SortAction } from './tools-sheet-sort';
 import { changedOf } from './changed';
+import { SHEET_TEST_MAX_ROWS } from '../lib/constants';
 import { getSheetColumns } from '../lib/sql-helpers';
 import { webhookForNewSheet, type SheetWebhookView } from '../services/sheet-webhook';
+import { GUIDE_POINTER } from './guides/guide';
 
 // What a create with webhook true adds to its answer.
 type NewSheetWebhook = { webhook?: SheetWebhookView; webhook_error?: string };
@@ -26,8 +30,10 @@ export function registerStructureTools(server: McpServer, ctx: McpAuthCtx) {
     'manage_table',
     {
       description:
-        'Create, rename or delete a table (it holds one or more sheet tabs; manage_sheet changes the tabs). create '
-        + 'returns the new table with its first sheet ("Sheet1"); next: add_column, append_rows or import_csv. '
+        'Create, rename, star or delete a table (it holds one or more sheet tabs; manage_sheet changes the tabs). '
+        + 'create returns the new table with its first sheet ("Sheet1"); next: manage_column, append_rows or '
+        + 'import_csv. star puts it in the user\'s Favorites on the home (get_workspace with all_tables says starred), '
+        + 'unstar takes it out. '
         + 'delete puts the table '
         + 'in the trash with all its sheets and rows, cancels its active runs and stops its webhooks; it is kept for '
         + 'the days set in Settings (30 by default; 0 deletes at once), and restore_from_trash brings it back whole. '
@@ -37,8 +43,8 @@ export function registerStructureTools(server: McpServer, ctx: McpAuthCtx) {
         + 'column filled for free, a dry-run duplicate check of the one duplicate it holds, and an AI column set up '
         + 'but NOT run: it costs money, so run it (the answer says how) only after the user agrees.',
       inputSchema: {
-        action: z.enum(['create', 'rename', 'delete', 'create_sample']).describe('What to do'),
-        table_id: z.string().optional().describe('rename, delete: the table (list_tables)'),
+        action: z.enum(['create', 'rename', 'star', 'unstar', 'delete', 'create_sample']).describe('What to do'),
+        table_id: z.string().optional().describe('rename, star, unstar, delete: the table (get_workspace)'),
         name: z.string().optional().describe('Required for create/rename'),
         webhook: lenientBoolean().optional()
           .describe('create: true gives its first sheet an incoming webhook (manage_sheet_webhook)'),
@@ -72,6 +78,11 @@ export function registerStructureTools(server: McpServer, ctx: McpAuthCtx) {
         const result = renameTable(ctx.userId, table_id, name);
         return 'fail' in result ? err(result.message) : ok({ ...result.ok, changed: [] });
       }
+      if (action === 'star' || action === 'unstar') {
+        // Nothing in the table changes: no sheet to name in changed.
+        const result = setTableStarred(ctx.userId, table_id, action === 'star');
+        return 'fail' in result ? err(result.message) : ok({ ...result.ok, changed: [] });
+      }
       const result = deleteTable(ctx.userId, table_id);
       if ('fail' in result) return err(result.message);
       return ok({ deleted: true, trash: trashAnswer(ctx.userId, result.ok.trashId, 'mcp'), changed: [] });
@@ -82,21 +93,21 @@ export function registerStructureTools(server: McpServer, ctx: McpAuthCtx) {
     'manage_sheet',
     {
       description:
-        'Create, rename, copy, delete or reorder the sheet tabs of a table (a table always keeps at least one sheet). '
-        + 'create auto-names the sheet when name is omitted and can insert after a given tab. copy makes a new sheet '
-        + 'right after sheet_id holding its values: the same rows in the same order under the same column names (or '
-        + 'only the columns you list), as plain columns that nothing fills (no runs, formulas, lookups, rules or '
-        + 'views come along), with a run\'s status words (⏳, ❌, ⏭️, ➕) left empty. Free, no AI; name defaults to '
-        + '"Copy of <sheet>". Use it to keep a sheet as it is now, for example before running its columns again; it '
-        + 'answers once every row is in (rows_copied). delete puts the sheet '
+        'Create, rename, copy, delete, reorder, sort or describe the sheet tabs of a table (a table always keeps at '
+        + 'least one sheet). '
+        + 'copy makes a new sheet right after sheet_id holding its values only, as plain columns that nothing fills '
+        + '(free, no AI). delete puts the sheet '
         + 'in the trash whole (rows, columns, runs, views, webhook), cancels its active runs and stops its webhook; '
         + 'it is kept for the days set in Settings (30 by default; 0 deletes at once), and restore_from_trash brings '
         + 'it back. Enrichment results its columns bought that were not yet added as rows in another sheet are '
-        + 'dropped (list_results_dropped says how many and for which sheets). Returns the table\'s updated tab list.',
+        + 'dropped (list_results_dropped says how many and for which sheets). Returns the table\'s updated tab list. '
+        + `${SORT_WORDS} ${TEST_WORDS} ${GUIDE_POINTER}`,
       inputSchema: {
-        action: z.enum(['create', 'rename', 'copy', 'delete', 'reorder']).describe('What to do'),
-        table_id: z.string().describe('The table (list_tables)'),
-        sheet_id: z.string().optional().describe('Required for rename/copy/delete'),
+        action: z.enum(['create', 'rename', 'copy', 'delete', 'reorder', ...SORT_ACTIONS, ...TEST_ACTIONS])
+          .describe('What to do'),
+        table_id: z.string().optional().describe('The table (get_workspace); sort and describe don\'t need it'),
+        sheet_id: z.string().optional()
+          .describe('Required for rename/copy/delete/sort/describe and the test actions (the sheet or its test copy)'),
         name: z.string().optional().describe('create and copy: optional; rename: required'),
         columns: z.array(z.string()).min(1).optional()
           .describe('copy only: the columns to copy, in this order (default: every column)'),
@@ -106,12 +117,33 @@ export function registerStructureTools(server: McpServer, ctx: McpAuthCtx) {
           .describe('reorder only: every sheet id of the table, in the desired order'),
         webhook: lenientBoolean().optional()
           .describe('create: true gives the new sheet an incoming webhook (manage_sheet_webhook)'),
+        row_ids: z.array(z.string()).min(1).optional().describe('test, test_add_rows: the rows to take'),
+        rows: z.number().int().min(1).max(SHEET_TEST_MAX_ROWS).optional()
+          .describe('test, test_add_rows: how many rows (default 10)'),
+        how: z.enum(['top', 'random']).optional()
+          .describe('test_add_rows: the next rows from the top (default), or random'),
+        dry_run: lenientBoolean().optional().describe('apply_test: false applies; default true'),
+        column: SORT_FIELDS.column.optional().describe('sort: the column to sort by'),
+        direction: SORT_FIELDS.direction.optional().describe('sort: asc, A to Z and smallest first, or desc'),
+        description: z.string().optional().describe('describe: the sheet\'s description; "" clears it'),
       },
     },
-    async ({ action, table_id, sheet_id, name, columns, after_sheet_id, ordered_sheet_ids, webhook }) => {
+    async ({
+      action, table_id, sheet_id, name, columns, after_sheet_id, ordered_sheet_ids, webhook, column, direction,
+      description, ...test
+    }) => {
       const denied = missingScope(ctx, 'write');
       if (denied) return denied;
       if (webhook !== undefined && action !== 'create') return err('webhook is for create.');
+      if ((SORT_ACTIONS as readonly string[]).includes(action)) {
+        return runSortAction(ctx, action as SortAction, { table_id, sheet_id, column, direction, description });
+      }
+      if (column !== undefined || direction !== undefined) return err('column and direction are for sort.');
+      if (description !== undefined) return err('description is for describe.');
+      if (!table_id) return err(`table_id is required for ${action}`);
+      if ((TEST_ACTIONS as readonly string[]).includes(action)) {
+        return runTestAction(ctx, action as TestAction, { table_id, sheet_id, ...test });
+      }
       if (action === 'create') {
         const result = createSheet(ctx.userId, table_id, name, after_sheet_id);
         if ('fail' in result) return err(result.message);

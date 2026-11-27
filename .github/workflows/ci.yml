@@ -3,8 +3,8 @@ name: CI
 # Runs on every push to main and every pull request: typecheck, unit tests,
 # build, on Linux and on native Windows (checks.yml, once for each, with the
 # unit tests split over 3 runners). The Release workflow calls it too, on
-# the commit being released. The Playwright e2e suite needs a browser and a
-# booted server, so it runs locally (npm run e2e:all), not here.
+# the commit being released. The Playwright e2e suite runs in e2e.yml, on
+# pull requests that change the app or its tests.
 
 on:
   push:

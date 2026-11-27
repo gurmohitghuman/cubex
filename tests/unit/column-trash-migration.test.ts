@@ -58,11 +58,12 @@ const beforeIndexes = indexes()
 const beforeRows = db.prepare('SELECT * FROM trash_rows ORDER BY item_id, seq').all()
 assert.equal(db.prepare("SELECT seq FROM sqlite_sequence WHERE name = 'trash_items'").pluck().get(), 7)
 
-runMigrations()   // the upgrade: 054 only
+runMigrations()   // the upgrade: 054, and the migrations after it
 
 const after = items()
+// 054's fields, and 077's (a picked restore's seqs).
 const NEW = { column_name: null, column_position: null, column_setup: null, column_dropped: null, restore_name: null,
-  restore_skipped: 0, restore_kept: 0, restore_keys: 0, restore_cursor: 0, restore_into: 0 }
+  restore_skipped: 0, restore_kept: 0, restore_keys: 0, restore_cursor: 0, restore_into: 0, restore_picks: null }
 assert.deepEqual(after, before.map(i => ({ ...i, ...NEW })), 'every item, its id and every field')
 assert.deepEqual(after.map(i => i.id), [1, 2, 3, 4, 5])
 assert.equal(db.prepare("SELECT seq FROM sqlite_sequence WHERE name = 'trash_items'").pluck().get(), 7)

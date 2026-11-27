@@ -1,108 +1,23 @@
 {
-  "release": "v0.8.44",
+  "release": "v0.8.48",
   "lines": [
+    {
+      "change": "server"
+    },
     {
       "change": "changed",
       "tools": [
-        "run_enrichment",
-        "waterfall_column"
+        "hiring_signals"
       ]
     },
     {
       "change": "changed",
       "tools": [
-        "list_tables"
+        "hiring_signals"
       ]
     }
   ],
   "tools": {
-    "add_column": {
-      "properties": {
-        "description": {
-          "type": "string"
-        },
-        "name": {
-          "type": "string"
-        },
-        "sheet_id": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "name",
-        "sheet_id"
-      ],
-      "type": "object"
-    },
-    "add_enrichment_field": {
-      "additionalProperties": false,
-      "properties": {
-        "column": {
-          "type": "string"
-        },
-        "column_name": {
-          "maxLength": 200,
-          "type": "string"
-        },
-        "json_path": {
-          "maxLength": 1000,
-          "type": "string"
-        },
-        "row_id": {
-          "type": "string"
-        },
-        "sheet_id": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "column",
-        "column_name",
-        "json_path",
-        "sheet_id"
-      ],
-      "type": "object"
-    },
-    "add_list_rows": {
-      "additionalProperties": false,
-      "properties": {
-        "column": {
-          "type": "string"
-        },
-        "dedupe_path": {
-          "type": "string"
-        },
-        "fields": {
-          "items": {
-            "additionalProperties": false,
-            "properties": {
-              "column_name": {
-                "type": "string"
-              },
-              "path": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "column_name",
-              "path"
-            ],
-            "type": "object"
-          },
-          "minItems": 1,
-          "type": "array"
-        },
-        "sheet_id": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "column",
-        "fields",
-        "sheet_id"
-      ],
-      "type": "object"
-    },
     "ai_visibility": {
       "additionalProperties": false,
       "properties": {
@@ -239,6 +154,33 @@
           },
           "type": "object"
         },
+        "items": {
+          "items": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "type": "array"
+        },
         "max_cost_usd": {
           "exclusiveMinimum": 0,
           "maximum": 1000000,
@@ -273,8 +215,102 @@
         }
       },
       "required": [
-        "setup_id",
-        "sheet_id"
+        "setup_id"
+      ],
+      "type": "object"
+    },
+    "change_rows": {
+      "properties": {
+        "action": {
+          "enum": [
+            "update",
+            "delete"
+          ],
+          "type": "string"
+        },
+        "data": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "propertyNames": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "idempotency_key": {
+          "maxLength": 200,
+          "minLength": 1,
+          "type": "string"
+        },
+        "row_id": {
+          "type": "string"
+        },
+        "row_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 1000,
+          "minItems": 1,
+          "type": "array"
+        },
+        "sheet_id": {
+          "type": "string"
+        },
+        "updates": {
+          "items": {
+            "properties": {
+              "data": {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "propertyNames": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              "row_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "data",
+              "row_id"
+            ],
+            "type": "object"
+          },
+          "maxItems": 1000,
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "action"
       ],
       "type": "object"
     },
@@ -372,14 +408,21 @@
             "resume",
             "cancel",
             "rerun",
+            "undo",
             "cancel_all"
           ],
+          "type": "string"
+        },
+        "column": {
           "type": "string"
         },
         "concurrency": {
           "maximum": 100,
           "minimum": 1,
           "type": "integer"
+        },
+        "dry_run": {
+          "type": "boolean"
         },
         "first_rows": {
           "maximum": 1000,
@@ -417,6 +460,9 @@
           ],
           "type": "string"
         },
+        "setup_run_id": {
+          "type": "string"
+        },
         "sheet_id": {
           "type": "string"
         },
@@ -433,29 +479,18 @@
       ],
       "type": "object"
     },
-    "control_setup_run": {
-      "additionalProperties": false,
+    "file_link": {
       "properties": {
         "action": {
           "enum": [
-            "pause",
-            "resume",
-            "cancel"
+            "upload",
+            "download"
           ],
           "type": "string"
         },
-        "setup_run_id": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "action",
-        "setup_run_id"
-      ],
-      "type": "object"
-    },
-    "create_download_link": {
-      "properties": {
+        "allow_unpriced": {
+          "type": "boolean"
+        },
         "columns": {
           "items": {
             "type": "string"
@@ -463,128 +498,18 @@
           "minItems": 1,
           "type": "array"
         },
-        "sheet_id": {
+        "format": {
+          "enum": [
+            "csv",
+            "jsonl"
+          ],
           "type": "string"
         },
-        "view": {
-          "minLength": 1,
-          "type": "string"
+        "max_cost_usd": {
+          "exclusiveMinimum": 0,
+          "maximum": 1000000,
+          "type": "number"
         },
-        "where": {
-          "items": {
-            "anyOf": [
-              {
-                "properties": {
-                  "column": {
-                    "type": "string"
-                  },
-                  "enabled": {
-                    "type": "boolean"
-                  },
-                  "operator": {
-                    "enum": [
-                      "eq",
-                      "neq",
-                      "contains",
-                      "not_contains",
-                      "starts_with",
-                      "ends_with",
-                      "empty",
-                      "not_empty",
-                      "any_of",
-                      "not_any_of",
-                      "gt",
-                      "gte",
-                      "lt",
-                      "lte",
-                      "date_eq",
-                      "date_neq",
-                      "date_gt",
-                      "date_gte",
-                      "date_lt",
-                      "date_lte",
-                      "has_error",
-                      "has_result",
-                      "not_run",
-                      "condition_not_met",
-                      "running",
-                      "out_of_date"
-                    ],
-                    "type": "string"
-                  },
-                  "value": {
-                    "type": "string"
-                  },
-                  "values": {
-                    "items": {
-                      "type": "string"
-                    },
-                    "maxItems": 200,
-                    "minItems": 1,
-                    "type": "array"
-                  }
-                },
-                "required": [
-                  "operator"
-                ],
-                "type": "object"
-              },
-              {
-                "additionalProperties": false,
-                "properties": {
-                  "or": {
-                    "items": {
-                      "additionalProperties": {},
-                      "propertyNames": {
-                        "type": "string"
-                      },
-                      "type": "object"
-                    },
-                    "maxItems": 50,
-                    "minItems": 1,
-                    "type": "array"
-                  }
-                },
-                "required": [
-                  "or"
-                ],
-                "type": "object"
-              },
-              {
-                "additionalProperties": false,
-                "properties": {
-                  "and": {
-                    "items": {
-                      "additionalProperties": {},
-                      "propertyNames": {
-                        "type": "string"
-                      },
-                      "type": "object"
-                    },
-                    "maxItems": 50,
-                    "minItems": 1,
-                    "type": "array"
-                  }
-                },
-                "required": [
-                  "and"
-                ],
-                "type": "object"
-              }
-            ]
-          },
-          "maxItems": 50,
-          "minItems": 1,
-          "type": "array"
-        }
-      },
-      "required": [
-        "sheet_id"
-      ],
-      "type": "object"
-    },
-    "create_upload_link": {
-      "properties": {
         "mode": {
           "enum": [
             "append",
@@ -592,76 +517,29 @@
           ],
           "type": "string"
         },
-        "sheet_id": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "sheet_id"
-      ],
-      "type": "object"
-    },
-    "delete_column": {
-      "properties": {
-        "column": {
-          "type": "string"
-        },
-        "sheet_id": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "column",
-        "sheet_id"
-      ],
-      "type": "object"
-    },
-    "delete_rows": {
-      "properties": {
-        "row_ids": {
-          "items": {
+        "models": {
+          "additionalProperties": {
             "type": "string"
           },
-          "maxItems": 1000,
-          "minItems": 1,
-          "type": "array"
+          "propertyNames": {
+            "type": "string"
+          },
+          "type": "object"
         },
-        "sheet_id": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "row_ids",
-        "sheet_id"
-      ],
-      "type": "object"
-    },
-    "delete_setup": {
-      "additionalProperties": false,
-      "properties": {
         "setup_id": {
           "type": "string"
-        }
-      },
-      "required": [
-        "setup_id"
-      ],
-      "type": "object"
-    },
-    "export_csv": {
-      "properties": {
-        "columns": {
-          "items": {
-            "type": "string"
-          },
-          "minItems": 1,
-          "type": "array"
+        },
+        "setup_run_id": {
+          "type": "string"
         },
         "sheet_id": {
           "type": "string"
         },
         "view": {
           "minLength": 1,
+          "type": "string"
+        },
+        "webhook_id": {
           "type": "string"
         },
         "where": {
@@ -773,7 +651,30 @@
         }
       },
       "required": [
-        "sheet_id"
+        "action"
+      ],
+      "type": "object"
+    },
+    "find_enrichments": {
+      "properties": {
+        "action": {
+          "enum": [
+            "search",
+            "get"
+          ],
+          "type": "string"
+        },
+        "query": {
+          "maxLength": 200,
+          "type": "string"
+        },
+        "tool_id": {
+          "maxLength": 200,
+          "type": "string"
+        }
+      },
+      "required": [
+        "action"
       ],
       "type": "object"
     },
@@ -794,6 +695,13 @@
           "maxLength": 4000,
           "type": "string"
         },
+        "from_words": {
+          "maxLength": 1000,
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
         "preview": {
           "type": "boolean"
         },
@@ -802,24 +710,66 @@
         }
       },
       "required": [
-        "formula",
         "sheet_id"
       ],
       "type": "object"
     },
-    "get_balances": {
-      "properties": {},
-      "type": "object"
-    },
-    "get_enrichment": {
+    "get_account": {
       "properties": {
-        "tool_id": {
-          "maxLength": 200,
+        "action": {
+          "enum": [
+            "balances",
+            "usage",
+            "saved_keys",
+            "version"
+          ],
+          "type": "string"
+        },
+        "after": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "from": {
+          "type": "string"
+        },
+        "group_by": {
+          "enum": [
+            "column",
+            "day",
+            "run"
+          ],
+          "type": "string"
+        },
+        "limit": {
+          "maximum": 200,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "name": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "range": {
+          "enum": [
+            "this_week",
+            "this_month",
+            "last_week",
+            "last_month"
+          ],
+          "type": "string"
+        },
+        "sheet_id": {
+          "type": "string"
+        },
+        "since": {
+          "type": "string"
+        },
+        "to": {
           "type": "string"
         }
       },
       "required": [
-        "tool_id"
+        "action"
       ],
       "type": "object"
     },
@@ -838,12 +788,29 @@
       ],
       "type": "object"
     },
-    "get_run_results": {
+    "get_run": {
       "properties": {
+        "action": {
+          "enum": [
+            "status",
+            "results",
+            "list",
+            "setup"
+          ],
+          "type": "string"
+        },
         "cursor": {
           "maximum": 9007199254740991,
           "minimum": 0,
           "type": "integer"
+        },
+        "filter": {
+          "enum": [
+            "active",
+            "terminal",
+            "all"
+          ],
+          "type": "string"
         },
         "include_answers": {
           "type": "boolean"
@@ -853,6 +820,11 @@
           "minimum": 1,
           "type": "integer"
         },
+        "results_from": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        },
         "run_id": {
           "type": "string"
         },
@@ -863,6 +835,15 @@
             "enrichment",
             "waterfall"
           ],
+          "type": "string"
+        },
+        "setup_id": {
+          "type": "string"
+        },
+        "setup_run_id": {
+          "type": "string"
+        },
+        "sheet_id": {
           "type": "string"
         },
         "status_filter": {
@@ -870,27 +851,6 @@
             "failed",
             "completed",
             "all"
-          ],
-          "type": "string"
-        }
-      },
-      "required": [
-        "run_id",
-        "run_type"
-      ],
-      "type": "object"
-    },
-    "get_run_status": {
-      "properties": {
-        "run_id": {
-          "type": "string"
-        },
-        "run_type": {
-          "enum": [
-            "ai",
-            "http",
-            "enrichment",
-            "waterfall"
           ],
           "type": "string"
         },
@@ -901,47 +861,11 @@
         }
       },
       "required": [
-        "run_id",
-        "run_type"
+        "action"
       ],
-      "type": "object"
-    },
-    "get_setup_run": {
-      "additionalProperties": false,
-      "properties": {
-        "setup_id": {
-          "type": "string"
-        },
-        "setup_run_id": {
-          "type": "string"
-        },
-        "sheet_id": {
-          "type": "string"
-        }
-      },
       "type": "object"
     },
     "get_sheet": {
-      "properties": {
-        "columns": {
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "include_counts": {
-          "type": "boolean"
-        },
-        "sheet_id": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "sheet_id"
-      ],
-      "type": "object"
-    },
-    "get_sheet_history": {
       "properties": {
         "before": {
           "maximum": 9007199254740991,
@@ -951,6 +875,18 @@
         "column": {
           "type": "string"
         },
+        "columns": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "history": {
+          "type": "boolean"
+        },
+        "include_counts": {
+          "type": "boolean"
+        },
         "limit": {
           "maximum": 200,
           "minimum": 1,
@@ -965,52 +901,21 @@
       ],
       "type": "object"
     },
-    "get_usage": {
+    "get_tool_guide": {
       "properties": {
-        "from": {
-          "type": "string"
-        },
-        "group_by": {
-          "enum": [
-            "column",
-            "day",
-            "run"
-          ],
-          "type": "string"
-        },
-        "limit": {
-          "maximum": 200,
-          "minimum": 1,
-          "type": "integer"
-        },
-        "range": {
-          "enum": [
-            "this_week",
-            "this_month",
-            "last_week",
-            "last_month"
-          ],
-          "type": "string"
-        },
-        "sheet_id": {
-          "type": "string"
-        },
-        "to": {
-          "type": "string"
-        }
-      },
-      "type": "object"
-    },
-    "get_version": {
-      "properties": {
-        "since": {
+        "tool": {
+          "maxLength": 200,
           "type": "string"
         }
       },
       "type": "object"
     },
     "get_workspace": {
-      "properties": {},
+      "properties": {
+        "all_tables": {
+          "type": "boolean"
+        }
+      },
       "type": "object"
     },
     "hiring_signals": {
@@ -1020,9 +925,25 @@
           "enum": [
             "create",
             "check",
-            "get"
+            "get",
+            "update",
+            "find_buyers",
+            "open_roles"
           ],
           "type": "string"
+        },
+        "buyer_titles": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "string"
+            }
+          ]
         },
         "companies": {
           "anyOf": [
@@ -1082,13 +1003,20 @@
         "leave_out_companies": {
           "anyOf": [
             {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "string"
+                }
+              ]
             },
             {
-              "type": "string"
+              "type": "null"
             }
           ]
         },
@@ -1122,6 +1050,18 @@
           "type": "number"
         },
         "min_roles": {
+          "anyOf": [
+            {
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "per_company": {
           "maximum": 100,
           "minimum": 1,
           "type": "integer"
@@ -1179,7 +1119,13 @@
             }
           ]
         },
+        "sheet_id": {
+          "type": "string"
+        },
         "time_zone": {
+          "type": "string"
+        },
+        "website_column": {
           "type": "string"
         }
       },
@@ -1224,44 +1170,22 @@
       },
       "type": "object"
     },
-    "list_run_webhooks": {
+    "list_prompt_starters": {
       "additionalProperties": false,
       "properties": {
-        "webhook_id": {
-          "type": "string"
-        }
-      },
-      "type": "object"
-    },
-    "list_runs": {
-      "properties": {
-        "filter": {
-          "enum": [
-            "active",
-            "terminal",
-            "all"
-          ],
-          "type": "string"
-        },
-        "limit": {
-          "maximum": 50,
-          "minimum": 1,
-          "type": "integer"
-        },
         "sheet_id": {
           "type": "string"
         }
       },
+      "required": [
+        "sheet_id"
+      ],
       "type": "object"
     },
-    "list_saved_keys": {
+    "list_run_webhooks": {
+      "additionalProperties": false,
       "properties": {
-        "after": {
-          "minLength": 1,
-          "type": "string"
-        },
-        "name": {
-          "minLength": 1,
+        "webhook_id": {
           "type": "string"
         }
       },
@@ -1289,10 +1213,6 @@
           "type": "string"
         }
       },
-      "type": "object"
-    },
-    "list_tables": {
-      "properties": {},
       "type": "object"
     },
     "list_trash": {
@@ -1422,6 +1342,146 @@
       ],
       "type": "object"
     },
+    "manage_column": {
+      "properties": {
+        "action": {
+          "enum": [
+            "add",
+            "rename",
+            "describe",
+            "reorder",
+            "delete"
+          ],
+          "type": "string"
+        },
+        "column": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "new_name": {
+          "type": "string"
+        },
+        "order": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 200,
+          "minItems": 1,
+          "type": "array"
+        },
+        "sheet_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "sheet_id"
+      ],
+      "type": "object"
+    },
+    "manage_run_schedule": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "enum": [
+            "list",
+            "create",
+            "change",
+            "pause",
+            "resume",
+            "delete",
+            "fire_now"
+          ],
+          "type": "string"
+        },
+        "allow_unpriced": {
+          "type": "boolean"
+        },
+        "at_time": {
+          "type": "string"
+        },
+        "cadence": {
+          "enum": [
+            "daily",
+            "weekdays",
+            "weekly",
+            "monthly",
+            "hours"
+          ],
+          "type": "string"
+        },
+        "columns": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "every_hours": {
+          "maximum": 168,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "max_cost_usd": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 1000000,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "month_day": {
+          "maximum": 28,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "rows": {
+          "enum": [
+            "empty",
+            "errored",
+            "out_of_date",
+            "all"
+          ],
+          "type": "string"
+        },
+        "schedule_id": {
+          "type": "string"
+        },
+        "sheet_id": {
+          "type": "string"
+        },
+        "table_id": {
+          "type": "string"
+        },
+        "time_zone": {
+          "type": "string"
+        },
+        "weekday": {
+          "maximum": 6,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "type": "object"
+    },
     "manage_run_webhook": {
       "additionalProperties": false,
       "properties": {
@@ -1450,6 +1510,47 @@
       ],
       "type": "object"
     },
+    "manage_setup": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "enum": [
+            "save",
+            "delete"
+          ],
+          "type": "string"
+        },
+        "columns": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "description": {
+          "type": "string"
+        },
+        "include_upstream": {
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string"
+        },
+        "preview": {
+          "type": "boolean"
+        },
+        "setup_id": {
+          "type": "string"
+        },
+        "sheet_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "type": "object"
+    },
     "manage_setup_version": {
       "additionalProperties": false,
       "properties": {
@@ -1457,12 +1558,16 @@
           "enum": [
             "save",
             "rename",
-            "delete"
+            "delete",
+            "restore"
           ],
           "type": "string"
         },
         "description": {
           "type": "string"
+        },
+        "dry_run": {
+          "type": "boolean"
         },
         "name": {
           "type": "string"
@@ -1488,11 +1593,20 @@
             "rename",
             "copy",
             "delete",
-            "reorder"
+            "reorder",
+            "sort",
+            "describe",
+            "test",
+            "test_add_rows",
+            "apply_test",
+            "discard_test"
           ],
           "type": "string"
         },
         "after_sheet_id": {
+          "type": "string"
+        },
+        "column": {
           "type": "string"
         },
         "columns": {
@@ -1501,6 +1615,26 @@
           },
           "minItems": 1,
           "type": "array"
+        },
+        "description": {
+          "type": "string"
+        },
+        "direction": {
+          "enum": [
+            "asc",
+            "desc"
+          ],
+          "type": "string"
+        },
+        "dry_run": {
+          "type": "boolean"
+        },
+        "how": {
+          "enum": [
+            "top",
+            "random"
+          ],
+          "type": "string"
         },
         "name": {
           "type": "string"
@@ -1512,16 +1646,222 @@
           "minItems": 1,
           "type": "array"
         },
+        "row_ids": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "rows": {
+          "maximum": 50,
+          "minimum": 1,
+          "type": "integer"
+        },
         "sheet_id": {
           "type": "string"
         },
         "table_id": {
           "type": "string"
+        },
+        "webhook": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "type": "object"
+    },
+    "manage_sheet_webhook": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "enum": [
+            "get",
+            "create",
+            "turn_on",
+            "turn_off",
+            "rotate",
+            "add_field",
+            "remove_field",
+            "new_token",
+            "remove_token",
+            "set_auto_delete",
+            "auto_delete_off",
+            "delete"
+          ],
+          "type": "string"
+        },
+        "as": {
+          "enum": [
+            "text",
+            "json"
+          ],
+          "type": "string"
+        },
+        "column": {
+          "type": "string"
+        },
+        "copy_to_sheet_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "field_id": {
+          "type": "string"
+        },
+        "json_path": {
+          "type": "string"
+        },
+        "keep_rows": {
+          "maximum": 9007199254740991,
+          "minimum": -9007199254740991,
+          "type": "integer"
+        },
+        "mode": {
+          "enum": [
+            "actions_finish",
+            "rules"
+          ],
+          "type": "string"
+        },
+        "sheet_id": {
+          "type": "string"
+        },
+        "success_column": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "where": {
+          "anyOf": [
+            {
+              "items": {
+                "anyOf": [
+                  {
+                    "properties": {
+                      "column": {
+                        "type": "string"
+                      },
+                      "enabled": {
+                        "type": "boolean"
+                      },
+                      "operator": {
+                        "enum": [
+                          "eq",
+                          "neq",
+                          "contains",
+                          "not_contains",
+                          "starts_with",
+                          "ends_with",
+                          "empty",
+                          "not_empty",
+                          "any_of",
+                          "not_any_of",
+                          "gt",
+                          "gte",
+                          "lt",
+                          "lte",
+                          "date_eq",
+                          "date_neq",
+                          "date_gt",
+                          "date_gte",
+                          "date_lt",
+                          "date_lte",
+                          "has_error",
+                          "has_result",
+                          "not_run",
+                          "condition_not_met",
+                          "running",
+                          "out_of_date"
+                        ],
+                        "type": "string"
+                      },
+                      "value": {
+                        "type": "string"
+                      },
+                      "values": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "maxItems": 200,
+                        "minItems": 1,
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "operator"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "or": {
+                        "items": {
+                          "additionalProperties": {},
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "type": "object"
+                        },
+                        "maxItems": 50,
+                        "minItems": 1,
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "or"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "and": {
+                        "items": {
+                          "additionalProperties": {},
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "type": "object"
+                        },
+                        "maxItems": 50,
+                        "minItems": 1,
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "and"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              "maxItems": 50,
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
         "action",
-        "table_id"
+        "sheet_id"
       ],
       "type": "object"
     },
@@ -1531,6 +1871,8 @@
           "enum": [
             "create",
             "rename",
+            "star",
+            "unstar",
             "delete",
             "create_sample"
           ],
@@ -1541,6 +1883,9 @@
         },
         "table_id": {
           "type": "string"
+        },
+        "webhook": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -1818,6 +2163,13 @@
         "expected_view_version": {
           "type": "string"
         },
+        "format": {
+          "enum": [
+            "json",
+            "csv"
+          ],
+          "type": "string"
+        },
         "group_by": {
           "items": {
             "type": "string"
@@ -2031,31 +2383,50 @@
           ],
           "type": "string"
         },
+        "keep_doing": {
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "column": {
+                  "type": "string"
+                },
+                "keep": {
+                  "enum": [
+                    "oldest",
+                    "newest"
+                  ],
+                  "type": "string"
+                },
+                "match": {
+                  "enum": [
+                    "text",
+                    "email",
+                    "domain",
+                    "phone",
+                    "company",
+                    "person_name"
+                  ],
+                  "type": "string"
+                },
+                "phone_country": {
+                  "maxLength": 2,
+                  "minLength": 2,
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "type": "boolean"
+            }
+          ]
+        },
         "sheet_id": {
           "type": "string"
         }
       },
       "required": [
-        "columns",
-        "sheet_id"
-      ],
-      "type": "object"
-    },
-    "rename_column": {
-      "properties": {
-        "column": {
-          "type": "string"
-        },
-        "new_name": {
-          "type": "string"
-        },
-        "sheet_id": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "column",
-        "new_name",
         "sheet_id"
       ],
       "type": "object"
@@ -2088,25 +2459,6 @@
           "type": "array"
         }
       },
-      "type": "object"
-    },
-    "restore_setup_version": {
-      "additionalProperties": false,
-      "properties": {
-        "dry_run": {
-          "type": "boolean"
-        },
-        "sheet_id": {
-          "type": "string"
-        },
-        "version_id": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "sheet_id",
-        "version_id"
-      ],
       "type": "object"
     },
     "run_ai_column": {
@@ -2193,6 +2545,9 @@
           "maxLength": 2000,
           "type": "string"
         },
+        "save_only": {
+          "type": "boolean"
+        },
         "search_engine": {
           "enum": [
             "auto",
@@ -2253,10 +2608,174 @@
       ],
       "type": "object"
     },
+    "run_columns": {
+      "additionalProperties": false,
+      "properties": {
+        "allow_unpriced": {
+          "type": "boolean"
+        },
+        "columns": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "type": "array"
+        },
+        "estimate_only": {
+          "type": "boolean"
+        },
+        "max_cost_usd": {
+          "exclusiveMinimum": 0,
+          "maximum": 1000000,
+          "type": "number"
+        },
+        "mode": {
+          "enum": [
+            "empty",
+            "errored",
+            "out_of_date",
+            "empty_or_out_of_date",
+            "all"
+          ],
+          "type": "string"
+        },
+        "row_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 10000,
+          "minItems": 1,
+          "type": "array"
+        },
+        "sheet_id": {
+          "type": "string"
+        },
+        "webhook_id": {
+          "type": "string"
+        },
+        "where": {
+          "items": {
+            "anyOf": [
+              {
+                "properties": {
+                  "column": {
+                    "type": "string"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "operator": {
+                    "enum": [
+                      "eq",
+                      "neq",
+                      "contains",
+                      "not_contains",
+                      "starts_with",
+                      "ends_with",
+                      "empty",
+                      "not_empty",
+                      "any_of",
+                      "not_any_of",
+                      "gt",
+                      "gte",
+                      "lt",
+                      "lte",
+                      "date_eq",
+                      "date_neq",
+                      "date_gt",
+                      "date_gte",
+                      "date_lt",
+                      "date_lte",
+                      "has_error",
+                      "has_result",
+                      "not_run",
+                      "condition_not_met",
+                      "running",
+                      "out_of_date"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {
+                    "type": "string"
+                  },
+                  "values": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 200,
+                    "minItems": 1,
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "operator"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "or": {
+                    "items": {
+                      "additionalProperties": {},
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "type": "object"
+                    },
+                    "maxItems": 50,
+                    "minItems": 1,
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "or"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "and": {
+                    "items": {
+                      "additionalProperties": {},
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "type": "object"
+                    },
+                    "maxItems": 50,
+                    "minItems": 1,
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "and"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "maxItems": 50,
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "columns",
+        "mode",
+        "sheet_id"
+      ],
+      "type": "object"
+    },
     "run_enrichment": {
       "additionalProperties": false,
       "properties": {
         "add_to_column": {
+          "type": "boolean"
+        },
+        "allow_unpriced": {
           "type": "boolean"
         },
         "auto_run": {
@@ -2315,6 +2834,12 @@
         "estimate_only": {
           "type": "boolean"
         },
+        "fields": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "fresh": {
           "type": "boolean"
         },
@@ -2359,6 +2884,33 @@
             "type": "string"
           },
           "type": "object"
+        },
+        "items": {
+          "items": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "maxItems": 1000,
+          "minItems": 1,
+          "type": "array"
         },
         "list": {
           "additionalProperties": false,
@@ -2429,6 +2981,11 @@
           "exclusiveMinimum": 0,
           "type": "number"
         },
+        "max_cost_usd": {
+          "exclusiveMinimum": 0,
+          "maximum": 1000000,
+          "type": "number"
+        },
         "outputs": {
           "items": {
             "additionalProperties": false,
@@ -2480,6 +3037,9 @@
         "run_if": {
           "maxLength": 2000,
           "type": "string"
+        },
+        "save_only": {
+          "type": "boolean"
         },
         "sheet_id": {
           "type": "string"
@@ -2553,8 +3113,6 @@
         }
       },
       "required": [
-        "column_name",
-        "sheet_id",
         "tool_id"
       ],
       "type": "object"
@@ -2649,6 +3207,9 @@
             }
           ]
         },
+        "save_only": {
+          "type": "boolean"
+        },
         "sheet_id": {
           "type": "string"
         },
@@ -2684,88 +3245,6 @@
       ],
       "type": "object"
     },
-    "save_setup": {
-      "additionalProperties": false,
-      "properties": {
-        "columns": {
-          "items": {
-            "type": "string"
-          },
-          "minItems": 1,
-          "type": "array"
-        },
-        "description": {
-          "type": "string"
-        },
-        "include_upstream": {
-          "type": "boolean"
-        },
-        "name": {
-          "type": "string"
-        },
-        "preview": {
-          "type": "boolean"
-        },
-        "sheet_id": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "columns",
-        "sheet_id"
-      ],
-      "type": "object"
-    },
-    "search_enrichments": {
-      "properties": {
-        "query": {
-          "maxLength": 200,
-          "type": "string"
-        }
-      },
-      "type": "object"
-    },
-    "set_auto_dedupe": {
-      "additionalProperties": false,
-      "properties": {
-        "column": {
-          "type": "string"
-        },
-        "keep": {
-          "enum": [
-            "oldest",
-            "newest"
-          ],
-          "type": "string"
-        },
-        "match": {
-          "enum": [
-            "text",
-            "email",
-            "domain",
-            "phone",
-            "company",
-            "person_name"
-          ],
-          "type": "string"
-        },
-        "off": {
-          "type": "boolean"
-        },
-        "phone_country": {
-          "maxLength": 2,
-          "minLength": 2,
-          "type": "string"
-        },
-        "sheet_id": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "sheet_id"
-      ],
-      "type": "object"
-    },
     "set_auto_run": {
       "additionalProperties": false,
       "properties": {
@@ -2792,6 +3271,26 @@
           "type": "string"
         },
         "sheet_id": {
+          "type": "string"
+        },
+        "start_delay_s": {
+          "anyOf": [
+            {
+              "maximum": 600,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "waiting_rows": {
+          "enum": [
+            "run",
+            "empty_only",
+            "skip"
+          ],
           "type": "string"
         },
         "where": {
@@ -2832,27 +3331,6 @@
       ],
       "type": "object"
     },
-    "set_column_order": {
-      "additionalProperties": false,
-      "properties": {
-        "order": {
-          "items": {
-            "type": "string"
-          },
-          "maxItems": 200,
-          "minItems": 1,
-          "type": "array"
-        },
-        "sheet_id": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "order",
-        "sheet_id"
-      ],
-      "type": "object"
-    },
     "set_default_model": {
       "properties": {
         "model": {
@@ -2874,43 +3352,144 @@
       ],
       "type": "object"
     },
-    "set_description": {
+    "social_research": {
+      "additionalProperties": false,
       "properties": {
-        "column": {
-          "type": "string"
-        },
-        "description": {
-          "type": "string"
-        },
-        "sheet_id": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "description",
-        "sheet_id"
-      ],
-      "type": "object"
-    },
-    "sort_sheet": {
-      "properties": {
-        "column": {
-          "type": "string"
-        },
-        "direction": {
+        "action": {
           "enum": [
-            "asc",
-            "desc"
+            "create",
+            "find_posts",
+            "get"
           ],
           "type": "string"
         },
+        "estimate_only": {
+          "type": "boolean"
+        },
+        "id": {
+          "type": "string"
+        },
+        "max_cost_usd": {
+          "type": "number"
+        },
+        "min_comments": {
+          "maximum": 1000000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "min_views": {
+          "maximum": 1000000000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "platforms": {
+          "items": {
+            "enum": [
+              "tiktok",
+              "instagram",
+              "youtube",
+              "x"
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "posted_within_days": {
+          "maximum": 365,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "posts_per_search": {
+          "maximum": 50,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "searches": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 10,
+          "type": "array"
+        },
+        "steps": {
+          "items": {
+            "enum": [
+              "transcript",
+              "breakdown",
+              "creator",
+              "usual",
+              "comments"
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "time_zone": {
+          "type": "string"
+        },
+        "topic": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "type": "object"
+    },
+    "stored_answers": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "enum": [
+            "add_column",
+            "add_rows"
+          ],
+          "type": "string"
+        },
+        "column": {
+          "type": "string"
+        },
+        "column_name": {
+          "maxLength": 200,
+          "type": "string"
+        },
+        "dedupe_path": {
+          "type": "string"
+        },
+        "fields": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "column_name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "column_name",
+              "path"
+            ],
+            "type": "object"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "json_path": {
+          "maxLength": 1000,
+          "type": "string"
+        },
+        "row_id": {
+          "type": "string"
+        },
         "sheet_id": {
           "type": "string"
         }
       },
       "required": [
+        "action",
         "column",
-        "direction",
         "sheet_id"
       ],
       "type": "object"
@@ -3246,109 +3825,6 @@
       ],
       "type": "object"
     },
-    "undo_run": {
-      "properties": {
-        "column": {
-          "type": "string"
-        },
-        "dry_run": {
-          "type": "boolean"
-        },
-        "run_id": {
-          "type": "string"
-        },
-        "run_type": {
-          "enum": [
-            "ai",
-            "http",
-            "enrichment",
-            "waterfall"
-          ],
-          "type": "string"
-        },
-        "sheet_id": {
-          "type": "string"
-        }
-      },
-      "type": "object"
-    },
-    "update_cells": {
-      "properties": {
-        "data": {
-          "additionalProperties": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "number"
-              },
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "propertyNames": {
-            "type": "string"
-          },
-          "type": "object"
-        },
-        "idempotency_key": {
-          "maxLength": 200,
-          "minLength": 1,
-          "type": "string"
-        },
-        "row_id": {
-          "type": "string"
-        },
-        "sheet_id": {
-          "type": "string"
-        },
-        "updates": {
-          "items": {
-            "properties": {
-              "data": {
-                "additionalProperties": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "type": "number"
-                    },
-                    {
-                      "type": "boolean"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "propertyNames": {
-                  "type": "string"
-                },
-                "type": "object"
-              },
-              "row_id": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "data",
-              "row_id"
-            ],
-            "type": "object"
-          },
-          "maxItems": 1000,
-          "minItems": 1,
-          "type": "array"
-        }
-      },
-      "type": "object"
-    },
     "waterfall_column": {
       "additionalProperties": false,
       "properties": {
@@ -3497,6 +3973,9 @@
         "run_if": {
           "maxLength": 2000,
           "type": "string"
+        },
+        "save_only": {
+          "type": "boolean"
         },
         "sheet_id": {
           "type": "string"
@@ -4151,26 +4630,6 @@
       "required": [
         "column_name",
         "sheet_id"
-      ],
-      "type": "object"
-    },
-    "write_formula": {
-      "additionalProperties": false,
-      "properties": {
-        "model": {
-          "type": "string"
-        },
-        "sheet_id": {
-          "type": "string"
-        },
-        "words": {
-          "maxLength": 1000,
-          "type": "string"
-        }
-      },
-      "required": [
-        "sheet_id",
-        "words"
       ],
       "type": "object"
     },

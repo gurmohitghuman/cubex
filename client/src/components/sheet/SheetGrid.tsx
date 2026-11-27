@@ -95,6 +95,8 @@ export interface SheetGridProps {
   onOpenEnrichment?: (target: EnrichOpenTarget) => void
   // Opens the Waterfall drawer on a column's setup or a run (Waterfall Actions).
   onOpenWaterfall?: (target: WaterfallOpenTarget) => void
+  // Opens the HTTP API dialog on an HTTP API column's setup (its Edit).
+  onEditHTTPColumn?: (column: string) => void
   // Save as setup, from a filled column's menu.
   onSaveSetup?: (column: string) => void
   // The view showing: its hidden columns, and "Hide column" in the column menu.
@@ -112,6 +114,7 @@ export interface SheetGridProps {
   onLoadEarlier?: (windowStart: number, firstRowIndex: number) => void
   onOpenSearch?: () => void
   registerSearch?: AGGridSpreadsheetProps['registerSearch']
+  readOnly?: boolean
 }
 
 export const SheetGrid: React.FC<SheetGridProps> = (props) => {
@@ -125,7 +128,7 @@ export const SheetGrid: React.FC<SheetGridProps> = (props) => {
     fetchActiveHTTPRuns, fetchActiveAIRuns, reloadSheetData, rowGenerationRef, registerClearSelection, registerViewport,
     onOpenEnrichment, autorun, columnSpend, onAutorunAction, cleanColumns, onOpenClean, formulaColumns, onOpenFormula,
     onSaveSetup, hiddenColumns, onHideColumn, rowFilterActive, onClearAllFilters, lookupColumns, onOpenLookup,
-    columnDescriptions, onEditDescription, windowStart, onLoadEarlier, onOpenSearch, registerSearch,
+    columnDescriptions, onEditDescription, windowStart, onLoadEarlier, onOpenSearch, registerSearch, readOnly,
     onOpenWaterfall, runColumns,
   } = props
 
@@ -176,6 +179,7 @@ export const SheetGrid: React.FC<SheetGridProps> = (props) => {
     onRunHTTPForRows: actions.handleRunHTTPForRows,
     onRunFirstRows: (kind, column, columnName) => runDialogs.askFirstRows({ kind, column, columnName }),
     onEditAIColumn: actions.handleEditAIColumn,
+    onEditHTTPColumn: props.onEditHTTPColumn,
     canEditAIColumn: (column) => !structuredAIColumns?.has(column),
     onStopRunForColumn: actions.handleStopRunForColumn,
     onEnrichAction: enrich.onEnrichAction,
@@ -236,7 +240,7 @@ export const SheetGrid: React.FC<SheetGridProps> = (props) => {
       registerClearSelection={registerClearSelection}
       registerViewport={registerViewport}
       windowStart={windowStart} onLoadEarlier={onLoadEarlier} onOpenSearch={onOpenSearch}
-      registerSearch={registerSearch}
+      registerSearch={registerSearch} readOnly={readOnly}
       className="w-full h-full"
     />
       </div>

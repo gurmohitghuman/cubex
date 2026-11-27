@@ -2,10 +2,14 @@
 // (services/enrich-run-prepare.ts) and the drawer's estimate figures for the
 // rows the run would take, rows that reuse an earlier found answer at $0 left
 // out of the price. A pure read: nothing is created, no treg tool is called
-// (the catalog and the balance are reads).
+// (the catalog and the balance are reads). An enrichment call's items are
+// priced the same way without a sheet (from: EstimateRowsFrom with items;
+// services/enrich-run-prepare-items.ts checks them as the start would).
 import type { EnrichRunInput } from '../lib/enrich-run-input';
 import { snakeProviderField } from '../lib/enrich-provider-names';
 import { prepareEnrichmentStart } from './enrich-run-prepare';
+import { prepareEnrichmentOnItems } from './enrich-run-prepare-items';
+import type { EstimateRowsFrom } from './run-estimate-rows';
 import { estimateEnrichment, readEnrichBalance } from './enrich-setup';
 import { getTregToken } from './treg-key';
 import { dailyLimitOf } from './enrich-agent-shared';
@@ -14,13 +18,14 @@ import type { RunFail } from './run-shared';
 
 const round6 = (n: number) => Math.round(n * 1e6) / 1e6;
 
-export async function agentEnrichEstimate(userId: string, sheetId: string, input: EnrichRunInput) {
-  const prepared = await prepareEnrichmentStart(userId, sheetId, input);
+export async function agentEnrichEstimate(userId: string, from: EstimateRowsFrom, input: EnrichRunInput) {
+  const prepared = from.sheetId === null ? await prepareEnrichmentOnItems(input, from.items)
+    : await prepareEnrichmentStart(userId, from.sheetId, input);
   if ('fail' in prepared) return prepared as RunFail;
   const { config, upperBound, statusColumn, outputNames, listPlan } = prepared.ok;
   const e = config.enrichment;
   const list = input.list;
-  const reuse = await countReusable(userId, reuseJobFor(userId, sheetId, input, prepared.ok));
+  const reuse = await countReusable(userId, reuseJobFor(userId, from, input, prepared.ok));
   const est = await estimateEnrichment(userId, {
     toolId: input.toolId, rows: Math.max(0, upperBound - reuse.rows), preset: input.preset,
     given: Object.keys(input.inputs).sort(),

@@ -61,8 +61,10 @@ function committedUsd(kind: 'ai' | 'http', runId: string): number {
   const run = (kind === 'ai'
     ? db.prepare('SELECT status, spend_limit_usd AS lim, spend_cut_off_micro AS cut FROM ai_runs WHERE id = ?')
       .get(runId)
-    : db.prepare(`SELECT status, CASE WHEN json_valid(config) THEN json_extract(config, '$.enrichment.spendLimitUsd')
-        END AS lim, 0 AS cut FROM http_runs WHERE id = ?`).get(runId)) as
+    // An enrichment's or (a column run's) a waterfall's run limit.
+    : db.prepare(`SELECT status, CASE WHEN json_valid(config) THEN COALESCE(json_extract(config,
+        '$.enrichment.spendLimitUsd'), json_extract(config, '$.waterfall.spendLimitUsd')) END AS lim, 0 AS cut
+        FROM http_runs WHERE id = ?`).get(runId)) as
     { status: string; lim: number | null; cut: number } | undefined;
   const spent = billed + (run?.cut ?? 0) / 1e6;
   return run && LIVE.has(run.status) && typeof run.lim === 'number' ? Math.max(spent, run.lim) : spent;
@@ -72,10 +74,13 @@ function committedUsd(kind: 'ai' | 'http', runId: string): number {
 // refused: why not; the runner pauses the setup with it.
 export function stepGate(r: SetupRunRow, i: number, steps: StepRecord[])
   : { refused: string } | { limitUsd: number | null } {
-  const plan = planOf(r), step: SetupStep = plan.spec.steps[i];
-  if (step.kind !== 'ai' && step.kind !== 'enrichment') return { limitUsd: null };
+  const plan = planOf(r);
+  // What spends: an AI or enrichment step; a column run's AI, enrichment or waterfall column.
+  const step: SetupStep | null = plan.columns ? null : plan.spec.steps[i];
+  const spends = step ? step.kind === 'ai' || step.kind === 'enrichment' : plan.columns!.steps[i].kind !== 'http';
+  if (!spends) return { limitUsd: null };
   // At the setup's token's spend cap it doesn't start (it would write its placeholders only to pause).
-  const capped = actorSpendRefusal(r.user_id, step.kind === 'enrichment' ? step.maxCostPerRowUsd : null);
+  const capped = actorSpendRefusal(r.user_id, step?.kind === 'enrichment' ? step.maxCostPerRowUsd : null);
   if (capped) return { refused: capped };
   const c = plan.ceiling;
   const high = c?.highUsd[i];
@@ -92,9 +97,12 @@ export function stepGate(r: SetupRunRow, i: number, steps: StepRecord[])
   if (left > 0 && micro(high) + micro(c.rowMostUsd?.[i] ?? 0) <= micro(left)) return { limitUsd: left };
   const most = c.rowMostUsd?.[i] ? `, and its spend limit needs room for one row at its most on top `
     + `(up to ${money(c.rowMostUsd[i])})` : '';
+  const next = plan.columns
+    ? 'Stop it, then run the columns again with a max_cost_usd that covers what is left to do.'
+    : 'Stop the setup, then use it again with a max_cost_usd that covers what is left to do: it carries on where '
+      + 'it stopped, and the new ceiling counts only what it spends from then on.';
   return {
     refused: `it could cost up to ${money(high)}${most}, and ${money(committed)} of the ${money(c.maxCostUsd)} `
-      + 'ceiling is spent or held. Stop the setup, then use it again with a max_cost_usd that covers what is '
-      + 'left to do: it carries on where it stopped, and the new ceiling counts only what it spends from then on.',
+      + `ceiling is spent or held. ${next}`,
   };
 }

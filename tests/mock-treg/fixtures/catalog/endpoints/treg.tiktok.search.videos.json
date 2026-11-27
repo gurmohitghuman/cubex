@@ -1,0 +1,470 @@
+{
+ "endpoint": {
+  "id": "treg.tiktok.search.videos",
+  "provider": "treg",
+  "provider_display": "treg",
+  "name": "tiktok.search.videos \u2014 routed: best of 4 providers, own keys first",
+  "summary": "Search TikTok videos by keyword, first page only \u2014 provider-native video rows in `videos`; to page deeper, call the provider named in X-Treg-Served-By directly with its offset or cursor",
+  "method": "POST",
+  "path": "/tiktok.search.videos",
+  "scope": "",
+  "tier": "core",
+  "kind": "routed",
+  "domain": "search",
+  "call_template": "treg call treg.tiktok.search.videos",
+  "cost": {
+   "type": "per_success",
+   "value": 0.001,
+   "currency": "USD",
+   "per": 1,
+   "unit": "call",
+   "source": "inferred",
+   "confidence": "documented",
+   "checked": null,
+   "varies": true,
+   "note": "Not free: $0.001\u2013$0.01476 per hit across 4 providers, 0% markup. A call also pays each provider tried before the hit that bills a miss (3 of 4 do), up to X-Treg-Route-Max-Cost (default $1); X-Treg-Route-Waterfall: 0 pays for one provider only",
+   "usd": 0.001
+  },
+  "async": null,
+  "platform_eligible": true,
+  "platform_blocked": null,
+  "miss": {
+   "status": 200,
+   "means": "output.videos == []"
+  },
+  "status": null,
+  "status_note": null,
+  "superseded_by": null,
+  "verified": null,
+  "added": null,
+  "docs_url": "",
+  "has_example": false,
+  "input": {
+   "bodyType": "json",
+   "body": {
+    "q": {
+     "type": "string",
+     "required": false,
+     "note": "identity"
+    },
+    "limit": {
+     "type": "integer",
+     "required": false,
+     "note": "filter; default 10; videos per page where the provider takes a count"
+    }
+   },
+   "note": "Send what you know; treg sends each provider only the fields it accepts ({q}). On a miss it tries the next provider, cheapest first. Options are X-Treg-Route-* headers, never body fields. The answer is {output, raw, _treg}; X-Treg-Served-By names the provider."
+  },
+  "routed_children": [
+   "anyapi.tiktok.search.videos",
+   "justoneapi.tiktok.search.videos",
+   "scrapecreators.tiktok.search.videos",
+   "tikhub.tiktok.search.videos"
+  ],
+  "capability": "tiktok.search.videos",
+  "capability_description": "Search videos by keyword",
+  "platform": "tiktok",
+  "platform_label": "TikTok",
+  "observed": {
+   "samples": 87411,
+   "decided": 87396,
+   "ok_rate": 0.9999,
+   "p50_ms": null,
+   "p95_ms": null,
+   "last_ok_days": 0,
+   "hit_rate": null,
+   "hit_samples": 0
+  },
+  "wallet": {
+   "payable": false,
+   "reason": "routed",
+   "note": "a routed treg tool needs a treg account; sign in to call it"
+  }
+ },
+ "provider": {
+  "service": "treg",
+  "display_name": "treg"
+ },
+ "siblings": [
+  {
+   "id": "anyapi.tiktok.search.videos",
+   "provider": "anyapi",
+   "provider_display": "AnyAPI",
+   "name": "TikTok Keyword Search",
+   "scope": "any_account",
+   "kind": "data",
+   "cost": {
+    "type": "per_call",
+    "value": 0.0012,
+    "currency": "USD",
+    "unit": "call",
+    "reported_charge": {
+     "path": "costUsd",
+     "unit": "usd"
+    },
+    "usd": 0.0012
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-09-19",
+   "params": [
+    "fields",
+    "max_items",
+    "summary",
+    "jq",
+    "cursor",
+    "datePosted",
+    "query",
+    "sortBy"
+   ],
+   "observed": {
+    "samples": 164442,
+    "decided": 163628,
+    "ok_rate": 0.9987,
+    "p50_ms": 2967,
+    "p95_ms": 4985,
+    "last_ok_days": 0,
+    "hit_rate": 0.9161,
+    "hit_samples": 163328
+   },
+   "reviews": {
+    "teams": 50,
+    "share": {
+     "useful": 0.66,
+     "partly": 0.33,
+     "not_useful": 0.01
+    }
+   }
+  },
+  {
+   "id": "crawl4ai.tiktok.search.videos",
+   "provider": "crawl4ai",
+   "provider_display": "Crawl4AI",
+   "name": "TikTok videos for a search",
+   "scope": "any_account",
+   "kind": "data",
+   "cost": {
+    "type": "per_success",
+    "value": 0.5,
+    "currency": "credit",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.0005
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-10-11",
+   "params": [
+    "limit",
+    "query"
+   ],
+   "observed": {
+    "samples": 23311,
+    "decided": 23297,
+    "ok_rate": 0.7063,
+    "p50_ms": 15951,
+    "p95_ms": 91741,
+    "last_ok_days": 0,
+    "hit_rate": 0.983,
+    "hit_samples": 16455
+   },
+   "reviews": {
+    "teams": 10,
+    "share": {
+     "useful": 0.7,
+     "partly": 0.2,
+     "not_useful": 0.1
+    }
+   }
+  },
+  {
+   "id": "justoneapi.tiktok.search.videos",
+   "provider": "justoneapi",
+   "provider_display": "Just One API",
+   "name": "Search TikTok posts by keyword",
+   "scope": "any_account",
+   "kind": "data",
+   "cost": {
+    "type": "per_success",
+    "value": 0.1,
+    "currency": "CNY",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.01476
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "keyword",
+    "offset",
+    "sortType",
+    "publishTime",
+    "region"
+   ],
+   "observed": {
+    "samples": 834,
+    "decided": 780,
+    "ok_rate": 1.0,
+    "p50_ms": 6143,
+    "p95_ms": 12453,
+    "last_ok_days": 0,
+    "hit_rate": 0.0474,
+    "hit_samples": 780
+   },
+   "reviews": {
+    "teams": 0
+   }
+  },
+  {
+   "id": "scrapecreators.tiktok.search.videos",
+   "provider": "scrapecreators",
+   "provider_display": "ScrapeCreators",
+   "name": "Search TikTok videos by keyword",
+   "scope": "any_account",
+   "kind": "data",
+   "cost": {
+    "type": "per_call",
+    "value": 1,
+    "currency": "credit",
+    "per": 1,
+    "unit": "call",
+    "reported_charge": {
+     "path": "credits_charged",
+     "unit": "credit"
+    },
+    "usd": 0.00188
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "query",
+    "date_posted",
+    "sort_by",
+    "region",
+    "cursor",
+    "trim"
+   ],
+   "observed": {
+    "samples": 90611,
+    "decided": 90443,
+    "ok_rate": 0.9991,
+    "p50_ms": 3951,
+    "p95_ms": 5701,
+    "last_ok_days": 0,
+    "hit_rate": 0.9735,
+    "hit_samples": 90063
+   },
+   "reviews": {
+    "teams": 25,
+    "share": {
+     "useful": 0.67,
+     "partly": 0.32,
+     "not_useful": 0.01
+    }
+   }
+  },
+  {
+   "id": "tikhub.tiktok.search.videos",
+   "provider": "tikhub",
+   "provider_display": "TikHub",
+   "name": "Search TikTok videos by keyword",
+   "scope": "any_account",
+   "kind": "data",
+   "cost": {
+    "type": "per_call",
+    "value": 0.001,
+    "currency": "USD",
+    "per": 1,
+    "unit": "call",
+    "usd": 0.001
+   },
+   "platform_eligible": true,
+   "status": null,
+   "status_note": null,
+   "superseded_by": null,
+   "verified": "2026-07-28",
+   "params": [
+    "keyword",
+    "count",
+    "offset",
+    "sort_type",
+    "publish_time",
+    "region"
+   ],
+   "observed": {
+    "samples": 489559,
+    "decided": 480167,
+    "ok_rate": 0.9972,
+    "p50_ms": 3622,
+    "p95_ms": 5290,
+    "last_ok_days": 0,
+    "hit_rate": 0.9836,
+    "hit_samples": 476715
+   },
+   "reviews": {
+    "teams": 50,
+    "share": {
+     "useful": 0.75,
+     "partly": 0.2,
+     "not_useful": 0.05
+    }
+   }
+  }
+ ],
+ "related_capabilities": [
+  {
+   "endpoint_id": "treg.tiktok.comment.replies",
+   "capability": "tiktok.comment.replies",
+   "does": "List replies to a comment"
+  },
+  {
+   "endpoint_id": "treg.tiktok.search.users",
+   "capability": "tiktok.search.users",
+   "does": "Search users by keyword"
+  },
+  {
+   "endpoint_id": "treg.tiktok.user.profile",
+   "capability": "tiktok.user.profile",
+   "does": "Get a user's public profile"
+  },
+  {
+   "endpoint_id": "treg.tiktok.user.videos",
+   "capability": "tiktok.user.videos",
+   "does": "List a user's recent videos"
+  },
+  {
+   "endpoint_id": "treg.tiktok.video.comments",
+   "capability": "tiktok.video.comments",
+   "does": "List a video's comments"
+  }
+ ],
+ "routing": {
+  "contract": {
+   "identity": [
+    [
+     "q"
+    ]
+   ],
+   "output": {
+    "videos": {
+     "type": "array",
+     "items": {
+      "type": "object"
+     },
+     "required": true
+    },
+    "next_cursor": {
+     "type": "string"
+    },
+    "has_more": {
+     "type": "boolean"
+    }
+   },
+   "miss": "videos == []",
+   "derive": {}
+  },
+  "plan": [
+   {
+    "endpoint_id": "tikhub.tiktok.search.videos",
+    "accepts": [
+     [
+      "q"
+     ]
+    ],
+    "usd": 0.001,
+    "cost": {
+     "type": "per_call",
+     "usd": 0.001
+    },
+    "hit_rate": 0.9836,
+    "usd_per_hit": 0.0010166734444896298,
+    "works": 0.9972
+   },
+   {
+    "endpoint_id": "anyapi.tiktok.search.videos",
+    "accepts": [
+     [
+      "q"
+     ]
+    ],
+    "usd": 0.0012,
+    "cost": {
+     "type": "per_call",
+     "usd": 0.0012
+    },
+    "hit_rate": 0.9161,
+    "usd_per_hit": 0.0013099006658661718,
+    "works": 0.9987
+   },
+   {
+    "endpoint_id": "scrapecreators.tiktok.search.videos",
+    "accepts": [
+     [
+      "q"
+     ]
+    ],
+    "usd": 0.00188,
+    "cost": {
+     "type": "per_call",
+     "value": 1,
+     "currency": "credit",
+     "usd": 0.00188
+    },
+    "hit_rate": 0.9735,
+    "usd_per_hit": 0.001931176168464304,
+    "works": 0.9991
+   },
+   {
+    "endpoint_id": "justoneapi.tiktok.search.videos",
+    "accepts": [
+     [
+      "q"
+     ]
+    ],
+    "usd": 0.01476,
+    "cost": {
+     "type": "per_success",
+     "value": 0.1,
+     "currency": "CNY",
+     "usd": 0.01476
+    },
+    "hit_rate": 0.0474,
+    "usd_per_hit": 0.01476,
+    "works": 1.0
+   }
+  ],
+  "also": [
+   {
+    "endpoint_id": "crawl4ai.tiktok.search.videos",
+    "usd": 0.0005,
+    "cost": {
+     "type": "per_success",
+     "value": 0.5,
+     "currency": "credit",
+     "usd": 0.0005
+    }
+   }
+  ],
+  "max_cost_usd": 1.0,
+  "headers": {
+   "X-Treg-Route-Waterfall": "on by default: a miss tries the next provider; 0 = stop at the first miss",
+   "X-Treg-Route-Max-Cost": "USD ceiling for the whole call (default 1.00)",
+   "X-Treg-Route-Prefer": "provider[,\u2026], the name before an id's first dot (quickenrich), not an endpoint id",
+   "X-Treg-Route-Exclude": "provider[,\u2026], the name before an id's first dot (quickenrich), not an endpoint id",
+   "X-Treg-Route-Strict-Filters": "1 = never call a provider that cannot apply a filter you sent (answers 422, nothing charged); off by default \u2014 the answer names what was ignored in X-Treg-Ignored-Filters"
+  }
+ },
+ "call_template": "treg call treg.tiktok.search.videos",
+ "example_response": null,
+ "hints": []
+}

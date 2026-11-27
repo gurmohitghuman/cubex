@@ -2,7 +2,7 @@ import { test, expect, request as pwRequest } from '@playwright/test'
 import { authedApi, BASE, importCsv, makeAccessToken, seedSheet } from './helpers'
 import { call, callError, mcpClient } from './helpers-mcp'
 
-// The trash over REST and MCP (services/trash-*.ts): delete_rows, a CSV
+// The trash over REST and MCP (services/trash-*.ts): change_rows' delete, a CSV
 // replace, remove_duplicates and a deleted sheet answer with where they went
 // and how to restore; list_trash finds them, restore_from_trash brings them
 // back (a whole batch at their old places, or rows picked by a search); a
@@ -88,7 +88,7 @@ test('a CSV replace keeps the old rows in the trash; a deleted sheet stops its w
     await anon.dispose()
   })
 
-test('MCP: delete_rows, remove_duplicates and manage_sheet go to the trash; restore_from_trash brings them back',
+test('MCP: change_rows delete, remove_duplicates and manage_sheet go to the trash; restore_from_trash brings them back',
   async () => {
     const api = await authedApi()
     const { tableId, sheetId } = await seedSheet(api, 4)
@@ -96,9 +96,9 @@ test('MCP: delete_rows, remove_duplicates and manage_sheet go to the trash; rest
     const client = await mcpClient(token, 'e2e trash mcp')
     const rows = (await call(client, 'read_rows', { sheet_id: sheetId })).rows as Array<{ id: string }>
 
-    const del = await call(client, 'delete_rows', { sheet_id: sheetId, row_ids: [rows[0].id] })
+    const del = await call(client, 'change_rows', { action: 'delete', sheet_id: sheetId, row_ids: [rows[0].id] })
     expect(del.trash.how_to_restore).toContain('restore_from_trash')
-    await call(client, 'update_cells', { row_id: rows[2].id, data: { val: 'v1' } })
+    await call(client, 'change_rows', { action: 'update', row_id: rows[2].id, data: { val: 'v1' } })
     const dupes = await call(client, 'remove_duplicates', { sheet_id: sheetId, columns: ['val'], dry_run: false })
     expect(dupes.rows_removed).toBe(1)
     expect(dupes.trash.trash_id).toEqual(expect.any(Number))
@@ -123,7 +123,7 @@ test('MCP: delete_rows, remove_duplicates and manage_sheet go to the trash; rest
     const after = (await call(client, 'read_rows', { sheet_id: sheetId })).rows as Array<{ id: string }>
     expect(after.map(r => r.id).sort()).toEqual(rows.map(r => r.id).sort())
 
-    const history = await call(client, 'get_sheet_history', { sheet_id: sheetId })
+    const history = await call(client, 'get_sheet', { history: true, sheet_id: sheetId })
     expect(history.changes.some((c: { action: string; by: string }) =>
       c.action === 'sheet_restored' && c.by === 'the token "e2e trash mcp" (MCP)')).toBeTruthy()
     await client.close()
@@ -149,8 +149,10 @@ test('a row of a deleted sheet (alone or with its table) cannot be changed by it
         { data: { updates: [{ row_id: row.id, data: change }] } })
       expect(many.status()).toBe(404)
       expect(await many.json()).toEqual({ error: 'Sheet not found' })
-      expect(await callError(client, 'update_cells', { row_id: row.id, data: change })).toBe('Sheet not found')
-      expect(await callError(client, 'update_cells', { row_id: row.id, sheet_id: sheetId, data: change }))
+      expect(await callError(client, 'change_rows', {
+        action: 'update', row_id: row.id, data: change })).toBe('Sheet not found')
+      expect(await callError(client, 'change_rows', {
+        action: 'update', row_id: row.id, sheet_id: sheetId, data: change }))
         .toMatch(new RegExp('^Sheet not found\\. It is sheet "Sheet1" \\(table "[^"]+"\\), which is in the trash: '
           + `restore_from_trash with trash_ids \\[${trashId}\\] brings it back\\.$`))
     }
@@ -176,7 +178,7 @@ test('a row of a deleted sheet (alone or with its table) cannot be changed by it
     const back = await v1.patch(`/api/v1/rows/${row.id}`, { data: { data: change } })
     expect(back.status(), await back.text()).toBe(200)
     expect((await back.json()).data).toEqual(change)
-    expect((await call(client, 'update_cells', { row_id: row.id, data: { val: 'again' } })).data)
+    expect((await call(client, 'change_rows', { action: 'update', row_id: row.id, data: { val: 'again' } })).data)
       .toEqual({ val: 'again' })
     await client.close()
     await v1.dispose()

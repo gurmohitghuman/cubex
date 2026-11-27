@@ -9,6 +9,7 @@ import migMod from '../../server/src/db/migrate'
 import promptMod from '../../server/src/lib/formula-prompt'
 import aiMod from '../../server/src/services/formula-ai'
 import markMod from '../../server/src/lib/run-markers'
+import { passed } from './ends-on-its-own'
 const { db } = dbMod as typeof import('../../server/src/lib/db')
 const { runMigrations } = migMod as typeof import('../../server/src/db/migrate')
 const { formulaSamples, formulaUserMessage, readFormulaReply } =
@@ -107,5 +108,5 @@ async function main() {
 main().then(() => {
   if (failures) { console.log(`\n${failures} failure(s)`); process.exit(1) }
   console.log('\nAll formula AI assertions passed.')
-  process.exit(0)
+  passed()
 }).catch(e => { console.error(e); process.exit(1) })

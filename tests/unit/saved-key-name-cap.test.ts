@@ -155,7 +155,8 @@ try {
     await client.connect(clientSide)
     try {
       type Res = { content: Array<{ text: string }>; isError?: boolean }
-      const call = (name: string) => client.callTool({ name: 'list_saved_keys', arguments: { name } }) as Promise<Res>
+      const call = (name: string) => client.callTool({ name: 'get_account', arguments: {
+        action: 'saved_keys', name } }) as Promise<Res>
       for (const name of [RENAMED, OLDER]) {
         const res = await call(name)
         assert.ok(!res.isError, res.content[0]?.text)

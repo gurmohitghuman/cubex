@@ -1,11 +1,14 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { BarChart3, Bookmark, BookmarkPlus, GitCompare, History, MoreHorizontal, Settings2 } from 'lucide-react'
+import {
+  BarChart3, Bookmark, BookmarkPlus, CalendarClock, FlaskConical, GitCompare, History, MoreHorizontal, Settings2,
+} from 'lucide-react'
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { UsageDrawer } from '@/components/usage/UsageDrawer'
 import { HistoryDrawer } from '@/components/history/HistoryDrawer'
+import { SchedulesDrawer } from '@/components/schedules/SchedulesDrawer'
 import { MenuEntry, MenuHeading, useMenuFocus } from './MenuEntry'
 
 interface Props {
@@ -16,20 +19,27 @@ interface Props {
   // Save as setup with nothing ticked yet (the column menu opens it on a column).
   onSaveSetup: () => void
   onSetupVersions: () => void
+  // Try column changes on sample rows (hooks/sheet/useSheetTest.ts): the hint says which rows; off while one runs.
+  testChanges?: TestEntry
 }
 
+export interface TestEntry { onStart: () => void; hint: string; disabled: boolean }
+
 // The sheet header's ⋯ menu: setups (use one, save one, this sheet's versions,
-// manage them), what the sheet's runs cost (Usage) and its change log (History).
-export const SheetMoreMenu: React.FC<Props> = ({ sheetId, sheetName, onUseSetup, onSaveSetup, onSetupVersions }) => {
+// manage them), what the sheet's runs cost (Usage), its change log (History), its scheduled reruns, and trying
+// column changes on sample rows.
+export const SheetMoreMenu: React.FC<Props> = ({
+  sheetId, sheetName, onUseSetup, onSaveSetup, onSetupVersions, testChanges,
+}) => {
   const navigate = useNavigate()
-  const [drawer, setDrawer] = useState<'usage' | 'history' | null>(null)
+  const [drawer, setDrawer] = useState<'usage' | 'history' | 'schedules' | null>(null)
   const focus = useMenuFocus()
   return (
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button ref={focus.trigger} className="btn-secondary flex h-8 items-center px-2" data-testid="more-menu"
-            aria-label="More: setups, usage, history" title="Setups, usage and history">
+            aria-label="More: setups, usage, history, schedules" title="Setups, usage, history and schedules">
             <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
           </button>
         </DropdownMenuTrigger>
@@ -41,6 +51,10 @@ export const SheetMoreMenu: React.FC<Props> = ({ sheetId, sheetName, onUseSetup,
             testId="setups-menu-save" />
           <MenuEntry icon={GitCompare} label="This sheet's setup versions…" onSelect={focus.opening(onSetupVersions)}
             testId="setups-menu-versions" />
+          {testChanges && (
+            <MenuEntry icon={FlaskConical} label="Test changes on sample rows" hint={testChanges.hint}
+              onSelect={testChanges.onStart} disabled={testChanges.disabled} testId="sheet-test-start" />
+          )}
           <MenuEntry icon={Settings2} label="Manage setups" onSelect={() => navigate('/settings/setups')}
             testId="setups-menu-manage" />
           {sheetId && (
@@ -50,6 +64,8 @@ export const SheetMoreMenu: React.FC<Props> = ({ sheetId, sheetName, onUseSetup,
                 onSelect={focus.opening(() => setDrawer('usage'))} testId="sheet-usage" />
               <MenuEntry icon={History} label="History" hint="What changed on this sheet, and who"
                 onSelect={focus.opening(() => setDrawer('history'))} testId="sheet-history" />
+              <MenuEntry icon={CalendarClock} label="Scheduled reruns" hint="Run its run columns again on a schedule"
+                onSelect={focus.opening(() => setDrawer('schedules'))} testId="sheet-schedules" />
             </>
           )}
         </DropdownMenuContent>
@@ -59,6 +75,7 @@ export const SheetMoreMenu: React.FC<Props> = ({ sheetId, sheetName, onUseSetup,
           <UsageDrawer isOpen={drawer === 'usage'} onClose={() => setDrawer(null)} sheetId={sheetId}
             sheetName={sheetName} />
           <HistoryDrawer isOpen={drawer === 'history'} onClose={() => setDrawer(null)} sheetId={sheetId} />
+          <SchedulesDrawer isOpen={drawer === 'schedules'} onClose={() => setDrawer(null)} sheetId={sheetId} />
         </>
       )}
     </>

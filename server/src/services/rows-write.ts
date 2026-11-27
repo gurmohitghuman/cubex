@@ -7,9 +7,11 @@ import { countRows, jsonPath, parseRowData, verifySheetOwnership } from '../lib/
 import { MAX_ROWS_PER_SHEET } from '../lib/constants';
 import { bumpDataVersion, sheetHasActiveRun, checkColumns, TxnFail } from './data-plane-shared';
 import { busyMessage, nextRowIndex, sheetBusyWith } from '../lib/sheet-busy';
+import { CLOSING, copyClosing, sheetUnderTest, TESTING } from '../lib/sheet-test-hold';
 import { autorunRowsRemoved, markAutorunInputs } from '../lib/autorun-mark';
 import { sheetRunBlock } from './autorun-block';
 import { deleteRowsToTrash } from './trash-rows';
+import { deleteRowsInSlices, fitsOneDelete } from './trash-rows-sliced';
 import { settleEdits, settleRows, type AutoDedupeOutcome } from './auto-dedupe-settle';
 import { autoDedupeAnswer, type AutoDedupeAnswer } from './auto-dedupe-answer';
 import type { Surface } from './trash-answer';
@@ -50,6 +52,10 @@ export function appendRows(
   const created: Array<{ id: string; index: number }> = [];
   let deduped: AutoDedupeOutcome | null = null;
   db.transaction(() => {
+    // Appends land above a heavy operation's range, but a sheet being tested on a copy takes none, nor a copy
+    // whose test has ended.
+    const held = sheetUnderTest(sheetId) ? TESTING : copyClosing(sheetId) ? CLOSING : null;
+    if (held) { fail = { fail: 'busy', message: busyMessage(held) }; return; }
     fail = checkColumns(sheetId, userId, incomingCols);
     if (fail) return;
     const current = countRows(sheetId, userId);
@@ -150,12 +156,8 @@ export function deleteRowsByIds(
   let deleted = 0;
   let trashId: number | null = null;
   db.transaction(() => {
-    if (sheetHasActiveRun(sheetId, userId)) {
-      // An auto-run run gets its own words and the sheet yields (services/autorun-block.ts).
-      const block = sheetRunBlock(sheetId, userId, '');
-      fail = block?.message ? { fail: 'busy', message: block.message } : { fail: 'active_run' };
-      return;
-    }
+    fail = activeRunFail(sheetId, userId);
+    if (fail) return;
     const removed = deleteRowsToTrash(sheetId, userId, 'api', { ids: unique });
     if (removed.count === 0) return;
     deleted = removed.count;
@@ -165,4 +167,26 @@ export function deleteRowsByIds(
   }).immediate();
   if (fail) return fail;
   return { ok: { deleted, trashId } };
+}
+
+// An auto-run run gets its own words and the sheet yields (services/autorun-block.ts).
+function activeRunFail(sheetId: string, userId: string): TxnFail | null {
+  if (!sheetHasActiveRun(sheetId, userId)) return null;
+  const block = sheetRunBlock(sheetId, userId, '');
+  return block?.message ? { fail: 'busy', message: block.message } : { fail: 'active_run' };
+}
+
+// delete_rows over REST and MCP: deleteRowsByIds, or for rows too big for one transaction the same in slices,
+// the sheet held (services/trash-rows-sliced.ts).
+export async function deleteRowsByIdsSliced(
+  sheetId: string, userId: string, rowIds: string[],
+): Promise<DeleteRowsOutcome> {
+  const unique = Array.from(new Set(rowIds));
+  if (fitsOneDelete(sheetId, userId, { ids: unique })) return deleteRowsByIds(sheetId, userId, unique);
+  const out = await deleteRowsInSlices(sheetId, userId, { ids: unique }, {
+    how: 'api', check: () => activeRunFail(sheetId, userId), after: () => bumpDataVersion(sheetId, userId),
+  });
+  if ('busy' in out) return { fail: 'busy', message: out.busy };
+  if ('refused' in out) return out.refused;
+  return { ok: { deleted: out.ok.count, trashId: out.ok.trashId } };
 }

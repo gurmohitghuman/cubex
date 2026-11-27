@@ -132,3 +132,19 @@ function drained(res: Response): Promise<void> {
     res.on('close', done);
   });
 }
+
+// A download's turn on its connection. Requests pipelined on one connection are answered in order (Node queues each
+// response until the ones before it end), so an export waits for its response to own the socket before it holds its
+// sheet: else a slow reader of an earlier download on the same connection held this sheet too, for as long as that
+// one took. False: the client left first (nothing is held or used up for it).
+export function responseTurn(res: Response): Promise<boolean> {
+  if (res.socket) return Promise.resolve(!res.destroyed);
+  const conn = res.req?.socket;
+  if (!conn || conn.destroyed) return Promise.resolve(false);
+  return new Promise(resolve => {
+    const ready = () => { conn.off('close', gone); resolve(!res.destroyed); };
+    const gone = () => { res.off('socket', ready); resolve(false); };
+    res.once('socket', ready);
+    conn.once('close', gone);
+  });
+}

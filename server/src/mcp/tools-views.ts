@@ -1,14 +1,14 @@
 // manage_view: create, change and delete a sheet's saved views. The same
 // service as the app and REST /v1/sheets/:id/views (services/views.ts), so the
 // checks, limits and the sheet's History lines are the same; get_sheet lists
-// views and read_rows, export_csv and create_download_link read through one.
+// views and read_rows, read_rows' format csv and file_link read through one.
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/server';
 import { createView, deleteView, updateView, type ViewOutcome } from '../services/views';
-import { MAX_VIEWS_PER_SHEET } from '../lib/constants-filters';
 import { MAX_COLUMNS_PER_SHEET } from '../lib/constants';
 import { SHEET_ID, McpAuthCtx, ok, err, missingScope, registerTool } from './tool-helpers';
 import { nullableWhereLike } from './where-schema';
+import { GUIDE_POINTER } from './guides/guide';
 
 const answer = (out: ViewOutcome) => ('fail' in out ? err(out.message) : ok({ view: out.ok }));
 
@@ -17,13 +17,10 @@ export function registerViewTools(server: McpServer, ctx: McpAuthCtx): void {
     description:
       'Create, change or delete a saved view of a sheet: a name, a description, filters (a where) and hidden '
       + 'columns. A view never sorts, changes the column order or touches rows; get_sheet lists the views, and '
-      + 'read_rows, export_csv and create_download_link read through one with view. action create makes a copy '
-      + 'of the view the app shows (or of from), then sets what you pass: name is required and unique in the '
-      + `sheet, ignoring case; a sheet has at most ${MAX_VIEWS_PER_SHEET} views. It never switches the view `
-      + 'the app shows. change sets only what you pass on view: where and hidden_columns replace what the view '
-      + 'had, null clears them (a view with no filters shows every row). delete deletes view (never rows or '
+      + 'read_rows and file_link (download) read through one with view. It never switches the view '
+      + 'the app shows. delete deletes view (never rows or '
       + 'columns); the Default view can\'t be deleted, and deleting the view the app shows switches it to Default. '
-      + 'Each change is a line in the sheet\'s History.',
+      + GUIDE_POINTER,
     inputSchema: z.object({
       sheet_id: z.string().describe(SHEET_ID),
       action: z.enum(['create', 'change', 'delete']).describe('What to do with the view'),

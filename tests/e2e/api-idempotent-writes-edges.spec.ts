@@ -104,14 +104,15 @@ test('row-write replays answer after the sheet went to the trash, over REST and 
     row_ids: rowIds })]
   expect(await call(mcp, 'append_rows', { sheet_id: sheetId, rows: [{ val: 'a' }], idempotency_key: 'e2e-tr-ap' }))
     .toEqual({ rows: appended.rows, replayed: true, changed: wrote([appended.rows[0].id]) })
-  expect(await call(mcp, 'update_cells', { sheet_id: sheetId, updates, idempotency_key: 'e2e-tr-bt' }))
+  expect(await call(mcp, 'change_rows', { action: 'update', sheet_id: sheetId, updates, idempotency_key: 'e2e-tr-bt' }))
     .toEqual({ updated: 1, replayed: true, changed: wrote([updates[0].row_id]) })
 
   // A new key there writes nothing: the sheet isn't found (MCP adds that it is in the trash, and how to restore it).
   const fresh = await v1.post(`/api/v1/sheets/${sheetId}/rows`, { data: { ...rowsBody, idempotency_key: 'e2e-tr-2' } })
   expect(fresh.status()).toBe(404)
   expect(await fresh.json()).toEqual({ error: 'Sheet not found' })
-  expect(await callError(mcp, 'update_cells', { sheet_id: sheetId, updates, idempotency_key: 'e2e-tr-3' }))
+  expect(await callError(mcp, 'change_rows', {
+    action: 'update', sheet_id: sheetId, updates, idempotency_key: 'e2e-tr-3' }))
     .toMatch(new RegExp('^Sheet not found\\. It is sheet "Sheet1" \\(table "[^"]+"\\), which is in the trash: '
       + 'restore_from_trash with trash_ids \\[\\d+\\] brings it back\\.$'))
   await mcp.close()

@@ -39,8 +39,478 @@ export const CHANGES_RECORDED_AFTER = 'v0.8.12';
 // Newest first.
 export const AGENT_CHANGES: ReleaseChanges[] = [
   {
+    version: 'v0.8.48',
+    changes: [
+      {
+        change: 'server',
+        summary: 'Auto-dedupe takes rows with big cells out of a sheet a few at a time: what a call\'s own '
+          + 'transaction has no room for is checked in the background within seconds, counted in '
+          + 'auto_dedupe.checking_later.',
+        details: 'A transfer_rows near its cap leaves less room, a move\'s rows counting twice. Auto-run waits for '
+          + 'those checks, so a row about to go isn\'t paid for; read the rows again after a few seconds to see what '
+          + 'stayed.',
+      },
+      {
+        change: 'changed',
+        tools: ['hiring_signals'],
+        summary: 'hiring_signals takes action find_buyers: for each company on Companies without a buyer yet, the '
+          + 'person it would buy through, found by job title (Buyer, Buyer title, Buyer LinkedIn) with a verified '
+          + 'Buyer email.',
+        details: 'Paid: an estimate by default (it changes nothing), then estimate_only false with its high_usd as '
+          + 'max_cost_usd. The first run adds the columns (write scope too); buyer_titles defaults to ones from the '
+          + 'roles. get answers buyer.',
+      },
+      {
+        change: 'changed',
+        tools: ['hiring_signals'],
+        summary: 'hiring_signals has action "open_roles": the open roles at the companies on your own sheet '
+          + '(sheet_id, website_column, roles), each into an Open roles sheet, and a column counting each '
+          + 'company\'s roles.',
+        details: 'Paid, as check: estimate_only (default true) answers high_usd and a free count, then send '
+          + 'estimate_only false with max_cost_usd = high_usd. per_company caps roles per company (default 10). '
+          + 'A later run adds only new roles.',
+      },
+    ],
+  },
+  {
+    version: 'v0.8.47',
+    changes: [
+      {
+        change: 'renamed',
+        tools: ['update_cells'],
+        replaced_by: 'change_rows',
+        summary: 'update_cells is now change_rows with action "update": the same row_id and data, or sheet_id and '
+          + 'updates, and idempotency_key.',
+      },
+      {
+        change: 'renamed',
+        tools: ['delete_rows'],
+        replaced_by: 'change_rows',
+        summary: 'delete_rows is now change_rows with action "delete": the same sheet_id and row_ids.',
+      },
+      {
+        change: 'renamed',
+        tools: ['add_column'],
+        replaced_by: 'manage_column',
+        summary: 'add_column is now manage_column with action "add": the same sheet_id, name and description.',
+      },
+      {
+        change: 'renamed',
+        tools: ['rename_column'],
+        replaced_by: 'manage_column',
+        summary: 'rename_column is now manage_column with action "rename": the same sheet_id, column and new_name.',
+      },
+      {
+        change: 'renamed',
+        tools: ['delete_column'],
+        replaced_by: 'manage_column',
+        summary: 'delete_column is now manage_column with action "delete": the same sheet_id and column.',
+      },
+      {
+        change: 'renamed',
+        tools: ['set_column_order'],
+        replaced_by: 'manage_column',
+        summary: 'set_column_order is now manage_column with action "reorder": the same sheet_id and order.',
+      },
+      {
+        change: 'renamed',
+        tools: ['set_description'],
+        replaced_by: 'manage_column',
+        summary: 'set_description is now manage_column with action "describe": the same sheet_id, column and '
+          + 'description.',
+        details: 'A column\'s is manage_column with action "describe" and the same sheet_id, column and description; '
+          + 'a sheet\'s own (no column) is manage_sheet with action "describe", sheet_id and description.',
+      },
+      {
+        change: 'renamed',
+        tools: ['sort_sheet'],
+        replaced_by: 'manage_sheet',
+        summary: 'sort_sheet is now manage_sheet with action "sort": the same sheet_id, column and direction, '
+          + 'without table_id.',
+      },
+      {
+        change: 'renamed',
+        tools: ['export_csv'],
+        replaced_by: 'read_rows',
+        summary: 'export_csv is now read_rows with format "csv": the same sheet_id, columns, where and view, and '
+          + 'the same answer.',
+        details: 'Call read_rows with format "csv" and the same sheet_id, columns, where and view; its answer adds '
+          + 'data_version and row_generation, and other read_rows fields are refused with it.',
+      },
+      {
+        change: 'changed',
+        tools: ['manage_sheet'],
+        summary: 'manage_sheet takes action "sort" (column, direction) and "describe" (description) on a sheet_id '
+          + 'alone: only its other actions need table_id.',
+      },
+      {
+        change: 'changed',
+        tools: ['read_rows'],
+        summary: 'read_rows takes format "csv": the rows as CSV text in csv, from columns, where and view only, cut '
+          + 'at 40,000 characters as export_csv was.',
+        details: 'The answer adds sheet_id, sheet_name, row_count and columns, and when cut, matching_rows, '
+          + 'truncated and rest.',
+      },
+      {
+        change: 'renamed',
+        tools: ['get_run_status'],
+        replaced_by: 'get_run',
+        summary: 'get_run_status is now get_run with action "status": the same run_type, run_id and wait_seconds, '
+          + 'and the same answer.',
+      },
+      {
+        change: 'renamed',
+        tools: ['get_run_results'],
+        replaced_by: 'get_run',
+        summary: 'get_run_results is now get_run with action "results": the same run_type, run_id, status_filter, '
+          + 'cursor, limit and include_answers, and the same answer.',
+      },
+      {
+        change: 'renamed',
+        tools: ['list_runs'],
+        replaced_by: 'get_run',
+        summary: 'list_runs is now get_run with action "list": the same sheet_id, filter and limit, and the same '
+          + 'answer.',
+      },
+      {
+        change: 'renamed',
+        tools: ['get_setup_run'],
+        replaced_by: 'get_run',
+        summary: 'get_setup_run is now get_run with action "setup": the same setup_run_id, sheet_id, setup_id, '
+          + 'wait_seconds, results_from and limit, and the same answer.',
+      },
+      {
+        change: 'renamed',
+        tools: ['get_balances'],
+        replaced_by: 'get_account',
+        summary: 'get_balances is now get_account with action "balances", and the same answer.',
+      },
+      {
+        change: 'renamed',
+        tools: ['get_usage'],
+        replaced_by: 'get_account',
+        summary: 'get_usage is now get_account with action "usage": the same sheet_id, group_by, range, from, to and '
+          + 'limit, and the same answer.',
+      },
+      {
+        change: 'renamed',
+        tools: ['list_saved_keys'],
+        replaced_by: 'get_account',
+        summary: 'list_saved_keys is now get_account with action "saved_keys": the same name and after, and the same '
+          + 'answer.',
+      },
+      {
+        change: 'renamed',
+        tools: ['get_version'],
+        replaced_by: 'get_account',
+        summary: 'get_version is now get_account with action "version": the same since, and the same answer.',
+      },
+      {
+        change: 'renamed',
+        tools: ['list_tables'],
+        replaced_by: 'get_workspace',
+        summary: 'list_tables is now get_workspace with all_tables: true, and the same answer: every table with its '
+          + 'sheets.',
+      },
+      {
+        change: 'renamed',
+        tools: ['get_sheet_history'],
+        replaced_by: 'get_sheet',
+        summary: 'get_sheet_history is now get_sheet with history: true: the same sheet_id, column, before and '
+          + 'limit, and the same answer.',
+      },
+      {
+        change: 'renamed',
+        tools: ['search_enrichments'],
+        replaced_by: 'find_enrichments',
+        summary: 'search_enrichments is now find_enrichments with action "search": the same query, and the same '
+          + 'answer.',
+      },
+      {
+        change: 'renamed',
+        tools: ['get_enrichment'],
+        replaced_by: 'find_enrichments',
+        summary: 'get_enrichment is now find_enrichments with action "get": the same tool_id, and the same answer.',
+      },
+      {
+        change: 'changed',
+        tools: ['get_workspace'],
+        summary: 'get_workspace takes all_tables: true, which answers every table with its sheets (list_tables\' '
+          + 'answer) in place of the overview.',
+      },
+      {
+        change: 'changed',
+        tools: ['get_sheet'],
+        summary: 'get_sheet takes history: true with column, before and limit, which answers the sheet\'s change log '
+          + '(get_sheet_history\'s answer) in place of its details.',
+      },
+      {
+        change: 'renamed',
+        tools: ['undo_run'],
+        replaced_by: 'control_run',
+        summary: 'undo_run is now control_run with action "undo": the same run_type and run_id, or sheet_id and '
+          + 'column, and dry_run, and the same answer.',
+      },
+      {
+        change: 'renamed',
+        tools: ['control_setup_run'],
+        replaced_by: 'control_run',
+        summary: 'control_setup_run is now control_run with setup_run_id and action pause, resume or cancel, and the '
+          + 'same answer.',
+      },
+      {
+        change: 'renamed',
+        tools: ['save_setup'],
+        replaced_by: 'manage_setup',
+        summary: 'save_setup is now manage_setup with action "save": the same sheet_id, name, description, columns, '
+          + 'include_upstream and preview, and the same answer.',
+      },
+      {
+        change: 'renamed',
+        tools: ['delete_setup'],
+        replaced_by: 'manage_setup',
+        summary: 'delete_setup is now manage_setup with action "delete": the same setup_id, and the same answer.',
+      },
+      {
+        change: 'renamed',
+        tools: ['restore_setup_version'],
+        replaced_by: 'manage_setup_version',
+        summary: 'restore_setup_version is now manage_setup_version with action "restore": the same sheet_id, '
+          + 'version_id and dry_run, and the same answer.',
+      },
+      {
+        change: 'renamed',
+        tools: ['write_formula'],
+        replaced_by: 'formula_column',
+        summary: 'write_formula is now formula_column with from_words (it was words) and model: the same answer, with '
+          + 'changed: [], and nothing is saved.',
+      },
+      {
+        change: 'renamed',
+        tools: ['set_auto_dedupe'],
+        replaced_by: 'remove_duplicates',
+        summary: 'set_auto_dedupe is now remove_duplicates with keep_doing in place of columns, and the same answer.',
+        details: 'Send remove_duplicates keep_doing: { column, match, phone_country, keep } to turn it on or change '
+          + 'it, or keep_doing: false to turn it off (it was off: true); it answers auto_dedupe and changed as before.',
+      },
+      {
+        change: 'renamed',
+        tools: ['add_enrichment_field'],
+        replaced_by: 'stored_answers',
+        summary: 'add_enrichment_field is now stored_answers with action "add_column": the same sheet_id, column, '
+          + 'json_path, column_name and row_id, and the same answer.',
+      },
+      {
+        change: 'renamed',
+        tools: ['add_list_rows'],
+        replaced_by: 'stored_answers',
+        summary: 'add_list_rows is now stored_answers with action "add_rows": the same sheet_id, column, fields and '
+          + 'dedupe_path, and the same answer.',
+      },
+      {
+        change: 'renamed',
+        tools: ['create_upload_link'],
+        replaced_by: 'file_link',
+        summary: 'create_upload_link is now file_link with action "upload": the same sheet_id, mode, setup_id, '
+          + 'max_cost_usd, allow_unpriced, models and webhook_id, and the same answer.',
+      },
+      {
+        change: 'renamed',
+        tools: ['create_download_link'],
+        replaced_by: 'file_link',
+        summary: 'create_download_link is now file_link with action "download": the same sheet_id, columns, where, '
+          + 'view and format, and the same answer.',
+        details: 'Call file_link with action "download" and the same fields; a setup call\'s items take setup_run_id, '
+          + 'the call\'s id as get_run (action setup) takes it (it was setup_call_id).',
+      },
+      {
+        change: 'changed',
+        tools: ['control_run'],
+        summary: 'control_run takes action "undo" (undo_run\'s), and setup_run_id with pause, resume or cancel '
+          + '(control_setup_run\'s).',
+        details: 'An undo needs the write scope, its dry run read; every other action still needs run.',
+      },
+      {
+        change: 'changed',
+        tools: ['formula_column'],
+        summary: 'formula_column takes from_words (with model) in place of formula: one small AI call writes a '
+          + 'formula, and nothing is saved (write_formula\'s).',
+        details: 'from_words needs the run scope and costs money; pass the formula it answers as formula to fill the '
+          + 'column.',
+      },
+      {
+        change: 'changed',
+        tools: ['remove_duplicates'],
+        summary: 'remove_duplicates takes keep_doing in place of columns, keep and dry_run: one row per key is kept as '
+          + 'rows arrive (set_auto_dedupe\'s).',
+        details: 'keep_doing needs the write scope; rows already there stay, so call with columns once to remove '
+          + 'those.',
+      },
+      {
+        change: 'changed',
+        tools: ['manage_setup_version'],
+        summary: 'manage_setup_version takes action "restore" (restore_setup_version\'s), and its save, rename and '
+          + 'delete now answer changed: [].',
+      },
+      {
+        change: 'renamed',
+        tools: ['call_setup'],
+        replaced_by: 'apply_setup',
+        summary: 'call_setup is apply_setup with items instead of sheet_id: a saved setup run on 1-100 items without a '
+          + 'sheet, like a function.',
+        details: 'Send apply_setup the same setup_id, items and choices with no sheet_id: estimate_only still defaults '
+          + 'to true, and the answer is the same setup_call.',
+      },
+      {
+        change: 'renamed',
+        tools: ['get_setup_call'],
+        replaced_by: 'get_run',
+        summary: 'get_setup_call is get_run with action "setup": a call on items answers there, with its results paged '
+          + 'as before.',
+        details: 'Call get_run with action "setup" and the call\'s id as setup_run_id (it was setup_call_id); '
+          + 'wait_seconds, results_from and limit work as before.',
+      },
+      {
+        change: 'renamed',
+        tools: ['call_enrichment'],
+        replaced_by: 'run_enrichment',
+        summary: 'call_enrichment is run_enrichment with items instead of sheet_id: one enrichment tool on 1-1,000 '
+          + 'items without a sheet.',
+        details: 'Send run_enrichment the same tool_id, items, fields, max_cost_usd, allow_unpriced and webhook_id '
+          + 'with no sheet_id: estimate_only still defaults to true with items (on a sheet it stays false).',
+      },
+      {
+        change: 'changed',
+        tools: ['apply_setup', 'run_enrichment'],
+        summary: 'apply_setup and run_enrichment take items instead of sheet_id, and get_run (action setup) answers a '
+          + 'call on items with each item\'s outputs.',
+        details: 'get_run\'s setup also takes wait_seconds, for any setup run. With items, the arguments only a sheet '
+          + 'takes (inputs, names, first_rows; column_name, outputs and the rest) are refused by name.',
+      },
+      {
+        change: 'server',
+        summary: 'transfer_rows with a move takes rows holding at most 16 MB a call (a copy still 32 MB): a move '
+          + 'past it is refused, naming both caps, and nothing moves.',
+        details: 'A move writes each row three times in one transaction, so 32 MB of rows passed the database\'s '
+          + 'room. The refusal says how much the call picked: move fewer rows, or copy a single row past the cap, '
+          + 'then change_rows with action "delete".',
+      },
+      {
+        change: 'changed',
+        tools: ['manage_table'],
+        summary: 'manage_table takes action star or unstar with table_id: a starred table is in the user\'s '
+          + 'Favorites on the home.',
+        details: 'Starring changes nothing in the table, so changed is []. The answer has the table\'s id, name and '
+          + 'starred. PATCH /api/v1/tables/{id} takes starred too.',
+      },
+      {
+        change: 'changed',
+        tools: ['get_workspace'],
+        summary: 'get_workspace with all_tables gives each table starred (in the user\'s Favorites) and last_opened_at '
+          + '(when the user last opened it in the app, null until then).',
+        details: 'Use them to find the tables the user works in. GET /api/v1/tables answers the same.',
+      },
+    ],
+  },
+  {
     version: 'v0.8.45',
     changes: [
+      {
+        change: 'added',
+        tools: ['get_tool_guide'],
+        summary: 'get_tool_guide gives a tool\'s full details. The longest tool descriptions are shorter now and end '
+          + 'with "Details: get_tool_guide.": their edge cases, examples and long field notes moved there.',
+        details: 'Read a tool\'s guide before its first paid or destructive call, and after a refusal. Without tool '
+          + 'it lists the tools that have one. No tool or argument changed.',
+      },
+      {
+        change: 'added',
+        tools: ['call_setup', 'get_setup_call'],
+        summary: 'call_setup runs a saved setup on 1-100 items without a sheet, like a function; get_setup_call '
+          + 'answers each item\'s outputs once it finishes.',
+        details: 'Items are objects keyed by the setup\'s inputs; estimate_only defaults to true. The call id is a '
+          + 'setup run id: control_setup_run pauses or cancels it, a run webhook reports it as kind setup. Results '
+          + 'are kept 24 hours.',
+      },
+      {
+        change: 'added',
+        tools: ['call_enrichment'],
+        summary: 'call_enrichment runs one enrichment tool on 1-1,000 items without a sheet, refused up front instead '
+          + 'of pausing halfway when it could pass max_cost_usd, the daily limit, the treg balance or the token cap.',
+        details: 'It answers a run_id: get_run_status and get_run_results answer for it, with row_index as the '
+          + 'item. estimate_only defaults to true.',
+      },
+      {
+        change: 'changed',
+        tools: ['create_upload_link', 'create_download_link'],
+        summary: 'create_upload_link takes setup_id (with max_cost_usd) instead of sheet_id: the file\'s rows become a '
+          + 'setup call\'s items, and the call starts once the file is in.',
+        details: 'get_setup_call pages results with results_from and limit (next_from says where the next page '
+          + 'starts); create_download_link takes setup_call_id to save every item\'s inputs and outputs as a CSV.',
+      },
+      {
+        change: 'changed',
+        tools: ['manage_sheet', 'get_sheet'],
+        summary: 'manage_sheet tries column changes on sample rows: test copies a sheet\'s top rows and setup into a '
+          + 'hidden copy, apply_test makes the copy\'s setup the sheet\'s and puts the sample results back, '
+          + 'discard_test drops it.',
+        details: 'Work in test.test_sheet_id with the usual tools; meanwhile the sheet answers busy to every change '
+          + 'and its webhook deliveries wait (get_sheet\'s test). apply_test is a dry run unless dry_run is false.',
+      },
+      {
+        change: 'changed',
+        tools: ['get_usage'],
+        summary: 'get_usage counts runs on a sheet\'s test copy under that sheet, also after the test ends: their '
+          + 'rows have on_test_copy: true, apart from the sheet\'s own column of the same name.',
+        details: 'The whole account\'s usage lists them under the tested sheet too, not as a deleted sheet. REST: GET '
+          + '/usage, whose CSV has an On sample rows column.',
+      },
+      {
+        change: 'changed',
+        tools: ['get_usage'],
+        summary: 'get_usage lists what a call without a sheet ran as call: true, with sheet_id and sheet_name null, '
+          + 'not as a deleted sheet; by column every call adds up in one row.',
+      },
+      {
+        change: 'changed',
+        tools: ['manage_sheet_webhook'],
+        summary: 'manage_sheet_webhook takes set_auto_delete and auto_delete_off: a webhook sheet keeps its newest '
+          + 'keep_rows rows and deletes older ones once they are finished, not to the trash.',
+        details: 'A row leaves once every auto-run column has run on it and, with success_column, once that has a '
+          + 'result; copy_to_sheet_id copies it to another sheet first. get\'s webhook has auto_delete, null while '
+          + 'off.',
+      },
+      {
+        change: 'changed',
+        tools: ['manage_sheet_webhook'],
+        summary: 'manage_sheet_webhook\'s set_auto_delete takes mode "rules" with where (read_rows\' language): older '
+          + 'webhook rows are deleted once they pass it, whether auto-run has run on them or not.',
+        details: 'get\'s auto_delete has mode and where. A switch to rules needs success_column: null when one is '
+          + 'set; a switch back to actions_finish clears the rules.',
+      },
+    ],
+  },
+  {
+    version: 'v0.8.44',
+    changes: [
+      {
+        change: 'changed',
+        tools: ['run_enrichment', 'waterfall_column'],
+        summary: 'run_enrichment and waterfall_column take rate_limit_retries (0-10, default 5): how many times a '
+          + 'step retries for free when providers answer 429.',
+        details: 'Each waterfall step and check counts its own, and a verified email\'s finds and checks share one. '
+          + 'Reruns, auto-run and waterfall_column describe keep it. Set 0 to fail fast on a 429, or up to 10 to '
+          + 'wait longer for tight provider limits.',
+      },
+      {
+        change: 'changed',
+        tools: ['list_tables'],
+        summary: 'list_tables no longer counts every row on the call: a sheet whose rows changed is counted first, '
+          + 'waiting up to 2 seconds. One still being counted then answers its last count with '
+          + 'row_count_updating: true.',
+        details: 'row_count_updating means that row_count may be out of date: call list_tables again in a moment for '
+          + 'the new count. GET /api/v1/tables answers the same.',
+      },
       {
         change: 'changed',
         tools: ['create_download_link'],
@@ -48,6 +518,24 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
           + 'read_rows answers a row, values keeping their type.',
         details: 'Use jsonl to feed a script or another tool; CSV stays the one to open in a spreadsheet. REST: GET '
           + '/sheets/:id/export?format=jsonl.',
+      },
+      {
+        change: 'changed',
+        tools: ['run_ai_column', 'run_http_enrichment', 'run_enrichment', 'waterfall_column'],
+        summary: 'save_only: true stores a column\'s new setup and runs nothing (no rows, no cost). It answers '
+          + 'saved: true and run_id, the setup\'s record: control_run rerun with it runs the column so.',
+        details: 'A new column is made empty. An existing HTTP API column takes a new setup only this way. Refused '
+          + 'with estimate_only, output_columns, a list job, or what only a run takes (target_row_ids, preview_rows).',
+      },
+      {
+        change: 'added',
+        tools: ['social_research'],
+        summary: 'social_research makes a table of social posts on a topic (TikTok, Instagram, YouTube, X), with '
+          + 'transcripts, an AI breakdown, creators, their usual views and comments set up and not run; find_posts '
+          + 'searches (paid).',
+        details: 'create is free. find_posts is an estimate unless estimate_only is false, then needs the estimate\'s '
+          + 'high_usd as max_cost_usd; running it again adds only new posts. Run the steps on the Top posts view\'s '
+          + 'rows with each column\'s own run.',
       },
       {
         change: 'changed',
@@ -128,28 +616,27 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
         details: 'For rows filled in over a while (by hand, a webhook in parts, another column): each new write starts '
           + 'the wait again. Omitted keeps it; null sets 0. PUT /api/v1/sheets/{id}/enrichment-auto-run takes it too.',
       },
-    ],
-  },
-  {
-    version: 'v0.8.44',
-    changes: [
       {
-        change: 'changed',
-        tools: ['run_enrichment', 'waterfall_column'],
-        summary: 'run_enrichment and waterfall_column take rate_limit_retries (0-10, default 5): how many times a '
-          + 'step retries for free when providers answer 429.',
-        details: 'Each waterfall step and check counts its own, and a verified email\'s finds and checks share one. '
-          + 'Reruns, auto-run and waterfall_column describe keep it. Set 0 to fail fast on a 429, or up to 10 to '
-          + 'wait longer for tight provider limits.',
+        change: 'added',
+        tools: ['manage_run_schedule'],
+        summary: 'manage_run_schedule reruns a sheet\'s or a table\'s run columns on a schedule: daily, on weekdays, '
+          + 'weekly, monthly or every N hours, at a time in a time zone.',
+        details: 'Each firing is a column run as the token that made it (get_setup_run follows it). max_cost_usd '
+          + 'refuses a firing that could cost more; last_error says why a firing didn\'t start.',
+      },
+      {
+        change: 'added',
+        tools: ['run_columns'],
+        summary: 'run_columns runs several of a sheet\'s run columns again in one call, on the rows a mode picks '
+          + '(among row_ids or a where), with an estimate first and an optional max_cost_usd.',
+        details: 'A column reading another chosen column waits for that one\'s whole run. It answers a setup_run: '
+          + 'follow it with get_setup_run, and pause, resume or stop it with control_setup_run.',
       },
       {
         change: 'changed',
-        tools: ['list_tables'],
-        summary: 'list_tables no longer counts every row on the call: a sheet whose rows changed is counted first, '
-          + 'waiting up to 2 seconds. One still being counted then answers its last count with '
-          + 'row_count_updating: true.',
-        details: 'row_count_updating means that row_count may be out of date: call list_tables again in a moment for '
-          + 'the new count. GET /api/v1/tables answers the same.',
+        tools: ['get_setup_run', 'control_setup_run'],
+        summary: 'A column run (run_columns) shows as a setup run with no setup: setup_id null, column_run with its '
+          + 'mode and rows, and a step for each column (kind can be waterfall).',
       },
     ],
   },
