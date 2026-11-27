@@ -34,6 +34,13 @@ export function testEnv(env, { testDir, port, tregBase, receiverPort }) {
     // Enrichment runs take 5 rows at once here (20 in production): the limit, pause and cancel specs
     // need rows still waiting when they act on a run of a few rows.
     ENRICH_DEFAULT_CONCURRENCY: env.ENRICH_DEFAULT_CONCURRENCY || '5',
+    // A run's brake pauses at once here, without the waits a run sits out first in production (those are
+    // unit-tested: tests/unit/run-brake-waits.test.ts), so the paused-run specs pause where they expect.
+    RUN_BREAKER_WAITS: env.RUN_BREAKER_WAITS || '0',
+    // Many specs run AI columns on a fake OpenRouter key: free, fast failures row by row. In production a refused
+    // key pauses the run after its first row; here after 5, as any failure in a row, so those runs still finish
+    // (tests/unit/run-brake-waits.test.ts checks the first-row pause).
+    RUN_BREAKER_ACCOUNT_FAILURES: env.RUN_BREAKER_ACCOUNT_FAILURES || '5',
     CUBEX_TEST_CLOCK_FILE: path.join(testDir, 'test-clock'),
     // Every MCP tool result must fit its outputSchema exactly: a key the schema doesn't name fails the call
     // (server/src/mcp/output-schema.ts). Always.

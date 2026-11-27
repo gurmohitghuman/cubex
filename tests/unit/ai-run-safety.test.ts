@@ -14,6 +14,8 @@ import { passed } from './ends-on-its-own'
 if (!process.env.DB_PATH) { console.error('Refusing to run without a throwaway DB_PATH set.'); process.exit(1) }
 process.env.AI_CALL_DEADLINE_MS = '2500'
 process.env.RUN_BREAKER_FAILURES = '5'
+// The pause itself, without the waits a run sits out first (tests/unit/run-brake-waits.test.ts).
+process.env.RUN_BREAKER_WAITS = '0'
 
 // --- The stand-in: what each POST to /chat/completions gets ---------------------
 type Mode = 'ok' | 'fail' | 'stall'

@@ -1,7 +1,9 @@
 // Over 200 lines: one run's loop (claim, resume filter, rolling rows, brake, end) read top to bottom.
 import { db } from '../lib/db';
 import { runRows, countRunRows } from '../lib/run-rows';
-import { HTTP_DEFAULT_BATCH_SIZE, HTTP_MAX_CONCURRENCY, RUN_BREAKER_FAILURES } from '../lib/constants';
+import {
+  HTTP_DEFAULT_BATCH_SIZE, HTTP_MAX_CONCURRENCY, RUN_BREAKER_ACCOUNT_FAILURES, RUN_BREAKER_FAILURES,
+} from '../lib/constants';
 import { type HTTPAPIConfig } from '../lib/http-request';
 import { redactError } from '../lib/redact';
 import { getSheetColumns } from '../lib/sql-helpers';
@@ -17,6 +19,7 @@ import { isWaterfallConfig } from '../lib/waterfall/config';
 import { processWaterfallRun } from './waterfall-runner';
 import { requestRunStamper } from '../lib/run-inputs/stampers';
 import { brakeMessage, RunBreaker } from '../lib/run-breaker';
+import { BrakeWaits } from '../lib/run-brake-waits';
 import { isStorageFailure } from '../lib/storage-failure';
 import { pauseItself, runHeartbeat, slotWaiter, storageEnd, type LoopEnd } from '../lib/run-pool';
 import { stopAutorunRun } from './autorun-stop';
@@ -161,7 +164,10 @@ export async function processHTTPRun(
     const beat = runHeartbeat('http_runs', runId, myGeneration);
     // Rows failing in a row on the provider's side stop it (lib/run-breaker.ts),
     // and so does a database that can't be written.
-    const breaker = new RunBreaker(RUN_BREAKER_FAILURES);
+    const breaker = new RunBreaker(RUN_BREAKER_FAILURES, RUN_BREAKER_ACCOUNT_FAILURES);
+    // A run someone started waits out a short outage first; an auto-run batch tries again later anyway
+    // (lib/run-brake-waits.ts).
+    const waits = new BrakeWaits(run.autorun_id ? 0 : undefined);
     // Set from the rows' callbacks, so its type is spelled out (no narrowing to null).
     let end = null as LoopEnd | null;
     // Rows were still waiting to start when the loop stopped (a brake with none left pauses nothing).
@@ -193,14 +199,23 @@ export async function processHTTPRun(
         if ('done' in next) break;
         if ('park' in next || end) { rowsLeft = true; break; }
         if ('stopped' in next) continue;
+        // A short outage: the run sits out its wait before this row (lib/run-brake-waits.ts), so none starts
+        // meanwhile and a run with no rows left never waits.
+        if (waits.waiting) {
+          await waits.sit(beatNow, () => end !== null || shouldStop(runId, myGeneration));
+          if (shouldStop(runId, myGeneration)) { controller.abort(); break; }
+          if (end) { rowsLeft = true; break; }
+        }
+        const epoch = waits.epoch;
         const done: Promise<void> = processHTTPRow(
           runId, next.row, run, config, controller.signal, myGeneration, sheetColumns(), next.ring,
         )
           .then(outcome => {
-            breaker.record(outcome);
+            // A row sent before the latest wait began failed into that wait: it doesn't count toward the next one.
+            if (epoch === waits.epoch) breaker.record(outcome);
             const tripped = breaker.tripped;
-            if (tripped && !end) {
-              end = { reason: 'provider_errors', message: brakeMessage(tripped, !!run.autorun_id) };
+            if (tripped && !end && (tripped.account || !waits.begin(breaker))) {
+              end = { reason: 'provider_errors', message: brakeMessage(tripped, !!run.autorun_id, waits.waited) };
             }
           })
           .catch(error => {

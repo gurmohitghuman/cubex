@@ -38,8 +38,11 @@ export function throwIfStorage(error: unknown): void {
 export const hasSpendLimit = (run: { spend_limit_usd?: number | null }): boolean =>
   typeof run.spend_limit_usd === 'number';
 
-export const failedRow = (message: string, maybeBilled = false): RowOutcome =>
-  ({ kind: 'failed', message, provider: aiProviderSide(message), ...(maybeBilled ? { maybeBilled } : {}) });
+// account: the call's error was on the account's side (lib/run-breaker.ts aiAccountError).
+export const failedRow = (message: string, maybeBilled = false, account = false): RowOutcome => ({
+  kind: 'failed', message, provider: aiProviderSide(message), ...(account ? { account: true } : {}),
+  ...(maybeBilled ? { maybeBilled } : {}),
+});
 
 // A row a stop dropped (a pause, a cancel, a resume taking over) while its
 // call was out: nothing is written, but a call cut off then (it timed out,

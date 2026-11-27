@@ -16,7 +16,7 @@ import { recordDroppedCall, STOP_SENTINEL } from './ai-row-writers';
 import { writeMultiSuccess, writeMultiFailure, type MultiWriteCtx } from './ai-row-writers-multi';
 import { withConnectRetry, errorCauseCode } from './openrouter-retry';
 import { sendModelCall, rowUsage, billedUsage, type ModelCall } from './ai-model-call';
-import { DONE, DROPPED, type RowOutcome } from '../lib/run-breaker';
+import { aiAccountError, DONE, DROPPED, type RowOutcome } from '../lib/run-breaker';
 import {
   aiCallDeadline, AI_TIMEOUT_MESSAGE, callMayBeBilled, droppedRow, failedRow, hasSpendLimit, stoppedCall,
   throwIfStorage, timedTries, webEngineRow,
@@ -135,7 +135,8 @@ export async function processMultiRow(
     // A ring's rows are logged once for the run (services/run-input-gate.ts), not row by row.
     if (!row.refused) console.error(`Multi-row ${row.rowIndex} processing error:`, errorMessage);
     writeMultiFailure(ctx, blankOnFailure, errorMessage, billedUsage(call, error));
-    return failedRow(errorMessage, callMayBeBilled(error, { sent, call, lateReset: lateReset() }));
+    return failedRow(errorMessage, callMayBeBilled(error, { sent, call, lateReset: lateReset() }),
+      aiAccountError(error, errorMessage));
   } finally {
     deadline.done();
   }

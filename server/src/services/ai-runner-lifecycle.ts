@@ -14,8 +14,9 @@ import {
 import { clearRunPlaceholders, hasUnfinishedRow } from '../lib/run-placeholders';
 import { dropRunSpans } from '../lib/derived-spans';
 import { spendCapRefusal } from './token-spend';
-import { RUN_BREAKER_FAILURES } from '../lib/constants';
+import { RUN_BREAKER_ACCOUNT_FAILURES, RUN_BREAKER_FAILURES } from '../lib/constants';
 import { brakeMessage, RunBreaker, type RowOutcome } from '../lib/run-breaker';
+import { BrakeWaits } from '../lib/run-brake-waits';
 import { isBusyLock, isStorageFailure } from '../lib/storage-failure';
 import { pauseItself, runHeartbeat, slotWaiter, storageEnd, type LoopEnd } from '../lib/run-pool';
 import { webEngineMessage } from '../lib/web-engine-refusal';
@@ -60,7 +61,9 @@ export const dispatchRows = async (
   const out = new Set<Promise<void>>();
   const pool = slotWaiter();
   const beat = runHeartbeat('ai_runs', runId, myGeneration);
-  const breaker = new RunBreaker(RUN_BREAKER_FAILURES);
+  const breaker = new RunBreaker(RUN_BREAKER_FAILURES, RUN_BREAKER_ACCOUNT_FAILURES);
+  // A short outage is waited out before the brake pauses the run (lib/run-brake-waits.ts).
+  const waits = new BrakeWaits();
   let completed = startCompleted;
   // Set from the rows' callbacks, so its type is spelled out (no narrowing to null).
   let end = null as LoopEnd | null;
@@ -103,6 +106,13 @@ export const dispatchRows = async (
       if ('done' in next) break;
       if ('park' in next || end) { rowsLeft = true; break; }
       if ('stopped' in next) continue;
+      // A short outage: the run sits out its wait before this row (lib/run-brake-waits.ts), so none starts meanwhile
+      // and a run with no rows left never waits.
+      if (waits.waiting) {
+        await waits.sit(beatNow, () => end !== null || shouldStop(runId, myGeneration));
+        if (shouldStop(runId, myGeneration)) break rowLoop;
+        if (end) { rowsLeft = true; break; }
+      }
       // A row its run's ring of waits fails calls nothing: no spend to admit, and not the provider's failure.
       const row = next.ring ? { ...next.row, refused: next.ring } : next.row;
       if (run.access_token_id && spendCapRefusal(run.user_id, run.access_token_id)) {
@@ -130,13 +140,17 @@ export const dispatchRows = async (
       }
 
       let settledAs: RowOutcome | null = null;
+      const epoch = waits.epoch;
       const promise: Promise<void> = processRow(runId, row, run, openai, controller.signal, myGeneration, columns)
         .then(processed => {
           const outcome = next.ring && processed.kind === 'failed' ? { ...processed, provider: false } : processed;
           settledAs = outcome;
-          breaker.record(outcome);
+          // A row sent before the latest wait began failed into that wait: it doesn't count toward the next one.
+          if (epoch === waits.epoch) breaker.record(outcome);
           const tripped = breaker.tripped;
-          if (tripped && !end) end = { reason: 'provider_errors', message: brakeMessage(tripped, false) };
+          if (tripped && !end && (tripped.account || !waits.begin(breaker))) {
+            end = { reason: 'provider_errors', message: brakeMessage(tripped, false, waits.waited) };
+          }
           // The workspace refused the web fetch engine: once, for every row (this one stays waiting).
           if (outcome.kind === 'dropped' && outcome.webEngine !== undefined && !end) {
             end = { reason: 'web_engine', message: webEngineMessage(outcome.webEngine) };

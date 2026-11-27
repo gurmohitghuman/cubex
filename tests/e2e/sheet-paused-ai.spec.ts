@@ -13,7 +13,9 @@ import { clearTokenCaps, expectLine, listed, openSheet, pausedLine, putPause, to
 // token's spend cap, whose words the server works out from the token when read (no row here costs anything).
 const FAKE_KEY = 'sk-or-v1-sheet-paused-e2e'
 const MODEL = 'openai/gpt-4o-mini'
-const BRAKE = /5 rows in a row failed on the provider's side, so the run paused\. Resume once it works again/
+// The fake key: OpenRouter refuses it, the account's side (paused after RUN_BREAKER_ACCOUNT_FAILURES rows, 5 in
+// e2e: scripts/e2e-env.mjs).
+const BRAKE = /The provider refused the account or its key, so the run paused\. Resume once it works again/
 // As lib/web-engine-refusal.ts webEngineMessage writes it.
 const WEB_ENGINE = 'OpenRouter refused the web fetch engine Exa (403): your workspace limits web fetch engines on '
   + "its Server Tools page and Exa isn't allowed. Runs with a tokens per page or pages per row limit read pages "

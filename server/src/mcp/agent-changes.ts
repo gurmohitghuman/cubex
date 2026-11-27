@@ -43,6 +43,13 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
     changes: [
       {
         change: 'server',
+        summary: 'An AI or HTTP API run pauses after one row on a rejected key, no credits or a gone model; after 5 '
+          + 'provider failures in a row it first waits and goes on, up to 3 times, before it pauses.',
+        details: 'get_run\'s pause_message says the waits it sat out. Auto-run batches don\'t wait (they try again '
+          + 'later).',
+      },
+      {
+        change: 'server',
         summary: 'A tool billed per result whose catalog names its count input is priced at the results a call '
           + 'asks for (that input, else its default) instead of 20: run_enrichment\'s and apply_setup\'s estimates '
           + 'and default max_cost_per_row_usd follow it.',
