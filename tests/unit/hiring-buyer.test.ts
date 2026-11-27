@@ -86,7 +86,8 @@ await ok('an estimate changes nothing: no column, no setup, no paid call; it pri
   assert.deepEqual(cols(t.sid), before)
   assert.equal(runsOn(t.sid), 0)
   assert.deepEqual(await paidCalls(), [])
-  assert.deepEqual(buyerOf(uid, t.rec()), { added: false, titles: [], starting: buyerTitlesFor(['SDR']) })
+  assert.deepEqual(buyerOf(uid, t.rec()),
+    { added: false, titles: [], starting: buyerTitlesFor(['SDR']), catchAll: false })
 })
 
 await ok('the first run saves both columns, needs the write scope, and starts within its estimate', async () => {
@@ -150,6 +151,29 @@ await ok('a renamed Buyer keeps its name: new titles save the search writing to 
   setCells(u.sid, 2, { 'Decision maker': '' })
   const e = await estimate(u.rec())
   assert.ok('ok' in e && 'estimate' in e.ok && e.ok.estimate.rows_in_scope === 1, JSON.stringify(e))
+})
+
+await ok('catch-all emails: off at first; choosing them saves the email setup again (balanced), cells kept; the same '
+  + 'choice saves nothing; an agent without the write scope is refused before it changes', async () => {
+  const c = await table(['SDR'])
+  await saveOnly(c.rec())
+  const strategy = () => JSON.parse(setups(c.sid, B.emailSearch).at(-1)!.config).enrichment.email.strategy
+  assert.deepEqual([buyerOf(uid, c.rec()).catchAll, strategy(), setups(c.sid, B.emailSearch).length],
+    [false, 'safest', 1])
+  setCells(c.sid, 0, { [B.email]: 'kept@acme.com' })
+  const denied = await findBuyers(uid, c.rec(), { titles: null, estimateOnly: false, maxCostUsd: 0.000001,
+    canSave: false, catchAll: true })
+  assert.ok('fail' in denied && denied.fail === 'forbidden', JSON.stringify(denied))
+  assert.equal(setups(c.sid, B.emailSearch).length, 1)
+  await findBuyers(uid, c.rec(), { titles: null, estimateOnly: false, maxCostUsd: 0.000001, catchAll: true })
+  assert.deepEqual([buyerOf(uid, c.rec()).catchAll, strategy(), setups(c.sid, B.emailSearch).length],
+    [true, 'balanced', 2])
+  const kept = db.prepare('SELECT data FROM rows WHERE sheet_id = ? AND row_index = 0').pluck().get(c.sid) as string
+  assert.equal(JSON.parse(kept)[B.email], 'kept@acme.com')
+  await saveOnly(c.rec())
+  assert.equal(setups(c.sid, B.emailSearch).length, 2, 'left out: as saved, nothing saved again')
+  await findBuyers(uid, c.rec(), { titles: null, estimateOnly: false, maxCostUsd: 0.000001, catchAll: false })
+  assert.deepEqual([buyerOf(uid, c.rec()).catchAll, strategy()], [false, 'safest'])
 })
 
 await ok('columns of the same names in the way are named; roles that start no titles ask for them', async () => {

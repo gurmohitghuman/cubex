@@ -19,7 +19,7 @@ const estimateOnlyOf = (v: unknown): boolean | null =>
 // The buyer columns (services/hiring-buyer.ts): there or not, the titles they search, the titles a first find starts
 // with.
 export const buyerJson = (b: BuyerView) => ({
-  added: b.added, titles: b.titles, starting_titles: b.starting,
+  added: b.added, titles: b.titles, starting_titles: b.starting, catch_all_emails: b.catchAll,
   columns: [BUYER_COLUMNS.name, BUYER_COLUMNS.title, BUYER_COLUMNS.linkedin, BUYER_COLUMNS.email,
     BUYER_COLUMNS.emailStatus],
 });
@@ -35,6 +35,10 @@ export async function agentFindBuyers(userId: string, id: unknown, b: Json, canS
   const titles = b.buyer_titles === undefined || b.buyer_titles === null ? null
     : parseBuyerTitles(b.buyer_titles, 'buyer_titles');
   if (typeof titles === 'string') return bad(titles);
+  const catchAll = b.catch_all_emails;
+  if (catchAll !== undefined && catchAll !== null && typeof catchAll !== 'boolean') {
+    return bad('catch_all_emails must be true or false.');
+  }
   let maxCostUsd: number | null = null;
   if (!estimateOnly) {
     const most = usdLimitOf(b.max_cost_usd, 'max_cost_usd');
@@ -45,7 +49,9 @@ export async function agentFindBuyers(userId: string, id: unknown, b: Json, canS
     }
     maxCostUsd = most.value;
   }
-  const out = await findBuyers(userId, rec, { titles, estimateOnly, maxCostUsd, canSave });
+  const out = await findBuyers(userId, rec, {
+    titles, estimateOnly, maxCostUsd, canSave, catchAll: typeof catchAll === 'boolean' ? catchAll : null,
+  });
   if ('fail' in out) {
     const { estimate, ...fail } = out;
     return estimate ? { ...fail, estimate: { ...estimate } } : fail;

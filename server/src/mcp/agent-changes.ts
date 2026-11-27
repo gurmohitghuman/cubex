@@ -42,6 +42,14 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
     version: 'v0.8.50',
     changes: [
       {
+        change: 'changed',
+        tools: ['hiring_signals'],
+        summary: 'hiring_signals find_buyers takes catch_all_emails: true to also keep catch-all addresses (more '
+          + 'buyers found, some emails may bounce); get answers buyer.catch_all_emails.',
+        details: 'Off at first and kept as chosen; a new choice saves the email setup again, which needs the write '
+          + 'scope.',
+      },
+      {
         change: 'server',
         summary: 'A tool billed per result whose catalog names its count input is priced at the results a call '
           + 'asks for (that input, else its default) instead of 20: run_enrichment\'s and apply_setup\'s estimates '

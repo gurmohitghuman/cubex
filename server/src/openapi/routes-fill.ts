@@ -221,6 +221,8 @@ export const fillRoutes = (): RouteDoc[] => [
     body: z.object({
       buyer_titles: z.array(z.string()).optional()
         .describe('Job titles to look for (at most 6). Default: the titles in use, or ones from the roles.'),
+      catch_all_emails: z.boolean().optional().describe('Also keep catch-all email addresses (more found, some may '
+        + 'bounce). Default: as last time, off at first.'),
       estimate_only: z.boolean().optional().describe('false finds them for real. Default true: the cost.'),
       max_cost_usd: z.number().optional().describe('With estimate_only false: the estimate\'s high_usd.'),
     }),

@@ -61,6 +61,8 @@ export function registerHiringTool(server: McpServer, ctx: McpAuthCtx): void {
         + 'row. Their roles are still searched and paid for.'),
       buyer_titles: words().describe('find_buyers: job titles to look for at each company (default: get\'s '
         + 'buyer.titles, or its starting_titles the first time)'),
+      catch_all_emails: lenientBoolean().optional().describe('find_buyers: also keep catch-all email addresses '
+        + '(more found, some may bounce). Default: as last time (get\'s buyer.catch_all_emails), off at first'),
       estimate_only: lenientBoolean().optional().describe('check, find_buyers, open_roles: default true'),
       // Checked as /api/v1 checks it (lib/hiring/input.ts checkMostOf): the same refusals.
       max_cost_usd: z.number().optional()

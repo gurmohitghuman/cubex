@@ -18,6 +18,7 @@ export const HiringBuyersDialog: React.FC<{ v: HiringView; onClose: () => void; 
   ({ v, onClose, onChanged }) => {
     const [buyer, setBuyer] = useState<HiringBuyer | null>(null)
     const [titles, setTitles] = useState('')
+    const [catchAll, setCatchAll] = useState(false)
     const [e, setEstimate] = useState<ColumnRunEstimate | null>(null)
     const [error, setError] = useState<string | null>(null)
     const [busy, setBusy] = useState<'pricing' | 'starting' | null>(null)
@@ -43,6 +44,7 @@ export const HiringBuyersDialog: React.FC<{ v: HiringView; onClose: () => void; 
       hiringAPI.buyer(v.id).then(b => {
         if (!live) return
         setBuyer(b)
+        setCatchAll(b.catchAll)
         const start = (b.added ? b.titles : b.starting).join(', ')
         setTitles(start)
         if (start) void price(start)
@@ -57,7 +59,7 @@ export const HiringBuyersDialog: React.FC<{ v: HiringView; onClose: () => void; 
       setBusy('starting')
       setError(null)
       try {
-        await hiringAPI.findBuyers(v.id, { titles, estimateOnly: false, maxCostUsd: most })
+        await hiringAPI.findBuyers(v.id, { titles, estimateOnly: false, maxCostUsd: most, catchAll })
         toast.success('Finding buyers. Buyer and Buyer email fill in on Companies as they are found.')
         changed.current()
         onClose()
@@ -91,6 +93,17 @@ export const HiringBuyersDialog: React.FC<{ v: HiringView; onClose: () => void; 
                 <input className="input mt-1 w-full" value={titles} onChange={ev => setTitles(ev.target.value)}
                   placeholder="Head of Sales, VP Sales" data-testid="hiring-buyers-titles" disabled={!!busy} />
                 <span className="block text-xs text-gray-500 mt-1">Job titles, commas between them (at most 6).</span>
+              </label>
+              <label className="flex items-start gap-2 text-sm text-gray-900">
+                <input type="checkbox" className="mt-0.5" checked={catchAll} disabled={!!busy}
+                  onChange={ev => setCatchAll(ev.target.checked)} data-testid="hiring-buyers-catch-all" />
+                <span>
+                  Also keep catch-all emails
+                  <span className="block text-xs text-gray-500">
+                    Some companies accept mail to any address, so a check can&apos;t confirm the person&apos;s. Keeping
+                    them finds more buyers; some of those emails may bounce.
+                  </span>
+                </span>
               </label>
               {!buyer.added && <p className="text-xs text-gray-500">Find buyers adds {ADDS} to Companies.</p>}
               {e && <ColumnRunEstimateView state={{ loading: busy === 'pricing', result: e, error: null }} />}
