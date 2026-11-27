@@ -38,10 +38,10 @@ const NO_WRITE = "This action requires the 'write' scope, which this Cubex acces
 
 const ACTIONS = ['upload', 'download'] as const;
 type Field = 'sheet_id' | 'mode' | 'setup_id' | 'max_cost_usd' | 'allow_unpriced' | 'models' | 'webhook_id'
-  | 'setup_run_id' | 'columns' | 'where' | 'view' | 'format';
+  | 'setup_run_id' | 'columns' | 'where' | 'view' | 'format' | 'raw';
 const TAKES = {
   upload: { may: ['sheet_id', 'mode', 'setup_id', 'max_cost_usd', 'allow_unpriced', 'models', 'webhook_id'] },
-  download: { may: ['sheet_id', 'setup_run_id', 'columns', 'where', 'view', 'format'] },
+  download: { may: ['sheet_id', 'setup_run_id', 'columns', 'where', 'view', 'format', 'raw'] },
 } as const satisfies Record<typeof ACTIONS[number], { may: readonly Field[] }>;
 
 type UploadArgs = {
@@ -50,7 +50,7 @@ type UploadArgs = {
 };
 type DownloadArgs = {
   sheet_id?: string; setup_run_id?: string; columns?: string[]; where?: unknown; view?: string;
-  format?: 'csv' | 'jsonl';
+  format?: 'csv' | 'jsonl'; raw?: boolean;
 };
 
 export function registerLinkTools(server: McpServer, ctx: McpAuthCtx) {
@@ -102,9 +102,10 @@ export function registerLinkTools(server: McpServer, ctx: McpAuthCtx) {
   }
 
   // download: a sheet, the columns and rows picked, or a setup call's items.
-  async function download({ sheet_id: given, setup_run_id, columns, where, view, format }: DownloadArgs) {
+  async function download({ sheet_id: given, setup_run_id, columns, where, view, format, raw }: DownloadArgs) {
     const denied = missingScope(ctx, 'read');
     if (denied) return denied;
+    if (raw !== undefined && format === 'jsonl') return err('raw goes with csv: jsonl writes cells as they are.');
     if (!given === !setup_run_id) return err('Pass sheet_id, or setup_run_id for a setup call\'s results.');
     const sheet_id = given ?? setupCallSheet(ctx.userId, setup_run_id!);
     if (!sheet_id) return err('Setup call not found');
@@ -119,6 +120,7 @@ export function registerLinkTools(server: McpServer, ctx: McpAuthCtx) {
       userId: ctx.userId, tokenId: ctx.tokenId, sheetId: sheet_id, kind: 'download',
       options: {
         columns: selection.columns, where: selection.where, saved: selection.saved, format: format ?? 'csv',
+        ...(raw ? { raw: true } : {}),
       },
     });
     const url = fileLinkUrl(base, 'download', link.token);
@@ -164,6 +166,8 @@ export function registerLinkTools(server: McpServer, ctx: McpAuthCtx) {
         where: whereLike('download: only the rows it passes.').optional(),
         view: z.string().min(1).optional().describe(`download: ${VIEW_BRIEF}`),
         format: z.enum(['csv', 'jsonl']).optional().describe('download: csv (default) or jsonl, one JSON object a row'),
+        raw: lenientBoolean().optional().describe('download, csv: every cell exactly as it is, with no \' added '
+          + 'before = + - @ (a file for a CRM or sending tool; never open it in Excel or Sheets)'),
       },
     },
     async ({ action, ...a }: { action: typeof ACTIONS[number] } & Partial<Record<Field, any>>) => {

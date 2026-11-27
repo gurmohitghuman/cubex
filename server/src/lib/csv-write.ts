@@ -7,22 +7,29 @@
 import type { Response } from 'express';
 import { db } from './db';
 import { parseRowData } from './sql-helpers';
-import { escapeCsvCell } from './csv-safety';
+import { escapeCsvCell, escapeCsvCellRaw } from './csv-safety';
 import { cellOf } from './row-cell';
 import { yieldToRequests } from './slices';
 import type { CompiledFilter } from './row-filter/sql';
 
 // What an export writes (lib/csv-export.ts planSheetExport builds it): the
 // rows passing `filter`, the `where` read_rows takes compiled to SQL.
-export interface SheetExportPlan { sheetName: string; columns: string[]; filter?: CompiledFilter }
+// raw: every cell exactly as it is, for a file going into another tool (lib/csv-safety.ts escapeCsvCellRaw);
+// otherwise a cell that would start a formula in a spreadsheet app gets the guard's quote.
+export interface SheetExportPlan { sheetName: string; columns: string[]; filter?: CompiledFilter; raw?: boolean }
 
 const EXPORT_PAGE_ROWS = 5_000;
 
 // One row as a CSV line, escaped the same way in every export. A row without a
 // column's key has an empty cell there, also for a column named like a member
 // every object inherits ("constructor"), whose inherited value must not be read.
-export const csvLine = (columns: string[], data: Record<string, string>): string =>
-  columns.map(col => escapeCsvCell(cellOf(data, col))).join(',');
+export const csvLine = (columns: string[], data: Record<string, string>, raw = false): string => {
+  const cell = raw ? escapeCsvCellRaw : escapeCsvCell;
+  return columns.map(col => cell(cellOf(data, col))).join(',');
+};
+// The header line (column names are cells too).
+export const csvHeader = (columns: string[], raw = false): string =>
+  columns.map(col => (raw ? escapeCsvCellRaw : escapeCsvCell)(col)).join(',');
 
 // The sheet's row data in row order, EXPORT_PAGE_ROWS rows at a time,
 // yielding to other requests between pages, until `apply` returns false. With
@@ -63,12 +70,12 @@ export async function eachPage(
 export async function writeSheetCsv(
   sheetId: string, userId: string, plan: SheetExportPlan, write: (chunk: string) => Promise<boolean>,
 ): Promise<number> {
-  let chunk = plan.columns.map(escapeCsvCell).join(',');
+  let chunk = csvHeader(plan.columns, plan.raw);
   let rowCount = 0;
   await eachPage(sheetId, userId, async rows => {
     for (const json of rows) {
       if (json === null) continue;
-      chunk += '\r\n' + csvLine(plan.columns, parseRowData(json));
+      chunk += '\r\n' + csvLine(plan.columns, parseRowData(json), plan.raw);
       rowCount++;
     }
     const more = await write(chunk);

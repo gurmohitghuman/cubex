@@ -129,6 +129,8 @@ export const tableRoutes = (): RouteDoc[] => [
       view: z.string().optional().describe('A saved view, by name or id: export its rows and visible columns.'),
       format: z.enum(['csv', 'jsonl']).optional()
         .describe('csv (default), or jsonl: one {"id", "data"} object a line, as read_rows answers a row.'),
+      raw: z.enum(['true', 'false']).optional().describe('csv only. true: every cell exactly as it is, with no \' '
+        + 'added before = + - @ (a file for a CRM or sending tool; never open it in Excel or Sheets).'),
     }),
     produces: ['csv', 'jsonl'], conflict: true,
     responses: { 200: 'The file: the rows up to the last one the sheet had when it began (rows added past that '

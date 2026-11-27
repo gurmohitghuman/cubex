@@ -42,6 +42,14 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
     version: 'v0.8.50',
     changes: [
       {
+        change: 'changed',
+        tools: ['read_rows', 'file_link'],
+        summary: 'read_rows (format csv) and file_link (download, csv) take raw: true, every cell exactly as it is, '
+          + 'with no \' added before = + - @, for a file going into a CRM or sending tool.',
+        details: 'Without raw the guard stays, for a file opened in Excel or Sheets. raw with json or jsonl is '
+          + 'refused.',
+      },
+      {
         change: 'server',
         summary: 'A tool billed per result whose catalog names its count input is priced at the results a call '
           + 'asks for (that input, else its default) instead of 20: run_enrichment\'s and apply_setup\'s estimates '

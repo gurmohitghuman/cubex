@@ -8,10 +8,12 @@ router.use(authenticateToken);
 // CSV building (incl. formula-injection escaping) is shared with /api/v1 —
 // see lib/csv-export.ts. Streamed: a million-row sheet downloads in pages.
 // ?view=active exports the view the grid shows: its rows and visible columns.
+// ?raw=1: every cell exactly as it is, for a file going into another tool (the menu's "for a CRM or email tool").
 router.get('/:id/export', async (req: AuthRequest, res) => {
   try {
     const view = typeof req.query.view === 'string' && req.query.view.trim() ? req.query.view : undefined;
-    const result = await streamSheetCsv(req.params.id, req.userId!, res, { view });
+    const raw = req.query.raw === '1';
+    const result = await streamSheetCsv(req.params.id, req.userId!, res, { view, raw });
     if (result === 'not_found') return res.status(404).json({ error: 'Sheet not found' });
     if (result === 'empty') return res.status(400).json({ error: 'No data to export' });
     if (typeof result === 'object' && 'invalid' in result) return res.status(400).json({ error: result.invalid });

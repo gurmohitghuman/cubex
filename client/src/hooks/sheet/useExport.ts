@@ -15,8 +15,9 @@ export const useExport = (
   // nothing. A ref, so a second click before the button repaints is caught too.
   const busy = useRef(false)
 
-  // scope 'view': the rows and visible columns of the view showing (viewName names the file).
-  const handleExportCSV = useCallback(async (scope: 'view' | 'sheet' = 'sheet', viewName = '') => {
+  // scope 'view': the rows and visible columns of the view showing (viewName names the file). forTools: every
+  // cell exactly as it is, for importing into a CRM or email tool (the file says "for import").
+  const handleExportCSV = useCallback(async (scope: 'view' | 'sheet' = 'sheet', viewName = '', forTools = false) => {
     if (!activeSheet || busy.current) return
     busy.current = true
     setIsExporting(true)
@@ -31,13 +32,13 @@ export const useExport = (
       }
       // Yield a frame before the blob call so the button can repaint as disabled.
       await new Promise(resolve => requestAnimationFrame(resolve))
-      const blob = await sheetsAPI.exportCSV(activeSheet.id, scope === 'view' ? 'active' : undefined)
+      const blob = await sheetsAPI.exportCSV(activeSheet.id, scope === 'view' ? 'active' : undefined, forTools)
       requestAnimationFrame(() => {
         const url = window.URL.createObjectURL(blob)
         const link = document.createElement('a')
         link.href = url
-        link.download = scope === 'view' && viewName
-          ? `${activeSheet.name} - ${viewName}.csv` : `${activeSheet.name}.csv`
+        const base = scope === 'view' && viewName ? `${activeSheet.name} - ${viewName}` : activeSheet.name
+        link.download = forTools ? `${base} (for import).csv` : `${base}.csv`
         document.body.appendChild(link)
         link.click()
         document.body.removeChild(link)

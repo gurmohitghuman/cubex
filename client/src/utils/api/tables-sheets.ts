@@ -111,10 +111,12 @@ export const sheetsAPI = {
     }).then(res => res.data)
   },
 
-  // view 'active': the rows and visible columns of the view the grid shows.
-  exportCSV: (id: string, view?: 'active'): Promise<Blob> =>
-    api.get(`/sheets/${id}/export`, { responseType: 'blob', params: view ? { view } : undefined, ...noServerToast })
-      .then(res => res.data),
+  // view 'active': the rows and visible columns of the view the grid shows. raw: every cell exactly as it is, for
+  // a file going into another tool (no ' before + - = @, which Excel needs and a CRM would keep).
+  exportCSV: (id: string, view?: 'active', raw = false): Promise<Blob> =>
+    api.get(`/sheets/${id}/export`, {
+      responseType: 'blob', params: { ...(view ? { view } : {}), ...(raw ? { raw: '1' } : {}) }, ...noServerToast,
+    }).then(res => res.data),
 
   getColumns: (id: string): Promise<Array<{ name: string; reference: string }>> =>
     api.get(`/sheets/${id}/columns`, noServerToast).then(res => res.data),

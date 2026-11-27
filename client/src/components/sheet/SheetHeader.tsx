@@ -30,7 +30,7 @@ interface SheetHeaderProps {
   onStopAll: () => void | Promise<void>
   onDeleteSelectedRows: () => void
   onImport: () => void
-  onExport: (scope: ExportScope, viewName: string) => void
+  onExport: (scope: ExportScope, viewName: string, forTools?: boolean) => void
   // The view showing narrows the sheet: Export asks "this view or the whole sheet".
   viewNarrows: boolean
   viewName: string
@@ -195,7 +195,7 @@ export const SheetHeader: React.FC<SheetHeaderProps> = ({
 
             <SheetDataMenu hasRows={hasRows} columnCount={columnCount} isExporting={isExporting}
               viewNarrows={viewNarrows} viewName={viewName} autoDedupeOn={!!autoDedupeOn} onImport={onImport}
-              onExport={scope => onExport(scope, viewName)} onOpenWebhook={onOpenWebhook}
+              onExport={(scope, forTools) => onExport(scope, viewName, forTools)} onOpenWebhook={onOpenWebhook}
               onRemoveDuplicates={onRemoveDuplicates} onRunColumns={onRunColumns} />
             <SheetMoreMenu sheetId={sheetId ?? null} sheetName={sheetName ?? ''} onUseSetup={onUseSetup}
               onSaveSetup={onSaveSetup} onSetupVersions={onSetupVersions} testChanges={testChanges} />
