@@ -4,8 +4,9 @@
 // (company_domains); the roles asked as its titles; the country, place and how recent as fixed values. A row whose
 // website cleans to nothing isn't searched (lib/enrich-request.ts): with no company, the index would answer roles at
 // any company. Each role found becomes a row in the Open roles sheet, kept (a role found again is not added again),
-// with the company row's own website cell copied into its Domain, so the lookup on the company sheet matches it
-// exactly, whatever form the cells are in; and First seen the run's day, set by each start.
+// with the company row's website cleaned to its domain as its Domain (the key the count on the company sheet matches
+// its own domain column on, so a website written another way keeps its count: services/open-roles-lookups.ts); and
+// First seen the day it was found, whoever started the run.
 import { stripControlChars } from '../csv-safety';
 import { digitsAsNumber } from '../digits-text';
 import { holdsRunMarker } from '../enrich-seed';
@@ -135,9 +136,9 @@ function searchInputs(o: OpenRolesOptions): Record<string, InputBinding> {
   };
 }
 
-// The run on the company sheet. rolesSheetId: the Open roles sheet (made before the run starts). firstSeen: the
-// run's day. existing: the column is there already (its rows searched again).
-export function openRolesInput(o: OpenRolesOptions, rolesSheetId: string, firstSeen: string, existing: boolean):
+// The run on the company sheet. rolesSheetId: the Open roles sheet (made before the run starts). timeZone: the asker's,
+// for First seen (null: UTC). existing: the column is there already (its rows searched again).
+export function openRolesInput(o: OpenRolesOptions, rolesSheetId: string, timeZone: string | null, existing: boolean):
   EnrichRunInput {
   const f = jobFields(HIRING_DIRECT_PROVIDER);
   return {
@@ -148,10 +149,13 @@ export function openRolesInput(o: OpenRolesOptions, rolesSheetId: string, firstS
     concurrency: null, fresh: true, rowGeneration: null,
     list: {
       dest: { sheetId: rolesSheetId }, provider: null, maxItems: o.perCompany, itemsPath: DIRECT_ITEMS_PATH,
-      // The company's Domain is its own website cell (copied below), not the index's.
+      // The company's Domain is its own website's domain (copied below), not the index's.
       fields: f.fields.filter(x => x.columnName !== ROLE_COLUMNS.domain),
+      // Domain: the website as the domain cleaner gives it, the key the count matches on the company sheet's domain
+      // column; First seen: the day the role is added, whoever starts the run (lib/enrich-list.ts copies).
       copy: [
-        { from: o.websiteColumn, to: ROLE_COLUMNS.domain }, { from: '', to: ROLE_COLUMNS.firstSeen, value: firstSeen },
+        { from: o.websiteColumn, to: ROLE_COLUMNS.domain, clean: 'domain' },
+        { from: '', to: ROLE_COLUMNS.firstSeen, day: timeZone },
       ],
       dedupePath: f.dedupePath, dedupeAlso: f.dedupeAlso, keep: true,
     },

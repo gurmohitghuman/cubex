@@ -17,8 +17,6 @@ import { getColumnTypes } from '../lib/column-types';
 import { createSheetTxn } from '../lib/sheet-crud-helpers';
 import { writeColumnDescription } from '../lib/column-descriptions';
 import { logSheetChange } from '../lib/change-log';
-import { dayIn } from '../lib/ai-visibility/check';
-import { nowDate } from '../lib/clock';
 import { micro, moneyUp } from '../lib/cost-ceiling';
 import { buildRequest } from '../lib/enrich-request';
 import { inputTemplates } from '../lib/enrich-run-config';
@@ -32,7 +30,7 @@ import { buildEnrichmentConfig } from './enrich-run-build';
 import { estimateEnrichment, type EnrichEstimateView } from './enrich-setup';
 import { startEnrichmentRun } from './enrich-run-start';
 import { countDirectJobs, type JobCount } from './job-count';
-import { freeName, lookAgainWhenDone, lookupsAfterStart } from './open-roles-lookups';
+import { freeName, lookupsAfterStart } from './open-roles-lookups';
 import type { RunFail } from './run-shared';
 import { getTregToken } from './treg-key';
 
@@ -60,7 +58,6 @@ export type OpenRolesAnswer = { ok: { estimate: OpenRolesEstimate } } | { ok: { 
   | OpenRolesFail;
 
 const bad = (message: string): RunFail => ({ fail: 'bad_request', message });
-const today = (timeZone: string | null) => dayIn(nowDate().toISOString().replace('T', ' ').slice(0, 19), timeZone);
 
 // What a sheet has of an earlier run: its search column and the live Open roles sheet that column adds to.
 interface Setup { column: string; rolesSheetId: string; rolesSheetName: string; active: boolean; paused: boolean }
@@ -133,7 +130,7 @@ async function estimateOf(userId: string, sheetId: string, o: OpenRolesOptions, 
   const companies = countRows(sheetId, userId);
   if (companies === 0) return bad('This sheet has no rows: add the companies to look at first.');
   const columns = getSheetColumns(sheetId, userId);
-  const input = openRolesInput(o, setup?.rolesSheetId ?? '', today(null), !!setup);
+  const input = openRolesInput(o, setup?.rolesSheetId ?? '', null, !!setup);
   const [est, config] = await Promise.all([
     estimateEnrichment(userId, {
       toolId: HIRING_DIRECT_TOOL_ID, rows: companies, preset: null, maxCostPerRowUsd: null, limit: null,
@@ -233,7 +230,7 @@ export async function openRoles(userId: string, sheetId: string, req: OpenRolesR
   // The search column: ours from before, else a free name (a column of that name may be the person's own).
   const column = setup?.column ?? freeName(OPEN_ROLES.status, getSheetColumns(sheetId, userId));
   const roles = setup ? { id: setup.rolesSheetId, name: setup.rolesSheetName } : makeRolesSheet(userId, sheetId);
-  const input = { ...openRolesInput(req, roles.id, today(req.timeZone), !!setup), columnName: column,
+  const input = { ...openRolesInput(req, roles.id, req.timeZone, !!setup), columnName: column,
     spendLimitUsd: est.highUsd, noReuse: true };
   const started = await startEnrichmentRun(userId, sheetId, input)
     .catch((error: Error): RunFail => ({ fail: 'upstream', message: error.message }));
@@ -246,7 +243,6 @@ export async function openRoles(userId: string, sheetId: string, req: OpenRolesR
       { detail: { roles: req.roles, websiteColumn: req.websiteColumn, country: req.country, place: req.place } });
   }
   if (!setup) writeColumnDescription(sheetId, userId, column, OPEN_ROLES_WORDS.status);
-  lookAgainWhenDone(userId, sheetId, roles.id, started.ok.runId);
   const lookups = await lookupsAfterStart(userId, sheetId, req, roles.id);
   return { ok: { started: { runId: started.ok.runId, column, rolesSheetId: roles.id, rolesSheetName: roles.name,
     lookups: lookups.lookups, lookupsLeft: lookups.left } } };

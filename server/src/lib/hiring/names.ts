@@ -20,6 +20,8 @@ export const OPEN_ROLES_WORDS = {
     + 'that found it.',
   status: 'Searches each company\'s open roles for the roles asked, and adds them to the Open roles sheet.',
   count: 'How many roles in the Open roles sheet are at this company (filter its Domain for them).',
+  domain: 'This company\'s website as a domain, which the Open roles count matches (written another way, it stays '
+    + 'the same domain).',
 };
 
 export const HIRING_SHEETS = { companies: 'Companies', roles: 'Roles', searches: 'Searches' } as const;

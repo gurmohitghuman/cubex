@@ -1,16 +1,23 @@
 // The count on the company sheet for Open roles (services/open-roles.ts): a lookup counting each company's roles in
-// the Open roles sheet, made after a run's start (a lookup's fill holds the sheet, which the start's setup of its rows
-// holds first) and looked up again once the run's roles are in, as a lookup doesn't follow the sheet it looks in.
-// Neither keeps the start waiting: a run start answers at once (CLAUDE.md), so what the sheet can't take yet is done
-// in the background as soon as it is free.
+// the Open roles sheet by a cleaned domain on both sides (plans/open-roles-count.md). The company sheet's side is a
+// clean column, the domain cleaner on the website column ("Website (domain)", following edits); each role's Domain is
+// that same cleaner's answer, copied as the run adds it (lib/enrich-list.ts copy clean 'domain'). So `acme.com` and
+// `https://www.acme.com/about` count as one, and a website written another way keeps its count. Both are made after
+// a run's start (their fills hold the sheet, which the start's setup of its rows holds first), and the count is
+// looked up again once a run's roles are in, as a lookup doesn't follow the sheet it looks in: any run of the column,
+// however it started (lib/run-start-listeners.ts), and at boot the runs still going. Neither keeps the start waiting:
+// a run start answers at once (CLAUDE.md), so what the sheet can't take yet is done in the background when it's free.
 import { db } from '../lib/db';
 import { getSheetColumns } from '../lib/sql-helpers';
 import { writeColumnDescription } from '../lib/column-descriptions';
 import { HIRING_CHECK_POLL_MS, OPEN_ROLES_LOOKUPS_LATER_MS } from '../lib/constants';
 import { sheetFreeWithin } from '../lib/sheet-busy';
-import { OPEN_ROLES, OPEN_ROLES_WORDS, ROLE_COLUMNS } from '../lib/hiring/names';
-import type { OpenRolesOptions } from '../lib/hiring/open-roles-input';
+import { HIRING_DIRECT_TOOL_ID, OPEN_ROLES, OPEN_ROLES_WORDS, ROLE_COLUMNS } from '../lib/hiring/names';
+import { openRolesOf, type OpenRolesOptions } from '../lib/hiring/open-roles-input';
+import { inputTemplates, type EnrichRunConfig } from '../lib/enrich-run-config';
+import { onEnrichmentRunStarted } from '../lib/run-start-listeners';
 import { lookupInputOf, startLookupColumn } from './lookup-column';
+import { startCleanColumn } from './clean-column';
 import { searchState } from './hiring-check-watch';
 import type { LookupColumnRow } from '../lib/lookup-columns';
 
@@ -24,29 +31,51 @@ export function freeName(base: string, taken: Iterable<string>): string {
 
 export interface LookupsNow { lookups: string[]; left: string | null }
 
-// The count on the company sheet, found by what it looks up whatever its name, made once; one that reads another
-// website column than this run's is pointed at this one (the roles' Domain copies it). It waits for the sheet first,
-// at most waitMs (the run's start, or another fill, holds it), and looks again then: another call may have made it.
+// The company sheet's domain of the website column: a clean column with the domain cleaner, found by its record
+// whatever its name, while its column is there.
+const domainColumnOf = (userId: string, sheetId: string, website: string): string | null => {
+  const listed = new Set(getSheetColumns(sheetId, userId));
+  return (db.prepare(`SELECT column_name FROM clean_columns WHERE sheet_id = ? AND user_id = ? AND source_column = ?
+    AND cleaner = 'domain'`).pluck().all(sheetId, userId, website) as string[]).find(c => listed.has(c)) ?? null;
+};
+
+// The domain column, then the count on it, each made once (found by what it reads, whatever its name); a count that
+// reads another column is pointed at this run's domain column. Each waits for the sheet first, at most waitMs (the
+// run's start, or another fill, holds it), and looks again then: another call may have made it.
 async function ensureLookups(userId: string, sheetId: string, o: OpenRolesOptions, rolesSheetId: string,
   waitMs: number): Promise<LookupsNow> {
   const ours = () => (db.prepare(`SELECT column_name, source_column FROM lookup_columns WHERE sheet_id = ?
     AND user_id = ? AND other_sheet_id = ? AND match_column = ? AND returns = 'count'`)
     .all(sheetId, userId, rolesSheetId, ROLE_COLUMNS.domain) as Array<{ column_name: string; source_column: string }>)
     .find(h => getSheetColumns(sheetId, userId).includes(h.column_name));
-  const ready = (f: ReturnType<typeof ours>) => !!f && f.source_column === o.websiteColumn;
+  const ready = (f: ReturnType<typeof ours>, domain: string | null) => !!f && !!domain && f.source_column === domain;
+  let domain = domainColumnOf(userId, sheetId, o.websiteColumn);
   let found = ours();
-  if (ready(found)) return { lookups: [found!.column_name], left: null };
-  const held = await sheetFreeWithin(sheetId, waitMs);
+  if (ready(found, domain)) return { lookups: [found!.column_name], left: null };
+  let held = await sheetFreeWithin(sheetId, waitMs);
+  domain = domainColumnOf(userId, sheetId, o.websiteColumn);
   found = ours();
-  if (ready(found)) return { lookups: [found!.column_name], left: null };
+  if (ready(found, domain)) return { lookups: [found!.column_name], left: null };
   const was = found ? [found.column_name] : [];
-  if (held) {
-    return { lookups: was, left: `The "${found?.column_name ?? OPEN_ROLES.count}" column is ${found ? 'pointed at '
-      + `"${o.websiteColumn}"` : 'added'} once the sheet is free (${held}).` };
+  const later = (): LookupsNow => ({ lookups: was, left: `The "${found?.column_name ?? OPEN_ROLES.count}" column is `
+    + `${found ? 'brought up to date' : 'added'} once the sheet is free (${held}).` });
+  if (held) return later();
+  if (!domain) {
+    const name = freeName(`${o.websiteColumn} (domain)`, getSheetColumns(sheetId, userId));
+    const cleaned = await startCleanColumn(userId, sheetId,
+      { source: o.websiteColumn, cleaner: 'domain', column: name });
+    if ('fail' in cleaned) {
+      return { lookups: was, left: `The "${name}" column isn't there yet (${cleaned.message}). The next run adds it.` };
+    }
+    domain = cleaned.ok.column;
+    writeColumnDescription(sheetId, userId, domain, OPEN_ROLES_WORDS.domain);
+    // Its fill holds the sheet in turn.
+    held = await sheetFreeWithin(sheetId, waitMs);
+    if (held) return later();
   }
   const column = found?.column_name ?? freeName(OPEN_ROLES.count, getSheetColumns(sheetId, userId));
   const made = await startLookupColumn(userId, sheetId, {
-    column, sourceColumn: o.websiteColumn, otherSheetId: rolesSheetId, matchColumn: ROLE_COLUMNS.domain,
+    column, sourceColumn: domain, otherSheetId: rolesSheetId, matchColumn: ROLE_COLUMNS.domain,
     match: 'equals', returns: 'count',
   });
   if ('fail' in made) {
@@ -90,8 +119,8 @@ const runStatus = (userId: string, runId: string): string | null => (db.prepare(
 
 // Once the run's roles are in (hiring-check-watch.ts searchState), each lookup looks every row up again as soon as
 // the sheet is free. A pause does it too (what was found so far), and the watch goes on: a resume ends in another
-// look. Each look is a short read. In memory: a restart meanwhile, or a run started from the column's menu, leaves the
-// columns as they were until the next run here, or the person's "Look up every row again".
+// look. Each look is a short read. Started for every run of the column (below), and again at boot for the runs still
+// going (resumeOpenRolesWatches).
 const watching = new Set<string>();
 export function lookAgainWhenDone(userId: string, sheetId: string, rolesSheetId: string, runId: string): void {
   if (watching.has(runId)) return;
@@ -122,4 +151,33 @@ export function lookAgainWhenDone(userId: string, sheetId: string, rolesSheetId:
     watching.delete(runId);
   };
   later();
+}
+
+// An Open roles search column's run (its Open roles sheet), as openRolesInput lays it out, or null.
+export function openRolesDestOf(config: EnrichRunConfig): string | null {
+  const e = config.enrichment;
+  if (e.toolId !== HIRING_DIRECT_TOOL_ID || !e.list?.keep || !e.list.destSheetId) return null;
+  return openRolesOf(inputTemplates(config), e.list.maxItems) ? e.list.destSheetId : null;
+}
+
+// Any run of an Open roles column, however it started (the dialog, an agent, the column's menu, auto-run): its end
+// looks the count up again.
+onEnrichmentRunStarted((userId, sheetId, runId, config) => {
+  const dest = openRolesDestOf(config);
+  if (dest) lookAgainWhenDone(userId, sheetId, dest, runId);
+});
+
+// At boot: the runs of Open roles columns still going (a restart cut their watch short) are watched again.
+export function resumeOpenRolesWatches(): void {
+  const going = db.prepare(`SELECT id, user_id, sheet_id, config FROM http_runs WHERE status IN
+    ('pending', 'running', 'paused') AND setup_only = 0 AND config LIKE ?`).all(`%${HIRING_DIRECT_TOOL_ID}%`) as
+    Array<{ id: string; user_id: string; sheet_id: string; config: string | null }>;
+  for (const r of going) {
+    try {
+      const dest = r.config ? openRolesDestOf(JSON.parse(r.config) as EnrichRunConfig) : null;
+      if (dest) lookAgainWhenDone(r.user_id, r.sheet_id, dest, r.id);
+    } catch (error) {
+      console.error(`Open roles: run ${r.id} couldn't be watched again (${(error as Error).message}).`);
+    }
+  }
 }

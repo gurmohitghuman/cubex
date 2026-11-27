@@ -33,6 +33,8 @@ export interface ListDraft {
   itemsPath?: string | null        // where the results are, when not where the catalog says
   // Kept on Edit (a template's): a copy under another name ({from: to}), keep mode, the duplicate check's other paths.
   copyAs?: Record<string, string>
+  // Kept on Edit, sent back as they were: Cubex's own copies (a cleaned domain, the day a row is added).
+  own?: EnrichListRequest['copy']
   keep?: true
   dedupeAlso?: { path: string; also: string[] }
 }
@@ -85,6 +87,7 @@ export function listRequest(l: ListDraft): EnrichListRequest {
     fields: on && on.length ? on.map(f => ({ path: f.path, columnName: f.columnName.trim() })) : null,
     copy: [
       ...l.copy.map(c => ({ from: c, to: l.copyAs?.[c] ?? c })), ...(l.fixed ?? []).map(f => ({ from: '', ...f })),
+      ...(l.own ?? []),
     ],
     dedupePath,
     ...(l.itemsPath ? { itemsPath: l.itemsPath } : {}),

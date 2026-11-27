@@ -13,8 +13,9 @@ export interface EnrichListRequest {
   provider: string | null
   maxItems: number
   fields: EnrichListField[] | null
-  // A column of this row, or ({from: '', to, value}) the same text in every new row.
-  copy: Array<{ from: string; to: string; value?: string }>
+  // A column of this row, or ({from: '', to, value}) the same text in every new row. Cubex's own copies also have
+  // clean ('domain': the cell as the domain cleaner gives it) or day (the day a row is added, in that time zone).
+  copy: Array<{ from: string; to: string; value?: string; clean?: 'domain'; day?: string | null }>
   dedupePath: string | null
   itemsPath?: string | null   // a single tool's results, when its example shows that list empty
   // Keep mode: a rerun adds only results the sheet never had and keeps the rows from before.

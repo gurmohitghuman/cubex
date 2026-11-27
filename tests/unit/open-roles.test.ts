@@ -22,6 +22,9 @@ const { parseOpenRoles, openRolesInput, OPEN_ROLE_COLUMNS } =
 const { openRoles, openRolesSetup } = await import('../../server/src/services/open-roles')
 const { buildRequest } = await import('../../server/src/lib/enrich-request')
 const { inputTemplates } = await import('../../server/src/lib/enrich-run-config')
+const { copyValues } = await import('../../server/src/lib/enrich-list')
+const { parseListInput } = await import('../../server/src/lib/enrich-list-input')
+const { recallChoices } = await import('../../server/src/lib/enrich-run-recall')
 const { clearTregToken, saveTregToken } = await import('../../server/src/services/treg-key')
 const { renameSheetColumn } = await import('../../server/src/services/column-rename')
 const { buildEnrichmentConfig } = await import('../../server/src/services/enrich-run-build')
@@ -42,6 +45,8 @@ const columnsOf = (sid: string) => JSON.parse(db.prepare('SELECT column_order FR
   .get(sid) as string) as string[]
 const lookups = (sid: string) => db.prepare(`SELECT column_name, returns, match_column, source_column
   FROM lookup_columns WHERE sheet_id = ? ORDER BY column_name`).all(sid)
+const cleans = (sid: string) => db.prepare(`SELECT column_name, source_column, cleaner FROM clean_columns
+  WHERE sheet_id = ? ORDER BY column_name`).all(sid)
 // The count is made after the start without keeping it waiting: once the start has set up the rows, in the
 // background (services/open-roles-lookups.ts). Polled until it is there.
 async function countOn(sid: string, column: string, source: string): Promise<void> {
@@ -82,12 +87,32 @@ await ok('the ask is parsed strictly: a website column, the titles as the job in
   assert.ok(typeof snake === 'string' && snake.includes('website_column'), String(snake))
 })
 
+await ok('Cubex\'s own copies: a website as its domain, the day a row is found; an edit in the app sends them back, '
+  + 'and a day needs no column', () => {
+  const copy = [{ id: 'c1', from: 'Website', to: 'Domain', clean: 'domain' as const },
+    { id: 'c2', from: '', to: 'First seen', day: 'America/Toronto' }]
+  const list = { copy } as unknown as Parameters<typeof copyValues>[0]
+  assert.deepEqual(copyValues(list, { Website: 'https://www.Northwind-Labs.io/about?x=1' }),
+    { c1: 'northwind-labs.io', c2: today() })
+  assert.deepEqual(copyValues(list, { Website: '⏳ Processing...' }), { c1: '', c2: today() })
+  const base = { dest: { newSheetName: 'Roles' }, provider: null, maxItems: 5, fields: [{ path: '$.link',
+    columnName: 'Link' }], dedupePath: '$.link' }
+  const back = parseListInput({ ...base, copy: [{ from: 'Website', to: 'Domain', clean: 'domain' },
+    { from: '', to: 'First seen', day: 'America/Toronto' }, { from: '', to: 'Day (UTC)', day: null }] })
+  assert.ok(typeof back === 'object' && back !== null, String(back))
+  assert.deepEqual(back.copy, [{ from: 'Website', to: 'Domain', clean: 'domain' },
+    { from: '', to: 'First seen', day: 'America/Toronto' }, { from: '', to: 'Day (UTC)', day: null }])
+  for (const c of [{ from: '', to: 'D', day: 'Mars/Base' }, { from: 'Website', to: 'W', clean: 'phone' }]) {
+    assert.equal(typeof parseListInput({ ...base, copy: [c] }), 'string', JSON.stringify(c))
+  }
+})
+
 const o = parsed({ websiteColumn: 'Website', roles: ['SDR', 'Account Executive'], country: 'US', place: 'Austin',
   postedWithinDays: 14, perCompany: 4 })
 
-await ok('the run: the row\'s website as the one company, the roles as titles, the roles kept with the company\'s own '
-  + 'website cell and the run\'s day', () => {
-  const input = openRolesInput(o, 'dest-id', '2026-11-27', false)
+await ok('the run: the row\'s website as the one company, the roles as titles, the roles kept with the company\'s '
+  + 'website as its domain and the day each is found', () => {
+  const input = openRolesInput(o, 'dest-id', 'America/Toronto', false)
   assert.equal(input.toolId, 'hirebase.jobs.search')
   assert.equal(input.cleanDomains, true)
   assert.equal(input.runIf, '{{Website}} is not empty')
@@ -97,7 +122,8 @@ await ok('the run: the row\'s website as the one company, the roles as titles, t
   })
   const l = input.list!
   assert.deepEqual([l.maxItems, l.keep, l.itemsPath, l.provider], [4, true, '$.jobs', null])
-  assert.deepEqual(l.copy, [{ from: 'Website', to: R.domain }, { from: '', to: R.firstSeen, value: '2026-11-27' }])
+  assert.deepEqual(l.copy, [{ from: 'Website', to: R.domain, clean: 'domain' },
+    { from: '', to: R.firstSeen, day: 'America/Toronto' }])
   assert.ok(!l.fields!.some(f => f.columnName === R.domain), 'Domain is the copied cell, not the index\'s')
   assert.deepEqual(l.fields!.map(f => f.columnName), [R.title, R.company, R.team, R.location, R.posted, R.link])
   assert.equal(l.dedupePath, '$.application_link')
@@ -208,12 +234,13 @@ await ok('the start: the Open roles sheet beside, the search column, the lookup,
   assert.deepEqual([st.column, st.rolesSheetName], [OPEN_ROLES.status, OPEN_ROLES.sheet])
   // Answered at once: the rows' setup holds the sheet, so the count comes after (or is there if it was quick).
   assert.ok(st.lookupsLeft !== null || st.lookups[0] === OPEN_ROLES.count, JSON.stringify(st))
-  await countOn(sid, OPEN_ROLES.count, 'Website')
+  await countOn(sid, OPEN_ROLES.count, 'Website (domain)')
   assert.deepEqual(rolesSheets(), ['Open roles'])
   assert.deepEqual(columnsOf(rolesSheet), OPEN_ROLE_COLUMNS)
-  assert.deepEqual(columnsOf(sid), ['Name', 'Website', OPEN_ROLES.status, OPEN_ROLES.count])
+  assert.deepEqual(columnsOf(sid), ['Name', 'Website', OPEN_ROLES.status, 'Website (domain)', OPEN_ROLES.count])
+  assert.deepEqual(cleans(sid), [{ column_name: 'Website (domain)', source_column: 'Website', cleaner: 'domain' }])
   assert.deepEqual(lookups(sid), [
-    { column_name: OPEN_ROLES.count, returns: 'count', match_column: R.domain, source_column: 'Website' },
+    { column_name: OPEN_ROLES.count, returns: 'count', match_column: R.domain, source_column: 'Website (domain)' },
   ])
   const c = newestConfig(sid)
   assert.equal(runsOn(sid), 1)
@@ -221,7 +248,10 @@ await ok('the start: the Open roles sheet beside, the search column, the lookup,
   assert.equal(c.enrichment.list.destSheetId, rolesSheet)
   assert.equal(c.enrichment.list.keep, true)
   assert.deepEqual(c.enrichment.list.copy.filter((x: { to: string }) => x.to === R.firstSeen)
-    .map((x: { value: string }) => x.value), [today()])
+    .map((x: { day: string }) => x.day), ['America/Toronto'])
+  // A rerun from the column's menu takes them as they are (enrich-run-recall.ts).
+  assert.deepEqual(recallChoices(c, OPEN_ROLES.status).list!.copy, [{ from: 'Website', to: R.domain, clean: 'domain' },
+    { from: '', to: R.firstSeen, day: 'America/Toronto' }])
   assert.equal(c.enrichment.spendLimitUsd, high)
 })
 
@@ -239,7 +269,7 @@ await ok('a run still going is refused; once it is over, a second start reuses t
   assert.equal(lookups(sid).length, 1)
   const c = newestConfig(sid)
   assert.deepEqual(c.enrichment.list.copy.filter((x: { to: string }) => x.to === R.firstSeen)
-    .map((x: { value: string }) => x.value), [today()])
+    .map((x: { day: string }) => x.day), ['America/Toronto'])
   assert.equal(inputTemplates(c).job_titles, '["BDR"]', 'the roles asked now')
   assert.equal(runsOn(sid), 2)
 })
@@ -277,8 +307,8 @@ await ok('with no treg key a start is refused before anything is made; a renamed
   assert.ok('ok' in again && 'started' in again.ok, JSON.stringify(again))
   assert.deepEqual([again.ok.started.column, again.ok.started.rolesSheetId], ['Hiring?', rolesSheet])
   assert.deepEqual(rolesSheets(), ['Open roles'], 'no second sheet')
-  await countOn(sid, OPEN_ROLES.count, 'Site')
-  assert.deepEqual(lookups(sid).map(l => [l.column_name, l.source_column]), [[OPEN_ROLES.count, 'Site']])
+  await countOn(sid, OPEN_ROLES.count, 'Site (domain)')
+  assert.deepEqual(lookups(sid).map(l => [l.column_name, l.source_column]), [[OPEN_ROLES.count, 'Site (domain)']])
 })
 
 await ok('names the person already uses are left alone; a hiring table\'s sheets and a missing column are refused',
@@ -290,7 +320,7 @@ await ok('names the person already uses are left alone; a hiring table\'s sheets
   const s = await openRoles(uid, own, { ...o, estimateOnly: false, maxCostUsd: e.ok.estimate.highUsd, timeZone: null })
   assert.ok('ok' in s && 'started' in s.ok, JSON.stringify(s))
   assert.equal(s.ok.started.column, `${OPEN_ROLES.status} 2`)
-  await countOn(own, `${OPEN_ROLES.count} 2`, 'Website')
+  await countOn(own, `${OPEN_ROLES.count} 2`, 'Website (domain)')
   assert.deepEqual(rolesSheets(), ['Open roles', 'Open roles 2'], 'a free name in the table')
   const missing = await openRoles(uid, sid, { ...o, websiteColumn: 'Nowhere', estimateOnly: true, maxCostUsd: null,
     timeZone: null })

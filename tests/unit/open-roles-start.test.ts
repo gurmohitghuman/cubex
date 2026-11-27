@@ -14,8 +14,11 @@ const { sheetBusyWith } = await import('../../server/src/lib/sheet-busy')
 const ROWS = 20_000
 const o = parseOpenRoles({ websiteColumn: 'Website', roles: ['SDR'], country: 'US' })
 assert.ok(typeof o === 'object', String(o))
+// The count reads the website's domain column (a clean column), made first.
 const count = (sid: string) => db.prepare(`SELECT column_name FROM lookup_columns WHERE sheet_id = ?
-  AND returns = 'count' AND source_column = 'Website'`).pluck().all(sid) as string[]
+  AND returns = 'count' AND source_column = 'Website (domain)'`).pluck().all(sid) as string[]
+const domain = (sid: string) => db.prepare(`SELECT column_name FROM clean_columns WHERE sheet_id = ?
+  AND source_column = 'Website' AND cleaner = 'domain'`).pluck().all(sid) as string[]
 
 await ok(`a start on ${ROWS.toLocaleString('en-US')} rows answers while their setup holds the sheet; the count comes `
   + 'after', async () => {
@@ -35,6 +38,7 @@ await ok(`a start on ${ROWS.toLocaleString('en-US')} rows answers while their se
     await new Promise(r => setTimeout(r, 50))
   }
   assert.deepEqual(count(sid), [OPEN_ROLES.count])
+  assert.deepEqual(domain(sid), ['Website (domain)'])
 })
 
 done()

@@ -46,11 +46,14 @@ function recallList(built: ListDraft | null | undefined, r: EnrichRecalledChoice
   // A run that adds rows from a list the catalog doesn't name (itemsPath) is
   // rebuilt from the run alone: the tool reads as one that adds none.
   if (!l || (!built && !l.itemsPath)) return built ?? null
-  const renamed = l.copy.filter(c => c.value === undefined && c.to !== c.from)
+  // Cubex's own copies (cleaned, or the day a row is added) go back as they were, out of the lists a person edits.
+  const own = l.copy.filter(c => c.clean !== undefined || c.day !== undefined)
+  const plain = l.copy.filter(c => !own.includes(c))
+  const renamed = plain.filter(c => c.value === undefined && c.to !== c.from)
   return {
     dest: 'sheetId' in l.dest ? { kind: 'sheet', sheetId: l.dest.sheetId } : { kind: 'new', name: l.dest.newSheetName },
-    maxItems: l.maxItems, provider: l.provider, copy: l.copy.filter(c => c.value === undefined).map(c => c.from),
-    fixed: l.copy.flatMap(c => (c.value !== undefined ? [{ to: c.to, value: c.value }] : [])),
+    maxItems: l.maxItems, provider: l.provider, copy: plain.filter(c => c.value === undefined).map(c => c.from),
+    fixed: plain.flatMap(c => (c.value !== undefined ? [{ to: c.to, value: c.value }] : [])),
     itemsPath: l.itemsPath ?? null,
     fields: l.fields ? l.fields.map(f => ({
       path: f.path, label: f.path.replace(/^\$\.?/, ''), enabled: true, columnName: f.columnName,
@@ -58,6 +61,7 @@ function recallList(built: ListDraft | null | undefined, r: EnrichRecalledChoice
     dedupePath: l.dedupePath,
     ...(renamed.length ? { copyAs: Object.fromEntries(renamed.map(c => [c.from, c.to])) } : {}),
     ...(l.keep ? { keep: true as const } : {}),
+    ...(own.length ? { own } : {}),
     ...(l.dedupePath && l.dedupeAlso?.length ? { dedupeAlso: { path: l.dedupePath, also: l.dedupeAlso } } : {}),
   }
 }
