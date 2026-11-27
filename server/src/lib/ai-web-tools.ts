@@ -111,8 +111,23 @@ export function runSearchConfig(run: {
   };
 }
 
-// The system message a single-column row with web tools gets (its spend limit counts it: ai-spend-gate.ts).
-export const WEB_SYSTEM_MESSAGE = 'You are a helpful AI assistant. You can reference and analyze information from '
+// How to use what web tools bring back. After a column's own system prompt it says only that, so the column's
+// rules (tone, format, scoring) still decide the answer.
+const WEB_NOTE = 'You can reference and analyze information from web search results and fetched pages when '
+  + 'provided. Use that context to provide accurate, up-to-date information. When you cite sources, prefer plain '
+  + 'URLs over markdown links.';
+// A row with web tools and no system prompt of its own.
+const WEB_SYSTEM_MESSAGE = 'You are a helpful AI assistant. You can reference and analyze information from '
   + 'web search results and fetched pages when provided. Use that context to provide accurate, up-to-date '
   + 'information. Provide clean, plain text output without markdown formatting like **bold** or *italic*. When '
   + 'you cite sources, prefer plain URLs over markdown links.';
+
+// The system message a single-column (prose) row sends, or null for none: the column's system prompt, followed
+// by the web note when the row has web tools. One builder for the runner (services/ai-row.ts), the preview
+// (routes/ai-preview-runner.ts) and the spend limit (lib/ai-spend-limit.ts), so the limit counts what is sent.
+// A structured row sends its system prompt as it is (ai-row-multi.ts).
+export function proseSystemMessage(systemPrompt: string | null | undefined, withTools: boolean): string | null {
+  if (!withTools) return systemPrompt || null;
+  // A blank system prompt says nothing: the row gets the web message alone.
+  return systemPrompt?.trim() ? `${systemPrompt}\n\n${WEB_NOTE}` : WEB_SYSTEM_MESSAGE;
+}

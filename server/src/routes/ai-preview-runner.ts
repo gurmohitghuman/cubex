@@ -3,7 +3,9 @@ import type OpenAI from 'openai';
 import { processPromptTemplate } from '../lib/prompt';
 import { extractCompletionText } from '../lib/completion-text';
 import { aiMaxTokens } from '../lib/constants';
-import { buildWebTools, searchReplayFor, toolCallBudget, type SearchToolConfig } from '../lib/ai-web-tools';
+import {
+  buildWebTools, proseSystemMessage, searchReplayFor, toolCallBudget, type SearchToolConfig,
+} from '../lib/ai-web-tools';
 import { citationsFromCompletion, type Citation } from '../lib/ai-citations';
 import type { FetchLimits } from '../lib/web-fetch-options';
 import { tokensOf, type PaidWith, type RowTokens, type SearchQueryLog } from '../lib/responses-adapter';
@@ -106,21 +108,14 @@ export const processOneRow = async (
   try {
     const filled = processPromptTemplate(args.prompt, row.data, args.columns);
     const processedPrompt = args.promptSuffix ? `${filled}\n\n${args.promptSuffix}` : filled;
-    // A prose answer with web tools gets the runner's tools system message in
-    // place of the user's (ai-row.ts); a structured (JSON) one keeps the user's
-    // system prompt, as ai-row-multi.ts does.
-    const proseWithTools = (!!args.search || args.useWebFetch) && !args.rawText;
+    // A prose answer's system message is the runner's (ai-row.ts): the user's
+    // system prompt, with web tools followed by the web note. A structured
+    // (JSON) one sends the user's system prompt as it is, as ai-row-multi.ts does.
+    const withTools = !!args.search || args.useWebFetch;
+    const system = args.rawText ? (args.systemPrompt || null) : proseSystemMessage(args.systemPrompt, withTools);
 
     const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [];
-    if (args.systemPrompt && !proseWithTools) {
-      messages.push({ role: 'system', content: args.systemPrompt });
-    }
-    if (proseWithTools) {
-      messages.push({
-        role: 'system',
-        content: 'You are a helpful AI assistant. You can reference and analyze information from web search results and fetched pages when provided. Use that context to provide accurate, up-to-date information. Provide clean, plain text output without markdown formatting like **bold** or *italic*. When you cite sources, prefer plain URLs over markdown links.',
-      });
-    }
+    if (system) messages.push({ role: 'system', content: system });
     messages.push({ role: 'user', content: processedPrompt });
 
     // The production runners' exact call (services/ai-model-call.ts) and tools
