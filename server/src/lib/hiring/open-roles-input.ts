@@ -161,3 +161,21 @@ export function openRolesInput(o: OpenRolesOptions, rolesSheetId: string, timeZo
     },
   };
 }
+
+// An Open roles list job's copies as openRolesInput lays them out now, whatever setup a run recalled (a rerun,
+// auto-run, a schedule, a setup, an edit in the app). One saved on v0.8.48 copied the website as written into Domain
+// and a fixed day into First seen: Domain is cleaned to the domain, First seen is the day each role is found (UTC where
+// the setup kept none), so every run adds roles the count's domain column matches. Known by its shape: the hiring job
+// index, roles kept, and a column copied into Domain (a hiring check copies none). Any other list job's copies as they
+// were.
+type CopyLike = { from: string; to: string; value?: string; clean?: 'domain'; day?: string | null };
+export function openRolesCopies<T extends CopyLike>(toolId: string, keep: boolean | undefined, copy: T[]): T[] {
+  if (toolId !== HIRING_DIRECT_TOOL_ID || !keep) return copy;
+  if (!copy.some(c => c.to === ROLE_COLUMNS.domain && c.from)) return copy;
+  return copy.map(c => {
+    if (c.to === ROLE_COLUMNS.domain && c.from && !c.clean) return { ...c, clean: 'domain' as const };
+    if (c.to !== ROLE_COLUMNS.firstSeen || c.from || c.day !== undefined) return c;
+    const { value: _fixed, ...rest } = c;
+    return { ...rest, day: null } as T;
+  });
+}

@@ -14,8 +14,17 @@ import { cellOf } from '../lib/row-cell';
 import { cleanDomain } from '../lib/clean/domain';
 import { markAutorunInputs } from '../lib/autorun-mark';
 import { logSheetChange, countOf } from '../lib/change-log';
-import { writeColumnDescription } from '../lib/column-descriptions';
+import { sheetColumnDescriptions, writeColumnDescription } from '../lib/column-descriptions';
 import { OPEN_ROLES_WORDS, ROLE_COLUMNS } from '../lib/hiring/names';
+
+// What v0.8.48 wrote about the sheet and its columns: replaced by what they hold now, unless the person changed it.
+const V048 = {
+  sheet: 'Every open role found at the companies of the sheet beside it, one row each. Domain is that company\'s '
+    + 'website as its sheet has it. A role found again later is not added again; First seen is the day of the run '
+    + 'that found it.',
+  domain: 'The company\'s website, as its sheet has it.',
+  firstSeen: 'The day of the run that found this role.',
+};
 
 // The roles whose Domain was cleaned, or why it couldn't start now (the sheet busy or gone).
 export async function cleanRolesDomains(userId: string, rolesSheetId: string)
@@ -43,12 +52,18 @@ export async function cleanRolesDomains(userId: string, rolesSheetId: string)
         WHERE id = ? AND user_id = ?`).run(rolesSheetId, userId);
       logSheetChange(rolesSheetId, userId, 'clean_column', `Wrote the Domain of ${countOf(changed, 'role')} as its `
         + 'domain, so the Open roles count beside matches them',
-      { detail: { column: ROLE_COLUMNS.domain, rows: changed } });
+      { column: ROLE_COLUMNS.domain, detail: { rows: changed } });
     }
-    // Its words now say what Domain holds.
-    db.prepare('UPDATE sheets SET description = ? WHERE id = ? AND user_id = ?')
-      .run(OPEN_ROLES_WORDS.sheet, rolesSheetId, userId);
-    writeColumnDescription(rolesSheetId, userId, ROLE_COLUMNS.domain, OPEN_ROLES_WORDS.roleDomain);
+    // Its words say what Domain and First seen hold now, where they're still what v0.8.48 wrote.
+    db.prepare('UPDATE sheets SET description = ? WHERE id = ? AND user_id = ? AND description = ?')
+      .run(OPEN_ROLES_WORDS.sheet, rolesSheetId, userId, V048.sheet);
+    const words = sheetColumnDescriptions(rolesSheetId, userId);
+    if (words.get(ROLE_COLUMNS.domain) === V048.domain) {
+      writeColumnDescription(rolesSheetId, userId, ROLE_COLUMNS.domain, OPEN_ROLES_WORDS.roleDomain);
+    }
+    if (words.get(ROLE_COLUMNS.firstSeen) === V048.firstSeen) {
+      writeColumnDescription(rolesSheetId, userId, ROLE_COLUMNS.firstSeen, 'The day this role was found.');
+    }
     return { changed };
   });
   if (sheetGone(out)) return { held: 'the Open roles sheet is gone' };

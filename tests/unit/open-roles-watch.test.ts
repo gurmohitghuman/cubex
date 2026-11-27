@@ -24,6 +24,9 @@ const { deleteSheetColumn } = await import('../../server/src/services/column-del
 const { saveAutorunSettings } = await import('../../server/src/services/autorun-settings')
 const { autorunTick } = await import('../../server/src/services/autorun-loop')
 const { markAutorunInputs } = await import('../../server/src/lib/autorun-mark')
+const { startDerivedFollow } = await import('../../server/src/services/derived-follow')
+// As at boot: a write that queues rows for a derived column (the domain column, the count) kicks it.
+startDerivedFollow()
 const { OPEN_ROLES, ROLE_COLUMNS: R } = await import('../../server/src/lib/hiring/names')
 
 const OLD = '2000-01-01 00:00:00'
@@ -139,7 +142,10 @@ await ok('an auto-run run: watched as it starts (services/autorun-start.ts), its
   await kit.idle(sid)
   assert.equal(count(), OLD, 'not before the run is over')
   over(auto)
-  await lookedAgain()
+  // Its one company is looked up again through the count's follow queue; the whole count isn't.
+  await until('the batch\'s company counted', () => kit.cells(sid, OPEN_ROLES.count)[2] === '0')
+  await until('its end looked at', () => !openRolesWatching(auto))
+  assert.equal(count(), OLD, 'the whole count looked up for one company')
   const off = await saveAutorunSettings(uid, sid, { column: OPEN_ROLES.status, enabled: false, where: null,
     dailyCapUsd: null, dailyRowCap: null }, { hasSecretsScope: false })
   assert.ok('ok' in off, JSON.stringify(off))
@@ -170,6 +176,27 @@ await ok('a sheet searched on v0.8.48: its domain column made and its roles\' Do
   assert.deepEqual(kit.cells(rolesSheet, R.domain).slice(-3), ['northwind-labs.io', 'bluefin-data.io',
     'bluefin-data.io'])
   assert.deepEqual(kit.cells(sid, OPEN_ROLES.count).slice(0, 2), ['1', '2'])
+})
+
+await ok('a v0.8.48 setup run again (the column\'s menu, auto-run): it copies as now, Domain cleaned and First '
+  + 'seen the day each role is found', async () => {
+  db.prepare(`UPDATE http_runs SET status = 'completed', placeholder_work = NULL WHERE sheet_id = ?`).run(sid)
+  // The newest run as v0.8.48 saved it: the website copied as written, a fixed First seen.
+  const newest = db.prepare(`SELECT id, config FROM http_runs WHERE sheet_id = ? AND setup_only = 0
+    ORDER BY created_at DESC, rowid DESC LIMIT 1`).get(sid) as { id: string; config: string }
+  const c = JSON.parse(newest.config)
+  c.enrichment.list.copy = [{ id: 'c1', from: 'Website', to: R.domain },
+    { id: 'c2', from: '', to: R.firstSeen, value: '2026-11-20' }]
+  db.prepare('UPDATE http_runs SET config = ? WHERE id = ?').run(JSON.stringify(c), newest.id)
+  const r = await rerunEnrichmentColumn(uid, sid, { column: OPEN_ROLES.status, rows: ALL, estimateOnly: false,
+    spendLimitUsd: 5, rowGeneration: null, callAgain: true })
+  assert.ok('ok' in r && 'runId' in r.ok, JSON.stringify(r))
+  const config = JSON.parse(db.prepare('SELECT config FROM http_runs WHERE id = ?').pluck().get(r.ok.runId) as string)
+  assert.deepEqual(config.enrichment.list.copy.map(({ id: _id, ...x }: { id: string }) => x),
+    [{ from: 'Website', to: R.domain, clean: 'domain' }, { from: '', to: R.firstSeen, day: null }])
+  await kit.idle(sid)
+  over(r.ok.runId, 0)
+  await until('its end looked at', () => !openRolesWatching(r.ok.runId))
 })
 
 await ok('at boot, a conversion a restart or a busy sheet left half done is finished: the count moves to the '
@@ -204,6 +231,21 @@ await ok('a column named like the domain column\'s token form ("website_domain")
   }
   assert.equal(domain(), 'Website (domain) 2')
   assert.equal(kit.cells(other, 'website_domain')[0], 'mine', 'the person\'s column left alone')
+})
+
+await ok('a count the person deleted stays deleted: a run\'s end doesn\'t add it back', async () => {
+  db.prepare(`UPDATE http_runs SET status = 'completed', placeholder_work = NULL WHERE sheet_id = ?`).run(sid)
+  assert.ok('ok' in await deleteSheetColumn(sid, uid, OPEN_ROLES.count))
+  await kit.idle(sid)
+  const r = await rerunEnrichmentColumn(uid, sid, { column: OPEN_ROLES.status, rows: ALL, estimateOnly: false,
+    spendLimitUsd: 5, rowGeneration: null, callAgain: true })
+  assert.ok('ok' in r && 'runId' in r.ok, JSON.stringify(r))
+  await kit.idle(sid)
+  over(r.ok.runId)
+  await until('its end looked at', () => !openRolesWatching(r.ok.runId))
+  assert.equal(count(), undefined, 'the count added back')
+  assert.ok(!(JSON.parse(db.prepare('SELECT column_order FROM sheets WHERE id = ?').pluck().get(sid) as string) as
+    string[]).includes(OPEN_ROLES.count))
 })
 
 done()

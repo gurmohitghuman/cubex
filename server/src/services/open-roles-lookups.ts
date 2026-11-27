@@ -45,12 +45,14 @@ const domainColumnOf = (userId: string, sheetId: string, website: string): strin
     AND cleaner = 'domain'`).pluck().all(sheetId, userId, website) as string[]).find(c => listed.has(c)) ?? null;
 };
 
-// The domain column, then the count on it, each made once (found by what it reads, whatever its name); a count that
-// reads another column (a sheet searched on v0.8.48) has its roles' Domain cleaned, then is pointed at the domain
-// column. Each step waits for the sheet first, at most waitMs (the run's start, another fill or the conversion holds
-// it), and looks again then: another call may have made it.
+// The domain column, then the count on it, each made once (found by what it reads, whatever its name); a count on
+// the website column itself (a sheet searched on v0.8.48) has its roles' Domain cleaned, then is pointed at the
+// domain column. Each step waits for the sheet first, at most waitMs (the run's start, another fill or the
+// conversion holds it), and looks again then: another call may have made it. A start makes what is missing (make);
+// a run's end and boot only move a count still on the website column, never bringing back a count or domain column
+// the person deleted, nor moving a count they pointed elsewhere.
 export async function ensureLookups(userId: string, sheetId: string, o: OpenRolesOptions, rolesSheetId: string,
-  waitMs: number): Promise<LookupsNow> {
+  waitMs: number, make = true): Promise<LookupsNow> {
   const ours = () => (db.prepare(`SELECT column_name, source_column FROM lookup_columns WHERE sheet_id = ?
     AND user_id = ? AND other_sheet_id = ? AND match_column = ? AND returns = 'count'`)
     .all(sheetId, userId, rolesSheetId, ROLE_COLUMNS.domain) as Array<{ column_name: string; source_column: string }>)
@@ -59,10 +61,13 @@ export async function ensureLookups(userId: string, sheetId: string, o: OpenRole
   let domain = domainColumnOf(userId, sheetId, o.websiteColumn);
   let found = ours();
   if (ready(found, domain)) return { lookups: [found!.column_name], left: null };
+  const leftAlone = () => !make && (!found || found.source_column !== o.websiteColumn);
+  if (leftAlone()) return { lookups: found ? [found.column_name] : [], left: null };
   let held = await sheetFreeWithin(sheetId, waitMs);
   domain = domainColumnOf(userId, sheetId, o.websiteColumn);
   found = ours();
   if (ready(found, domain)) return { lookups: [found!.column_name], left: null };
+  if (leftAlone()) return { lookups: found ? [found.column_name] : [], left: null };
   const was = found ? [found.column_name] : [];
   const later = (): LookupsNow => ({ lookups: was, left: `The "${found?.column_name ?? OPEN_ROLES.count}" column is `
     + `${found ? 'brought up to date' : 'added'} once the sheet is free (${held}).` });

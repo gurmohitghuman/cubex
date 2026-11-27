@@ -92,7 +92,7 @@ await ok('the run: the row\'s website as the one company, the roles as titles, t
   assert.ok(!l.fields!.some(f => f.columnName === R.domain), 'Domain is the copied cell, not the index\'s')
   assert.deepEqual(l.fields!.map(f => f.columnName), [R.title, R.company, R.team, R.location, R.posted, R.link])
   assert.equal(l.dedupePath, '$.application_link')
-  const bare = openRolesInput({ ...o, country: null, place: null, postedWithinDays: null }, 'd', 'x', true)
+  const bare = openRolesInput({ ...o, country: null, place: null, postedWithinDays: null }, 'd', null, true)
   assert.deepEqual(Object.keys(bare.inputs), ['company_domains', 'job_titles'], 'a filter only when asked')
   assert.equal(bare.continueColumn, true)
   assert.deepEqual(OPEN_ROLE_COLUMNS, [R.title, R.company, R.domain, R.team, R.location, R.posted, R.link,
@@ -101,7 +101,7 @@ await ok('the run: the row\'s website as the one company, the roles as titles, t
 
 await ok('under the run\'s domain cleaning a website cell becomes its domain; one that cleans to nothing isn\'t '
   + 'searched; without cleaning, as before', async () => {
-  const input = openRolesInput(o, '', '2026-11-27', false)
+  const input = openRolesInput(o, '', null, false)
   const built = await buildEnrichmentConfig(input, ['Name', 'Website'], 10)
   assert.ok('ok' in built, JSON.stringify(built))
   const tool = built.ok.enrichment.toolSnapshot
