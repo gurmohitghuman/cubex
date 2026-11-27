@@ -48,6 +48,12 @@ service_loaded() {
     *) bg_pid >/dev/null ;;
   esac
 }
+# systemd stopped starting it: it failed StartLimitBurst times within StartLimitIntervalSec (in
+# systemd_start's unit).
+service_gave_up() {
+  svc_vars
+  [ "$MODE" = systemd ] && [ "$(systemctl --user show -p Result --value "$UNIT" 2>/dev/null)" = start-limit-hit ]
+}
 # How many times the service manager has started the server so far (launchd's
 # runs, systemd's automatic restarts); 0 in background mode, where a crash ends it.
 service_starts() {
@@ -70,7 +76,9 @@ service_stop() {
     launchd) # bootout stops it now; disable keeps it from starting at the next login
       launchctl bootout "$DOMAIN/$LABEL" 2>/dev/null || true
       launchctl disable "$DOMAIN/$LABEL" 2>/dev/null || true ;;
-    systemd) systemctl --user disable --now "$UNIT" >/dev/null 2>&1 || true ;;
+    systemd) systemctl --user disable --now "$UNIT" >/dev/null 2>&1 || true
+      # A unit that gave up keeps its failed state through a stop: cleared, so status says stopped, not gave up.
+      systemctl --user reset-failed "$UNIT" >/dev/null 2>&1 || true ;;
     *) bg_stop ;;
   esac
 }
@@ -117,6 +125,10 @@ systemd_start() {
 [Unit]
 Description=Cubex, a self-hosted AI spreadsheet
 After=network-online.target
+# At most 10 starts in 10 minutes: a Cubex that crashes on every start then stays down (cubex status says so)
+# instead of restarting every 5 seconds forever. 10 leaves room for an address that comes up late at boot.
+StartLimitIntervalSec=600
+StartLimitBurst=10
 
 [Service]
 Environment="CUBEX_HOME=$CUBEX_HOME"
@@ -131,6 +143,8 @@ WantedBy=default.target
 EOF
   systemctl --user daemon-reload
   systemctl --user enable "$UNIT" >/dev/null 2>&1
+  # A unit that hit its start limit refuses a start until its failure is cleared (or the interval passes).
+  systemctl --user reset-failed "$UNIT" >/dev/null 2>&1 || true
   systemctl --user restart "$UNIT"
   # "Linger" keeps user services running after logout and starts them at boot.
   if [ "$(loginctl show-user "$user" -p Linger --value 2>/dev/null)" != yes ] \
