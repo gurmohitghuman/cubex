@@ -1,7 +1,8 @@
 // The Linux service (bin/cubex-service.sh, systemd_start) stays down after a Cubex that crashes on every start:
-// its unit has a start limit (5 starts in 5 minutes) in [Unit], where systemd reads it; `cubex start` clears a
-// failure first (a unit that hit its limit refuses a start until then); and service_gave_up says systemd stopped
-// starting it (Result start-limit-hit), for `cubex status`. Against a stand-in systemctl and loginctl on PATH that
+// its unit has a start limit (10 starts in 10 minutes) in [Unit], where systemd reads it; `cubex start` clears a
+// failure first (a unit that hit its limit refuses a start until then); service_gave_up says systemd stopped
+// starting it (Result start-limit-hit), for `cubex status`; and `cubex stop` clears that state, so a stopped Cubex
+// isn't reported as one that gave up. Against a stand-in systemctl and loginctl on PATH that
 // note each call. macOS and Linux only: the script is bash.
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
@@ -52,8 +53,8 @@ try {
     assert.equal(r.status, 0, r.err)
     const unit = fs.readFileSync(path.join(dir, 'config', 'systemd', 'user', 'cubex.service'), 'utf8')
     const section = unit.slice(unit.indexOf('[Unit]'), unit.indexOf('[Service]'))
-    assert.match(section, /^StartLimitIntervalSec=300$/m)
-    assert.match(section, /^StartLimitBurst=5$/m)
+    assert.match(section, /^StartLimitIntervalSec=600$/m)
+    assert.match(section, /^StartLimitBurst=10$/m)
     assert.match(unit.slice(unit.indexOf('[Service]')), /^Restart=on-failure$/m)
     const made = fs.readFileSync(calls, 'utf8').split('\n')
     const reset = made.indexOf('--user reset-failed cubex'), restart = made.indexOf('--user restart cubex')
@@ -64,6 +65,15 @@ try {
     assert.equal(inScript('service_gave_up', { FAKE_RESULT: 'start-limit-hit' }).status, 0)
     assert.equal(inScript('service_gave_up', { FAKE_RESULT: 'exit-code' }).status, 1)
     assert.equal(inScript('service_gave_up', { FAKE_RESULT: 'start-limit-hit', CUBEX_SERVICE: 'none' }).status, 1)
+  })
+
+  check('a stop clears a failed state, after the unit is disabled', () => {
+    fs.writeFileSync(calls, '')
+    const r = inScript('svc_vars; service_stop')
+    assert.equal(r.status, 0, r.err)
+    const made = fs.readFileSync(calls, 'utf8').split('\n')
+    const off = made.indexOf('--user disable --now cubex'), reset = made.indexOf('--user reset-failed cubex')
+    assert.ok(off >= 0 && reset > off, made.join(' | '))
   })
 } finally {
   fs.rmSync(dir, { recursive: true, force: true })
