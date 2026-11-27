@@ -43,6 +43,11 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
     changes: [
       {
         change: 'server',
+        summary: 'append_rows and change_rows (update) take a whole row\'s cells in one call: up to the sheet\'s '
+          + 'column limit (200 by default) instead of 80.',
+      },
+      {
+        change: 'server',
         summary: 'A tool billed per result whose catalog names its count input is priced at the results a call '
           + 'asks for (that input, else its default) instead of 20: run_enrichment\'s and apply_setup\'s estimates '
           + 'and default max_cost_per_row_usd follow it.',
