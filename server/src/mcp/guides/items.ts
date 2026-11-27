@@ -10,8 +10,8 @@ export const SETUP_ITEMS_TEXT = [
   'With items, the estimate only reads: it prices each step on the items (an AI step\'s "Only run if" rule is '
     + 'checked on each one) and makes nothing. A start counts against the access token\'s run starts per minute, as '
     + 'a column run\'s does.',
-  'With items, Cubex runs the setup on a working table of its own that you never see: not in the app, get_workspace, '
-    + 'get_workspace or the trash. Each step runs as it would on a sheet, and auto-run is never turned on there. '
+  'With items, Cubex runs the setup on a working table of its own that you never see: not in the app, get_workspace '
+    + '(all_tables too) or the trash. Each step runs as it would on a sheet, and auto-run is never turned on there. '
     + 'What its enrichments spend shows in Settings as "A call without a sheet".',
   'The call\'s id is a setup run\'s id: get_run (action setup) answers it, control_run with it as setup_run_id '
     + 'pauses, resumes or cancels it, a run webhook named with webhook_id reports it as kind "setup" with that id as '
