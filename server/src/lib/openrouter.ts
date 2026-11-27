@@ -123,14 +123,17 @@ export function modelThinksFirst(model: string): boolean | null {
   return !modelsCache.plain.has(id);
 }
 
-// No sign of thinking: its supported_parameters (listed) take no reasoning, it has no reasoning block and no
-// reasoning price, and it isn't a router or an alias, which may send the call to a model that thinks. Anything
-// short of that keeps the room a thinking model needs.
+// No sign of thinking: its supported_parameters (listed) take temperature and no reasoning (OpenAI's models that
+// think take no temperature, gpt-5.2-chat among them), it has no reasoning block and no reasoning price, no price
+// that varies (a negative one, as a router's), and it isn't a router or an alias, which may send the call to a
+// model that thinks. Anything short of that keeps the room a thinking model needs.
+const varies = (v: unknown): boolean => v !== undefined && v !== null && v !== '' && Number(v) < 0;
 const isPlain = (m: { id: string; supported_parameters?: unknown; reasoning?: unknown; alias_target?: unknown;
-  pricing?: { internal_reasoning?: unknown } }): boolean =>
-  Array.isArray(m.supported_parameters)
+  pricing?: { prompt?: unknown; completion?: unknown; request?: unknown; internal_reasoning?: unknown } }): boolean =>
+  Array.isArray(m.supported_parameters) && m.supported_parameters.includes('temperature')
   && !m.supported_parameters.includes('reasoning') && !m.supported_parameters.includes('include_reasoning')
   && !m.reasoning && !m.alias_target && !listedFee(m.pricing?.internal_reasoning)
+  && !varies(m.pricing?.prompt) && !varies(m.pricing?.completion) && !varies(m.pricing?.request)
   && !m.id.startsWith('~') && !m.id.startsWith('openrouter/');
 
 // A fee kept in the trimmed list: listed and not 0. A negative one (the price

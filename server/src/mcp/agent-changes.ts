@@ -43,10 +43,10 @@ export const AGENT_CHANGES: ReleaseChanges[] = [
     changes: [
       {
         change: 'server',
-        summary: 'run_ai_column on a model that doesn\'t think first sends max_tokens max_chars / 3 + 256, or 4,096 '
-          + 'without max_chars, not 8,000, so spend_limit_usd holds and row_most_usd shrink.',
-        details: 'Models that think, routers and aliases keep 8,000, as do runs with output_columns. With max_chars: 20 '
-          + 'a row holds about 263 output tokens, so a small limit runs rows.',
+        summary: 'run_ai_column with max_chars on a model that doesn\'t think first sends max_tokens max_chars x 2 + '
+          + '256, not 8,000, so spend_limit_usd holds and row_most_usd shrink.',
+        details: 'Without max_chars, models that think, routers, aliases and output_columns runs keep 8,000. With '
+          + 'max_chars: 20 a row holds 296 output tokens, so a small limit runs rows.',
       },
       {
         change: 'server',

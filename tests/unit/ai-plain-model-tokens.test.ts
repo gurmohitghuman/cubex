@@ -1,7 +1,8 @@
-// A one-column AI row on a model that doesn't think first sends a smaller max_tokens (lib/ai-output-tokens.ts):
-// about max_chars / 3 + 256, or 4,096 without max_chars; a model that thinks, may think, or isn't known keeps the
-// 8,000 floor, and so does a structured row. The run's spend limit holds what the row sends, so a small limit runs
-// rows on such a model, and the row sends exactly what its gate held. Through the real worker loop against a
+// A one-column AI row with max_chars on a model that doesn't think first sends a smaller max_tokens
+// (lib/ai-output-tokens.ts): max_chars x 2 + 256, never more than before; without max_chars, and on a model that
+// thinks, may think, or isn't known, it keeps the 8,000 floor, and so does a structured row. The run's spend
+// limit holds what the row sends, so a small limit runs rows on such a model, and the row sends exactly what its
+// gate held. Through the real worker loop against a
 // stand-in for OpenRouter on 127.0.0.1 (OPENROUTER_BASE_URL) serving a model list with each kind of model.
 import http from 'node:http'
 import type { AddressInfo } from 'node:net'
@@ -22,6 +23,8 @@ const MODELS = [
   model('test/aliased', { alias_target: 'test/thinks' }),
   model('~test/latest'),
   model('test/no-params', { supported_parameters: undefined }),
+  model('test/no-temperature', { supported_parameters: ['max_tokens', 'verbosity'] }),
+  model('test/varies', { supported_parameters: [], pricing: { prompt: '-1', completion: '-1' } }),
 ]
 const bodies: Array<{ model: string; max_tokens?: number }> = []
 const server = http.createServer((req, res) => {
@@ -49,17 +52,18 @@ const { PLACEHOLDER } = await import('../../server/src/lib/placeholder-cells')
 const { fetchModels, modelThinksFirst } = await import('../../server/src/lib/openrouter')
 const { proseMaxTokens, rowMaxTokens } = await import('../../server/src/lib/ai-output-tokens')
 const { rowFixedFor } = await import('../../server/src/lib/ai-spend-limit')
-const { AI_MIN_OUTPUT_TOKENS, AI_PLAIN_OUTPUT_TOKENS } = await import('../../server/src/lib/constants')
+const { AI_MIN_OUTPUT_TOKENS } = await import('../../server/src/lib/constants')
 runMigrations()
 console.warn = () => {}
 
 // --- The rule -------------------------------------------------------------------------------
-assert.equal(proseMaxTokens(null, false), AI_PLAIN_OUTPUT_TOKENS)
-assert.equal(proseMaxTokens(20, false), Math.ceil(20 / 3) + 256)
-assert.equal(proseMaxTokens(12_000, false), 4_256, 'max_chars 12,000 still fits')
+assert.equal(proseMaxTokens(null, false), AI_MIN_OUTPUT_TOKENS, 'without max_chars a long answer keeps its room')
+assert.equal(proseMaxTokens(20, false), 20 * 2 + 256)
+assert.equal(proseMaxTokens(1_500, false), 3_256, 'two tokens a character: Japanese or Thai fits')
+assert.equal(proseMaxTokens(12_000, false), 12_000, 'never more than before')
 assert.equal(proseMaxTokens(1_000_000, false), 16_000, 'capped at the ceiling')
 for (const thinks of [true, null]) assert.equal(proseMaxTokens(20, thinks), AI_MIN_OUTPUT_TOKENS)
-console.log('ok   a model that doesn\'t think first: max_chars / 3 + 256, or 4,096; otherwise the 8,000 floor')
+console.log('ok   with max_chars on a model that doesn\'t think first: max_chars x 2 + 256; otherwise the floor')
 
 // --- Which models don't think first: no sign of it at all in the list ---------------------------
 assert.equal(modelThinksFirst('test/plain'), null, 'nothing is known before the list is read')
@@ -67,19 +71,20 @@ await fetchModels(Date.now())
 assert.equal(modelThinksFirst('test/plain'), false)
 assert.equal(modelThinksFirst('test/plain:nitro'), false, 'a routing variant is read as its model')
 for (const id of ['test/thinks', 'test/optional-thinking', 'test/reasoning-price', 'test/aliased', '~test/latest',
-  'test/no-params']) {
+  'test/no-params', 'test/no-temperature', 'test/varies']) {
   assert.equal(modelThinksFirst(id), true, id)
 }
 assert.equal(modelThinksFirst('test/unlisted'), null)
 assert.equal(rowMaxTokens({ model: 'test/plain', maxChars: 20, structured: true }), AI_MIN_OUTPUT_TOKENS,
   'a structured row keeps the floor')
+assert.equal(rowMaxTokens({ model: 'test/plain', maxChars: null, structured: false }), AI_MIN_OUTPUT_TOKENS)
 const fixed = (m: string, outputColumns: unknown = null) => rowFixedFor({ model: m, systemPrompt: null,
   outputColumns: outputColumns as never, maxChars: 20,
   web: { search: false, fetch: false, used: null, mode: null, maxPerRow: null } }).maxTokens
-assert.equal(fixed('test/plain'), 263)
+assert.equal(fixed('test/plain'), 296)
 assert.equal(fixed('test/thinks'), AI_MIN_OUTPUT_TOKENS)
 assert.equal(fixed('test/plain', [{ columnName: 'A', type: 'string', description: 'a' }]), AI_MIN_OUTPUT_TOKENS)
-console.log('ok   only a listed model with no reasoning parameter, block, price, alias or router counts as plain')
+console.log('ok   plain: listed, takes temperature, no reasoning parameter, block, price, varying price or alias')
 
 // --- Real runs ------------------------------------------------------------------------------------
 const uid = uuid(), tid = uuid(), sid = uuid()
@@ -110,13 +115,13 @@ async function run(column: string, m: string, maxChars: number | null, limitUsd:
 // A yes/no column on a plain model under a $0.01 limit: each row's most is about $0.003, so every row runs.
 const small = await run(OUTS[0], 'test/plain', 20, 0.01)
 assert.equal(small.status, 'completed', JSON.stringify(small))
-assert.deepEqual(small.sent, [263, 263, 263], 'each row sends what its gate held')
+assert.deepEqual(small.sent, [296, 296, 296], 'each row sends what its gate held')
 console.log('ok   a small limit runs a short column on a plain model; each row sends the max_tokens held')
 
-// No max_chars, no limit: 4,096.
+// No max_chars, no limit: the floor, so a long answer isn't cut.
 const long = await run(OUTS[1], 'test/plain', null, null)
-assert.deepEqual(long.sent, [AI_PLAIN_OUTPUT_TOKENS, AI_PLAIN_OUTPUT_TOKENS, AI_PLAIN_OUTPUT_TOKENS])
-console.log('ok   without max_chars a plain model gets 4,096')
+assert.deepEqual(long.sent, [AI_MIN_OUTPUT_TOKENS, AI_MIN_OUTPUT_TOKENS, AI_MIN_OUTPUT_TOKENS])
+console.log('ok   without max_chars a plain model keeps 8,000')
 
 // A model that thinks keeps the 8,000 floor: $0.08 a row is over the same $0.01, so the run pauses at once.
 const thinking = await run(OUTS[2], 'test/thinks', 20, 0.01)

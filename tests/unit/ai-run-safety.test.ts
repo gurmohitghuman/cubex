@@ -22,10 +22,6 @@ let calls = 0
 const server = http.createServer((req, res) => {
   req.resume()
   req.on('end', () => {
-    // The model list a run reads (lib/ai-output-tokens.ts) isn't a row's call: an empty one, at once.
-    if (req.url?.endsWith('/models')) {
-      res.writeHead(200, { 'content-type': 'application/json' }); res.end('{"data":[]}'); return
-    }
     calls++
     if (mode === 'stall') { res.writeHead(200, { 'content-type': 'application/json' }); res.flushHeaders(); return }
     if (mode === 'fail') {

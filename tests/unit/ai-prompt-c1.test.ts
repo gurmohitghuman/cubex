@@ -16,10 +16,6 @@ const server = http.createServer((req, res) => {
   const chunks: Buffer[] = []
   req.on('data', c => chunks.push(c))
   req.on('end', () => {
-    // The model list a run reads (lib/ai-output-tokens.ts) isn't a row's call: an empty one, at once.
-    if (req.url?.endsWith('/models')) {
-      res.writeHead(200, { 'content-type': 'application/json' }); res.end('{"data":[]}'); return
-    }
     bodies.push(Buffer.concat(chunks))
     res.writeHead(200, { 'content-type': 'application/json' })
     res.end(JSON.stringify({

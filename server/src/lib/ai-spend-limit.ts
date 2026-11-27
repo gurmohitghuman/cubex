@@ -170,7 +170,8 @@ export const PRICE_UNREAD_MESSAGE = "Cubex couldn't read the model's price from 
 
 // What the agent-facing tools say about an AI run's spend limit (and when spend can pass it).
 export const AI_SPEND_LIMIT_NOTE = 'A row starts only while what the run spent, plus the most its rows out and that '
-  + "row can cost (at least 8,000 output tokens at the model's listed prices), stays within the limit; otherwise "
+  + "row can cost (the max_tokens it sends at the model's listed prices: at least 8,000, or with max_chars on a "
+  + "model that doesn't think first max_chars x 2 + 256), stays within the limit; otherwise "
   + 'it waits, or pauses with pause_reason spend_limit and its rows not started stay ⏳ (control_run resume with '
   + "a spend_limit_usd of at least the resume_least_usd of get_run's status). A call cut off before it answered counts "
   + 'at its most for the rest of the run. Spend can pass the limit only with web search or fetch, on a model with '

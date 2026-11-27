@@ -128,9 +128,10 @@ export const processOneRow = async (
     // The production runners' exact call (services/ai-model-call.ts) and tools
     // (lib/ai-web-tools.ts): a preview must cost and behave like the run it
     // previews. max_tokens as the run sends it: room for a model that thinks to
-    // think AND answer, less for one that doesn't (lib/ai-output-tokens.ts, which
-    // reads the model list the run warms; read here too, cached after the first).
-    if (!args.rawText) await fetchModels(Date.now());
+    // think AND answer, less with max_chars for one that doesn't
+    // (lib/ai-output-tokens.ts, which reads the model list the run warms; read
+    // here too, cached after the first).
+    if (!args.rawText && args.maxChars) await fetchModels(Date.now());
     const maxTokens = args.rawText ? aiMaxTokens(args.maxChars)
       : rowMaxTokens({ model: args.model, maxChars: args.maxChars ?? null, structured: false });
     const input = {

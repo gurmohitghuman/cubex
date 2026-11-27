@@ -30,14 +30,17 @@ export type { AIRunRow } from './ai-runner-status';
 // progress on every row. Pause/cancel are detected by polling ai_runs.status.
 // Search rows check the model list for whether the model takes a temperature
 // (services/ai-model-call.ts): read once here, not per row. A one-column row
-// sends less to a model that doesn't think first (lib/ai-output-tokens.ts),
-// also read from the list: a run with a spend limit reads it before its first
-// row (its gate prices rows with it, ai-spend-gate.ts); one without starts the
-// read here and doesn't wait (an outage would hold its start), its first rows
-// keeping the room a thinking model needs until the list is in.
+// with max_chars sends less to a model that doesn't think first
+// (lib/ai-output-tokens.ts), also read from the list: a run with a spend limit
+// reads it before its first row (its gate prices rows with it,
+// ai-spend-gate.ts); one without starts the read here and doesn't wait (an
+// outage would hold its start), its first rows keeping the room a thinking
+// model needs until the list is in.
 async function readModelList(run: AIRunRow): Promise<void> {
   if (run.use_openrouter_web_search) await fetchModels(Date.now());
-  else if (!run.output_columns && run.spend_limit_usd == null) void fetchModels(Date.now()).catch(() => undefined);
+  else if (!run.output_columns && run.spend_limit_usd == null && run.max_chars) {
+    void fetchModels(Date.now()).catch(() => undefined);
+  }
 }
 
 export async function processAIRun(runId: string, expectedGeneration?: number): Promise<RunParked | void> {
