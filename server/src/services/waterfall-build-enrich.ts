@@ -6,7 +6,7 @@
 // must be one the tool returns. Its cap and route come from the same functions
 // an enrichment column's start uses (lib/enrich-estimate.ts), so a step spends
 // what its estimate said.
-import { defaultMaxCostPerRow, noProviderCanRun, type ProviderPick } from '../lib/enrich-estimate';
+import { defaultMaxCostPerRow, noProviderCanRun, reservedRows, type ProviderPick } from '../lib/enrich-estimate';
 import { checkStepProviders, type SavedProviderNames } from '../lib/enrich-provider-names';
 import { missingInputs } from '../lib/enrich-request';
 import { validateHttpJsonPath } from '../lib/jsonpath-extract';
@@ -69,8 +69,11 @@ export async function buildEnrichmentStep(
     where, order: choices.providerOrder, skip: choices.skipProviders, orderTools: [tool], saved,
   });
   if (providers.error) return bad(providers.error);
+  // A per-result tool's dial: a fixed value as it is, an input (it differs by row) at the tool's most.
+  const dial = inputs[tool.price.reserve?.input ?? ''];
   const pick: ProviderPick = {
     skip: choices.skipProviders, given, order: choices.providerOrder, stopAtFirst: choices.stopAtFirst,
+    limit: reservedRows(tool, dial === undefined ? undefined : typeof dial === 'string' ? `{{${dial}}}` : dial.value),
   };
   if (noProviderCanRun(tool, pick)) {
     return bad(`${where}: no provider can run with these inputs and switches. Map more inputs or switch providers on.`);

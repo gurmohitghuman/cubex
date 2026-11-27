@@ -7,7 +7,7 @@
 import { ENRICH_FEATURED, ENRICH_VERIFY_TOOL_ID, TREG_BASE_URL } from '../lib/constants';
 import { toolTitle } from '../lib/enrich-tool-label';
 import {
-  defaultEmailLoopCap, defaultMaxCostPerRow, noProviderCanRun, verifyPick, type ProviderPick,
+  defaultEmailLoopCap, defaultMaxCostPerRow, noProviderCanRun, reservedRows, verifyPick, type ProviderPick,
 } from '../lib/enrich-estimate';
 import { checkStepProviders, type SavedProviderNames } from '../lib/enrich-provider-names';
 import { missingInputs } from '../lib/enrich-request';
@@ -134,7 +134,9 @@ export async function buildEnrichmentConfig(
       skip: list.route.exclude, given, order: list.route.prefer, stopAtFirst: true,
       limit: list.limitInput ? input.list!.maxItems : null,
     }
-    : { skip: input.skipProviders, given, order: input.providerOrder, stopAtFirst: input.stopAtFirst };
+    : { skip: input.skipProviders, given, order: input.providerOrder, stopAtFirst: input.stopAtFirst,
+      // A per-result tool's dial as sent (lib/enrich-estimate.ts reservedRows).
+      limit: reservedRows(tool, templates[tool.price.reserve?.input ?? '']) };
   if (noProviderCanRun(tool, pick)) {
     return bad('No provider can run with these inputs and switches. Map more inputs or switch providers on.');
   }

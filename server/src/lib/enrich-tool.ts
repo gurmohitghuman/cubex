@@ -11,7 +11,11 @@ export type { ToolInput, ToolOutput, ToolList };
 export interface ToolPrice {
   type: string | null; unit: string | null; usd: number | null; varies: boolean; note?: string;
   overflowUsd: number | null;
+  // A per-result tool's dial, as treg holds a call (the catalog's cost.reserve.rows): the input that sets how many
+  // results it asks for, how many when it isn't sent, and the most it takes. Absent: treg's own default (20 rows).
+  reserve?: ToolReserve | null;
 }
+export interface ToolReserve { input: string; default: number | null; max: number | null }
 export interface ToolProvider {
   endpointId: string; provider: string; name?: string; usd: number | null; hitRate: number | null;
   usdPerHit: number | null; works: number | null; accepts: string[][]; exhausted: boolean;
@@ -62,12 +66,22 @@ export function hiddenReason(ep: Json): string | null {
   return null;
 }
 
+// {"rows": {"param": "body.count", "default": {"value": 1}, "max": 3}}: the input by its name (count).
+function reserveOf(r: unknown): ToolReserve | null {
+  const rows = isObj(r) && isObj(r.rows) ? r.rows : null;
+  const input = rows && str(rows.param)?.split('.').pop();
+  if (!rows || !input) return null;
+  const whole = (v: unknown) => (typeof v === 'number' && Number.isSafeInteger(v) && v > 0 ? v : null);
+  return { input, default: whole(isObj(rows.default) ? rows.default.value : rows.default), max: whole(rows.max) };
+}
+
 function priceOf(ep: Json): ToolPrice {
   const c = isObj(ep.cost) ? ep.cost : {};
+  const reserve = c.type === 'per_result' ? reserveOf(c.reserve) : null;
   return {
     type: str(c.type), unit: str(c.unit), usd: numOrNull(c.usd), varies: c.varies === true,
     ...(str(c.note) ? { note: str(c.note) as string } : {}),
-    overflowUsd: numOrNull(ep.overflow_price_usd),
+    overflowUsd: numOrNull(ep.overflow_price_usd), ...(reserve ? { reserve } : {}),
   };
 }
 

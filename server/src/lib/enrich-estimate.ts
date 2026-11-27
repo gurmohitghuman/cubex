@@ -45,12 +45,26 @@ export function enabledProviders(tool: EnrichTool, pick: ProviderPick = {}): Too
   return [[...usable].sort((a, b) => rank(a) - rank(b))[0]];
 }
 
-// One call to a single tool: its price, times the page size for per-result
-// pricing (treg reserves 20 rows when no limit is sent). Overflow pricing (an
-// aggregator serving when treg's own account is out) counts as the worst case.
+// One call to a single tool: its price, times the results it asks for when
+// it bills per result, as treg holds them: `limit` (the results the call
+// asks for), else the tool's own default (its catalog's reserve rule: 1 for
+// Findymail's people search, 10 for hirebase's job search), else 20 when the
+// catalog gives none; never past the tool's most (100 without one). Overflow
+// pricing (an aggregator serving when treg's own account is out) counts as the worst case.
 function singleCallCost(tool: EnrichTool, limit: number | null): number {
   const unit = Math.max(tool.price.usd ?? 0, tool.price.overflowUsd ?? 0);
-  return tool.price.type === 'per_result' ? unit * Math.min(Math.max(limit ?? 20, 1), 100) : unit;
+  if (tool.price.type !== 'per_result') return unit;
+  const r = tool.price.reserve;
+  return unit * Math.min(Math.max(limit ?? r?.default ?? 20, 1), r?.max ?? 100);
+}
+
+// The results a call to a per-result tool asks for, from what its dial input
+// (the reserve rule's) is sent: a whole number as it is; a column, which can
+// differ by row, at the tool's most; not sent, null (its default then).
+export function reservedRows(tool: EnrichTool, sent: string | undefined): number | null {
+  const r = tool.price.reserve;
+  if (!r || sent === undefined || sent.trim() === '') return null;
+  return /^\d+$/.test(sent.trim()) ? Number(sent.trim()) : r.max ?? 100;
 }
 
 // A waterfall whose plan is known but leaves no provider a row can reach

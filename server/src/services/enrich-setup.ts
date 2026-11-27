@@ -15,6 +15,7 @@ import {
 import { readTregBalance } from '../lib/treg';
 import type { EstimateInput } from '../lib/enrich-estimate-input';
 import { getTool, type CatalogFailure } from './enrich-catalog';
+import type { EnrichTool } from '../lib/enrich-tool';
 import { listRowPrices } from './enrich-list-build';
 import { dailyLimitView, getTregToken, type DailyLimitView } from './treg-key';
 
@@ -66,6 +67,10 @@ export interface EnrichEstimateView {
 }
 
 const round6 = (n: number) => Math.round(n * 1e6) / 1e6;
+const dialMost = (tool: EnrichTool, given: string[] | null): number | null => {
+  const r = tool.price.reserve;
+  return r && given?.includes(r.input) ? r.max ?? 100 : null;
+};
 
 // The estimate box. The default per-row cap lets every provider picked
 // answer; the verified email preset also budgets for its checks and re-finds.
@@ -81,7 +86,9 @@ export async function estimateEnrichment(
   const pick: ProviderPick = one ? {
     ...input, order: [one], stopAtFirst: true,
     skip: (tool.providers ?? []).map(p => p.provider.toLowerCase()).filter(p => p !== one),
-  } : list && tool.inputs.some(i => i.name === 'limit') ? { ...input, limit: list.maxItems } : input;
+  } : list && tool.inputs.some(i => i.name === 'limit') ? { ...input, limit: list.maxItems }
+    // A per-result tool's dial mapped here: the estimate has no values, so it counts its most (lib/enrich-estimate.ts).
+    : { ...input, limit: input.limit ?? dialMost(tool, input.given) };
   let cap = defaultMaxCostPerRow(tool, pick);
   let listLow: number | null = null;
   if (one && list) {
